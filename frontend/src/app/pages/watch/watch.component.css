@@ -191,3 +191,61 @@
 @media (max-width: 640px) {
   .watch-header h2 { font-size: 1.2rem; }
 }
+
+/* ===== Skeleton loading states =====
+ * Shown while currentItem is null (TMDB details still in flight).
+ * Same shimmer recipe as the home card-row so the visual language is
+ * consistent across pages. */
+.skeleton {
+  position: relative;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    100deg,
+    var(--surface) 30%,
+    var(--surface-hover) 50%,
+    var(--surface) 70%
+  );
+  background-size: 200% 100%;
+  animation: watch-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes watch-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-title {
+  flex: 1;
+  height: 1.6rem;
+  max-width: 60%;
+}
+
+.skeleton-select {
+  height: 2.4rem;
+  min-width: 140px;
+  border-radius: var(--radius);
+}
+
+.skeleton-backdrop {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+}
+
+.skeleton-btn {
+  height: 2.55rem;
+  width: 12rem;
+}
+
+.skeleton-btn-icon {
+  height: 2.55rem;
+  width: 3rem;
+}
+
+.skeleton-line {
+  height: 1rem;
+  width: 100%;
+}
+
+.skeleton-line.short { width: 40%; }
+.skeleton-line.medium { width: 70%; }

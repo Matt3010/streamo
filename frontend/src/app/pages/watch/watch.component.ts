@@ -17,11 +17,20 @@ import type { MediaType } from '../../models';
         <button class="close-btn" aria-label="Indietro" (click)="back()">
           <app-icon name="close"></app-icon>
         </button>
-        <h2>{{ title() }}</h2>
+        @if (loading()) {
+          <div class="skeleton skeleton-title"></div>
+        } @else {
+          <h2>{{ title() }}</h2>
+        }
       </div>
 
       <div class="player-container">
-        @if (player.currentItemType() === 'tv' && player.seasons().length > 0) {
+        @if (loading() && player.currentItemType() !== 'movie') {
+          <div class="episode-controls active">
+            <div class="skeleton skeleton-select"></div>
+            <div class="skeleton skeleton-select"></div>
+          </div>
+        } @else if (player.currentItemType() === 'tv' && player.seasons().length > 0) {
           <div class="episode-controls active">
             <select (change)="onSeasonChange($event)">
               @for (s of player.seasons(); track s) {
@@ -37,7 +46,9 @@ import type { MediaType } from '../../models';
         }
 
         <div class="player-wrapper">
-          @if (!player.iframeSrc()) {
+          @if (loading()) {
+            <div class="skeleton skeleton-backdrop"></div>
+          } @else if (!player.iframeSrc()) {
             <div class="player-preview">
               @if (player.backdropUrl()) {
                 <img class="preview-backdrop" [src]="player.backdropUrl()" alt="">
@@ -49,7 +60,12 @@ import type { MediaType } from '../../models';
           }
         </div>
 
-        @if (!player.iframeSrc()) {
+        @if (loading()) {
+          <div class="player-actions">
+            <div class="skeleton skeleton-btn"></div>
+            <div class="skeleton skeleton-btn-icon"></div>
+          </div>
+        } @else if (!player.iframeSrc()) {
           <div class="player-actions">
             <button class="action-btn primary" (click)="play()">
               <app-icon name="play"></app-icon>
@@ -70,21 +86,28 @@ import type { MediaType } from '../../models';
         }
 
         <div class="player-info">
-          @if (taglineStr()) {
-            <p class="player-tagline">{{ taglineStr() }}</p>
-          }
-          @if (metaStr()) {
-            <p class="player-meta">{{ metaStr() }}</p>
-          }
-          @if (genresStr()) {
-            <p class="player-genres">{{ genresStr() }}</p>
-          }
-          <p>{{ overview() }}</p>
-          @if (castStr()) {
-            <p class="player-cast"><strong>Cast:</strong> {{ castStr() }}</p>
-          }
-          @if (tvSummaryStr()) {
-            <p class="player-extra">{{ tvSummaryStr() }}</p>
+          @if (loading()) {
+            <div class="skeleton skeleton-line short"></div>
+            <div class="skeleton skeleton-line"></div>
+            <div class="skeleton skeleton-line"></div>
+            <div class="skeleton skeleton-line medium"></div>
+          } @else {
+            @if (taglineStr()) {
+              <p class="player-tagline">{{ taglineStr() }}</p>
+            }
+            @if (metaStr()) {
+              <p class="player-meta">{{ metaStr() }}</p>
+            }
+            @if (genresStr()) {
+              <p class="player-genres">{{ genresStr() }}</p>
+            }
+            <p>{{ overview() }}</p>
+            @if (castStr()) {
+              <p class="player-cast"><strong>Cast:</strong> {{ castStr() }}</p>
+            }
+            @if (tvSummaryStr()) {
+              <p class="player-extra">{{ tvSummaryStr() }}</p>
+            }
           }
         </div>
       </div>
@@ -104,6 +127,11 @@ export class WatchComponent {
   readonly id = input.required<string>();
   readonly s = input(0, { transform: numberAttribute });
   readonly e = input(0, { transform: numberAttribute });
+
+  // True while the watch page is fetching TMDB details for this title — no
+  // currentItem yet means dropdowns/title/info would render empty, which
+  // looks broken. Skeletons fill that gap.
+  protected readonly loading = computed(() => this.player.currentItem() === null);
 
   protected readonly title = computed(() => {
     const it = this.player.currentItem();
