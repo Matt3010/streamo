@@ -18,11 +18,6 @@ import type { MediaType } from '../../models';
           <app-icon name="close"></app-icon>
         </button>
         <h2>{{ title() }}</h2>
-        <button class="icon-btn" [class.active]="player.isInWatchlist()"
-                [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
-                (click)="toggleWatchlist()">
-          <app-icon name="bookmark"></app-icon>
-        </button>
       </div>
 
       <div class="player-container">
@@ -65,6 +60,12 @@ import type { MediaType } from '../../models';
                 <span>Vai al prossimo</span>
               </button>
             }
+            <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+                    [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    (click)="toggleWatchlist()">
+              <app-icon name="bookmark"></app-icon>
+            </button>
           </div>
         }
 

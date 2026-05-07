@@ -129,6 +129,16 @@
   height: 18px;
 }
 
+.action-btn.icon-only {
+  padding: 0.65rem 0.85rem;
+  margin-left: auto;
+}
+
+.action-btn.icon-only.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .player-wrapper iframe {
   width: 100%;
   height: 100%;

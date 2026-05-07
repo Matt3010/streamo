@@ -309,13 +309,12 @@ export class PlayerService {
   }
 
   private async applyResumeProgress(seq: number, tmdbId: string | number, type: MediaType, season = 0, episode = 0): Promise<void> {
-    if (!this.auth.currentUser()) {
-      if (seq === this.urlSeq) {
-        this.resumeText.set('');
-        this.resumeProgress.set(null);
-      }
-      return;
-    }
+    // No early gate on `auth.currentUser()` here — on a hard refresh the
+    // signal is briefly null while AuthService.checkAuth() resolves, but the
+    // session cookie is already on the request, so the fetch returns the
+    // real progress. Gating on currentUser dropped resume state intermittently
+    // when refreshing /watch/<…>?s=N&e=M. progress.get() returns null on 401
+    // for actually-logged-out users, which is fine.
     const progress = await this.progress.get(tmdbId, type, season, episode);
     // Bail out if a newer base URL was set while we were awaiting the fetch.
     if (seq !== this.urlSeq) return;
