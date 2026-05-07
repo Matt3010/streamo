@@ -97,7 +97,3 @@ This project is a personal experiment. It does not host or distribute any
 media. All streaming content is fetched from third-party providers; the
 legality of accessing those streams depends on your local laws. Use at
 your own risk.
-
-## License
-
-TBD (probabilmente MIT — vedi le note nel commit della licenza quando ci sarà).
