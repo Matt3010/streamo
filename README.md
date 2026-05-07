@@ -1,95 +1,98 @@
 # VixStream
 
-Web app personale per sfogliare film e serie TV (catalogo TMDB) e riprodurli
-in streaming. Frontend Angular, backend Express + SQLite, tutto incapsulato
-in due container Docker dietro un reverse proxy nginx.
+Personal web app to browse movies and TV shows (TMDB catalog) and stream
+them. Angular frontend, Express + SQLite backend, both packaged as Docker
+containers behind an nginx reverse proxy.
 
 ## Stack
 
 - **Frontend**: Angular 21 standalone components + signals
 - **Backend**: Node 20 + Express + better-sqlite3
-- **Reverse proxy**: nginx (template processato con `envsubst`)
-- **Catalogo**: [TMDB](https://www.themoviedb.org/) (richiede una API key)
-- **Player**: iframe vixsrc.to proxato dal nginx
+- **Reverse proxy**: nginx (template processed with `envsubst`)
+- **Catalog**: [TMDB](https://www.themoviedb.org/) (requires an API key)
+- **Player**: vixsrc.to iframe proxied through nginx
 
-## Avvio
+## Getting started
 
-Crea `.env` nella root con la tua TMDB API key:
+Create a `.env` file at the project root with your TMDB API key:
 
 ```
-TMDB_API_KEY=la_tua_key
+TMDB_API_KEY=your_key_here
 ```
 
-Poi:
+Then:
 
 ```bash
 docker compose up -d --build
 ```
 
-L'app è disponibile su `http://localhost:8080`. Il backend (porta 3000)
-non è esposto direttamente — nginx fa da reverse proxy per `/api/auth`,
-`/api/user`, `/api/tmdb` e `/player`.
+The app is available at `http://localhost:8080`. The backend (port 3000)
+is not exposed directly — nginx reverse-proxies `/api/auth`, `/api/user`,
+`/api/tmdb`, and `/player`.
 
-Lo stato (utenti, watchlist, progress, history, JWT secret, cache TMDB)
-vive in `./data/vixstream.db` (volume montato sul container backend).
+State (users, watchlist, progress, history, JWT secret, TMDB cache) lives
+in `./data/vixstream.db` (volume mounted on the backend container).
 
-## Features principali
+## Features
 
-- Registrazione + login con cookie HTTP-only (JWT)
-- Catalogo film/serie con sezioni (Tendenza, Al Cinema, Più Visti, In Arrivo,
-  per le serie anche In Onda Ora / Più Votate / Oggi in TV)
-- Pagina dettaglio "watch" con tagline, generi, durata, rating, cast (top 6)
-- Player con resume automatico (riprende dall'ultimo episodio guardato per le serie)
-- Progress tracking automatico via `postMessage` dell'iframe vixsrc
-- **Watchlist** con due stati per ogni titolo:
-  - `Da guardare` (default)
-  - `Visto` (manuale, oppure auto-flip quando hai visto >= 80% di tutti gli episodi)
-- Marcatura manuale del progresso ("ho visto fino a S2E5" / "L'ho visto tutto")
-- Badge intelligente sui titoli ("Mancano N episodi", "Sei al passo")
-- Auto-flip `Visto → Da guardare` quando esce una nuova stagione
-- Cronologia degli episodi guardati
-- Vista a griglia o lista per la watchlist e cronologia
-- Toast di conferma sulle azioni utente
-- Layout responsive
+- Email/password registration and login with HTTP-only JWT cookies
+- Movie/TV catalog with rows (Trending, Now Playing, Popular, Upcoming —
+  plus On The Air / Top Rated / Airing Today for TV)
+- Detail page with tagline, genres, runtime, rating, top-6 cast
+- Smart resume — clicking a TV card jumps to the most recently watched
+  episode/position instead of always starting at S1E1
+- Automatic progress tracking via the iframe's `postMessage` events
+- **Watchlist** with two states per title:
+  - `To watch` (default)
+  - `Watched` (manual, or auto-flipped once you've seen >= 80% of every
+    episode)
+- Manual progress marking ("watched up to S2E5" / "watched everything")
+- Smart badges per title ("3 episodes left", "All caught up")
+- Auto-flip `Watched → To watch` when a new season is released
+- History of watched episodes
+- Grid or list view for the watchlist and history
+- Toast confirmations on user actions
+- Responsive layout
 
-## Layout del progetto
+## Project layout
 
 ```
 .
-├── docker-compose.yml          # 2 servizi: backend + vixstream (nginx)
-├── Dockerfile                  # build Angular + nginx, multi-stage
-├── nginx.conf.template         # reverse proxy + iframe streaming
-├── frontend/                   # app Angular
+├── docker-compose.yml          # 2 services: backend + vixstream (nginx)
+├── Dockerfile                  # multi-stage Angular + nginx build
+├── nginx.conf.template         # reverse proxy + streaming iframe
+├── frontend/                   # Angular app
 │   └── src/app/
-│       ├── components/         # card, top-bar, account-menu, ecc.
-│       ├── ui/                 # libreria UI condivisa (tabs, modal)
-│       ├── layouts/            # main-layout (con tabs), list-layout (senza)
+│       ├── components/         # card, top-bar, account-menu, etc.
+│       ├── ui/                 # shared UI library (tabs, modal)
+│       ├── layouts/            # main-layout (with tabs), list-layout (without)
 │       ├── pages/              # home, watch, search-results, user-list-view
 │       ├── services/           # auth, tmdb, watchlist, history, progress, player
 │       └── models/             # type definitions
-├── server/                     # backend Express
+├── server/                     # Express backend
 │   ├── server.js               # routes
-│   └── db.js                   # schema SQLite + migrazioni
-└── data/                       # volume DB (gitignored)
+│   └── db.js                   # SQLite schema + migrations
+└── data/                       # DB volume (gitignored)
 ```
 
-## Soglie progress
+## Progress thresholds
 
-- **80%** di un episodio → conta come "visto" (`watched_count`, badge,
-  auto-flip status)
-- **95%** → sparisce da "Continua a guardare", niente più barra di progresso
+- **80%** of an episode/movie → counts as "watched" (`watched_count`,
+  badges, auto-flip status)
+- **95%** → drops out of "Continue watching", progress bar hidden
 
-Le due soglie sono separate apposta: a 85% sei "soddisfatto della visione"
-ma puoi ancora riprendere lo stesso episodio per finire i minuti rimanenti.
+The two thresholds are deliberately separated: at 85% you are "happy with
+the viewing" but can still resume the same episode to finish the last few
+minutes.
 
-## Cache TMDB
+## TMDB cache
 
-Il backend ha una cache 24h sui dettagli TV (numero stagioni/episodi per
-stagione) in tabella `tmdb_cache`. Serve per:
+The backend caches TV details (season/episode counts) for 24 hours in the
+`tmdb_cache` table. It powers:
 
-- arricchire la watchlist con `total_episodes` / `total_seasons`
-- validare la stagione/episodio nei mark manuali
-- decidere se auto-flippare lo status quando esce nuovo contenuto
+- watchlist enrichment (`total_episodes` / `total_seasons`)
+- validation of season/episode in manual marks
+- the auto-flip decision when new seasons are released
 
 ## Disclaimer
 
