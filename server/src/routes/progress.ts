@@ -152,20 +152,31 @@ async function findNextEpisode(tmdbId: number, season: number, episode: number):
   return future ? { season: future.season_number, episode: 1 } : null;
 }
 
-// "Da dove ero rimasto" — most recently updated progress row.
-router.get('/user/progress/next/:type/:tmdb_id', requireAuth, (req, res) => {
+// "Where to play next" — most recently touched episode, pivoted to the
+// following one if it's been fully watched. Mirrors the Continue watching
+// pivot in GET /user/progress so the dropdowns on the watch page land on
+// the same episode no matter where the user clicked through from.
+router.get('/user/progress/next/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   if (!tmdb_id || type !== 'tv') return res.status(400).json({ error: 'invalid_params' });
 
   const last = db.prepare(`
-    SELECT season, episode FROM progress
+    SELECT season, episode, position, duration FROM progress
     WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
     ORDER BY updated_at DESC, season DESC, episode DESC
     LIMIT 1
-  `).get(req.user!.id, tmdb_id) as { season: number; episode: number } | undefined;
+  `).get(req.user!.id, tmdb_id) as { season: number; episode: number; position: number; duration: number } | undefined;
 
-  res.json({ next: last ? { season: last.season, episode: last.episode } : null });
+  if (!last) return res.json({ next: null });
+
+  const ended = last.duration > 0 && last.position >= last.duration;
+  if (!ended) return res.json({ next: { season: last.season, episode: last.episode } });
+
+  const nextEp = await findNextEpisode(tmdb_id, last.season, last.episode);
+  // If there is no following episode (we hit the finale), fall back to the
+  // last one so the player at least lands on a valid season/episode.
+  res.json({ next: nextEp ?? { season: last.season, episode: last.episode } });
 });
 
 router.get('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, (req, res) => {
