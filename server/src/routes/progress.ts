@@ -4,8 +4,22 @@ import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getTmdbTvSummary } from '../services/tmdb-cache';
+import type { MediaType } from '../../../shared/types';
 
 const router = Router();
+
+interface ProgressRow {
+  tmdb_id: number;
+  media_type: MediaType;
+  season: number;
+  episode: number;
+  position: number;
+  duration: number;
+  title: string | null;
+  poster: string | null;
+  backdrop: string | null;
+  updated_at: number;
+}
 
 router.post('/user/progress', requireAuth, async (req, res) => {
   const body = req.body || {};
@@ -74,27 +88,65 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
   }
 }
 
-router.get('/user/progress', requireAuth, (req, res) => {
+router.get('/user/progress', requireAuth, async (req, res) => {
+  // Latest progress row per show (deterministic via ROW_NUMBER — when several
+  // rows share updated_at, e.g. after a manual "mark up to S2E5", we pick the
+  // furthest-along episode). The ≥95% filter is NOT applied here so we can
+  // pivot a finished episode to "next episode, position 0" below.
   const rows = db.prepare(`
-    SELECT p.tmdb_id, p.media_type, p.season, p.episode, p.position, p.duration,
-           p.title, p.poster, p.backdrop, MAX(p.updated_at) AS updated_at
-    FROM progress p
-    WHERE p.user_id = ?
-      AND p.position > 5
-      AND (p.duration = 0 OR p.position < p.duration * ${CONTINUE_HIDE_THRESHOLD})
-      AND NOT EXISTS (
-        SELECT 1 FROM watchlist w
-        WHERE w.user_id = p.user_id
-          AND w.tmdb_id = p.tmdb_id
-          AND w.media_type = p.media_type
-          AND w.status = 'done'
-      )
-    GROUP BY p.tmdb_id, p.media_type
+    SELECT tmdb_id, media_type, season, episode, position, duration,
+           title, poster, backdrop, updated_at
+    FROM (
+      SELECT p.*, ROW_NUMBER() OVER (
+        PARTITION BY p.tmdb_id, p.media_type
+        ORDER BY p.updated_at DESC, p.season DESC, p.episode DESC
+      ) AS rn
+      FROM progress p
+      WHERE p.user_id = ?
+        AND p.position > 5
+        AND NOT EXISTS (
+          SELECT 1 FROM watchlist w
+          WHERE w.user_id = p.user_id
+            AND w.tmdb_id = p.tmdb_id
+            AND w.media_type = p.media_type
+            AND w.status = 'done'
+        )
+    ) WHERE rn = 1
     ORDER BY updated_at DESC
     LIMIT 30
-  `).all(req.user!.id);
-  res.json({ items: rows });
+  `).all(req.user!.id) as ProgressRow[];
+
+  // For TV items where the latest episode is "finished" (≥95%), pivot the
+  // returned row to point at the next unwatched episode at position 0 — the
+  // card then displays the show poster with no progress bar and clicking it
+  // starts the next episode from the beginning. Movies (or TV with no next
+  // episode left) drop out, matching the old behaviour.
+  const items = await Promise.all(rows.map(async (r) => {
+    const isFinished = r.duration > 0 && r.position >= r.duration * CONTINUE_HIDE_THRESHOLD;
+    if (!isFinished) return r;
+    if (r.media_type !== 'tv') return null;
+
+    const next = await findNextEpisode(r.tmdb_id, r.season, r.episode);
+    if (!next) return null;
+    return { ...r, season: next.season, episode: next.episode, position: 0, duration: 0 };
+  }));
+
+  res.json({ items: items.filter((x): x is ProgressRow => x !== null) });
 });
+
+async function findNextEpisode(tmdbId: number, season: number, episode: number): Promise<{ season: number; episode: number } | null> {
+  const summary = await getTmdbTvSummary(tmdbId);
+  if (!summary?.seasons?.length) return null;
+  const current = summary.seasons.find(s => s.season_number === season);
+  if (current && episode + 1 <= current.episode_count) {
+    return { season, episode: episode + 1 };
+  }
+  // Roll forward to the next season that actually has aired episodes.
+  const future = summary.seasons
+    .filter(s => s.season_number > season && s.episode_count > 0)
+    .sort((a, b) => a.season_number - b.season_number)[0];
+  return future ? { season: future.season_number, episode: 1 } : null;
+}
 
 // "Da dove ero rimasto" — most recently updated progress row.
 router.get('/user/progress/next/:type/:tmdb_id', requireAuth, (req, res) => {
