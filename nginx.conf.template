@@ -50,22 +50,8 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Origin https://vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
-
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
-        sub_filter_types *;
-        sub_filter_once off;
     }
 
     # ---- VixSrc generic API (fallback) ----
@@ -75,65 +61,14 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Origin https://vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
-
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
-        sub_filter_types *;
-        sub_filter_once off;
     }
 
     # ---- VixSrc Next.js assets ----
-    # Need sub_filter to rewrite hardcoded `https://vixsrc.to/` and
-    # `https://vixcloud.co/` references inside the JS bundles to relative
-    # paths, so the browser routes them back through this proxy instead of
-    # hitting the upstream domains directly (which fails on mobile carriers
-    # that DPI-block them).
-    # `^~` so this prefix wins over the `\.(js|...)$` regex fallback below —
-    # otherwise the regex would intercept /_next/*.js and skip sub_filter.
-    location ^~ /_next/ {
+    location /_next/ {
         proxy_pass https://vixsrc.to/_next/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
-
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter '"vixsrc.to"' '"$host"';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
-        sub_filter_types *;
-        sub_filter_once off;
-    }
-
-    # ---- VixCloud rewrite target — proxies /vixcloud/* to https://vixcloud.co/* ----
-    location /vixcloud/ {
-        proxy_pass https://vixcloud.co/;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc embed player with ad-block injection ----
@@ -143,64 +78,18 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
 
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter '"vixsrc.to"' '"$host"';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter_types *;
-        sub_filter_once off;
+        sub_filter_types text/html;
+        sub_filter_once on;
     }
 
     # ---- VixSrc playlist/streaming endpoints ----
-    # Master m3u8 playlists contain absolute URLs to sub-playlists and chunks
-    # on vixsrc.to / vix-content.net. Rewrite them so the browser keeps going
-    # through this proxy instead of fetching from blocked domains.
     location /playlist/ {
         proxy_pass https://vixsrc.to/playlist/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
-
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        # Rewrite vix-content.net CDN URLs (master + sub playlists reference
-        # `https://sc-u8-XX.vix-content.net/...` for video chunks). Chained:
-        # first prefix the subdomain into a `/cdn/<sub>` path, then drop the
-        # bare `.vix-content.net/` so the result lands on this proxy.
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
-        sub_filter_types *;
-        sub_filter_once off;
-    }
-
-    # ---- vix-content.net CDN proxy: /cdn/<subdomain>/<path> ----
-    location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
-        set $cdn_host "$1.vix-content.net";
-        proxy_pass https://$cdn_host/$2$is_args$args;
-        proxy_ssl_server_name on;
-        proxy_set_header Host $cdn_host;
-        proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
     }
 
     # ---- JW Player assets ----
@@ -209,12 +98,6 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc build assets ----
@@ -223,12 +106,6 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc favicon ----
@@ -236,12 +113,6 @@ server {
         proxy_pass https://vixsrc.to/favicon.ico;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc Player with ad-block + auto-seek injection ----
@@ -252,20 +123,10 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
 
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter '"vixsrc.to"' '"$host"';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter_types *;
-        sub_filter_once off;
+        sub_filter_types text/html;
+        sub_filter_once on;
     }
 
     # ---- VixSrc static asset fallback ----
@@ -278,27 +139,6 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
-        proxy_set_header Accept-Encoding "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_set_header CF-IPCountry "";
-        proxy_set_header CF-Visitor "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
-
-        # Critical: this fallback serves the JS bundles (e.g. vixsrc-XXX.js)
-        # which contain hardcoded references to sc-u8-XX.vix-content.net and
-        # vixcloud.co. Without rewriting them the browser bypasses the proxy
-        # and hits the upstream domains directly, which fails on carriers
-        # that DNS-block them.
-        sub_filter 'https://vixsrc.to/' 'https://$host/';
-        sub_filter '"vixsrc.to"' '"$host"';
-        sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
-        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
-        sub_filter_types *;
-        sub_filter_once off;
     }
 
     # ---- Frontend SPA ----
