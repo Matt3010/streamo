@@ -1,4 +1,4 @@
-import { Injectable, signal, inject, untracked } from '@angular/core';
+import { Injectable, signal, computed, inject, untracked } from '@angular/core';
 import { TmdbService } from './tmdb.service';
 import { ProgressService } from './progress.service';
 import { WatchlistService } from './watchlist.service';
@@ -41,6 +41,29 @@ export class PlayerService {
 
   // Playback tracking
   readonly resumeText = signal('');
+  // Saved progress for the *current* selected episode. Drives the
+  // "Riprendi da hh:mm:ss" button label and the "Vai al prossimo" decision
+  // (shown only if pct >= 80% — same WATCHED_THRESHOLD as the backend).
+  readonly resumeProgress = signal<{ position: number; duration: number } | null>(null);
+  // Next playable episode coordinates given the currently-loaded series and
+  // the active selectedSeason/selectedEpisode. null for movies, finales, or
+  // before TV details are loaded.
+  readonly nextEpisode = computed<{ season: number; episode: number } | null>(() => {
+    if (this.currentItemType() !== 'tv') return null;
+    const item = this.currentItem();
+    const seasons = item?.seasons ?? [];
+    if (!seasons.length) return null;
+    const cs = this.selectedSeason();
+    const ce = this.selectedEpisode();
+    const cur = seasons.find(s => s.season_number === cs);
+    if (cur && cur.episode_count && ce + 1 <= cur.episode_count) {
+      return { season: cs, episode: ce + 1 };
+    }
+    const future = seasons
+      .filter(s => s.season_number > cs && (s.episode_count ?? 0) > 0)
+      .sort((a, b) => a.season_number - b.season_number)[0];
+    return future ? { season: future.season_number, episode: 1 } : null;
+  });
   readonly isInWatchlist = signal(false);
   private currentVideoTime = 0;
   private currentVideoDuration = 0;
@@ -168,6 +191,8 @@ export class PlayerService {
     this.playingEpisode = 0;
     this.currentItem.set(null);
     this.currentItemType.set(null);
+    this.resumeText.set('');
+    this.resumeProgress.set(null);
     this.progressTick.update(n => n + 1);
   }
 
@@ -285,20 +310,56 @@ export class PlayerService {
 
   private async applyResumeProgress(seq: number, tmdbId: string | number, type: MediaType, season = 0, episode = 0): Promise<void> {
     if (!this.auth.currentUser()) {
-      if (seq === this.urlSeq) this.resumeText.set('');
+      if (seq === this.urlSeq) {
+        this.resumeText.set('');
+        this.resumeProgress.set(null);
+      }
       return;
     }
     const progress = await this.progress.get(tmdbId, type, season, episode);
     // Bail out if a newer base URL was set while we were awaiting the fetch.
     if (seq !== this.urlSeq) return;
     if (progress && progress.position > 10) {
+      this.resumeProgress.set({ position: progress.position, duration: progress.duration });
       this.resumeText.set(`Riprendi da ${formatTime(progress.position)}`);
       const startTime = Math.floor(progress.position);
       const sep = this.pendingVideoUrl.includes('?') ? '&' : '?';
       this.pendingVideoUrl += `${sep}start=${startTime}`;
     } else {
+      this.resumeProgress.set(null);
       this.resumeText.set('');
     }
+  }
+
+  // Switch the player to the next episode and start it from the beginning.
+  // Used by the preview "Vai al prossimo" button to skip past the tail-end
+  // of the current episode (≥80%) instead of resuming it.
+  async playNextEpisode(): Promise<void> {
+    const next = untracked(() => this.nextEpisode());
+    const item = untracked(() => this.currentItem());
+    if (!next || !item) return;
+
+    this.saveCurrentEpisodeProgress();
+
+    const seasonChanged = next.season !== this.selectedSeason();
+    this.selectedSeason.set(next.season);
+    this.selectedEpisode.set(next.episode);
+
+    if (seasonChanged) {
+      const seasonData = await this.tmdb.getSeasonDetails(item.id, next.season);
+      const fallback = (item.seasons ?? []).find(s => s.season_number === next.season)?.episode_count ?? 10;
+      const count = seasonData?.episodes?.length ?? fallback;
+      this.episodes.set(Array.from({ length: count }, (_, i) => i + 1));
+    }
+
+    this.resetPlayer();
+    this.setEpisodeUrl(item.id, next.season, next.episode);
+    // No applyResumeProgress — we want a clean start, not a seek to a
+    // half-watched checkpoint of an episode the user explicitly skipped.
+    this.urlSeq++;
+    this.resumeText.set('');
+    this.resumeProgress.set(null);
+    this.startVideo();
   }
 
   private async refreshWatchlistStatus(tmdbId: string | number, type: MediaType): Promise<void> {

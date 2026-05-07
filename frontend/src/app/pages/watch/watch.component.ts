@@ -47,20 +47,26 @@ import type { MediaType } from '../../models';
               @if (player.backdropUrl()) {
                 <img class="preview-backdrop" [src]="player.backdropUrl()" alt="">
               }
-              <div class="preview-content">
-                <button class="play-btn" title="Riproduci" (click)="play()">
-                  <app-icon name="play"></app-icon>
-                </button>
-                @if (player.resumeText()) {
-                  <p class="resume-text">{{ player.resumeText() }}</p>
-                }
-              </div>
             </div>
           } @else {
             <iframe [src]="iframeSrcSafe()" allowfullscreen
                     allow="autoplay; encrypted-media; fullscreen"></iframe>
           }
         </div>
+
+        @if (!player.iframeSrc()) {
+          <div class="player-actions">
+            <button class="action-btn primary" (click)="play()">
+              <app-icon name="play"></app-icon>
+              <span>{{ playLabel() }}</span>
+            </button>
+            @if (showNextButton()) {
+              <button class="action-btn" (click)="playNext()">
+                <span>Vai al prossimo</span>
+              </button>
+            }
+          </div>
+        }
 
         <div class="player-info">
           @if (taglineStr()) {
@@ -133,6 +139,22 @@ export class WatchComponent {
     return c.slice(0, 6).map(m => m.name).join(', ');
   });
 
+  // 80% mirrors WATCHED_THRESHOLD on the backend — past that point we
+  // assume the user is "done enough" with this episode that they'd plausibly
+  // want to skip straight to the next one.
+  protected readonly showNextButton = computed(() => {
+    if (!this.player.nextEpisode()) return false;
+    const p = this.player.resumeProgress();
+    if (!p || p.duration <= 0) return false;
+    return p.position / p.duration >= 0.8;
+  });
+
+  protected readonly playLabel = computed(() => {
+    const p = this.player.resumeProgress();
+    if (p && p.position > 10) return `Riprendi da ${formatTime(p.position)}`;
+    return 'Guarda';
+  });
+
   protected readonly tvSummaryStr = computed(() => {
     if (this.player.currentItemType() !== 'tv') return '';
     const it = this.player.currentItem();
@@ -170,6 +192,10 @@ export class WatchComponent {
     this.player.startVideo();
   }
 
+  protected playNext(): void {
+    void this.player.playNextEpisode();
+  }
+
   protected toggleWatchlist(): void {
     void this.player.toggleWatchlist();
   }
@@ -183,6 +209,15 @@ export class WatchComponent {
     const t = ev.target;
     if (t instanceof HTMLSelectElement) void this.player.changeEpisode(parseInt(t.value, 10));
   }
+}
+
+function formatTime(seconds: number): string {
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {
