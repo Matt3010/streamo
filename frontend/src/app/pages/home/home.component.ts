@@ -124,13 +124,17 @@ export class HomeComponent {
     })));
     // Hide items marked "Visto" — the home row is for things still to watch.
     // Carry the same enrichment the watchlist page uses so the cards show the
-    // progress bar + "Mancano N episodi" badge. We deliberately omit
-    // season/episode so the card click triggers auto-resume on the watch page.
+    // progress bar + "Mancano N episodi" badge. The backend resolves
+    // `next_season` / `next_episode` (already pivoted past 'ended' eps), so
+    // a click navigates straight to the right (s, e) without a follow-up
+    // fetch on the watch page.
     this.watchlistItems.set(wl.filter(w => (w.status ?? 'todo') !== 'done').map(w => ({
       tmdb_id: w.tmdb_id,
       media_type: w.media_type,
       title: w.title ?? 'Senza titolo',
       poster: w.poster,
+      season: w.next_season,
+      episode: w.next_episode,
       position: w.position,
       duration: w.duration,
       watchStatus: computeWatchStatus(w)

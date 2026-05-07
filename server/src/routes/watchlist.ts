@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getTmdbTvSummary } from '../services/tmdb-cache';
+import { resolveNextPlayable } from '../services/next-episode';
 import type { WatchlistItem } from '../../../shared/types';
 
 const router = Router();
@@ -107,6 +108,11 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       `).run(req.user!.id, r.tmdb_id);
       status = 'todo';
     }
+    // Where the watch page should land if the user clicks this card. Mirrors
+    // the /progress/next pivot (most recent touched episode, advanced past
+    // 'ended' ones). Lets the home/watchlist link straight via ?s=&e= without
+    // a follow-up fetch from the watch component.
+    const next = await resolveNextPlayable(req.user!.id, r.tmdb_id);
     return {
       ...r,
       status,
@@ -116,6 +122,8 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       total_seasons: tmdb?.number_of_seasons ?? 0,
       total_episodes: totalEpisodes,
       seasons: tmdb?.seasons ?? [],
+      next_season: next?.season,
+      next_episode: next?.episode,
       ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})
     };
   }));

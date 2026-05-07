@@ -340,6 +340,8 @@ export class UserListViewComponent {
         lastSeason: w.last_season,
         lastEpisode: w.last_episode,
         seasons: w.seasons,
+        season: w.next_season,
+        episode: w.next_episode,
         position: w.position,
         duration: w.duration
       })));

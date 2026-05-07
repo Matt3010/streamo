@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getTmdbTvSummary } from '../services/tmdb-cache';
+import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import type { MediaType } from '../../../shared/types';
 
 const router = Router();
@@ -138,20 +139,6 @@ router.get('/user/progress', requireAuth, async (req, res) => {
   res.json({ items: items.filter((x): x is ProgressRow => x !== null) });
 });
 
-async function findNextEpisode(tmdbId: number, season: number, episode: number): Promise<{ season: number; episode: number } | null> {
-  const summary = await getTmdbTvSummary(tmdbId);
-  if (!summary?.seasons?.length) return null;
-  const current = summary.seasons.find(s => s.season_number === season);
-  if (current && episode + 1 <= current.episode_count) {
-    return { season, episode: episode + 1 };
-  }
-  // Roll forward to the next season that actually has aired episodes.
-  const future = summary.seasons
-    .filter(s => s.season_number > season && s.episode_count > 0)
-    .sort((a, b) => a.season_number - b.season_number)[0];
-  return future ? { season: future.season_number, episode: 1 } : null;
-}
-
 // "Where to play next" — most recently touched episode, pivoted to the
 // following one if it's been fully watched. Mirrors the Continue watching
 // pivot in GET /user/progress so the dropdowns on the watch page land on
@@ -160,23 +147,7 @@ router.get('/user/progress/next/:type/:tmdb_id', requireAuth, async (req, res) =
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   if (!tmdb_id || type !== 'tv') return res.status(400).json({ error: 'invalid_params' });
-
-  const last = db.prepare(`
-    SELECT season, episode, position, duration FROM progress
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
-    ORDER BY updated_at DESC, season DESC, episode DESC
-    LIMIT 1
-  `).get(req.user!.id, tmdb_id) as { season: number; episode: number; position: number; duration: number } | undefined;
-
-  if (!last) return res.json({ next: null });
-
-  const ended = last.duration > 0 && last.position >= last.duration;
-  if (!ended) return res.json({ next: { season: last.season, episode: last.episode } });
-
-  const nextEp = await findNextEpisode(tmdb_id, last.season, last.episode);
-  // If there is no following episode (we hit the finale), fall back to the
-  // last one so the player at least lands on a valid season/episode.
-  res.json({ next: nextEp ?? { season: last.season, episode: last.episode } });
+  res.json({ next: await resolveNextPlayable(req.user!.id, tmdb_id) });
 });
 
 router.get('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, (req, res) => {
