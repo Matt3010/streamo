@@ -98,7 +98,7 @@ server {
         sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter_types text/html application/javascript text/javascript text/css application/json;
+        sub_filter_types *;
         sub_filter_once off;
     }
 
@@ -135,7 +135,7 @@ server {
         sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter_types text/html application/javascript text/javascript application/json;
+        sub_filter_types *;
         sub_filter_once off;
     }
 
@@ -214,7 +214,7 @@ server {
         sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter_types text/html application/javascript text/javascript application/json;
+        sub_filter_types *;
         sub_filter_once off;
     }
 
