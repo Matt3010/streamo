@@ -155,8 +155,6 @@ server {
         sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
         sub_filter_types *;
         sub_filter_once off;
     }
@@ -266,8 +264,6 @@ server {
         sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
-        sub_filter '://sc-u8-' '://$host/cdn/sc-u8-';
-        sub_filter '.vix-content.net/' '/';
         sub_filter_types *;
         sub_filter_once off;
     }
