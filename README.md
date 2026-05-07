@@ -26,7 +26,7 @@ Then:
 docker compose up -d --build
 ```
 
-The app is available at `http://localhost:8080`. The backend (port 3000)
+The app is available at `http://localhost:7549`. The backend (port 3000)
 is not exposed directly — nginx reverse-proxies `/api/auth`, `/api/user`,
 `/api/tmdb`, and `/player`.
 
