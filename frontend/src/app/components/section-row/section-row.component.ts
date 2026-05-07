@@ -17,6 +17,7 @@ import type { CardItem } from '../../models';
       </h2>
       <app-card-row
         [items]="items()"
+        [loading]="loading()"
         [showProgress]="showProgress()"
         [showRemove]="showRemove()"
         (cardClick)="cardClick.emit($event)"
@@ -29,6 +30,7 @@ export class SectionRowComponent {
   readonly title = input.required<string>();
   readonly icon = input.required<IconDefinition>();
   readonly items = input.required<CardItem[]>();
+  readonly loading = input(false);
   readonly showProgress = input(false);
   readonly showRemove = input(false);
 

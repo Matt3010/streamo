@@ -14,6 +14,7 @@ import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models'
 interface SectionState {
   config: SectionConfig;
   items: CardItem[];
+  loading: boolean;
 }
 
 @Component({
@@ -22,20 +23,22 @@ interface SectionState {
   imports: [SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (auth.isLoggedIn() && continueItems().length > 0) {
+    @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
       <app-section-row
         title="Continua a guardare"
         [icon]="continueIcon"
         [items]="continueItems()"
+        [loading]="userLoading()"
         [showProgress]="true"
         (cardClick)="open($event)" />
     }
 
-    @if (auth.isLoggedIn() && watchlistItems().length > 0) {
+    @if (auth.isLoggedIn() && (watchlistItems().length > 0 || userLoading())) {
       <app-section-row
         title="La mia lista"
         [icon]="watchlistIcon"
         [items]="watchlistItems()"
+        [loading]="userLoading()"
         [showProgress]="true"
         (cardClick)="open($event)" />
     }
@@ -45,6 +48,7 @@ interface SectionState {
         [title]="s.config.title"
         [icon]="s.config.icon"
         [items]="s.items"
+        [loading]="s.loading"
         (cardClick)="open($event)" />
     }
   `
@@ -65,6 +69,7 @@ export class HomeComponent {
 
   protected readonly continueItems = signal<CardItem[]>([]);
   protected readonly watchlistItems = signal<CardItem[]>([]);
+  protected readonly userLoading = signal(false);
   protected readonly sectionStates = signal<SectionState[]>([]);
 
   // Sequence numbers — only the latest in-flight load is allowed to write state.
@@ -98,14 +103,16 @@ export class HomeComponent {
   private async loadTmdbSections(type: MediaType): Promise<void> {
     const seq = ++this.tmdbSeq;
     const configs = SECTIONS[type];
-    // Show empty placeholders immediately so the layout is stable
-    this.sectionStates.set(configs.map(c => ({ config: c, items: [] })));
+    // Show skeleton placeholders immediately so the layout is stable and the
+    // user sees a clear "loading" state instead of empty rows that flash.
+    this.sectionStates.set(configs.map(c => ({ config: c, items: [], loading: true })));
 
     const results = await Promise.all(configs.map(c => this.tmdb.list(c.endpoint)));
     if (seq !== this.tmdbSeq) return; // a newer load started, drop stale results
     this.sectionStates.set(configs.map((c, i) => ({
       config: c,
-      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCard(it, type))
+      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCard(it, type)),
+      loading: false
     })));
   }
 
@@ -114,10 +121,13 @@ export class HomeComponent {
     if (!this.auth.isLoggedIn()) {
       this.continueItems.set([]);
       this.watchlistItems.set([]);
+      this.userLoading.set(false);
       return;
     }
+    this.userLoading.set(true);
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
+    this.userLoading.set(false);
     this.continueItems.set(progress.map(p => ({
       tmdb_id: p.tmdb_id, media_type: p.media_type, title: p.title ?? 'Senza titolo',
       poster: p.poster, season: p.season, episode: p.episode, position: p.position, duration: p.duration

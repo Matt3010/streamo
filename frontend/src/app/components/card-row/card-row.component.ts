@@ -14,13 +14,19 @@ import type { CardItem } from '../../models';
         <app-icon name="chevron-left"></app-icon>
       </button>
       <div class="scroll-row" #row>
-        @for (item of items(); track item.tmdb_id + '-' + item.media_type + '-' + (item.season ?? 0) + '-' + (item.episode ?? 0)) {
-          <app-card
-            [item]="item"
-            [showProgress]="showProgress()"
-            [showRemove]="showRemove()"
-            (cardClick)="cardClick.emit($event)"
-            (removeClick)="removeClick.emit($event)" />
+        @if (loading() && items().length === 0) {
+          @for (n of skeletons; track n) {
+            <div class="card-skeleton" aria-hidden="true"></div>
+          }
+        } @else {
+          @for (item of items(); track item.tmdb_id + '-' + item.media_type + '-' + (item.season ?? 0) + '-' + (item.episode ?? 0)) {
+            <app-card
+              [item]="item"
+              [showProgress]="showProgress()"
+              [showRemove]="showRemove()"
+              (cardClick)="cardClick.emit($event)"
+              (removeClick)="removeClick.emit($event)" />
+          }
         }
       </div>
       <button class="scroll-arrow right" aria-label="Scorri destra" (click)="scroll(1)">
@@ -34,6 +40,11 @@ export class CardRowComponent {
   readonly items = input.required<CardItem[]>();
   readonly showProgress = input(false);
   readonly showRemove = input(false);
+  readonly loading = input(false);
+
+  // Static — skeleton count never changes per row, just enough placeholders
+  // to fill a typical viewport so it doesn't look broken mid-load.
+  protected readonly skeletons = [0, 1, 2, 3, 4, 5, 6, 7];
 
   readonly cardClick = output<CardItem>();
   readonly removeClick = output<CardItem>();
