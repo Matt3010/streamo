@@ -28,14 +28,14 @@ import type { MediaType } from '../../models';
       <div class="player-container">
         @if (player.currentItemType() === 'tv' && player.seasons().length > 0) {
           <div class="episode-controls active">
-            <select [value]="player.selectedSeason()" (change)="onSeasonChange($event)">
+            <select (change)="onSeasonChange($event)">
               @for (s of player.seasons(); track s) {
-                <option [value]="s">Stagione {{ s }}</option>
+                <option [value]="s" [selected]="s === player.selectedSeason()">Stagione {{ s }}</option>
               }
             </select>
-            <select [value]="player.selectedEpisode()" (change)="onEpisodeChange($event)">
+            <select (change)="onEpisodeChange($event)">
               @for (e of player.episodes(); track e) {
-                <option [value]="e">Episodio {{ e }}</option>
+                <option [value]="e" [selected]="e === player.selectedEpisode()">Episodio {{ e }}</option>
               }
             </select>
           </div>

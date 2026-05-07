@@ -116,15 +116,19 @@ router.get('/user/progress', requireAuth, async (req, res) => {
     LIMIT 30
   `).all(req.user!.id) as ProgressRow[];
 
-  // For TV items where the latest episode is "finished" (≥95%), pivot the
-  // returned row to point at the next unwatched episode at position 0 — the
-  // card then displays the show poster with no progress bar and clicking it
-  // starts the next episode from the beginning. Movies (or TV with no next
-  // episode left) drop out, matching the old behaviour.
+  // Pivot to the next episode only when the user *actually* finished one —
+  // i.e. the iframe fired 'ended' and the handler saved position = duration.
+  // The CONTINUE_HIDE_THRESHOLD (95%) is too eager: at 97% the user might
+  // still want to scrub the last 90 seconds, so pivoting hides their real
+  // progress. 'ended' is the only signal that semantically means "done".
+  // Movies still drop out at the hide threshold (no next-episode pivot).
   const items = await Promise.all(rows.map(async (r) => {
-    const isFinished = r.duration > 0 && r.position >= r.duration * CONTINUE_HIDE_THRESHOLD;
-    if (!isFinished) return r;
-    if (r.media_type !== 'tv') return null;
+    if (r.media_type === 'movie') {
+      const movieNearEnd = r.duration > 0 && r.position >= r.duration * CONTINUE_HIDE_THRESHOLD;
+      return movieNearEnd ? null : r;
+    }
+    const ended = r.duration > 0 && r.position >= r.duration;
+    if (!ended) return r;
 
     const next = await findNextEpisode(r.tmdb_id, r.season, r.episode);
     if (!next) return null;
