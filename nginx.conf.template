@@ -50,6 +50,12 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Origin https://vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
     }
@@ -61,6 +67,12 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Origin https://vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc Next.js assets ----
@@ -69,6 +81,12 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc embed player with ad-block injection ----
@@ -78,6 +96,12 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
 
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
@@ -90,6 +114,12 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- JW Player assets ----
@@ -98,6 +128,12 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc build assets ----
@@ -106,6 +142,12 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc favicon ----
@@ -113,6 +155,12 @@ server {
         proxy_pass https://vixsrc.to/favicon.ico;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- VixSrc Player with ad-block + auto-seek injection ----
@@ -123,6 +171,12 @@ server {
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
 
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
@@ -139,6 +193,12 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header CF-IPCountry "";
+        proxy_set_header CF-Visitor "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
     }
 
     # ---- Frontend SPA ----
