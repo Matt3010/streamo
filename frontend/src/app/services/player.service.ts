@@ -362,10 +362,10 @@ export class PlayerService {
   }
 
   private async refreshWatchlistStatus(tmdbId: string | number, type: MediaType): Promise<void> {
-    if (!this.auth.currentUser()) {
-      this.isInWatchlist.set(false);
-      return;
-    }
+    // Don't gate on `auth.currentUser()` here — on hard refresh the signal
+    // is null until AuthService.checkAuth() resolves, but the cookie is on
+    // the request, so watchlist.check() returns the real flag. Gating dropped
+    // the bookmark "active" state intermittently on /watch reloads.
     this.isInWatchlist.set(await this.watchlist.check(tmdbId, type));
   }
 
