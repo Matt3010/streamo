@@ -99,13 +99,6 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
-        # url-rewrite.js must run before any other script, so inject it at
-        # the start of <head> rather than at </head>. It monkey-patches
-        # fetch / XHR / setAttribute / src setters to redirect runtime
-        # requests for vix-content.net, vixcloud.co, vixsrc.to back through
-        # this proxy — covers URLs the bundle constructs dynamically that
-        # static sub_filter rewriting cannot catch.
-        sub_filter '<head>' '<head><script src="/scripts/url-rewrite.js"></script>';
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once on;
@@ -151,7 +144,6 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '<head>' '<head><script src="/scripts/url-rewrite.js"></script>';
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once on;
