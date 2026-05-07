@@ -60,38 +60,16 @@
     };
   }
 
-  // Element.setAttribute / setAttributeNS for src/href
+  // Element.setAttribute for src/href — covers most JS-driven URL writes
+  // (`el.setAttribute('src', '...')`). Native property setters
+  // (`el.src = '...'`) are intentionally NOT patched: overriding them on
+  // HTMLMediaElement / HTMLScriptElement breaks JW Player and adblock.js
+  // appendChild interception in subtle ways.
   var origSetAttr = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (name, value) {
     if ((name === 'src' || name === 'href') && typeof value === 'string') {
-      value = rewrite(value);
+      try { value = rewrite(value); } catch (e) { /* keep original */ }
     }
     return origSetAttr.call(this, name, value);
   };
-  var origSetAttrNS = Element.prototype.setAttributeNS;
-  Element.prototype.setAttributeNS = function (ns, name, value) {
-    if ((name === 'src' || name === 'href' || /:(src|href)$/.test(name)) && typeof value === 'string') {
-      value = rewrite(value);
-    }
-    return origSetAttrNS.call(this, ns, name, value);
-  };
-
-  // src/href property setters on common elements
-  function patchProp(proto, prop) {
-    if (!proto) return;
-    var d = Object.getOwnPropertyDescriptor(proto, prop);
-    if (!d || !d.set) return;
-    Object.defineProperty(proto, prop, {
-      get: d.get,
-      set: function (v) { d.set.call(this, rewrite(v)); },
-      configurable: true
-    });
-  }
-  patchProp(HTMLMediaElement.prototype, 'src');
-  patchProp(HTMLImageElement.prototype, 'src');
-  patchProp(HTMLSourceElement.prototype, 'src');
-  patchProp(HTMLIFrameElement.prototype, 'src');
-  patchProp(HTMLScriptElement.prototype, 'src');
-  patchProp(HTMLLinkElement.prototype, 'href');
-  patchProp(HTMLAnchorElement.prototype, 'href');
 })();
