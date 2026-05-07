@@ -1,12 +1,12 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const DB_DIR = process.env.DB_DIR || '/data';
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
-const db = new Database(path.join(DB_DIR, 'vixstream.db'));
+export const db = new Database(path.join(DB_DIR, 'vixstream.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -77,7 +77,7 @@ db.exec(`
 `);
 
 // Migration: rename legacy `username` column to `email` if needed
-const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+const userCols = (db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>).map(c => c.name);
 if (userCols.includes('username') && !userCols.includes('email')) {
   db.exec("ALTER TABLE users RENAME COLUMN username TO email");
 }
@@ -87,31 +87,25 @@ if (!userCols.includes('autoplay_next')) {
 }
 
 // Migration: add watchlist.status (todo/done) for existing rows
-const watchlistCols = db.prepare("PRAGMA table_info(watchlist)").all().map(c => c.name);
+const watchlistCols = (db.prepare("PRAGMA table_info(watchlist)").all() as Array<{ name: string }>).map(c => c.name);
 if (!watchlistCols.includes('status')) {
   db.exec("ALTER TABLE watchlist ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'");
 }
 
 // Migration: history dedup + unique index
-// (1) replace NULL season/episode with 0 to make UNIQUE deterministic
 db.exec("UPDATE history SET season = 0 WHERE season IS NULL");
 db.exec("UPDATE history SET episode = 0 WHERE episode IS NULL");
-// (2) collapse duplicates keeping the most recent row per (user, tmdb, type, season, episode)
 db.exec(`
   DELETE FROM history WHERE id NOT IN (
     SELECT MAX(id) FROM history GROUP BY user_id, tmdb_id, media_type, season, episode
   )
 `);
-// (3) unique index (idempotent)
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_history_unique ON history(user_id, tmdb_id, media_type, season, episode)");
 
-function getOrCreateJwtSecret() {
-  const row = db.prepare("SELECT value FROM _meta WHERE key = 'jwt_secret'").get();
+export function getOrCreateJwtSecret(): string {
+  const row = db.prepare("SELECT value FROM _meta WHERE key = 'jwt_secret'").get() as { value: string } | undefined;
   if (row) return row.value;
   const secret = crypto.randomBytes(48).toString('hex');
   db.prepare("INSERT INTO _meta (key, value) VALUES ('jwt_secret', ?)").run(secret);
   return secret;
 }
-
-module.exports = db;
-module.exports.getOrCreateJwtSecret = getOrCreateJwtSecret;

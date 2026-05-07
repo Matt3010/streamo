@@ -1,5 +1,1 @@
-export interface User {
-  id: number;
-  email: string;
-  autoplay_next: 0 | 1;
-}
+export type { User } from '../../../../shared/types';

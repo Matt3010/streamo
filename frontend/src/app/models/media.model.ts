@@ -1,4 +1,6 @@
-export type MediaType = 'movie' | 'tv';
+// MediaType is shared with the backend; the rest of the TMDB shapes are
+// frontend-only (only Angular consumes /api/tmdb directly).
+export type { MediaType } from '../../../../shared/types';
 
 export interface TmdbGenre {
   id: number;
