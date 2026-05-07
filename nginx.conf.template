@@ -9,7 +9,7 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    resolver 8.8.8.8 valid=30s;
+    resolver 8.8.8.8 ipv6=off valid=30s;
 
     gzip on;
     gzip_types text/plain text/css application/javascript application/json text/html;
