@@ -81,7 +81,9 @@ server {
     # paths, so the browser routes them back through this proxy instead of
     # hitting the upstream domains directly (which fails on mobile carriers
     # that DPI-block them).
-    location /_next/ {
+    # `^~` so this prefix wins over the `\.(js|...)$` regex fallback below —
+    # otherwise the regex would intercept /_next/*.js and skip sub_filter.
+    location ^~ /_next/ {
         proxy_pass https://vixsrc.to/_next/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
