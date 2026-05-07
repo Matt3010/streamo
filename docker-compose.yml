@@ -18,7 +18,7 @@ services:
   vixstream:
     build: .
     ports:
-      - "8080:80"
+      - "7549:80"
     restart: unless-stopped
     environment:
       # Required — used by the nginx template to inject the TMDB API key.
