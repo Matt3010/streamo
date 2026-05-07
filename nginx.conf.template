@@ -95,7 +95,9 @@ server {
         proxy_set_header True-Client-IP "";
 
         sub_filter 'https://vixsrc.to/' 'https://$host/';
+        sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
+        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
         sub_filter_types text/html application/javascript text/javascript text/css application/json;
         sub_filter_once off;
     }
@@ -130,7 +132,9 @@ server {
 
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter 'https://vixsrc.to/' 'https://$host/';
+        sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
+        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
         sub_filter_types text/html application/javascript text/javascript application/json;
         sub_filter_once off;
     }
@@ -207,7 +211,9 @@ server {
 
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter 'https://vixsrc.to/' 'https://$host/';
+        sub_filter '"vixsrc.to"' '"$host"';
         sub_filter 'https://vixcloud.co/' 'https://$host/vixcloud/';
+        sub_filter '"vixcloud.co"' '"$host/vixcloud-direct"';
         sub_filter_types text/html application/javascript text/javascript application/json;
         sub_filter_once off;
     }
