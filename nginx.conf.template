@@ -138,7 +138,11 @@ server {
     # ---- VixSrc Player with ad-block + auto-seek injection ----
     location ~ ^/player/(movie|tv)/(.*)$ {
         set $vix_path $1/$2;
-        proxy_pass https://vixsrc.to/$vix_path;
+        # `$is_args$args` is required because nginx does NOT auto-forward
+        # query strings when proxy_pass uses a variable in the URI — without
+        # it, `?start=<seconds>` (used by the player to resume mid-episode)
+        # gets silently dropped before reaching upstream.
+        proxy_pass https://vixsrc.to/$vix_path$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
         proxy_set_header Referer https://vixsrc.to/;
