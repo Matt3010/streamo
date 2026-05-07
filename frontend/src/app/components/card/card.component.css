@@ -40,13 +40,14 @@
   font-size: 2rem;
 }
 
-/* Bottom gradient overlay carrying title + meta */
+/* Bottom gradient overlay carrying title + meta. Bottom padding leaves
+ * breathing room between the title text and the progress bar pill below. */
 .card-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 2rem 0.75rem 0.6rem;
+  padding: 2rem 0.75rem 1.25rem;
   background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.65) 50%, transparent 100%);
   pointer-events: none;
   z-index: 2;
@@ -86,15 +87,15 @@
 }
 
 /* Progress bar inset from the edges so the rounded corners don't clip it
- * into a stub. The bar itself is rounded too — visually it's a pill that
- * lives inside the card rather than bleeding off it. */
+ * into a stub. Track is light grey (visible against the dark gradient) so
+ * the unfilled portion communicates "how much is left" at a glance. */
 .card-progress {
   position: absolute;
   left: 6px;
   right: 6px;
   bottom: 6px;
   height: 4px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(255, 255, 255, 0.28);
   border-radius: 2px;
   overflow: hidden;
   z-index: 3;

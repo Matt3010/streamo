@@ -49,12 +49,11 @@
 .item-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
+  gap: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 0.9rem;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -76,9 +75,17 @@
   flex-shrink: 0;
 }
 
-.item-title {
-  flex: 1 1 12rem;
+/* Title + sub-line column. Takes remaining row space and shrinks via
+ * min-width: 0 so the title can ellipsis instead of pushing buttons out. */
+.item-info {
+  flex: 1 1 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.item-title {
   font-size: 0.95rem;
   font-weight: 500;
   white-space: nowrap;
@@ -86,17 +93,23 @@
   text-overflow: ellipsis;
 }
 
+.item-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .item-meta {
-  font-size: 0.85rem;
   color: var(--text-muted);
-  flex-shrink: 0;
 }
 
 .item-watch-status {
-  font-size: 0.8rem;
   color: var(--accent);
   font-weight: 600;
-  flex-shrink: 0;
 }
 
 .row-action {
@@ -131,11 +144,11 @@
 }
 
 @media (max-width: 640px) {
-  .item-meta { display: none; }
-  /* Watch-status is non-essential here — already implied by the
-   * "Da guardare" / "Visto" filter chip above the list. Hiding it gives
-   * the title room and keeps the row on a single line on phones. */
-  .item-watch-status { display: none; }
+  /* Compact buttons on phones so the title and sub-line keep room. */
+  .row-action { width: 32px; height: 32px; }
+  .row-action svg { width: 14px; height: 14px; }
+  /* Type chip is decorative — drop it on phones. */
+  .item-type { display: none; }
 }
 
 /* Mark-progress modal form */

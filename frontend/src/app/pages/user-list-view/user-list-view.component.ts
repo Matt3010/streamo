@@ -78,13 +78,19 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
         @for (it of filteredItems(); track it.tmdb_id + '-' + it.media_type) {
           <li class="item-row" (click)="onCardClick(it)">
             <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
-            <span class="item-title">{{ it.title }}</span>
-            @if (it.season && it.episode) {
-              <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
-            }
-            @if (it.watchStatus) {
-              <span class="item-watch-status">{{ it.watchStatus }}</span>
-            }
+            <div class="item-info">
+              <span class="item-title">{{ it.title }}</span>
+              @if (it.season && it.episode || it.watchStatus) {
+                <span class="item-sub">
+                  @if (it.season && it.episode) {
+                    <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
+                  }
+                  @if (it.watchStatus) {
+                    <span class="item-watch-status">{{ it.watchStatus }}</span>
+                  }
+                </span>
+              }
+            </div>
             @if (kind() === 'watchlist' && it.media_type === 'tv') {
               <button class="row-action row-mark" title="Segna progresso"
                       (click)="openMarkModal(it); $event.stopPropagation()">
