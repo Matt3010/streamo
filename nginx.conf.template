@@ -1,0 +1,148 @@
+upstream backend {
+    server backend:3000;
+}
+
+server {
+    listen 80;
+    server_name localhost;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    resolver 8.8.8.8 valid=30s;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json text/html;
+
+    client_max_body_size 1m;
+
+    # ---- Injected scripts (served from local files) ----
+    location /scripts/ {
+        alias /usr/share/nginx/html/scripts/;
+        expires 1d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ---- Backend API (Node.js) ----
+    location ~ ^/api/(auth|user)(/.*)?$ {
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ---- TMDB API ----
+    location ~ ^/api/tmdb/(.*)$ {
+        set $tmdb "api.themoviedb.org";
+        proxy_pass https://$tmdb/3/$1?$args&api_key=${TMDB_API_KEY};
+        proxy_ssl_server_name on;
+        proxy_set_header Host api.themoviedb.org;
+        proxy_hide_header Access-Control-Allow-Origin;
+        add_header Access-Control-Allow-Origin * always;
+    }
+
+    # ---- VixSrc namespaced API ----
+    location /api/vixsrc/ {
+        proxy_pass https://vixsrc.to/api/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Origin https://vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+        proxy_hide_header Access-Control-Allow-Origin;
+        add_header Access-Control-Allow-Origin * always;
+    }
+
+    # ---- VixSrc generic API (fallback) ----
+    location /api/ {
+        proxy_pass https://vixsrc.to/api/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Origin https://vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- VixSrc Next.js assets ----
+    location /_next/ {
+        proxy_pass https://vixsrc.to/_next/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- VixSrc embed player with ad-block injection ----
+    location /embed/ {
+        proxy_pass https://vixsrc.to/embed/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Accept-Encoding "";
+
+        sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
+        sub_filter_types text/html;
+        sub_filter_once on;
+    }
+
+    # ---- VixSrc playlist/streaming endpoints ----
+    location /playlist/ {
+        proxy_pass https://vixsrc.to/playlist/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- JW Player assets ----
+    location ~ ^/jwplayer- {
+        proxy_pass https://vixsrc.to$request_uri;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- VixSrc build assets ----
+    location /build/ {
+        proxy_pass https://vixsrc.to/build/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- VixSrc favicon ----
+    location = /favicon.ico {
+        proxy_pass https://vixsrc.to/favicon.ico;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+    }
+
+    # ---- VixSrc Player with ad-block + auto-seek injection ----
+    location ~ ^/player/(movie|tv)/(.*)$ {
+        set $vix_path $1/$2;
+        proxy_pass https://vixsrc.to/$vix_path;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Accept-Encoding "";
+
+        sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
+        sub_filter_types text/html;
+        sub_filter_once on;
+    }
+
+    # ---- VixSrc static asset fallback ----
+    location ~ \.(js|css|woff2?|ttf|otf|svg|png|jpg|jpeg|gif|ico|webp|mp4|m3u8|ts|vtt)$ {
+        try_files $uri @vixsrc_proxy;
+    }
+
+    location @vixsrc_proxy {
+        proxy_pass https://vixsrc.to$request_uri;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixsrc.to;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- Frontend SPA ----
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

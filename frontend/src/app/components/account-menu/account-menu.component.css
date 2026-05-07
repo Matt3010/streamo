@@ -1,0 +1,57 @@
+.account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 200px;
+  z-index: 50;
+  overflow: hidden;
+  display: none;
+}
+
+.account-menu.open { display: block; }
+
+.account-menu .username {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.account-menu button {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 0.65rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+
+.account-menu button:hover { background: var(--surface-hover); }
+.account-menu button.danger { color: #ef4444; }
+
+.account-menu .menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.account-menu .menu-toggle input {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent, #3b82f6);
+}
+
+.account-menu .menu-toggle:hover { background: var(--surface-hover); }

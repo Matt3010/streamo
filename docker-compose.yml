@@ -1,0 +1,25 @@
+services:
+  backend:
+    build: ./server
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      # If unset, the backend generates and persists a JWT secret in SQLite.
+      - JWT_SECRET=${JWT_SECRET:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
+      # Used to enrich watchlist items with TMDB metadata (e.g. total seasons).
+      - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
+    expose:
+      - "3000"
+
+  vixstream:
+    build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    environment:
+      # Required — used by the nginx template to inject the TMDB API key.
+      - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
+    depends_on:
+      - backend

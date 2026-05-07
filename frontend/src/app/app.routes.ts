@@ -1,0 +1,36 @@
+import { Routes } from '@angular/router';
+import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
+import { ListLayoutComponent } from './layouts/list-layout/list-layout.component';
+
+export const routes: Routes = [
+  {
+    path: '',
+    component: MainLayoutComponent,
+    children: [
+      { path: '', redirectTo: 'browse/movie', pathMatch: 'full' },
+      {
+        path: 'browse/:type',
+        loadComponent: () => import('./pages/home/home.component').then(m => m.HomeComponent)
+      },
+      {
+        path: 'watch/:type/:id',
+        loadComponent: () => import('./pages/watch/watch.component').then(m => m.WatchComponent)
+      },
+      {
+        path: 'search/:type',
+        loadComponent: () => import('./pages/search-results/search-results.component').then(m => m.SearchResultsComponent)
+      }
+    ]
+  },
+  {
+    path: 'list',
+    component: ListLayoutComponent,
+    children: [
+      {
+        path: ':kind',
+        loadComponent: () => import('./pages/user-list-view/user-list-view.component').then(m => m.UserListViewComponent)
+      }
+    ]
+  },
+  { path: '**', redirectTo: 'browse/movie' }
+];

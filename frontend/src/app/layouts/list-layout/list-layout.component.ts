@@ -1,0 +1,17 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { TopBarComponent } from '../../components/top-bar/top-bar.component';
+
+@Component({
+  selector: 'app-list-layout',
+  standalone: true,
+  imports: [TopBarComponent, RouterOutlet],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <main>
+      <app-top-bar [showTabs]="false" />
+      <router-outlet />
+    </main>
+  `
+})
+export class ListLayoutComponent {}

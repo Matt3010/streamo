@@ -1,0 +1,143 @@
+.card {
+  flex-shrink: 0;
+  width: 150px;
+  aspect-ratio: 2/3;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  scroll-snap-align: start;
+  position: relative;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+}
+
+@media (min-width: 640px) { .card { width: 165px; } }
+@media (min-width: 1024px) { .card { width: 175px; } }
+
+.card-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--surface-hover);
+  display: block;
+}
+
+.no-poster {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-hover) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 2rem;
+}
+
+/* Bottom gradient overlay carrying title + meta */
+.card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2rem 0.75rem 0.6rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.65) 50%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  margin-bottom: 0.2rem;
+}
+
+.card-meta {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+.card-rating { color: #ffc107; font-weight: 600; }
+
+.card-watch-status {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--accent);
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Progress bar sits on top of the overlay so it stays visible */
+.card-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(0,0,0,0.6);
+  z-index: 3;
+}
+.card-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* Top-right action buttons (status / remove) */
+.card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 4px;
+  z-index: 4;
+}
+
+.card:hover .card-actions { display: flex; }
+
+/* Touch devices have no hover — always show the actions */
+@media (hover: none) {
+  .card-actions { display: flex; }
+}
+
+.card-action {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.card-remove:hover { background: var(--accent); }
+
+.card-status:hover { background: #2ea043; }
+.card-status.done {
+  background: #2ea043;
+  color: #fff;
+}
+
+.card-mark:hover { background: #1f6feb; }

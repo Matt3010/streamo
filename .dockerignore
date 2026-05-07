@@ -1,0 +1,38 @@
+# VCS
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+
+# Dependencies (rebuilt inside the image)
+node_modules
+server/node_modules
+frontend/node_modules
+
+# Build output (rebuilt inside the image)
+dist
+server/dist
+frontend/dist
+frontend/.angular
+
+# Local data — must NEVER be baked into the image
+data
+
+# Local secrets — passed via env at runtime, never baked in
+.env
+.env.local
+.env.*.local
+
+# Claude / agent metadata
+.claude
+**/.claude
+
+# Logs and OS junk
+*.log
+.DS_Store
+Thumbs.db
+
+# Misc
+README.md

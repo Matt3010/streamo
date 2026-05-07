@@ -1,0 +1,29 @@
+:host {
+  display: block;
+}
+
+.content-section {
+  margin-bottom: 2rem;
+  overflow: visible;
+}
+
+.section-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.section-title .icon { font-size: 1.1rem; }
+
+/* Match the row-container's horizontal padding (set in card-row) so the title
+   sits flush with the first card. Mirror the card-row breakpoint. */
+@media (min-width: 769px) {
+  .section-title { padding-left: 4rem; }
+}
+
+@media (max-width: 640px) {
+  .section-title { font-size: 1.1rem; }
+}
