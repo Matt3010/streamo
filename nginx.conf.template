@@ -71,6 +71,26 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
     }
 
+    # ---- vix-content.net CDN proxy: /cdn/<sub>/<path> → https://<sub>.vix-content.net/<path>
+    # Target of url-rewrite.js for any *.vix-content.net request (HLS chunks,
+    # thumbnails, etc.) — keeps traffic on this origin so carriers that
+    # DNS-block vix-content.net don't see it directly.
+    location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
+        set $cdn_host "$1.vix-content.net";
+        proxy_pass https://$cdn_host/$2$is_args$args;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $cdn_host;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
+    # ---- VixCloud proxy: /vixcloud/<path> → https://vixcloud.co/<path>
+    location /vixcloud/ {
+        proxy_pass https://vixcloud.co/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixsrc.to/;
+    }
+
     # ---- VixSrc embed player with ad-block injection ----
     location /embed/ {
         proxy_pass https://vixsrc.to/embed/;
@@ -79,6 +99,13 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
+        # url-rewrite.js must run before any other script, so inject it at
+        # the start of <head> rather than at </head>. It monkey-patches
+        # fetch / XHR / setAttribute / src setters to redirect runtime
+        # requests for vix-content.net, vixcloud.co, vixsrc.to back through
+        # this proxy — covers URLs the bundle constructs dynamically that
+        # static sub_filter rewriting cannot catch.
+        sub_filter '<head>' '<head><script src="/scripts/url-rewrite.js"></script>';
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once on;
@@ -124,6 +151,7 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
+        sub_filter '<head>' '<head><script src="/scripts/url-rewrite.js"></script>';
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once on;
