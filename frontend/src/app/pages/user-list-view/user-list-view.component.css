@@ -49,7 +49,8 @@
 .item-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -76,7 +77,8 @@
 }
 
 .item-title {
-  flex: 1;
+  flex: 1 1 12rem;
+  min-width: 0;
   font-size: 0.95rem;
   font-weight: 500;
   white-space: nowrap;
@@ -130,6 +132,10 @@
 
 @media (max-width: 640px) {
   .item-meta { display: none; }
+  /* Watch-status is non-essential here — already implied by the
+   * "Da guardare" / "Visto" filter chip above the list. Hiding it gives
+   * the title room and keeps the row on a single line on phones. */
+  .item-watch-status { display: none; }
 }
 
 /* Mark-progress modal form */

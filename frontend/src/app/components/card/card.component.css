@@ -85,14 +85,18 @@
   text-overflow: ellipsis;
 }
 
-/* Progress bar sits on top of the overlay so it stays visible */
+/* Progress bar inset from the edges so the rounded corners don't clip it
+ * into a stub. The bar itself is rounded too — visually it's a pill that
+ * lives inside the card rather than bleeding off it. */
 .card-progress {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
   height: 4px;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 2px;
+  overflow: hidden;
   z-index: 3;
 }
 .card-progress > span {
