@@ -111,13 +111,13 @@ main {
 }
 
 /* Content grid — used by search and user-list pages.
- * Bleed past the main's small lateral padding so cards reach the viewport
- * edges on every viewport size (mobile and desktop alike). The minmax min
- * is large enough that cards never shrink below a comfortable poster size:
- * extra items wrap to a new row instead of squashing the existing ones. */
+ * Sits inside main's lateral padding (same horizontal inset as the home
+ * card-rows / page-header). The minmax min is large enough that cards
+ * never shrink below a comfortable poster size: extra items wrap to a
+ * new row instead of squashing the existing ones. */
 .content-grid {
   max-width: 1400px;
-  margin: 0 -0.4rem;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 0.4rem;
