@@ -69,7 +69,7 @@ export class AuthService {
   private async submitAuth(endpoint: string, email: string, password: string, token?: string): Promise<AuthResponse> {
     try {
       const body: Record<string, string> = { email, password };
-      if (token) body.token = token;
+      if (token) body['token'] = token;
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
