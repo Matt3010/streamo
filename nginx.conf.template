@@ -73,22 +73,22 @@ server {
     }
 
     # ---- VixSrc namespaced API ----
-    location /api/vixsrc/ {
-        proxy_pass $vixsrc_proxy/vixsrc/api/;
+    location ~ ^/api/vixsrc/(.*)$ {
+        proxy_pass $vixsrc_proxy/vixsrc/api/$1$is_args$args;
         proxy_ssl_server_name on;
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
     }
 
     # ---- VixSrc generic API (fallback) ----
-    location /api/ {
-        proxy_pass $vixsrc_proxy/vixsrc/api/;
+    location ~ ^/api/(.*)$ {
+        proxy_pass $vixsrc_proxy/vixsrc/api/$1$is_args$args;
         proxy_ssl_server_name on;
     }
 
     # ---- VixSrc Next.js assets ----
-    location /_next/ {
-        proxy_pass $vixsrc_proxy/vixsrc/_next/;
+    location ~ ^/_next/(.*)$ {
+        proxy_pass $vixsrc_proxy/vixsrc/_next/$1$is_args$args;
         proxy_ssl_server_name on;
     }
 
@@ -101,13 +101,13 @@ server {
     }
 
     # ---- VixCloud proxy: /vixcloud/<path> → Worker → vixcloud.co/<path>
-    location /vixcloud/ {
-        proxy_pass $vixsrc_proxy/vixcloud/;
+    location ~ ^/vixcloud/(.*)$ {
+        proxy_pass $vixsrc_proxy/vixcloud/$1$is_args$args;
         proxy_ssl_server_name on;
     }
 
     # ---- VixSrc embed player with ad-block injection ----
-    location /embed/ {
+    location ~ ^/embed/(.*)$ {
         # Gate the embed page entirely behind a valid session cookie.
         # Static assets loaded *by* the embed page (HLS chunks, JW player
         # bundles, CDN images) intentionally stay open: the iframe is
@@ -116,7 +116,7 @@ server {
         auth_request /auth-check;
         error_page 401 = @auth_required;
 
-        proxy_pass $vixsrc_proxy/vixsrc/embed/;
+        proxy_pass $vixsrc_proxy/vixsrc/embed/$1$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Accept-Encoding "";
 
@@ -126,8 +126,8 @@ server {
     }
 
     # ---- VixSrc playlist/streaming endpoints ----
-    location /playlist/ {
-        proxy_pass $vixsrc_proxy/vixsrc/playlist/;
+    location ~ ^/playlist/(.*)$ {
+        proxy_pass $vixsrc_proxy/vixsrc/playlist/$1$is_args$args;
         proxy_ssl_server_name on;
     }
 
@@ -138,8 +138,8 @@ server {
     }
 
     # ---- VixSrc build assets ----
-    location /build/ {
-        proxy_pass $vixsrc_proxy/vixsrc/build/;
+    location ~ ^/build/(.*)$ {
+        proxy_pass $vixsrc_proxy/vixsrc/build/$1$is_args$args;
         proxy_ssl_server_name on;
     }
 
