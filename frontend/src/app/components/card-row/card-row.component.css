@@ -20,9 +20,10 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   scroll-behavior: smooth;
-  /* Vertical padding lets the hover lift+shadow render fully; horizontal
-     padding keeps the first/last card clear of the scroll container edge. */
-  padding: 6px 4px 12px;
+  /* Vertical padding only — lets the hover lift+shadow render without being
+   * clipped. No horizontal padding so the first card lines up with the
+   * section title's icon chip on the left edge. */
+  padding: 6px 0 12px;
 }
 
 .scroll-row::-webkit-scrollbar { display: none; }
