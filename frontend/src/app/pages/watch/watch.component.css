@@ -264,11 +264,11 @@
    * doesn't end with a half-visible card when they stop swiping. */
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
-  /* Negative margin + padding lets the leftmost/rightmost card's focus ring
-   * and selected-state outline show without being clipped by the section
-   * edges. */
-  margin: 0 -0.4rem;
-  padding: 0.4rem;
+  /* Vertical padding leaves room for focus-ring / selected outlines without
+   * clipping. NO horizontal negative margin: on mobile the <main> only adds
+   * 0.4rem of side padding, so pulling the grid further out via margin made
+   * the cards touch the screen edge. */
+  padding: 0.4rem 0;
   /* Custom scrollbar — the native one is big and ugly on Windows. */
   scrollbar-width: thin;
   scrollbar-color: var(--surface-hover) transparent;
