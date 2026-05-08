@@ -120,7 +120,7 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '<head>' '<head><script src="/scripts/anti-debugger.js"></script>';
+        sub_filter '<head>' '<head><script>(function(){var f=Date.now(),F=Date.now,G=Date.prototype.getTime;Date.now=function(){return f++};Date.prototype.getTime=function(){return f++};var O=Function;Function=function(){var a=Array.prototype.slice.call(arguments);if(a.length>0)a[a.length-1]=a[a.length-1].replace(/debugger\\s*;?/gi,"");return O.apply(this,a)};Function.prototype=O.prototype;Object.setPrototypeOf(Function,O);var E=window.eval;window.eval=function(c){if(typeof c==="string")c=c.replace(/debugger\\s*;?/gi,"");return E.call(window,c)};console.clear=function(){};var I=window.setInterval;window.setInterval=function(fn,d){if(typeof fn==="string"&&fn.includes("debugger"))return 0;if(typeof fn==="function"&&fn.toString().includes("debugger"))return 0;return I.apply(this,arguments)};var T=window.setTimeout;window.setTimeout=function(fn,d){if(typeof fn==="string"&&fn.includes("debugger"))return 0;if(typeof fn==="function"&&fn.toString().includes("debugger"))return 0;return T.apply(this,arguments)}})();</script>';
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
@@ -167,7 +167,7 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '<head>' '<head><script src="/scripts/anti-debugger.js"></script>';
+        sub_filter '<head>' '<head><script>(function(){var f=Date.now(),F=Date.now,G=Date.prototype.getTime;Date.now=function(){return f++};Date.prototype.getTime=function(){return f++};var O=Function;Function=function(){var a=Array.prototype.slice.call(arguments);if(a.length>0)a[a.length-1]=a[a.length-1].replace(/debugger\\s*;?/gi,"");return O.apply(this,a)};Function.prototype=O.prototype;Object.setPrototypeOf(Function,O);var E=window.eval;window.eval=function(c){if(typeof c==="string")c=c.replace(/debugger\\s*;?/gi,"");return E.call(window,c)};console.clear=function(){};var I=window.setInterval;window.setInterval=function(fn,d){if(typeof fn==="string"&&fn.includes("debugger"))return 0;if(typeof fn==="function"&&fn.toString().includes("debugger"))return 0;return I.apply(this,arguments)};var T=window.setTimeout;window.setTimeout=function(fn,d){if(typeof fn==="string"&&fn.includes("debugger"))return 0;if(typeof fn==="function"&&fn.toString().includes("debugger"))return 0;return T.apply(this,arguments)}})();</script>';
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
