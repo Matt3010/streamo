@@ -46,20 +46,16 @@ import type { MediaType } from '../../models';
           </div>
         }
 
-        <div class="player-wrapper">
-          @if (loading()) {
-            <div class="skeleton skeleton-backdrop"></div>
-          } @else if (!player.iframeSrc()) {
-            <div class="player-preview">
-              @if (player.backdropUrl()) {
-                <img class="preview-backdrop" [src]="player.backdropUrl()" alt="">
-              }
-            </div>
-          } @else {
-            <iframe [src]="iframeSrcSafe()" allowfullscreen
-                    allow="autoplay; encrypted-media; fullscreen"></iframe>
-          }
-        </div>
+        @if (loading() || player.iframeSrc()) {
+          <div class="player-wrapper">
+            @if (loading()) {
+              <div class="skeleton skeleton-backdrop"></div>
+            } @else {
+              <iframe [src]="iframeSrcSafe()" allowfullscreen
+                      allow="autoplay; encrypted-media; fullscreen"></iframe>
+            }
+          </div>
+        }
 
         @if (loading()) {
           <div class="player-actions">
