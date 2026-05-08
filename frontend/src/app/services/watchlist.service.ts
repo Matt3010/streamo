@@ -50,28 +50,4 @@ export class WatchlistService {
     });
     this.tick.update(n => n + 1);
   }
-
-  /** Marks a TV show as watched up to and including (season, episode). */
-  async markWatchedThrough(tmdbId: number | string, type: MediaType, season: number, episode: number): Promise<boolean> {
-    const res = await fetch(`/api/user/watchlist/${type}/${tmdbId}/mark`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season, episode })
-    });
-    if (!res.ok) return false;
-    this.tick.update(n => n + 1);
-    return true;
-  }
-
-  /** Marks a TV show as fully watched (all seasons + episodes) and flips status to 'done'. */
-  async markWatchedAll(tmdbId: number | string, type: MediaType): Promise<boolean> {
-    const res = await fetch(`/api/user/watchlist/${type}/${tmdbId}/mark`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ all: true })
-    });
-    if (!res.ok) return false;
-    this.tick.update(n => n + 1);
-    return true;
-  }
 }

@@ -4,7 +4,7 @@ import {
   faFire, faFilm, faEye, faStar, faCalendar, faTv, faSatelliteDish,
   faCirclePlay, faBookmark, faPlay, faMagnifyingGlass, faXmark,
   faChevronLeft, faChevronRight, faClockRotateLeft, faList, faCheck,
-  faTableCellsLarge, faTrashCan, faPenToSquare
+  faTableCellsLarge, faTrashCan
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
@@ -12,7 +12,7 @@ export type IconName =
   | 'fire' | 'film' | 'eye' | 'star' | 'calendar' | 'tv' | 'satellite'
   | 'play-circle' | 'bookmark' | 'play' | 'search' | 'close'
   | 'chevron-left' | 'chevron-right' | 'history' | 'list' | 'check'
-  | 'grid' | 'trash' | 'pen';
+  | 'grid' | 'trash';
 
 const REGISTRY: Record<IconName, IconDefinition> = {
   fire: faFire,
@@ -33,8 +33,7 @@ const REGISTRY: Record<IconName, IconDefinition> = {
   list: faList,
   check: faCheck,
   grid: faTableCellsLarge,
-  trash: faTrashCan,
-  pen: faPenToSquare
+  trash: faTrashCan
 };
 
 @Component({

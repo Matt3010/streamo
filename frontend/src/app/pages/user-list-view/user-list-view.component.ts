@@ -3,7 +3,6 @@ import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
-import { UiModalComponent } from '../../ui/modal/modal.component';
 import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
@@ -24,7 +23,7 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
-  imports: [CardComponent, IconComponent, UiTabsComponent, UiModalComponent],
+  imports: [CardComponent, IconComponent, UiTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -72,11 +71,9 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
             [showRemove]="true"
             [showProgress]="true"
             [showStatusToggle]="kind() === 'watchlist'"
-            [showMarkProgress]="kind() === 'watchlist' && it.media_type === 'tv'"
             (cardClick)="onCardClick($event)"
             (statusToggleClick)="onStatusToggle($event)"
-            (removeClick)="onRemoveClick($event)"
-            (markProgressClick)="openMarkModal($event)" />
+            (removeClick)="onRemoveClick($event)" />
         }
       </div>
     } @else {
@@ -97,12 +94,6 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
                 </span>
               }
             </div>
-            @if (kind() === 'watchlist' && it.media_type === 'tv') {
-              <button class="row-action row-mark" title="Segna progresso"
-                      (click)="openMarkModal(it); $event.stopPropagation()">
-                <app-icon name="pen"></app-icon>
-              </button>
-            }
             @if (kind() === 'watchlist') {
               <button class="row-action row-status"
                       [class.done]="it.status === 'done'"
@@ -120,34 +111,6 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
         }
       </ul>
     }
-
-    <ui-modal [(open)]="markOpen"
-              [title]="markItem() ? 'Segna fino a (' + markItem()!.title + ')' : 'Segna progresso'"
-              size="sm"
-              (closed)="onMarkClosed()">
-      <form class="mark-form" (submit)="submitMark($event)">
-        <label>
-          <span>Stagione</span>
-          <input type="number" min="1" required
-                 [max]="markItem()?.totalSeasons ?? 99"
-                 [value]="markSeason()" (input)="updateSeason($event)">
-        </label>
-        <label>
-          <span>Episodio</span>
-          <input type="number" min="1" required
-                 [max]="markEpisodeMax()"
-                 [value]="markEpisode()" (input)="updateEpisode($event)">
-        </label>
-        @if (markError()) { <p class="mark-error">{{ markError() }}</p> }
-        <button type="submit" class="primary-btn" [disabled]="markSubmitting()">
-          {{ markSubmitting() ? 'Salvataggio...' : 'Conferma' }}
-        </button>
-        <button type="button" class="secondary-btn" [disabled]="markSubmitting()"
-                (click)="markAll()">
-          L'ho visto tutto
-        </button>
-      </form>
-    </ui-modal>
   `,
   styleUrl: './user-list-view.component.css'
 })
@@ -168,22 +131,6 @@ export class UserListViewComponent {
   protected readonly items = signal<CardItem[]>([]);
   protected readonly loading = signal(false);
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
-
-  // Mark-progress modal state
-  protected readonly markOpen = signal(false);
-  protected readonly markItem = signal<CardItem | null>(null);
-  protected readonly markSeason = signal(1);
-  protected readonly markEpisode = signal(1);
-  protected readonly markSubmitting = signal(false);
-  protected readonly markError = signal('');
-
-  // Episode max for the chosen season (from TMDB-cached seasons array).
-  protected readonly markEpisodeMax = computed(() => {
-    const item = this.markItem();
-    const season = this.markSeason();
-    const found = item?.seasons?.find(s => s.season_number === season);
-    return found?.episode_count ?? 99;
-  });
 
   // Watchlist gets status-filtered; history shows everything.
   protected readonly filteredItems = computed(() => {
@@ -256,87 +203,6 @@ export class UserListViewComponent {
     void this.load(this.kind());
   }
 
-  protected openMarkModal(item: CardItem): void {
-    this.markItem.set(item);
-    // Pre-fill with the user's current progress so the inputs reflect reality.
-    this.markSeason.set(item.lastSeason && item.lastSeason > 0 ? item.lastSeason : 1);
-    this.markEpisode.set(item.lastEpisode && item.lastEpisode > 0 ? item.lastEpisode : 1);
-    this.markError.set('');
-    this.markOpen.set(true);
-  }
-
-  protected onMarkClosed(): void {
-    this.markItem.set(null);
-    this.markError.set('');
-  }
-
-  protected updateSeason(ev: Event): void {
-    const t = ev.target;
-    if (t instanceof HTMLInputElement) {
-      const n = parseInt(t.value, 10);
-      this.markSeason.set(Number.isFinite(n) ? n : 1);
-      // If the previously chosen episode is past the new season's count, clamp.
-      const max = this.markEpisodeMax();
-      if (this.markEpisode() > max) this.markEpisode.set(max);
-    }
-  }
-
-  protected updateEpisode(ev: Event): void {
-    const t = ev.target;
-    if (t instanceof HTMLInputElement) {
-      const n = parseInt(t.value, 10);
-      this.markEpisode.set(Number.isFinite(n) ? n : 1);
-    }
-  }
-
-  protected async submitMark(ev: Event): Promise<void> {
-    ev.preventDefault();
-    const item = this.markItem();
-    if (!item) return;
-    const season = this.markSeason();
-    const episode = this.markEpisode();
-    if (season < 1 || episode < 1) {
-      this.markError.set('Stagione ed episodio devono essere >= 1');
-      return;
-    }
-
-    this.markSubmitting.set(true);
-    this.markError.set('');
-    try {
-      const ok = await this.watchlist.markWatchedThrough(item.tmdb_id, item.media_type, season, episode);
-      if (!ok) {
-        this.markError.set('Stagione o episodio non validi per questa serie');
-        return;
-      }
-      this.toast.show(`Progresso aggiornato a S${season}E${episode}`);
-      this.markOpen.set(false);
-      // Reload to refresh badges
-      void this.load(this.kind());
-    } finally {
-      this.markSubmitting.set(false);
-    }
-  }
-
-  protected async markAll(): Promise<void> {
-    const item = this.markItem();
-    if (!item) return;
-    this.markSubmitting.set(true);
-    this.markError.set('');
-    try {
-      const ok = await this.watchlist.markWatchedAll(item.tmdb_id, item.media_type);
-      if (!ok) {
-        this.markError.set('Impossibile marcare come visto (TMDB non disponibile?)');
-        return;
-      }
-      this.toast.show(`${item.title}: segnato come visto`);
-      this.markOpen.set(false);
-      // Reload to refresh badges and (likely) move the item to the "Visto" filter
-      void this.load(this.kind());
-    } finally {
-      this.markSubmitting.set(false);
-    }
-  }
-
   private async load(kind: UserListType): Promise<void> {
     const mySeq = ++this.seq;
     this.loading.set(true);
@@ -349,10 +215,6 @@ export class UserListViewComponent {
         title: w.title ?? 'Senza titolo', poster: w.poster,
         status: w.status ?? 'todo',
         watchStatus: computeWatchStatus(w),
-        totalSeasons: w.total_seasons,
-        lastSeason: w.last_season,
-        lastEpisode: w.last_episode,
-        seasons: w.seasons,
         season: w.next_season,
         episode: w.next_episode,
         position: w.position,

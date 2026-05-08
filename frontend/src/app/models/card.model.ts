@@ -24,12 +24,4 @@ export interface CardItem {
   status?: WatchlistStatus;
   /** Optional secondary line (e.g. "Mancano 3 episodi" on the watchlist). */
   watchStatus?: string;
-  /** TMDB total seasons — used as max in manual progress input. */
-  totalSeasons?: number;
-  /** User's last-watched season for this TV item (max from progress rows). */
-  lastSeason?: number;
-  /** User's last-watched episode within `lastSeason`. */
-  lastEpisode?: number;
-  /** Per-season episode counts — used to cap the episode input in the modal. */
-  seasons?: Array<{ season_number: number; episode_count: number }>;
 }

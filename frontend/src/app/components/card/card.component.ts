@@ -23,14 +23,8 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
         <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
       }
 
-      @if (showStatusToggle() || showRemove() || showMarkProgress()) {
+      @if (showStatusToggle() || showRemove()) {
         <div class="card-actions">
-          @if (showMarkProgress()) {
-            <button class="card-action card-mark" title="Segna progresso"
-                    (click)="onMarkProgress($event)">
-              <app-icon name="pen"></app-icon>
-            </button>
-          }
           @if (showStatusToggle()) {
             <button class="card-action card-status"
                     [class.done]="item().status === 'done'"
@@ -70,12 +64,10 @@ export class CardComponent {
   readonly showProgress = input(false);
   readonly showRemove = input(false);
   readonly showStatusToggle = input(false);
-  readonly showMarkProgress = input(false);
 
   readonly cardClick = output<CardItem>();
   readonly removeClick = output<CardItem>();
   readonly statusToggleClick = output<CardItem>();
-  readonly markProgressClick = output<CardItem>();
 
   protected readonly posterUrl = computed(() => {
     const p = this.item().poster;
@@ -101,10 +93,5 @@ export class CardComponent {
   protected onStatusToggle(e: MouseEvent): void {
     e.stopPropagation();
     this.statusToggleClick.emit(this.item());
-  }
-
-  protected onMarkProgress(e: MouseEvent): void {
-    e.stopPropagation();
-    this.markProgressClick.emit(this.item());
   }
 }
