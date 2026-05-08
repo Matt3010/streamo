@@ -33,7 +33,14 @@ body {
 main {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0.85rem 0.4rem;
+  /* Safe-area insets keep the content clear of the notch/dynamic island and
+   * the iOS home indicator while the fixed .app-backdrop (viewport-fit=cover)
+   * bleeds edge-to-edge behind everything. */
+  padding:
+    calc(0.85rem + env(safe-area-inset-top))
+    calc(0.4rem + env(safe-area-inset-right))
+    calc(0.85rem + env(safe-area-inset-bottom))
+    calc(0.4rem + env(safe-area-inset-left));
 }
 
 /* === Cross-component utilities ===
