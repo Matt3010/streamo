@@ -31,11 +31,11 @@ main {
   padding: 1.25rem 0.75rem;
 }
 
-/* Phones: shave the lateral page padding and the content-grid gap so the
- * card grid (la mia lista / cronologia, search) fills the viewport instead
- * of leaving a wide gutter on each side. */
+/* Phones: keep just enough lateral page padding for chips/buttons (back
+ * button, filter tabs, view toggle) to not touch the viewport edge. The
+ * card grid itself bleeds past this padding via negative margins below. */
 @media (max-width: 640px) {
-  main { padding: 1rem 0.4rem; }
+  main { padding: 0.85rem 0.4rem; }
 }
 
 /* === Cross-component utilities ===
@@ -117,8 +117,17 @@ main {
   max-width: 1400px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
+  gap: 0.25rem;
+}
+
+@media (max-width: 640px) {
+  /* Bleed the grid past the main's small lateral padding so the cards
+   * extend all the way to the viewport edges on phones. */
+  .content-grid {
+    margin-left: -0.4rem;
+    margin-right: -0.4rem;
+  }
 }
 
 @media (min-width: 640px) {
