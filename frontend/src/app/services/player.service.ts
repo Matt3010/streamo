@@ -5,7 +5,7 @@ import { WatchlistService } from './watchlist.service';
 import { HistoryService } from './history.service';
 import { AuthService } from './auth.service';
 import { ToastService } from './toast.service';
-import type { MediaType, TmdbItem, PlayerEventMessage } from '../models';
+import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
 const VIXSRC_BASE = '/player';
 const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
@@ -28,7 +28,11 @@ export class PlayerService {
 
   // TV controls
   readonly seasons = signal<number[]>([]);
-  readonly episodes = signal<number[]>([]);
+  // Each entry carries the full TMDB episode payload (name, overview,
+  // still_path, …) so the watch page can render rich episode cards rather
+  // than a bare number dropdown. Stub objects with only `episode_number` are
+  // used as a fallback when the season-details fetch fails.
+  readonly episodes = signal<TmdbEpisodeDetail[]>([]);
   readonly selectedSeason = signal(1);
   readonly selectedEpisode = signal(1);
 
@@ -59,7 +63,7 @@ export class PlayerService {
     // we don't suggest jumping to an episode TMDB lists in the season but
     // hasn't aired yet.
     const eps = this.episodes();
-    if (eps.some(n => n === ce + 1)) {
+    if (eps.some(e => e.episode_number === ce + 1)) {
       return { season: cs, episode: ce + 1 };
     }
     const last = item?.last_episode_to_air;
@@ -237,9 +241,9 @@ export class PlayerService {
 
     this.selectedSeason.set(season);
     const seasonData = await this.tmdb.getSeasonDetails(item.id, season);
-    const airedNumbers = airedEpisodeNumbers(seasonData?.episodes);
+    const aired = airedEpisodes(seasonData?.episodes);
     const fallbackCount = (item.seasons ?? []).find(s => s.season_number === season)?.episode_count ?? 10;
-    this.episodes.set(airedNumbers.length ? airedNumbers : Array.from({ length: fallbackCount }, (_, i) => i + 1));
+    this.episodes.set(aired.length ? aired : episodeStubs(fallbackCount));
     this.selectedEpisode.set(1);
 
     this.resetPlayer();
@@ -299,9 +303,9 @@ export class PlayerService {
     this.selectedSeason.set(targetSeason);
 
     const seasonData = await this.tmdb.getSeasonDetails(Number(tmdbId), targetSeason);
-    const airedNumbers = airedEpisodeNumbers(seasonData?.episodes);
+    const aired = airedEpisodes(seasonData?.episodes);
     const fallback = seasonsList.find(s => s.season_number === targetSeason)?.episode_count ?? 10;
-    this.episodes.set(airedNumbers.length ? airedNumbers : Array.from({ length: fallback }, (_, i) => i + 1));
+    this.episodes.set(aired.length ? aired : episodeStubs(fallback));
 
     const targetEpisode = resumeEpisode > 0 ? resumeEpisode : 1;
     this.selectedEpisode.set(targetEpisode);
@@ -353,9 +357,9 @@ export class PlayerService {
 
     if (seasonChanged) {
       const seasonData = await this.tmdb.getSeasonDetails(item.id, next.season);
-      const airedNumbers = airedEpisodeNumbers(seasonData?.episodes);
+      const aired = airedEpisodes(seasonData?.episodes);
       const fallback = (item.seasons ?? []).find(s => s.season_number === next.season)?.episode_count ?? 10;
-      this.episodes.set(airedNumbers.length ? airedNumbers : Array.from({ length: fallback }, (_, i) => i + 1));
+      this.episodes.set(aired.length ? aired : episodeStubs(fallback));
     }
 
     this.resetPlayer();
@@ -464,14 +468,14 @@ export class PlayerService {
 
     const eps = this.episodes();
     const currentEp = this.selectedEpisode();
-    const nextEp = eps.find(e => e > currentEp);
+    const nextEp = eps.find(e => e.episode_number > currentEp);
     if (nextEp !== undefined) {
-      this.selectedEpisode.set(nextEp);
+      this.selectedEpisode.set(nextEp.episode_number);
       const season = this.selectedSeason();
       this.resetPlayer();
-      this.setEpisodeUrl(item.id, season, nextEp);
+      this.setEpisodeUrl(item.id, season, nextEp.episode_number);
       const seq = ++this.urlSeq;
-      await this.applyResumeProgress(seq, item.id, 'tv', season, nextEp);
+      await this.applyResumeProgress(seq, item.id, 'tv', season, nextEp.episode_number);
       this.startVideo();
       return;
     }
@@ -495,10 +499,10 @@ function formatTime(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-// Returns the episode numbers from a TMDB season-details payload that have
-// already aired (no air_date treated as aired so episodes without a confirmed
-// date still surface). End-of-day cutoff so today's episodes show immediately.
-function airedEpisodeNumbers(eps: Array<{ episode_number: number; air_date?: string | null }> | undefined): number[] {
+// Returns the episodes from a TMDB season-details payload that have already
+// aired (no air_date treated as aired so episodes without a confirmed date
+// still surface). End-of-day cutoff so today's episodes show immediately.
+function airedEpisodes(eps: TmdbEpisodeDetail[] | undefined): TmdbEpisodeDetail[] {
   if (!eps?.length) return [];
   const cutoff = new Date();
   cutoff.setHours(23, 59, 59, 999);
@@ -508,6 +512,13 @@ function airedEpisodeNumbers(eps: Array<{ episode_number: number; air_date?: str
       const d = new Date(e.air_date);
       return !Number.isNaN(d.getTime()) && d <= cutoff;
     })
-    .map(e => e.episode_number)
-    .sort((a, b) => a - b);
+    .slice()
+    .sort((a, b) => a.episode_number - b.episode_number);
+}
+
+// Stub episode list for when the season-details fetch fails — keeps the
+// dropdown / card grid populated with bare numbered placeholders so the user
+// can still pick an episode (the player will then load whatever vixsrc has).
+function episodeStubs(count: number): TmdbEpisodeDetail[] {
+  return Array.from({ length: count }, (_, i) => ({ episode_number: i + 1 }));
 }

@@ -54,6 +54,16 @@ export interface TmdbSeasonInfo {
   air_date?: string | null;
 }
 
+export interface TmdbEpisodeDetail {
+  episode_number: number;
+  season_number?: number;
+  name?: string;
+  overview?: string;
+  still_path?: string | null;
+  air_date?: string | null;
+  runtime?: number | null;
+}
+
 export interface TmdbSeasonDetails {
-  episodes?: Array<{ episode_number: number; air_date?: string | null }>;
+  episodes?: TmdbEpisodeDetail[];
 }

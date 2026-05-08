@@ -236,6 +236,167 @@
   font-size: 0.85rem !important;
 }
 
+/* ===== Episode grid =====
+ * Apple TV+ style horizontal-scroll list of episode cards for the active
+ * season. Lives inside .watch-main but breaks out of the 800px cap so the
+ * scroll track can use a bit more screen real estate when there are many
+ * episodes. Each card click switches the player to that episode (the user
+ * still confirms via the "Riprendi/Guarda" CTA below the player). */
+.episode-grid-section {
+  padding: 1.75rem 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.episode-grid-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.episode-grid {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  /* Native iOS-style momentum scrolling + snap to card edges so the user
+   * doesn't end with a half-visible card when they stop swiping. */
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  /* Negative margin + padding lets the leftmost/rightmost card's focus ring
+   * and selected-state outline show without being clipped by the section
+   * edges. */
+  margin: 0 -0.4rem;
+  padding: 0.4rem;
+  /* Custom scrollbar — the native one is big and ugly on Windows. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-hover) transparent;
+}
+
+.episode-grid::-webkit-scrollbar { height: 6px; }
+.episode-grid::-webkit-scrollbar-track { background: transparent; }
+.episode-grid::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: 3px;
+}
+
+.episode-card {
+  flex: 0 0 220px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  border-radius: var(--radius);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.episode-card:hover {
+  transform: translateY(-2px);
+}
+
+.episode-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.episode-card.selected .episode-thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.episode-card.selected .episode-title {
+  color: var(--accent);
+}
+
+.episode-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background-color: var(--surface);
+  background-size: cover;
+  background-position: center;
+  border-radius: var(--radius);
+  overflow: hidden;
+  /* Subtle dark gradient at bottom so the episode-number badge stays legible
+   * even on light/busy thumbnails. */
+  box-shadow: inset 0 -40px 60px -30px rgba(0, 0, 0, 0.85);
+}
+
+.episode-thumb.no-image {
+  background-color: var(--surface);
+  box-shadow: none;
+}
+
+.episode-number {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 0.45rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  line-height: 1;
+}
+
+.episode-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 0.15rem;
+}
+
+.episode-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  /* Single-line ellipsis so long titles don't push other cards down. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.episode-overview {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+  /* 2-line clamp keeps cards aligned. webkit-line-clamp is widely supported
+   * (Chromium, Firefox, Safari) despite the -webkit- prefix. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Skeleton variants for the episode grid */
+.skeleton-section-title {
+  width: 6rem;
+  height: 1.2rem;
+}
+
+.episode-card.skeleton-card {
+  pointer-events: none;
+}
+
+.episode-card.skeleton-card:hover {
+  transform: none;
+}
+
+.skeleton-card-thumb {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: var(--radius);
+}
+
 /* Recommendations row sits below the player info block. The extra top
  * padding gives it visual separation from the cast/extra lines, since
  * .player-info has no bottom padding of its own. */
@@ -251,6 +412,13 @@
    * as the primary CTA — the row wraps naturally so the bookmark slides
    * underneath if there's no horizontal room. */
   .player-actions .action-btn.primary { flex-basis: 100%; justify-content: center; }
+
+  /* Smaller episode cards on phones — fits ~1.6 cards per viewport so the
+   * "swipe for more" affordance is obvious at a glance. */
+  .episode-card { flex-basis: 180px; }
+  .episode-number { font-size: 1.35rem; }
+  .episode-title { font-size: 0.9rem; }
+  .episode-overview { font-size: 0.75rem; }
 }
 
 /* ===== Skeleton loading states =====

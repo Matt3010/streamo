@@ -39,10 +39,6 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
               <div class="skeleton skeleton-label"></div>
               <div class="skeleton skeleton-select"></div>
             </div>
-            <div class="select-group">
-              <div class="skeleton skeleton-label"></div>
-              <div class="skeleton skeleton-select"></div>
-            </div>
           </div>
         } @else if (player.currentItemType() === 'tv' && player.seasons().length > 0) {
           <div class="episode-controls active">
@@ -51,14 +47,6 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
               <select (change)="onSeasonChange($event)">
                 @for (s of player.seasons(); track s) {
                   <option [value]="s" [selected]="s === player.selectedSeason()">Stagione {{ s }}</option>
-                }
-              </select>
-            </label>
-            <label class="select-group">
-              <span class="select-label">Episodio</span>
-              <select (change)="onEpisodeChange($event)">
-                @for (e of player.episodes(); track e) {
-                  <option [value]="e" [selected]="e === player.selectedEpisode()">Episodio {{ e }}</option>
                 }
               </select>
             </label>
@@ -98,6 +86,44 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
                     (click)="toggleWatchlist()">
               <app-icon name="bookmark"></app-icon>
             </button>
+          </div>
+        }
+
+        @if (loading() && type() === 'tv') {
+          <div class="episode-grid-section">
+            <div class="skeleton skeleton-section-title"></div>
+            <div class="episode-grid">
+              @for (i of skeletonRange; track i) {
+                <div class="episode-card skeleton-card">
+                  <div class="skeleton skeleton-card-thumb"></div>
+                  <div class="skeleton skeleton-line short"></div>
+                  <div class="skeleton skeleton-line"></div>
+                </div>
+              }
+            </div>
+          </div>
+        } @else if (player.currentItemType() === 'tv' && player.episodes().length > 0) {
+          <div class="episode-grid-section">
+            <h3 class="episode-grid-title">Episodi</h3>
+            <div class="episode-grid">
+              @for (ep of player.episodes(); track ep.episode_number) {
+                <button type="button" class="episode-card"
+                        [class.selected]="ep.episode_number === player.selectedEpisode()"
+                        (click)="selectEpisode(ep.episode_number)">
+                  <div class="episode-thumb"
+                       [class.no-image]="!ep.still_path"
+                       [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
+                    <span class="episode-number">{{ ep.episode_number }}</span>
+                  </div>
+                  <div class="episode-meta">
+                    <p class="episode-title">{{ ep.name || 'Episodio ' + ep.episode_number }}</p>
+                    @if (ep.overview) {
+                      <p class="episode-overview">{{ ep.overview }}</p>
+                    }
+                  </div>
+                </button>
+              }
+            </div>
           </div>
         }
 
@@ -154,6 +180,15 @@ export class WatchComponent {
   protected readonly recommendationsIcon = faThumbsUp;
   protected readonly recommendations = signal<CardItem[]>([]);
   protected readonly recommendationsLoading = signal(false);
+
+  // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
+  // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
+  protected readonly episodeThumbBase = 'https://image.tmdb.org/t/p/w300';
+
+  // Static array used by the skeleton loop — doesn't need to be a signal
+  // since it never changes. Five placeholder cards is enough to fill a
+  // typical viewport before the user scrolls.
+  protected readonly skeletonRange = [0, 1, 2, 3, 4];
 
   // Sequence guards out-of-order recommendation responses when the user
   // jumps between titles before the previous fetch resolves.
@@ -217,8 +252,14 @@ export class WatchComponent {
 
   protected readonly playLabel = computed(() => {
     const p = this.player.resumeProgress();
-    if (p && p.position > 10) return `Riprendi da ${formatTime(p.position)}`;
-    return 'Guarda';
+    if (!p || p.position <= 10) return 'Guarda';
+    // For TV, "Sx Ey" is the actionable info: timestamp matters less than
+    // which episode the user is picking up. Movies still get the timestamp
+    // since there's no episode coordinate to fall back on.
+    if (this.player.currentItemType() === 'tv') {
+      return `Riprendi da S${this.player.selectedSeason()} E${this.player.selectedEpisode()}`;
+    }
+    return `Riprendi da ${formatTime(p.position)}`;
   });
 
   protected readonly tvSummaryStr = computed(() => {
@@ -332,9 +373,9 @@ export class WatchComponent {
     if (t instanceof HTMLSelectElement) void this.player.changeSeason(parseInt(t.value, 10));
   }
 
-  protected onEpisodeChange(ev: Event): void {
-    const t = ev.target;
-    if (t instanceof HTMLSelectElement) void this.player.changeEpisode(parseInt(t.value, 10));
+  protected selectEpisode(episodeNumber: number): void {
+    if (episodeNumber === this.player.selectedEpisode()) return;
+    void this.player.changeEpisode(episodeNumber);
   }
 }
 
