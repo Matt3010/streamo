@@ -3,20 +3,39 @@
 }
 
 .content-section {
-  margin-bottom: 2rem;
+  margin-bottom: 2.25rem;
   overflow: visible;
 }
 
+/* Section heading: bold, tightened type with a glowing accent-colored icon
+ * chip. Stronger visual rhythm than a plain inline icon and matches the
+ * "premium streaming" tone of the cards below. */
 .section-title {
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text);
 }
 
-.section-title .icon { font-size: 1.1rem; }
+.section-title .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: #fff;
+  font-size: 0.95rem;
+  box-shadow:
+    0 6px 16px -4px rgba(229, 9, 20, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
 
 /* Match the row-container's horizontal padding (set in card-row) so the title
    sits flush with the first card. Mirror the card-row breakpoint. */
@@ -25,5 +44,15 @@
 }
 
 @media (max-width: 640px) {
-  .section-title { font-size: 1.1rem; }
+  .section-title {
+    font-size: 1.2rem;
+    gap: 0.6rem;
+    margin-bottom: 0.85rem;
+  }
+  .section-title .icon {
+    width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
+    border-radius: 8px;
+  }
 }
