@@ -7,14 +7,14 @@
  * watch header and player line up with the tabs/search bar above. Same
  * breakpoint as the card-row arrows. */
 @media (min-width: 769px) {
-  .watch-page { padding: 0 4rem; }
+  .watch-page { padding: 0 1.5rem; }
 }
 
 .watch-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0 0 1rem;
+  padding: 0 0 0.75rem;
 }
 
 .watch-header h2 {
