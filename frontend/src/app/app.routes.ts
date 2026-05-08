@@ -7,9 +7,13 @@ export const routes: Routes = [
     path: '',
     component: MainLayoutComponent,
     children: [
-      { path: '', redirectTo: 'browse/movie', pathMatch: 'full' },
+      { path: '', redirectTo: 'browse', pathMatch: 'full' },
+      // Legacy /browse/:type URLs (from when the home had a Film/Serie TV
+      // switcher) redirect to the unified /browse.
+      { path: 'browse/movie', redirectTo: 'browse', pathMatch: 'full' },
+      { path: 'browse/tv',    redirectTo: 'browse', pathMatch: 'full' },
       {
-        path: 'browse/:type',
+        path: 'browse',
         loadComponent: () => import('./pages/home/home.component').then(m => m.HomeComponent)
       },
       {
@@ -32,5 +36,5 @@ export const routes: Routes = [
       }
     ]
   },
-  { path: '**', redirectTo: 'browse/movie' }
+  { path: '**', redirectTo: 'browse' }
 ];

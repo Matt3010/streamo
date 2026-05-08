@@ -212,7 +212,7 @@ export class WatchComponent {
   }
 
   protected back(): void {
-    this.navSource.goBack(`/browse/${this.type()}`);
+    this.navSource.goBack('/browse');
   }
 
   protected play(): void {

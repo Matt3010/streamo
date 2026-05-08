@@ -1,8 +1,7 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { faCirclePlay, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
-import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { ProgressService } from '../../services/progress.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -11,11 +10,6 @@ import { PlayerService } from '../../services/player.service';
 import { SECTIONS } from './sections.config';
 import { computeWatchStatus } from '../../services/watchlist-status.util';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
-
-const TYPE_TABS: ReadonlyArray<UiTab<MediaType>> = [
-  { value: 'movie', label: 'Film' },
-  { value: 'tv', label: 'Serie TV' }
-];
 
 interface SectionState {
   config: SectionConfig;
@@ -26,13 +20,9 @@ interface SectionState {
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [SectionRowComponent, UiTabsComponent],
+  imports: [SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="home-tabs">
-      <ui-tabs [tabs]="typeTabs" [value]="type()" (valueChange)="onTypeChange($event)" />
-    </div>
-
     @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
       <app-section-row
         title="Continua a guardare"
@@ -61,17 +51,7 @@ interface SectionState {
         [loading]="s.loading"
         (cardClick)="open($event)" />
     }
-  `,
-  styles: [`
-    .home-tabs {
-      display: flex;
-      margin-bottom: 1.75rem;
-    }
-
-    @media (min-width: 769px) {
-      .home-tabs { padding-left: 4rem; }
-    }
-  `]
+  `
 })
 export class HomeComponent {
   private readonly tmdb = inject(TmdbService);
@@ -81,10 +61,6 @@ export class HomeComponent {
   private readonly player = inject(PlayerService);
   private readonly router = inject(Router);
 
-  // Route :type param via withComponentInputBinding().
-  readonly type = input.required<MediaType>();
-
-  protected readonly typeTabs = TYPE_TABS;
   protected readonly continueIcon = faCirclePlay;
   protected readonly watchlistIcon = faBookmark;
 
@@ -93,16 +69,12 @@ export class HomeComponent {
   protected readonly userLoading = signal(false);
   protected readonly sectionStates = signal<SectionState[]>([]);
 
-  // Sequence numbers — only the latest in-flight load is allowed to write state.
-  private tmdbSeq = 0;
+  // Sequence number — only the latest in-flight user load is allowed to write
+  // state. The TMDB sections load is fire-and-forget once at construction.
   private userSeq = 0;
 
   constructor() {
-    // Reload TMDB sections on type change
-    effect(() => {
-      const type = this.type();
-      void this.loadTmdbSections(type);
-    });
+    void this.loadTmdbSections();
 
     // Reload user sections on auth change, after a progress save (player closes/saves),
     // or when the watchlist is mutated from anywhere.
@@ -121,22 +93,15 @@ export class HomeComponent {
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { queryParams });
   }
 
-  protected onTypeChange(t: MediaType): void {
-    if (t !== this.type()) void this.router.navigate(['/browse', t]);
-  }
-
-  private async loadTmdbSections(type: MediaType): Promise<void> {
-    const seq = ++this.tmdbSeq;
-    const configs = SECTIONS[type];
+  private async loadTmdbSections(): Promise<void> {
     // Show skeleton placeholders immediately so the layout is stable and the
     // user sees a clear "loading" state instead of empty rows that flash.
-    this.sectionStates.set(configs.map(c => ({ config: c, items: [], loading: true })));
+    this.sectionStates.set(SECTIONS.map(c => ({ config: c, items: [], loading: true })));
 
-    const results = await Promise.all(configs.map(c => this.tmdb.list(c.endpoint)));
-    if (seq !== this.tmdbSeq) return; // a newer load started, drop stale results
-    this.sectionStates.set(configs.map((c, i) => ({
+    const results = await Promise.all(SECTIONS.map(c => this.tmdb.list(c.endpoint)));
+    this.sectionStates.set(SECTIONS.map((c, i) => ({
       config: c,
-      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCard(it, type)),
+      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCard(it, c.mediaType)),
       loading: false
     })));
   }

@@ -1,47 +1,27 @@
-/* Minimal underline tabs.
- * No backgrounds, no borders — just text with a thin animated red underline
- * marking the active tab. Used by the home Film/Serie TV switcher and the
- * watchlist Da guardare/Visto filter. */
 :host {
-  display: inline-flex;
-  gap: 1.75rem;
+  display: flex;
+  gap: 0.5rem;
 }
 
 .nav-btn {
   background: transparent;
-  border: none;
+  border: 2px solid var(--border);
   color: var(--text-muted);
-  padding: 0.5rem 0.15rem;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  padding: 0.5rem 1.25rem;
+  border-radius: 25px;
   cursor: pointer;
-  position: relative;
-  transition: color 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
-.nav-btn:hover { color: var(--text); }
-.nav-btn.active { color: var(--text); }
+.nav-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
 
-.nav-btn::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
+.nav-btn.active {
   background: var(--accent);
-  border-radius: 1px;
-  transform: scaleX(0);
-  transform-origin: center;
-  transition: transform 0.25s ease;
-}
-
-.nav-btn.active::after {
-  transform: scaleX(1);
-}
-
-@media (max-width: 640px) {
-  :host { gap: 1.25rem; }
-  .nav-btn { font-size: 0.95rem; }
+  border-color: var(--accent);
+  color: var(--text);
 }

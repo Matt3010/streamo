@@ -218,7 +218,7 @@ export class UserListViewComponent {
   }
 
   protected back(): void {
-    this.navSource.goBack('/browse/movie');
+    this.navSource.goBack('/browse');
   }
 
   protected onCardClick(item: CardItem): void {

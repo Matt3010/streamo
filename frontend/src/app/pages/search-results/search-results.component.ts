@@ -30,7 +30,7 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
     } @else if (items().length === 0) {
       <div class="empty-state">
         <p class="empty-state-title">Nessun risultato per «{{ q() }}»</p>
-        <p class="empty-state-hint">Prova con un altro titolo, oppure cambia tipo (Film / Serie TV) dalle tab in alto.</p>
+        <p class="empty-state-hint">Prova con un altro titolo.</p>
       </div>
     } @else {
       <div class="content-grid">
@@ -66,7 +66,7 @@ export class SearchResultsComponent {
   }
 
   protected back(): void {
-    this.navSource.goBack(`/browse/${this.type()}`);
+    this.navSource.goBack('/browse');
   }
 
   protected onCardClick(item: CardItem): void {
