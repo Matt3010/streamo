@@ -35,8 +35,9 @@ interface CacheRow {
 }
 
 // Fetches a TV show's headline counts from TMDB, with a 24h SQLite cache.
-// Returns null on failure. Old cache entries that lack `seasons` are
-// transparently refreshed.
+// Returns null on failure. Old cache entries that lack required fields
+// (`seasons`, `last_episode_to_air`) are transparently refreshed so a
+// schema bump doesn't require manual cache eviction.
 export async function getTmdbTvSummary(tmdbId: number | string): Promise<TmdbTvSummary | null> {
   const key = `tv:${tmdbId}`;
   const now = Math.floor(Date.now() / 1000);
@@ -44,7 +45,12 @@ export async function getTmdbTvSummary(tmdbId: number | string): Promise<TmdbTvS
   if (cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
     try {
       const parsed = JSON.parse(cached.data) as Partial<TmdbTvSummary>;
-      if (Array.isArray(parsed.seasons)) return parsed as TmdbTvSummary;
+      // last_episode_to_air may legitimately be null (show not yet aired);
+      // we only refresh when the key is *missing entirely* — i.e. the entry
+      // was written before this field existed.
+      if (Array.isArray(parsed.seasons) && 'last_episode_to_air' in parsed) {
+        return parsed as TmdbTvSummary;
+      }
     } catch { /* fall through */ }
   }
   if (!TMDB_API_KEY) return null;
