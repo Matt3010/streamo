@@ -22,13 +22,6 @@
 .player-container {
   display: flex;
   flex-direction: column;
-  /* Cap the player column on wide desktops so the 16:9 backdrop / iframe
-   * doesn't dominate the viewport. Below this width it stays responsive
-   * and fills the available space. Header above stays full-width so the
-   * back button keeps its original left-edge position. */
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
 }
 
 .episode-controls {
@@ -62,6 +55,12 @@
   position: relative;
   border-radius: var(--radius-lg);
   overflow: hidden;
+  /* Cap the wrapper's width so that, with the 16:9 ratio, its computed
+   * height never exceeds ~60% of the viewport height. This keeps the
+   * actions/info row visible below the fold on tall-but-narrow screens
+   * and on wide desktops alike. Centered when the cap kicks in. */
+  max-width: calc(60vh * 16 / 9);
+  margin: 0 auto;
 }
 
 .player-preview {
@@ -197,6 +196,11 @@
 
 @media (max-width: 640px) {
   .watch-header h2 { font-size: 1.2rem; }
+
+  /* Stack the action buttons vertically on phones — each button takes the
+   * full row width with its label/icon centered. */
+  .player-actions { flex-direction: column; align-items: stretch; }
+  .player-actions .action-btn { justify-content: center; }
 }
 
 /* ===== Skeleton loading states =====
