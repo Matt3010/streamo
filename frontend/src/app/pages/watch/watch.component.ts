@@ -269,10 +269,10 @@ export class WatchComponent {
   }
 
   protected openRecommendation(item: CardItem): void {
-    // Replace the URL instead of pushing a new entry so "Indietro" goes
-    // back to wherever the user came from rather than walking through
-    // every recommended title they bounced into.
-    void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { replaceUrl: true });
+    // Normal push (no replaceUrl) so the navigation stack tracks each
+    // recommendation the user opens. "Indietro" then walks back through
+    // them one by one — same as the browser's native back button.
+    void this.router.navigate(['/watch', item.media_type, item.tmdb_id]);
   }
 
   protected back(): void {

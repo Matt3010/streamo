@@ -15,25 +15,37 @@ import { filter } from 'rxjs/operators';
 export class NavigationSourceService {
   private readonly router = inject(Router);
 
-  private previousUrl: string | null = null;
+  // Stack of URLs visited, *excluding* the current page. Each forward
+  // navigation pushes the previously-active URL; goBack() pops one entry.
+  // This prevents the infinite "Indietro → A → Indietro → B → A → B…" loop
+  // that a single previousUrl would cause: when the goBack-triggered
+  // navigation lands on its target, isGoingBack tells us not to push the
+  // page we just came from back onto the stack.
+  private stack: string[] = [];
   private currentUrl: string | null = null;
+  private isGoingBack = false;
 
   constructor() {
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
       .subscribe(e => {
-        this.previousUrl = this.currentUrl;
+        if (this.isGoingBack) {
+          this.isGoingBack = false;
+        } else if (this.currentUrl !== null && this.currentUrl !== e.urlAfterRedirects) {
+          this.stack.push(this.currentUrl);
+        }
         this.currentUrl = e.urlAfterRedirects;
       });
   }
 
   /**
-   * Navigate to the page that was active before the current one. If no
-   * previous URL has been recorded (deep link / fresh tab), navigate to the
-   * provided fallback route instead. Never invokes browser history.back().
+   * Navigate to the page that was active before the current one. If the
+   * stack is empty (deep link / fresh tab), navigate to the provided
+   * fallback route instead. Never invokes browser history.back().
    */
   goBack(fallback: string): void {
-    const target = this.previousUrl ?? fallback;
+    const target = this.stack.pop() ?? fallback;
+    this.isGoingBack = true;
     void this.router.navigateByUrl(target);
   }
 }
