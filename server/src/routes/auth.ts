@@ -71,4 +71,12 @@ router.get('/auth/me', requireAuth, (req, res) => {
   res.json({ user });
 });
 
+// Lightweight session check used by nginx `auth_request` to gate the
+// playback routes (/player, /embed). Just verifies the JWT cookie — no
+// DB query, no body — so gating doesn't add latency to every iframe load.
+// 200 = authenticated, 401 = not. Anything else nginx treats as 500.
+router.get('/auth/check', requireAuth, (_req, res) => {
+  res.status(200).end();
+});
+
 export default router;

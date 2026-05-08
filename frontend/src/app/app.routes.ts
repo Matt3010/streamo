@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { ListLayoutComponent } from './layouts/list-layout/list-layout.component';
+import { requireAuthGuard } from './services/auth.guard';
 
 export const routes: Routes = [
   {
@@ -18,6 +19,7 @@ export const routes: Routes = [
       },
       {
         path: 'watch/:type/:id',
+        canActivate: [requireAuthGuard],
         loadComponent: () => import('./pages/watch/watch.component').then(m => m.WatchComponent)
       },
       {

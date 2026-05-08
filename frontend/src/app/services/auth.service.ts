@@ -11,14 +11,23 @@ export class AuthService {
   readonly currentUser = signal<User | null>(null);
   readonly isLoggedIn = computed(() => this.currentUser() !== null);
 
-  async checkAuth(): Promise<void> {
-    try {
-      const res = await fetch('/api/auth/me');
-      if (res.ok) {
-        const data = await res.json() as { user: User };
-        this.currentUser.set(data.user);
-      }
-    } catch {}
+  // Cached so route guards can `await checkAuth()` without re-issuing
+  // /api/auth/me on every navigation. The first caller (AppComponent at
+  // boot) starts the request; subsequent callers reuse the same promise.
+  private authCheckPromise: Promise<void> | null = null;
+
+  checkAuth(): Promise<void> {
+    if (this.authCheckPromise) return this.authCheckPromise;
+    this.authCheckPromise = (async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json() as { user: User };
+          this.currentUser.set(data.user);
+        }
+      } catch {}
+    })();
+    return this.authCheckPromise;
   }
 
   async login(email: string, password: string): Promise<AuthResponse> {
@@ -34,6 +43,10 @@ export class AuthService {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
     this.currentUser.set(null);
+    // Reset the cache so the next checkAuth() actually round-trips to
+    // /api/auth/me instead of reusing the resolved promise from the
+    // previous (logged-in) session.
+    this.authCheckPromise = null;
   }
 
   async setAutoplay(enabled: 0 | 1): Promise<boolean> {

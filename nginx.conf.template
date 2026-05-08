@@ -33,6 +33,31 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # ---- Internal session check ----
+    # Hit by `auth_request` on the playback routes (/player, /embed) to
+    # gate them at the edge. `internal` makes it unreachable from outside;
+    # nginx forwards the user's cookies automatically. Body is stripped
+    # since the backend only checks the JWT in the Cookie header.
+    # error_page 401 below sends unauthenticated visitors back to / so
+    # they get the SPA + login modal instead of a raw nginx 401 page.
+    location = /auth-check {
+        internal;
+        proxy_pass            http://backend/auth/check;
+        proxy_pass_request_body off;
+        proxy_set_header      Content-Length "";
+        proxy_set_header      Host             $host;
+        proxy_set_header      X-Real-IP        $remote_addr;
+        proxy_set_header      X-Forwarded-For  $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+    }
+
+    # Fallback for routes guarded by `auth_request /auth-check` — bounces
+    # unauthenticated requests to the SPA root, where the requireAuthGuard
+    # opens the login modal.
+    location @auth_required {
+        return 302 /;
+    }
+
     # ---- TMDB API ----
     location ~ ^/api/tmdb/(.*)$ {
         set $tmdb "api.themoviedb.org";
@@ -93,6 +118,14 @@ server {
 
     # ---- VixSrc embed player with ad-block injection ----
     location /embed/ {
+        # Gate the embed page entirely behind a valid session cookie.
+        # Static assets loaded *by* the embed page (HLS chunks, JW player
+        # bundles, CDN images) intentionally stay open: the iframe is
+        # already authenticated at load, and proxying every chunk through
+        # the auth_request would balloon latency.
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
         proxy_pass https://vixsrc.to/embed/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
@@ -137,6 +170,12 @@ server {
 
     # ---- VixSrc Player with ad-block + auto-seek injection ----
     location ~ ^/player/(movie|tv)/(.*)$ {
+        # Same gating as /embed: valid session cookie required to load the
+        # player HTML. Subsequent asset/playlist fetches stay open so the
+        # auth_request roundtrip doesn't multiply per HLS segment.
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
         set $vix_path $1/$2;
         # `$is_args$args` is required because nginx does NOT auto-forward
         # query strings when proxy_pass uses a variable in the URI — without
