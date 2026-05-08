@@ -120,16 +120,6 @@ main {
   }
 }
 
-/* Align page-level content with the top-bar and card rows at desktop widths.
- * Mirrors the 1.5rem horizontal inset applied by .top-bar and .row-container. */
-@media (min-width: 769px) {
-  .page-header,
-  .content-grid {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
-}
-
 .content-grid .card { width: 100%; }
 
 /* Account button — shared between top-bar (login button) and account-menu (trigger) */

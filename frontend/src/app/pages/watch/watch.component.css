@@ -3,13 +3,6 @@
   flex-direction: column;
 }
 
-/* Match the top-bar's horizontal padding (set in top-bar.component.css) so the
- * watch header and player line up with the tabs/search bar above. Same
- * breakpoint as the card-row arrows. */
-@media (min-width: 769px) {
-  .watch-page { padding: 0 1.5rem; }
-}
-
 .watch-header {
   display: flex;
   align-items: center;

@@ -12,12 +12,6 @@
 /* Reserve space on each side for the scroll arrows so they don't overlap the
    first/last card. Arrows are hidden on small screens so the padding kicks in
    only when the arrows are visible. */
-@media (min-width: 769px) {
-  .row-container {
-    padding: 0 1.5rem;
-  }
-}
-
 .scroll-row {
   display: flex;
   gap: 0.5rem;

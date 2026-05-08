@@ -10,12 +10,6 @@
   margin-bottom: 1.25rem;
 }
 
-/* Match the card-row horizontal inset so the search bar lines up with the
-   first card / section title. Same breakpoint as .row-container. */
-@media (min-width: 769px) {
-  .top-bar { padding: 0 1.5rem; }
-}
-
 .account-area {
   display: flex;
   align-items: center;
