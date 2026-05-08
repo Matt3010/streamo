@@ -26,6 +26,17 @@ export class TmdbService {
     return res.json() as Promise<TmdbSeasonDetails>;
   }
 
+  async getRecommendations(tmdbId: string | number, type: MediaType): Promise<TmdbItem[]> {
+    try {
+      const res = await fetch(`${TMDB_BASE}/${type}/${tmdbId}/recommendations?language=it-IT`);
+      if (!res.ok) return [];
+      const data = await res.json() as { results?: TmdbItem[] };
+      return data.results ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   async list(endpoint: string): Promise<TmdbItem[]> {
     try {
       const res = await fetch(`${TMDB_BASE}${endpoint}?language=it-IT&region=IT`);

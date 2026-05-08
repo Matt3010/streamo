@@ -3,6 +3,18 @@
   flex-direction: column;
 }
 
+/* Title + episode controls + player + actions + info live in this column.
+ * Capped to 800px and centered so on wide desktops the meta text isn't
+ * stretched edge-to-edge. The "Ti potrebbe piacere" row sits *outside* this
+ * wrapper so its horizontal carousel can still use the full main width. */
+.watch-main {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
 .watch-header {
   display: flex;
   align-items: center;
@@ -162,6 +174,14 @@
 
 .player-extra {
   font-size: 0.85rem !important;
+}
+
+/* Recommendations row sits below the player info block. The extra top
+ * padding gives it visual separation from the cast/extra lines, since
+ * .player-info has no bottom padding of its own. */
+.watch-recommendations {
+  display: block;
+  padding-top: 1.75rem;
 }
 
 @media (max-width: 640px) {

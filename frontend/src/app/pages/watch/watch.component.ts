@@ -1,31 +1,36 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute, signal } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { Router } from '@angular/router';
+import { faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { IconComponent } from '../../components/icon/icon.component';
+import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
+import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { BackgroundService } from '../../services/background.service';
-import type { MediaType } from '../../models';
+import type { CardItem, MediaType, TmdbItem } from '../../models';
 
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
-      <div class="watch-header">
-        <button class="back-btn" (click)="back()">
-          <app-icon name="chevron-left"></app-icon>
-          <span>Indietro</span>
-        </button>
-        @if (loading()) {
-          <div class="skeleton skeleton-title"></div>
-        } @else {
-          <h2>{{ title() }}</h2>
-        }
-      </div>
+      <div class="watch-main">
+        <div class="watch-header">
+          <button class="back-btn" (click)="back()">
+            <app-icon name="chevron-left"></app-icon>
+            <span>Indietro</span>
+          </button>
+          @if (loading()) {
+            <div class="skeleton skeleton-title"></div>
+          } @else {
+            <h2>{{ title() }}</h2>
+          }
+        </div>
 
-      <div class="player-container">
+        <div class="player-container">
         @if (loading() && player.currentItemType() !== 'movie') {
           <div class="episode-controls active">
             <div class="skeleton skeleton-select"></div>
@@ -108,16 +113,37 @@ import type { MediaType } from '../../models';
           }
         </div>
       </div>
+      </div>
+
+      @if (recommendations().length > 0 || recommendationsLoading()) {
+        <app-section-row
+          class="watch-recommendations"
+          title="Ti potrebbe piacere"
+          [icon]="recommendationsIcon"
+          [items]="recommendations()"
+          [loading]="recommendationsLoading()"
+          (cardClick)="openRecommendation($event)" />
+      }
     </div>
   `,
   styleUrl: './watch.component.css'
 })
 export class WatchComponent {
   protected readonly player = inject(PlayerService);
+  private readonly tmdb = inject(TmdbService);
+  private readonly router = inject(Router);
   private readonly navSource = inject(NavigationSourceService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly destroyRef = inject(DestroyRef);
   private readonly background = inject(BackgroundService);
+
+  protected readonly recommendationsIcon = faThumbsUp;
+  protected readonly recommendations = signal<CardItem[]>([]);
+  protected readonly recommendationsLoading = signal(false);
+
+  // Sequence guards out-of-order recommendation responses when the user
+  // jumps between titles before the previous fetch resolves.
+  private recommendationsSeq = 0;
 
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -213,10 +239,40 @@ export class WatchComponent {
       this.background.setUrl(this.player.backdropUrl() || null);
     });
 
+    // Recommendations are tied to the *route inputs* (not the loaded item)
+    // so they kick off the moment the URL changes, in parallel with the
+    // TMDB details fetch. Skips empty/invalid combos.
+    effect(() => {
+      const id = this.id();
+      const type = this.type();
+      if (!id || (type !== 'movie' && type !== 'tv')) {
+        this.recommendations.set([]);
+        return;
+      }
+      void this.loadRecommendations(id, type);
+    });
+
     this.destroyRef.onDestroy(() => {
       this.player.cleanup();
       this.background.clear();
     });
+  }
+
+  private async loadRecommendations(id: string, type: MediaType): Promise<void> {
+    const seq = ++this.recommendationsSeq;
+    this.recommendationsLoading.set(true);
+    this.recommendations.set([]);
+    const results = await this.tmdb.getRecommendations(id, type);
+    if (seq !== this.recommendationsSeq) return;
+    this.recommendations.set(results.slice(0, 20).map(it => tmdbToCard(it, type)));
+    this.recommendationsLoading.set(false);
+  }
+
+  protected openRecommendation(item: CardItem): void {
+    // Replace the URL instead of pushing a new entry so "Indietro" goes
+    // back to wherever the user came from rather than walking through
+    // every recommended title they bounced into.
+    void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { replaceUrl: true });
   }
 
   protected back(): void {
@@ -244,6 +300,18 @@ export class WatchComponent {
     const t = ev.target;
     if (t instanceof HTMLSelectElement) void this.player.changeEpisode(parseInt(t.value, 10));
   }
+}
+
+function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
+  const dateStr = item.release_date ?? item.first_air_date ?? '';
+  return {
+    tmdb_id: item.id,
+    media_type: type,
+    title: item.title ?? item.name ?? 'Senza titolo',
+    poster: item.poster_path ?? null,
+    year: dateStr.split('-')[0] ?? '',
+    rating: item.vote_average ? item.vote_average.toFixed(1) : ''
+  };
 }
 
 function formatTime(seconds: number): string {
