@@ -3,6 +3,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IconComponent } from '../../components/icon/icon.component';
 import { PlayerService } from '../../services/player.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
+import { BackgroundService } from '../../services/background.service';
 import type { MediaType } from '../../models';
 
 @Component({
@@ -120,6 +121,7 @@ export class WatchComponent {
   private readonly navSource = inject(NavigationSourceService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly background = inject(BackgroundService);
 
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -208,7 +210,17 @@ export class WatchComponent {
       void this.player.open(id, type, this.s(), this.e());
     });
 
-    this.destroyRef.onDestroy(() => this.player.cleanup());
+    // Mirror the player's backdrop into the global app background while
+    // the watch page is mounted. Cleared on destroy so other pages don't
+    // inherit this title's artwork.
+    effect(() => {
+      this.background.setUrl(this.player.backdropUrl() || null);
+    });
+
+    this.destroyRef.onDestroy(() => {
+      this.player.cleanup();
+      this.background.clear();
+    });
   }
 
   protected back(): void {
