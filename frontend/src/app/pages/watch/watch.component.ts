@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute } from '@angular/core';
-import { Location } from '@angular/common';
-import { Router } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { IconComponent } from '../../components/icon/icon.component';
 import { PlayerService } from '../../services/player.service';
+import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { MediaType } from '../../models';
 
 @Component({
@@ -14,8 +13,9 @@ import type { MediaType } from '../../models';
   template: `
     <div class="watch-page">
       <div class="watch-header">
-        <button class="close-btn" aria-label="Indietro" (click)="back()">
-          <app-icon name="close"></app-icon>
+        <button class="back-btn" (click)="back()">
+          <app-icon name="chevron-left"></app-icon>
+          <span>Indietro</span>
         </button>
         @if (loading()) {
           <div class="skeleton skeleton-title"></div>
@@ -117,8 +117,7 @@ import type { MediaType } from '../../models';
 })
 export class WatchComponent {
   protected readonly player = inject(PlayerService);
-  private readonly router = inject(Router);
-  private readonly location = inject(Location);
+  private readonly navSource = inject(NavigationSourceService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -213,8 +212,7 @@ export class WatchComponent {
   }
 
   protected back(): void {
-    if (window.history.length > 1) this.location.back();
-    else void this.router.navigate(['/']);
+    this.navSource.goBack(`/browse/${this.type()}`);
   }
 
   protected play(): void {

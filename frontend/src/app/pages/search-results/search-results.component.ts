@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
-import { Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { TmdbService } from '../../services/tmdb.service';
+import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { CardItem, MediaType, TmdbItem } from '../../models';
 
 @Component({
@@ -13,10 +13,11 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
-      <h2>{{ headerText() }}</h2>
-      <button class="icon-btn-lg" aria-label="Indietro" (click)="back()">
-        <app-icon name="close"></app-icon>
+      <button class="back-btn" (click)="back()">
+        <app-icon name="chevron-left"></app-icon>
+        <span>Indietro</span>
       </button>
+      <h2>{{ headerText() }}</h2>
     </div>
 
     @if (loading()) {
@@ -43,7 +44,7 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
 export class SearchResultsComponent {
   private readonly tmdb = inject(TmdbService);
   private readonly router = inject(Router);
-  private readonly location = inject(Location);
+  private readonly navSource = inject(NavigationSourceService);
 
   // Route :type param + ?q= query param via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -65,8 +66,7 @@ export class SearchResultsComponent {
   }
 
   protected back(): void {
-    if (window.history.length > 1) this.location.back();
-    else void this.router.navigate(['/']);
+    this.navSource.goBack(`/browse/${this.type()}`);
   }
 
   protected onCardClick(item: CardItem): void {

@@ -96,10 +96,14 @@ main {
   margin: 0 auto 1.5rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.75rem;
 }
 
-.page-header h2 { font-size: 1.5rem; }
+.page-header h2 {
+  font-size: 1.5rem;
+  flex: 1;
+  min-width: 0;
+}
 
 /* Content grid — used by search and user-list pages */
 .content-grid {
@@ -174,7 +178,7 @@ main {
 .primary-btn:hover { background: var(--accent-hover); }
 .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* Larger icon button — used by page-level "back" actions */
+/* Larger icon button — used by page-level icon actions */
 .icon-btn-lg {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -192,4 +196,34 @@ main {
 .icon-btn-lg:hover {
   background: var(--accent);
   border-color: var(--accent);
+}
+
+/* Page-level "Indietro" button — text + chevron, used by watch / search /
+ * user-list pages. Navigates to the page the user came from (tracked by
+ * NavigationSourceService), never uses browser history.back(). */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.back-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.back-btn svg {
+  width: 14px;
+  height: 14px;
 }

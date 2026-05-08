@@ -7,6 +7,7 @@ import { UiModalComponent } from '../../ui/modal/modal.component';
 import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
+import { NavigationSourceService } from '../../services/navigation-source.service';
 import { computeWatchStatus } from '../../services/watchlist-status.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
@@ -27,6 +28,10 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
+      <button class="back-btn" (click)="back()">
+        <app-icon name="chevron-left"></app-icon>
+        <span>Indietro</span>
+      </button>
       <h2>{{ title() }}</h2>
       <div class="page-actions">
         <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
@@ -39,9 +44,6 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
             <app-icon name="list"></app-icon>
           </button>
         </div>
-        <button class="icon-btn-lg" aria-label="Indietro" (click)="back()">
-          <app-icon name="close"></app-icon>
-        </button>
       </div>
     </div>
 
@@ -150,6 +152,7 @@ export class UserListViewComponent {
   private readonly history = inject(HistoryService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
+  private readonly navSource = inject(NavigationSourceService);
 
   // Route :kind param via withComponentInputBinding().
   readonly kind = input.required<UserListType>();
@@ -215,7 +218,7 @@ export class UserListViewComponent {
   }
 
   protected back(): void {
-    void this.router.navigate(['/']);
+    this.navSource.goBack('/browse/movie');
   }
 
   protected onCardClick(item: CardItem): void {
