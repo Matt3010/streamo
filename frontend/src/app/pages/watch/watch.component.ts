@@ -87,6 +87,19 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
               <app-icon name="bookmark"></app-icon>
             </button>
           </div>
+        } @else {
+          <div class="player-actions">
+            <button class="action-btn" (click)="closePlayer()">
+              <app-icon name="close"></app-icon>
+              <span>Chiudi player</span>
+            </button>
+            <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+                    [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    (click)="toggleWatchlist()">
+              <app-icon name="bookmark"></app-icon>
+            </button>
+          </div>
         }
 
         @if (loading() && type() === 'tv') {
@@ -369,6 +382,10 @@ export class WatchComponent {
 
   protected playNext(): void {
     void this.player.playNextEpisode();
+  }
+
+  protected closePlayer(): void {
+    void this.player.stopPlayback();
   }
 
   protected toggleWatchlist(): void {

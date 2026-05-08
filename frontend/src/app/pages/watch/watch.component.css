@@ -307,9 +307,16 @@
   outline-offset: 2px;
 }
 
+/* Inset ring rather than outline + offset: the parent .episode-grid uses
+ * overflow-x: auto, which forces overflow-y to auto too, so any outline
+ * drawn *outside* the thumb gets clipped by the scroll container. An
+ * inset box-shadow is painted inside the thumb's rounded corners and
+ * never clips. The base bottom-gradient shadow is preserved as the
+ * second layer so the episode-number stays legible on the selected card. */
 .episode-card.selected .episode-thumb {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    inset 0 -40px 60px -30px rgba(0, 0, 0, 0.85);
 }
 
 .episode-card.selected .episode-title {
@@ -337,7 +344,9 @@
 .episode-number {
   position: absolute;
   left: 0.6rem;
-  bottom: 0.45rem;
+  /* Sits above the progress pill (bottom: 6px, height: 4px → 10px) plus
+   * a small breathing gap so the digit baseline doesn't kiss the bar. */
+  bottom: 1rem;
   font-size: 1.6rem;
   font-weight: 700;
   color: #fff;

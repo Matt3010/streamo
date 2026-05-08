@@ -404,6 +404,40 @@ export class PlayerService {
     this.startVideo();
   }
 
+  // Tear down the iframe without leaving the watch page — flushes the last
+  // bit of progress, kills the periodic save interval, then re-arms the
+  // pendingVideoUrl + resume seek so the next "Riprendi"/"Guarda" click
+  // starts from where the user just stopped. The watch page itself stays
+  // mounted (currentItem is preserved), so the user is back to the same
+  // CTA + episode grid they came from.
+  async stopPlayback(): Promise<void> {
+    if (this.videoStartTime !== null && this.currentVideoTime > 10) {
+      await this.persistProgress(
+        this.currentVideoTime,
+        this.currentVideoDuration,
+        this.playingSeason,
+        this.playingEpisode
+      );
+    }
+    this.resetPlayer();
+
+    const item = untracked(() => this.currentItem());
+    const type = untracked(() => this.currentItemType());
+    if (!item || !type) return;
+
+    if (type === 'tv') {
+      const season = untracked(() => this.selectedSeason());
+      const episode = untracked(() => this.selectedEpisode());
+      this.setEpisodeUrl(item.id, season, episode);
+      const seq = ++this.urlSeq;
+      await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
+    } else {
+      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${item.id}`;
+      const seq = ++this.urlSeq;
+      await this.applyResumeProgress(seq, item.id, 'movie');
+    }
+  }
+
   // Switch the player to the next episode and start it from the beginning.
   // Used by the preview "Vai al prossimo" button to skip past the tail-end
   // of the current episode (≥80%) instead of resuming it.
