@@ -245,11 +245,10 @@ router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
-  const tx = db.transaction(() => {
-    db.prepare(`DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?`).run(req.user!.id, tmdb_id, type);
-    db.prepare(`DELETE FROM progress WHERE user_id = ? AND tmdb_id = ? AND media_type = ?`).run(req.user!.id, tmdb_id, type);
-  });
-  tx();
+  // Watchlist and progress are independent: removing a title from the list
+  // must not erase the user's viewing position. Cleanup of progress is
+  // handled separately via the history endpoints.
+  db.prepare(`DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?`).run(req.user!.id, tmdb_id, type);
   res.json({ ok: true });
 });
 
