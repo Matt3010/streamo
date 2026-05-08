@@ -46,6 +46,15 @@
   gap: 0.5rem;
 }
 
+/* Align with .page-header and the top-bar tabs at desktop widths. */
+@media (min-width: 769px) {
+  .filter-bar,
+  .item-list {
+    padding-left: 4rem;
+    padding-right: 4rem;
+  }
+}
+
 .item-row {
   display: flex;
   align-items: center;
