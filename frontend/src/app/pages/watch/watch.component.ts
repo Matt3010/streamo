@@ -121,7 +121,7 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
             <div class="episode-grid">
               @for (ep of player.episodes(); track ep.episode_number) {
                 <button type="button" class="episode-card"
-                        [class.selected]="ep.episode_number === player.selectedEpisode()"
+                        [class.selected]="ep.episode_number === activeInThisSeason()"
                         (click)="selectEpisode(ep.episode_number)">
                   <div class="episode-thumb"
                        [class.no-image]="!ep.still_path"
@@ -264,6 +264,24 @@ export class WatchComponent {
     const p = this.player.resumeProgress();
     if (!p || p.duration <= 0) return false;
     return p.position / p.duration >= 0.8;
+  });
+
+  // Episode number to highlight on the card grid for the season currently
+  // shown in the dropdown. Resolution order:
+  //   1. The actively-loaded episode if it belongs to this season — covers
+  //      "I just clicked S1E3, S1E3 should be the highlight".
+  //   2. Otherwise the next-unwatched episode if it belongs to this season
+  //      — covers "I'm browsing S5 to see where I was; mark S5E7 even
+  //      though I'm currently rewatching S1E3 in another season".
+  //   3. Otherwise no highlight (the user is browsing a season unrelated
+  //      to either marker).
+  protected readonly activeInThisSeason = computed<number | null>(() => {
+    const season = this.player.selectedSeason();
+    const active = this.player.activeEpisodeRef();
+    if (active && active.season === season) return active.episode;
+    const next = this.player.nextUnwatchedRef();
+    if (next && next.season === season) return next.episode;
+    return null;
   });
 
   protected readonly playLabel = computed(() => {

@@ -61,6 +61,15 @@ export class PlayerService {
   // episodes via the card grid. null for movies, fresh shows, or fully
   // completed series.
   readonly nextUnwatchedRef = signal<{ season: number; episode: number } | null>(null);
+  // The {season, episode} pair currently *loaded* in the player (or the
+  // initial target before first play). Drives the red "selected" highlight
+  // on episode cards. Diverges from selectedSeason/selectedEpisode when the
+  // user uses the season dropdown to *browse* a season without playing an
+  // episode in it — selectedEpisode then resets to 1 (URL preload), but the
+  // highlight stays anchored to whatever the user was last actually
+  // watching, only re-appearing on the cards when they navigate back to its
+  // own season.
+  readonly activeEpisodeRef = signal<{ season: number; episode: number } | null>(null);
   // Next playable episode coordinates given the currently-loaded series and
   // the active selectedSeason/selectedEpisode. null for movies, finales, or
   // before TV details are loaded.
@@ -128,6 +137,7 @@ export class PlayerService {
     this.episodes.set([]);
     this.seriesProgress.set(new Map());
     this.nextUnwatchedRef.set(null);
+    this.activeEpisodeRef.set(null);
 
     const item = await this.tmdb.getDetails(tmdbId, type);
     if (!item) {
@@ -234,6 +244,7 @@ export class PlayerService {
     this.resumeProgress.set(null);
     this.seriesProgress.set(new Map());
     this.nextUnwatchedRef.set(null);
+    this.activeEpisodeRef.set(null);
     this.progressTick.update(n => n + 1);
   }
 
@@ -290,6 +301,7 @@ export class PlayerService {
 
     this.selectedEpisode.set(episode);
     const season = this.selectedSeason();
+    this.activeEpisodeRef.set({ season, episode });
     this.resetPlayer();
     this.setEpisodeUrl(item.id, season, episode);
     const seq = ++this.urlSeq;
@@ -340,6 +352,7 @@ export class PlayerService {
 
     const targetEpisode = resumeEpisode > 0 ? resumeEpisode : 1;
     this.selectedEpisode.set(targetEpisode);
+    this.activeEpisodeRef.set({ season: targetSeason, episode: targetEpisode });
 
     this.setEpisodeUrl(tmdbId, targetSeason, targetEpisode);
     const seq = ++this.urlSeq;
@@ -451,6 +464,7 @@ export class PlayerService {
     const seasonChanged = next.season !== this.selectedSeason();
     this.selectedSeason.set(next.season);
     this.selectedEpisode.set(next.episode);
+    this.activeEpisodeRef.set(next);
 
     if (seasonChanged) {
       const seasonData = await this.tmdb.getSeasonDetails(item.id, next.season);
@@ -592,6 +606,7 @@ export class PlayerService {
     if (nextEp !== undefined) {
       this.selectedEpisode.set(nextEp.episode_number);
       const season = this.selectedSeason();
+      this.activeEpisodeRef.set({ season, episode: nextEp.episode_number });
       this.resetPlayer();
       this.setEpisodeUrl(item.id, season, nextEp.episode_number);
       const seq = ++this.urlSeq;

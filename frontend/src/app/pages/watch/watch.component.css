@@ -122,7 +122,10 @@
   display: flex;
   gap: 0.75rem;
   padding: 0.5rem 0 0;
-  flex-wrap: wrap;
+  /* Never wrap — the primary CTA / close button stretches to fill the
+   * row and the bookmark icon stays pinned to the right edge on every
+   * viewport size. */
+  flex-wrap: nowrap;
   align-items: stretch;
 }
 
@@ -150,14 +153,18 @@
   transform: scale(0.98);
 }
 
-/* Primary CTA stretches to fill the available row so the watchlist icon
- * sits flush to the right edge. flex-basis keeps a sensible min width and
- * max-width prevents the button from looking like a banner on wide
- * desktops. */
-.action-btn.primary {
+/* Primary CTA + any other non-icon button (e.g. "Chiudi player",
+ * "Vai al prossimo") stretches to fill the available row so the
+ * watchlist icon sits flush to the right edge. min-width keeps the label
+ * readable; no max-width — the user explicitly wants the button to fill
+ * the entire row. */
+.player-actions > .action-btn:not(.icon-only) {
   flex: 1 1 auto;
+  min-width: 0;
+}
+
+.action-btn.primary {
   min-width: 12rem;
-  max-width: 22rem;
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -441,10 +448,9 @@
 @media (max-width: 640px) {
   .watch-header h2 { font-size: 1.5rem; }
 
-  /* Stack action buttons but keep the bookmark icon-button on the same row
-   * as the primary CTA — the row wraps naturally so the bookmark slides
-   * underneath if there's no horizontal room. */
-  .player-actions .action-btn.primary { flex-basis: 100%; justify-content: center; }
+  /* Drop the desktop min-width on the primary CTA so it can shrink with
+   * the viewport and never push the bookmark icon off the row. */
+  .action-btn.primary { min-width: 0; }
 
   /* Smaller episode cards on phones — fits ~1.6 cards per viewport so the
    * "swipe for more" affordance is obvious at a glance. */
@@ -506,8 +512,7 @@
 .skeleton-btn {
   height: 2.85rem;
   flex: 1 1 auto;
-  min-width: 12rem;
-  max-width: 22rem;
+  min-width: 0;
 }
 
 .skeleton-btn-icon {
