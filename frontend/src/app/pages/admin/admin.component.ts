@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { ToastService } from '../../services/toast.service';
+import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { AdminTokenRow, AdminSession } from '../../models';
 
 function formatTime(seconds: number): string {
@@ -20,12 +22,22 @@ function timeAgo(timestamp: number): string {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [UiModalComponent],
+  imports: [UiModalComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="admin-page">
-      <h1>Pannello Admin</h1>
+    <div class="page-header">
+      <div class="page-header-back">
+        <button class="back-btn" (click)="back()">
+          <app-icon name="chevron-left"></app-icon>
+          <span>Indietro</span>
+        </button>
+      </div>
+      <div class="page-header-row">
+        <h2>Pannello Admin</h2>
+      </div>
+    </div>
 
+    <div class="admin-content">
       <section class="admin-section">
         <div class="section-header">
           <h2>Token e Utenti</h2>
@@ -141,6 +153,7 @@ function timeAgo(timestamp: number): string {
 export class AdminComponent implements OnInit, OnDestroy {
   protected readonly admin = inject(AdminService);
   private readonly toast = inject(ToastService);
+  private readonly navSource = inject(NavigationSourceService);
 
   protected readonly newTokenLabel = signal('');
   protected readonly revokeModalOpen = signal(false);
@@ -160,6 +173,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (this.sessionsInterval) {
       clearInterval(this.sessionsInterval);
     }
+  }
+
+  protected back(): void {
+    this.navSource.goBack('/');
   }
 
   protected updateLabel(ev: Event): void {
