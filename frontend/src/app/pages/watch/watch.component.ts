@@ -18,11 +18,13 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
   template: `
     <div class="watch-page">
       <div class="watch-main">
-        <div class="watch-header">
+        <div class="watch-back">
           <button class="back-btn" (click)="back()">
             <app-icon name="chevron-left"></app-icon>
             <span>Indietro</span>
           </button>
+        </div>
+        <div class="watch-header">
           @if (loading()) {
             <div class="skeleton skeleton-title"></div>
           } @else {

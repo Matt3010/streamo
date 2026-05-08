@@ -95,10 +95,22 @@ main {
   line-height: 1.5;
 }
 
-/* Page header — used by search and user-list pages */
+/* Page header — used by search and user-list pages.
+ * Stacks vertically: row 1 = back button, row 2 = title (+ optional actions). */
 .page-header {
   max-width: 1400px;
   margin: 0 auto 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.page-header-back {
+  display: flex;
+}
+
+.page-header-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;

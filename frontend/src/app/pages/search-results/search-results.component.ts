@@ -13,10 +13,12 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
-      <button class="back-btn" (click)="back()">
-        <app-icon name="chevron-left"></app-icon>
-        <span>Indietro</span>
-      </button>
+      <div class="page-header-back">
+        <button class="back-btn" (click)="back()">
+          <app-icon name="chevron-left"></app-icon>
+          <span>Indietro</span>
+        </button>
+      </div>
       <h2>{{ headerText() }}</h2>
     </div>
 

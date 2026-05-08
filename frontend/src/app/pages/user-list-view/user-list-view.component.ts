@@ -28,21 +28,25 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
-      <button class="back-btn" (click)="back()">
-        <app-icon name="chevron-left"></app-icon>
-        <span>Indietro</span>
-      </button>
-      <h2>{{ title() }}</h2>
-      <div class="page-actions">
-        <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
-          <button class="view-btn" [class.active]="viewMode() === 'grid'"
-                  aria-label="Griglia" (click)="setViewMode('grid')">
-            <app-icon name="grid"></app-icon>
-          </button>
-          <button class="view-btn" [class.active]="viewMode() === 'list'"
-                  aria-label="Lista" (click)="setViewMode('list')">
-            <app-icon name="list"></app-icon>
-          </button>
+      <div class="page-header-back">
+        <button class="back-btn" (click)="back()">
+          <app-icon name="chevron-left"></app-icon>
+          <span>Indietro</span>
+        </button>
+      </div>
+      <div class="page-header-row">
+        <h2>{{ title() }}</h2>
+        <div class="page-actions">
+          <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
+            <button class="view-btn" [class.active]="viewMode() === 'grid'"
+                    aria-label="Griglia" (click)="setViewMode('grid')">
+              <app-icon name="grid"></app-icon>
+            </button>
+            <button class="view-btn" [class.active]="viewMode() === 'list'"
+                    aria-label="Lista" (click)="setViewMode('list')">
+              <app-icon name="list"></app-icon>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -15,6 +15,11 @@
   margin: 0 auto;
 }
 
+.watch-back {
+  display: flex;
+  padding: 0 0 0.5rem;
+}
+
 .watch-header {
   display: flex;
   align-items: center;
@@ -25,7 +30,6 @@
 .watch-header h2 {
   font-size: 1.5rem;
   font-weight: 700;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
