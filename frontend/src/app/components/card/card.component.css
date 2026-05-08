@@ -1,6 +1,14 @@
+/* Host fills its parent (grid cell or flex track). Width is controlled by
+ * the parent: `.scroll-row > app-card` sets a fixed width for horizontal
+ * card-row scrolling, while `.content-grid` cells let the host stretch to
+ * 1fr. */
+:host {
+  display: block;
+  width: 100%;
+}
+
 .card {
-  flex-shrink: 0;
-  width: 150px;
+  width: 100%;
   aspect-ratio: 2/3;
   background: var(--surface);
   border: 2px solid transparent;
@@ -17,9 +25,6 @@
   border-color: var(--accent);
   box-shadow: 0 6px 16px rgba(0,0,0,0.45);
 }
-
-@media (min-width: 640px) { .card { width: 165px; } }
-@media (min-width: 1024px) { .card { width: 175px; } }
 
 .card-poster {
   width: 100%;

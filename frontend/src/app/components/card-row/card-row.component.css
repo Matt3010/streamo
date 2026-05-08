@@ -27,6 +27,18 @@
 
 .scroll-row::-webkit-scrollbar { display: none; }
 
+/* Fix card width inside the horizontal scroller. The card component itself
+ * defaults to width: 100% (so it fills grid cells in /list and /search),
+ * so the size is set here on the host element instead. */
+.scroll-row > app-card {
+  flex-shrink: 0;
+  width: 150px;
+  scroll-snap-align: start;
+}
+
+@media (min-width: 640px) { .scroll-row > app-card { width: 165px; } }
+@media (min-width: 1024px) { .scroll-row > app-card { width: 175px; } }
+
 .scroll-arrow {
   position: absolute;
   top: 50%;

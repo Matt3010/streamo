@@ -25,17 +25,15 @@ body {
   line-height: 1.5;
 }
 
+/* Lateral page padding kept tight (0.4rem) at every viewport so the
+ * card grid (la mia lista / cronologia / search) and home rows reach the
+ * viewport edges. Chips/buttons (back button, filter tabs, view toggle)
+ * keep this 0.4rem inset so they don't touch the edge; grids bleed past
+ * it via negative margins below. */
 main {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 1.25rem 0.75rem;
-}
-
-/* Phones: keep just enough lateral page padding for chips/buttons (back
- * button, filter tabs, view toggle) to not touch the viewport edge. The
- * card grid itself bleeds past this padding via negative margins below. */
-@media (max-width: 640px) {
-  main { padding: 0.85rem 0.4rem; }
+  padding: 0.85rem 0.4rem;
 }
 
 /* === Cross-component utilities ===
@@ -112,22 +110,15 @@ main {
   min-width: 0;
 }
 
-/* Content grid — used by search and user-list pages */
+/* Content grid — used by search and user-list pages.
+ * Bleed past the main's small lateral padding so cards reach the viewport
+ * edges on every viewport size (mobile and desktop alike). */
 .content-grid {
   max-width: 1400px;
-  margin: 0 auto;
+  margin: 0 -0.4rem;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
   gap: 0.25rem;
-}
-
-@media (max-width: 640px) {
-  /* Bleed the grid past the main's small lateral padding so the cards
-   * extend all the way to the viewport edges on phones. */
-  .content-grid {
-    margin-left: -0.4rem;
-    margin-right: -0.4rem;
-  }
 }
 
 @media (min-width: 640px) {
@@ -136,8 +127,6 @@ main {
     gap: 0.6rem;
   }
 }
-
-.content-grid .card { width: 100%; }
 
 /* Account button — shared between top-bar (login button) and account-menu (trigger) */
 .account-btn {
