@@ -6,6 +6,7 @@ import preferencesRoutes from './routes/preferences';
 import progressRoutes from './routes/progress';
 import historyRoutes from './routes/history';
 import watchlistRoutes from './routes/watchlist';
+import adminRoutes from './routes/admin';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -17,6 +18,7 @@ app.use(preferencesRoutes);
 app.use(progressRoutes);
 app.use(historyRoutes);
 app.use(watchlistRoutes);
+app.use(adminRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend listening on ${PORT}`);

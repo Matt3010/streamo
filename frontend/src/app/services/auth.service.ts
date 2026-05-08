@@ -10,6 +10,7 @@ interface AuthResponse {
 export class AuthService {
   readonly currentUser = signal<User | null>(null);
   readonly isLoggedIn = computed(() => this.currentUser() !== null);
+  readonly isAdmin = computed(() => this.currentUser()?.is_admin === true);
 
   // Cached so route guards can `await checkAuth()` without re-issuing
   // /api/auth/me on every navigation. The first caller (AppComponent at
@@ -34,8 +35,8 @@ export class AuthService {
     return this.submitAuth('/api/auth/login', email, password);
   }
 
-  async register(email: string, password: string): Promise<AuthResponse> {
-    return this.submitAuth('/api/auth/register', email, password);
+  async register(email: string, password: string, token?: string): Promise<AuthResponse> {
+    return this.submitAuth('/api/auth/register', email, password, token);
   }
 
   async logout(): Promise<void> {
@@ -65,12 +66,14 @@ export class AuthService {
     }
   }
 
-  private async submitAuth(endpoint: string, email: string, password: string): Promise<AuthResponse> {
+  private async submitAuth(endpoint: string, email: string, password: string, token?: string): Promise<AuthResponse> {
     try {
+      const body: Record<string, string> = { email, password };
+      if (token) body.token = token;
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify(body)
       });
       const data = await res.json() as AuthResponse;
       if (res.ok && data.user) this.currentUser.set(data.user);

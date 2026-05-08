@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { SUPER_ADMIN_EMAIL } from './config';
 
 const DB_DIR = process.env.DB_DIR || '/data';
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
@@ -74,6 +75,18 @@ db.exec(`
     data TEXT NOT NULL,
     fetched_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
+
+  CREATE TABLE IF NOT EXISTS invite_tokens (
+    token TEXT PRIMARY KEY,
+    label TEXT,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    used_at INTEGER,
+    used_by_user_id INTEGER,
+    revoked_at INTEGER,
+    FOREIGN KEY (used_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_invite_used_by ON invite_tokens(used_by_user_id);
 `);
 
 // Migration: rename legacy `username` column to `email` if needed
@@ -101,6 +114,22 @@ db.exec(`
   )
 `);
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_history_unique ON history(user_id, tmdb_id, media_type, season, episode)");
+
+// Migration: create legacy invite_tokens for existing users (except super admin)
+const inviteMigDone = db.prepare("SELECT value FROM _meta WHERE key = 'migration_invite_tokens_v1'").get() as { value: string } | undefined;
+if (!inviteMigDone) {
+  const existingUsers = db.prepare("SELECT id, email FROM users").all() as Array<{ id: number; email: string }>;
+  const insertToken = db.prepare(
+    "INSERT INTO invite_tokens (token, label, used_at, used_by_user_id) VALUES (?, 'legacy', strftime('%s','now'), ?)"
+  );
+  for (const u of existingUsers) {
+    // Skip super admin — they don't need an invite token
+    if (SUPER_ADMIN_EMAIL && u.email.toLowerCase() === SUPER_ADMIN_EMAIL) continue;
+    const legacyToken = `legacy_${crypto.randomBytes(12).toString('base64url')}`;
+    insertToken.run(legacyToken, u.id);
+  }
+  db.prepare("INSERT INTO _meta (key, value) VALUES ('migration_invite_tokens_v1', 'done')").run();
+}
 
 export function getOrCreateJwtSecret(): string {
   const row = db.prepare("SELECT value FROM _meta WHERE key = 'jwt_secret'").get() as { value: string } | undefined;

@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { ListLayoutComponent } from './layouts/list-layout/list-layout.component';
 import { requireAuthGuard } from './services/auth.guard';
+import { adminGuard } from './services/admin.guard';
 
 export const routes: Routes = [
   {
@@ -25,6 +26,11 @@ export const routes: Routes = [
       {
         path: 'search/:type',
         loadComponent: () => import('./pages/search-results/search-results.component').then(m => m.SearchResultsComponent)
+      },
+      {
+        path: 'admin',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./pages/admin/admin.component').then(m => m.AdminComponent)
       }
     ]
   },

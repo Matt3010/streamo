@@ -6,3 +6,4 @@ export * from './watchlist.model';
 export * from './history.model';
 export * from './card.model';
 export * from './player-event.model';
+export * from './admin.model';

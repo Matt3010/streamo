@@ -12,6 +12,9 @@ import { ToastService } from '../../services/toast.service';
     @if (open()) {
       <div class="account-menu open">
         <div class="username">{{ auth.currentUser()?.email }}</div>
+        @if (auth.isAdmin()) {
+          <button (click)="goToAdmin()">Admin</button>
+        }
         <button (click)="goTo('watchlist')">La mia lista</button>
         <button (click)="goTo('history')">Cronologia</button>
         <label class="menu-toggle">
@@ -54,6 +57,11 @@ export class AccountMenuComponent {
   protected goTo(kind: 'watchlist' | 'history'): void {
     this.open.set(false);
     void this.router.navigate(['/list', kind]);
+  }
+
+  protected goToAdmin(): void {
+    this.open.set(false);
+    void this.router.navigate(['/admin']);
   }
 
   protected async onAutoplayChange(ev: Event): Promise<void> {

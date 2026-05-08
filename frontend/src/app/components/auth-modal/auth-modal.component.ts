@@ -11,7 +11,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   email_taken: 'Email gia registrata',
   invalid_credentials: 'Credenziali non valide',
   too_many_attempts: 'Troppi tentativi, riprova piu tardi',
-  network_error: 'Errore di connessione'
+  network_error: 'Errore di connessione',
+  missing_token: 'Token di invito richiesto',
+  invalid_token: 'Token di invito non valido',
+  revoked_token: 'Token di invito revocato',
+  token_already_used: 'Token di invito gia utilizzato',
+  super_admin_not_configured: 'Registrazione non disponibile',
+  access_revoked: 'Accesso revocato'
 };
 
 @Component({
@@ -35,6 +41,13 @@ const ERROR_MESSAGES: Record<string, string> = {
           <input type="password" autocomplete="current-password" minlength="6" required
                  [value]="password()" (input)="updatePassword($event)">
         </label>
+        @if (!isLogin()) {
+          <label>
+            <span>Token di invito</span>
+            <input type="text" autocomplete="off" required
+                   [value]="token()" (input)="updateToken($event)">
+          </label>
+        }
         @if (errorMsg()) { <p class="auth-error">{{ errorMsg() }}</p> }
         <button type="submit" class="primary-btn" [disabled]="submitting()">
           {{ isLogin() ? 'Accedi' : 'Registrati' }}
@@ -56,6 +69,7 @@ export class AuthModalComponent {
   protected readonly isLogin = signal(true);
   protected readonly email = signal('');
   protected readonly password = signal('');
+  protected readonly token = signal('');
   protected readonly errorCode = signal<string | null>(null);
   protected readonly submitting = signal(false);
   protected readonly errorMsg = computed(() => {
@@ -68,6 +82,7 @@ export class AuthModalComponent {
     this.errorCode.set(null);
     this.email.set('');
     this.password.set('');
+    this.token.set('');
   }
 
   protected toggleMode(ev: Event): void {
@@ -84,14 +99,19 @@ export class AuthModalComponent {
     const t = ev.target;
     if (t instanceof HTMLInputElement) this.password.set(t.value);
   }
+  protected updateToken(ev: Event): void {
+    const t = ev.target;
+    if (t instanceof HTMLInputElement) this.token.set(t.value);
+  }
 
   protected async submit(ev: Event): Promise<void> {
     ev.preventDefault();
     this.errorCode.set(null);
     this.submitting.set(true);
     try {
-      const fn = this.isLogin() ? this.auth.login.bind(this.auth) : this.auth.register.bind(this.auth);
-      const res = await fn(this.email().trim(), this.password());
+      const res = this.isLogin()
+        ? await this.auth.login(this.email().trim(), this.password())
+        : await this.auth.register(this.email().trim(), this.password(), this.token().trim() || undefined);
       if (res.user) {
         this.toast.show(`Benvenuto, ${res.user.email}!`);
         this.modalState.visible.set(false);

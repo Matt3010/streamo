@@ -15,3 +15,5 @@ export const WATCHED_THRESHOLD = 0.8;
 export const CONTINUE_HIDE_THRESHOLD = 0.95;
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();

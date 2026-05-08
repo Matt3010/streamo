@@ -24,7 +24,7 @@ server {
     }
 
     # ---- Backend API (Node.js) ----
-    location ~ ^/api/(auth|user)(/.*)?$ {
+    location ~ ^/api/(auth|user|admin)(/.*)?$ {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass http://backend;
         proxy_set_header Host $host;
