@@ -150,6 +150,22 @@ router.get('/user/progress/next/:type/:tmdb_id', requireAuth, async (req, res) =
   res.json({ next: await resolveNextPlayable(req.user!.id, tmdb_id) });
 });
 
+// All per-episode progress for a single TV series. Used by the watch page
+// to render progress bars on every episode card in one round-trip rather
+// than firing N separate /user/progress/tv/:id/:s/:e fetches as the user
+// scrolls. Must come BEFORE the generic /:type/:tmdb_id route below or
+// 'series' would be matched as a media_type.
+router.get('/user/progress/series/:tmdb_id', requireAuth, (req, res) => {
+  const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
+  if (!tmdb_id) return res.status(400).json({ error: 'invalid_params' });
+
+  const items = db.prepare(`
+    SELECT season, episode, position, duration FROM progress
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+  `).all(req.user!.id, tmdb_id);
+  res.json({ items });
+});
+
 router.get('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const season = toInt(req.params.season ?? 0, { min: 0 }) ?? 0;

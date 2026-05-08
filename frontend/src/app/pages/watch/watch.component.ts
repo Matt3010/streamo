@@ -114,6 +114,9 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
                        [class.no-image]="!ep.still_path"
                        [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
                     <span class="episode-number">{{ ep.episode_number }}</span>
+                    @if (episodeProgress(ep.episode_number) > 0) {
+                      <div class="episode-progress"><span [style.width.%]="episodeProgress(ep.episode_number)"></span></div>
+                    }
                   </div>
                   <div class="episode-meta">
                     <p class="episode-title">{{ ep.name || 'Episodio ' + ep.episode_number }}</p>
@@ -251,14 +254,18 @@ export class WatchComponent {
   });
 
   protected readonly playLabel = computed(() => {
+    // TV: the CTA is anchored to the *next-unwatched* episode for this
+    // user, not the currently-selected card. Lets the user explore older
+    // episodes via the grid without losing their "continue here" entry.
+    if (this.player.currentItemType() === 'tv') {
+      const ref = this.player.nextUnwatchedRef();
+      if (!ref) return 'Guarda';
+      return `Riprendi da S${ref.season} E${ref.episode}`;
+    }
+    // Movies still use a timestamp — there's no episode coordinate to
+    // fall back on, and "Riprendi da 12:34" is the universal convention.
     const p = this.player.resumeProgress();
     if (!p || p.position <= 10) return 'Guarda';
-    // For TV, "Sx Ey" is the actionable info: timestamp matters less than
-    // which episode the user is picking up. Movies still get the timestamp
-    // since there's no episode coordinate to fall back on.
-    if (this.player.currentItemType() === 'tv') {
-      return `Riprendi da S${this.player.selectedSeason()} E${this.player.selectedEpisode()}`;
-    }
     return `Riprendi da ${formatTime(p.position)}`;
   });
 
@@ -357,7 +364,7 @@ export class WatchComponent {
   }
 
   protected play(): void {
-    this.player.startVideo();
+    void this.player.playPrimary();
   }
 
   protected playNext(): void {
@@ -374,8 +381,22 @@ export class WatchComponent {
   }
 
   protected selectEpisode(episodeNumber: number): void {
-    if (episodeNumber === this.player.selectedEpisode()) return;
-    void this.player.changeEpisode(episodeNumber);
+    // Card click is a "play" action, not a "select" action — clicking a
+    // card and then having to find the CTA again would be a wasted tap.
+    // playEpisodeFromCard switches the player and starts the episode in
+    // a single call. The CTA stays anchored to next-unwatched.
+    void this.player.playEpisodeFromCard(episodeNumber);
+  }
+
+  // Progress percentage (0–100) for the given episode card in the
+  // currently-selected season. Returns 0 when there's no progress, which
+  // the template uses to skip rendering the bar entirely.
+  protected episodeProgress(episodeNumber: number): number {
+    const map = this.player.seriesProgress();
+    const key = `s${this.player.selectedSeason()}e${episodeNumber}`;
+    const p = map.get(key);
+    if (!p || p.duration <= 0) return 0;
+    return Math.min(100, Math.max(0, (p.position / p.duration) * 100));
   }
 }
 

@@ -345,6 +345,30 @@
   line-height: 1;
 }
 
+/* Progress pill identical to .card-progress on the home/watchlist cards
+ * so the visual language is consistent across the app. Insets 6px from
+ * the thumb edges, 4px tall, accent-coloured fill over a translucent
+ * white track. Pointer-events disabled so clicks pass through to the
+ * underlying button. */
+.episode-progress {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.episode-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
 .episode-meta {
   display: flex;
   flex-direction: column;

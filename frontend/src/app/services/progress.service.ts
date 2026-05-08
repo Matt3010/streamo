@@ -39,6 +39,19 @@ export class ProgressService {
     }
   }
 
+  /** All per-episode progress rows for a TV series in one round-trip. Used
+   * by the watch page to render progress bars on every episode card. */
+  async getSeriesProgress(tmdbId: string | number): Promise<Array<{ season: number; episode: number; position: number; duration: number }>> {
+    try {
+      const res = await fetch(`/api/user/progress/series/${tmdbId}`);
+      if (!res.ok) return [];
+      const data = await res.json() as { items: Array<{ season: number; episode: number; position: number; duration: number }> };
+      return data.items ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   /** Next unwatched episode for a TV show, or null if none / not started. */
   async getNextUnwatched(tmdbId: string | number, type: MediaType): Promise<{ season: number; episode: number } | null> {
     if (type !== 'tv') return null;

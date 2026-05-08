@@ -49,6 +49,18 @@ export class PlayerService {
   // "Riprendi da hh:mm:ss" button label and the "Vai al prossimo" decision
   // (shown only if pct >= 80% — same WATCHED_THRESHOLD as the backend).
   readonly resumeProgress = signal<{ position: number; duration: number } | null>(null);
+  // Per-episode progress map for the currently-loaded series, keyed by
+  // `s${season}e${episode}`. Powers the progress bars rendered at the
+  // bottom of every episode card. Mutated locally as the user watches so
+  // bars update in real time without re-fetching.
+  readonly seriesProgress = signal<ReadonlyMap<string, { position: number; duration: number }>>(new Map());
+  // The "next unwatched" episode for this series — pinned at open() time
+  // and refreshed only when an episode actually completes. The primary CTA
+  // always points here, regardless of which card the user has selected, so
+  // they have one stable "continue" entry-point even while exploring older
+  // episodes via the card grid. null for movies, fresh shows, or fully
+  // completed series.
+  readonly nextUnwatchedRef = signal<{ season: number; episode: number } | null>(null);
   // Next playable episode coordinates given the currently-loaded series and
   // the active selectedSeason/selectedEpisode. null for movies, finales, or
   // before TV details are loaded.
@@ -114,6 +126,8 @@ export class PlayerService {
     this.isInWatchlist.set(false);
     this.seasons.set([]);
     this.episodes.set([]);
+    this.seriesProgress.set(new Map());
+    this.nextUnwatchedRef.set(null);
 
     const item = await this.tmdb.getDetails(tmdbId, type);
     if (!item) {
@@ -158,15 +172,30 @@ export class PlayerService {
     void this.refreshWatchlistStatus(tmdbId, type);
 
     if (type === 'tv') {
-      // No explicit s/e from the URL → ask the backend for the next unwatched
-      // episode based on the user's progress. Lets a card click on the home
-      // row "La mia lista" or on the watchlist page resume where they left.
-      if (resumeSeason === 0 && resumeEpisode === 0) {
-        const next = await this.progress.getNextUnwatched(tmdbId, 'tv');
-        if (next) {
-          resumeSeason = next.season;
-          resumeEpisode = next.episode;
+      // Run the two progress fetches in parallel — one drives the CTA target
+      // (next-unwatched for this user), the other populates the per-episode
+      // progress bars on the card grid. Both are independent reads.
+      const [next, rows] = await Promise.all([
+        this.progress.getNextUnwatched(tmdbId, 'tv'),
+        this.progress.getSeriesProgress(tmdbId)
+      ]);
+      this.nextUnwatchedRef.set(next);
+      const map = new Map<string, { position: number; duration: number }>();
+      for (const r of rows) {
+        // Mirror the backend's >5s "actually started" gate so a stray
+        // 0.5s blip doesn't paint a phantom progress bar on the card.
+        if (r.position > 5) {
+          map.set(progressKey(r.season, r.episode), { position: r.position, duration: r.duration });
         }
+      }
+      this.seriesProgress.set(map);
+
+      // No explicit s/e from the URL → land the player on the next-unwatched
+      // episode. Lets a card click on the home row "La mia lista" or on the
+      // watchlist page resume where they left.
+      if (resumeSeason === 0 && resumeEpisode === 0 && next) {
+        resumeSeason = next.season;
+        resumeEpisode = next.episode;
       }
       await this.setupTVPlayer(tmdbId, item, resumeSeason, resumeEpisode);
     } else {
@@ -203,6 +232,8 @@ export class PlayerService {
     this.currentItemType.set(null);
     this.resumeText.set('');
     this.resumeProgress.set(null);
+    this.seriesProgress.set(new Map());
+    this.nextUnwatchedRef.set(null);
     this.progressTick.update(n => n + 1);
   }
 
@@ -341,6 +372,38 @@ export class PlayerService {
     }
   }
 
+  // CTA entry-point. Always plays the next-unwatched episode (locked at
+  // open() time) regardless of which card the user has clicked through to.
+  // Falls back to startVideo() — meaning whatever's currently in
+  // pendingVideoUrl, typically S1E1 — for movies and fresh shows.
+  async playPrimary(): Promise<void> {
+    const ref = untracked(() => this.nextUnwatchedRef());
+    if (this.currentItemType() === 'tv' && ref) {
+      const curS = untracked(() => this.selectedSeason());
+      const curE = untracked(() => this.selectedEpisode());
+      // Re-align the loaded URL with the CTA target only when they differ.
+      // changeSeason resets the episode list & defaults to E1, so we
+      // sequence it before changeEpisode when the season changes.
+      if (ref.season !== curS) {
+        await this.changeSeason(ref.season);
+      }
+      if (ref.episode !== untracked(() => this.selectedEpisode())) {
+        await this.changeEpisode(ref.episode);
+      }
+    }
+    this.startVideo();
+  }
+
+  // Card click — load the chosen episode and start it immediately. The
+  // resume seek (applyResumeProgress inside changeEpisode) is preserved so
+  // re-clicking a half-watched card picks up where the user left off.
+  async playEpisodeFromCard(episodeNumber: number): Promise<void> {
+    if (episodeNumber !== untracked(() => this.selectedEpisode())) {
+      await this.changeEpisode(episodeNumber);
+    }
+    this.startVideo();
+  }
+
   // Switch the player to the next episode and start it from the beginning.
   // Used by the preview "Vai al prossimo" button to skip past the tail-end
   // of the current episode (≥80%) instead of resuming it.
@@ -404,6 +467,17 @@ export class PlayerService {
     const type = this.currentItemType();
     if (!this.auth.currentUser() || !item || !type) return;
 
+    // Update the local seriesProgress map *before* the network round-trip
+    // so progress bars on episode cards animate as the user watches, not
+    // only after the next page-load. The map is read by the watch page.
+    if (type === 'tv' && position > 5) {
+      this.seriesProgress.update(prev => {
+        const next = new Map(prev);
+        next.set(progressKey(season, episode), { position, duration });
+        return next;
+      });
+    }
+
     await this.progress.save({
       tmdb_id: item.id,
       media_type: type,
@@ -416,6 +490,17 @@ export class PlayerService {
       backdrop: item.backdrop_path ?? null
     });
     this.progressTick.update(n => n + 1);
+  }
+
+  // Re-fetch the next-unwatched coordinate from the backend after an
+  // episode actually completes. Cheap (one row) but only fires on 'ended',
+  // not on every 10s tick — the CTA target only needs to advance when the
+  // user *finishes* something.
+  private async refreshNextUnwatchedRef(): Promise<void> {
+    const item = this.currentItem();
+    if (!item || this.currentItemType() !== 'tv') return;
+    const next = await this.progress.getNextUnwatched(item.id, 'tv');
+    this.nextUnwatchedRef.set(next);
   }
 
   private async saveCurrentHistory(): Promise<void> {
@@ -454,6 +539,7 @@ export class PlayerService {
       if (this.currentVideoDuration > 0) {
         void this.persistProgress(this.currentVideoDuration, this.currentVideoDuration, this.playingSeason, this.playingEpisode);
       }
+      void this.refreshNextUnwatchedRef();
       void this.maybeAutoPlayNext();
     }
   }
@@ -514,6 +600,13 @@ function airedEpisodes(eps: TmdbEpisodeDetail[] | undefined): TmdbEpisodeDetail[
     })
     .slice()
     .sort((a, b) => a.episode_number - b.episode_number);
+}
+
+// Cheap stable key for the seriesProgress map. Keeps the lookup branch
+// inside the watch component template trivial (one .get) without having
+// to materialise nested objects per (season, episode) pair.
+function progressKey(season: number, episode: number): string {
+  return `s${season}e${episode}`;
 }
 
 // Stub episode list for when the season-details fetch fails — keeps the
