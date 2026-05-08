@@ -219,10 +219,14 @@
   100% { background-position: -200% 0; }
 }
 
+/* Matches the h2 visual box (font-size: 1.5rem * line-height ~1.2 ≈ 1.8rem)
+ * so the layout doesn't jump when the real title swaps in. Width capped to
+ * keep the bar from spanning the full row, which would read as a "loading
+ * banner" instead of a title placeholder. */
 .skeleton-title {
-  flex: 1;
-  height: 1.6rem;
-  max-width: 60%;
+  height: 1.8rem;
+  width: 70%;
+  max-width: 22rem;
 }
 
 .skeleton-select {
