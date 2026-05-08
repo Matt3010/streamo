@@ -5,7 +5,7 @@ export const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
 export const COOKIE_SECURE =
   process.env.COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production';
 export const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
-export const TMDB_CACHE_TTL = 24 * 60 * 60; // 24 hours
+export const TMDB_CACHE_TTL = 6 * 60 * 60; // 6 hours
 
 // Episodes/movies count as "watched" once you've seen at least this fraction.
 export const WATCHED_THRESHOLD = 0.8;

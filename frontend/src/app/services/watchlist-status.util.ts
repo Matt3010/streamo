@@ -16,20 +16,14 @@ export function computeWatchStatus(w: WatchlistItem): string {
   const airedEp = w.aired_episodes ?? w.total_episodes ?? 0;
   if (airedEp === 0) return ''; // TMDB data missing — say nothing
 
-  const lastSeason = w.last_season ?? 0;
-  const lastEpisode = w.last_episode ?? 0;
-  // Not started — no badge.
-  if (lastSeason === 0 || lastEpisode === 0) return '';
+  // watched_count tracks episodes that crossed the WATCHED_THRESHOLD (≥80%).
+  // Using "max episode touched" instead would overcount: just opening the
+  // latest episode for a few seconds would falsely flip the badge to
+  // "Sei al passo" even though that episode isn't finished.
+  const watched = w.watched_count ?? 0;
+  if (watched === 0) return ''; // Not started — no badge.
 
-  // Linear episode index of the current play position: every episode in
-  // earlier seasons + the current episode in the current season.
-  const seasons = w.seasons ?? [];
-  const before = seasons
-    .filter(s => s.season_number < lastSeason)
-    .reduce((sum, s) => sum + (s.episode_count || 0), 0);
-  const watchedSoFar = before + lastEpisode;
-  const remaining = Math.max(0, airedEp - watchedSoFar);
-
+  const remaining = Math.max(0, airedEp - watched);
   if (remaining === 0) return 'Sei al passo';
   return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }

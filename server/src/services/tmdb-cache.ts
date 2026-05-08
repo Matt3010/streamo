@@ -34,7 +34,7 @@ interface CacheRow {
   fetched_at: number;
 }
 
-// Fetches a TV show's headline counts from TMDB, with a 24h SQLite cache.
+// Fetches a TV show's headline counts from TMDB, with a 6h SQLite cache.
 // Returns null on failure. Old cache entries that lack required fields
 // (`seasons`, `last_episode_to_air`) are transparently refreshed so a
 // schema bump doesn't require manual cache eviction.
