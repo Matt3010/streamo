@@ -1,7 +1,12 @@
+/* Two-row layout, identical structure on mobile and desktop:
+ *   row 1: account button, aligned right
+ *   row 2: search bar
+ * On mobile the search expands to fill the row; on desktop it's a fixed
+ * width and sits at the left edge of the content column. */
 .top-bar {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.85rem;
   margin-bottom: 2rem;
 }
 
@@ -11,12 +16,19 @@
   .top-bar { padding: 0 4rem; }
 }
 
+.account-area {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-end;
+  position: relative;
+}
+
 .search-box {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  width: 320px;
-  flex-shrink: 0;
+  width: 100%;
 }
 
 .search-box input {
@@ -28,8 +40,7 @@
   font-size: 0.9rem;
   flex: 1;
   min-width: 0;
-  /* No size transitions — the box keeps the same width whether the input is
-   * focused, hovered, or idle. Only the border tint animates. */
+  /* Only the border tint animates — no width / size transitions. */
   transition: border-color 0.2s ease;
 }
 
@@ -53,27 +64,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease;
   flex-shrink: 0;
+  transition: background 0.2s ease;
 }
 
 .search-btn:hover { background: var(--accent-hover); }
 
-.account-area {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-  position: relative;
-  flex-shrink: 0;
-}
-
-@media (max-width: 640px) {
-  .top-bar { gap: 0.75rem; }
-  /* Phones get a fluid search bar — taking the full row would push the
-   * account button to wrap, so let it absorb whatever space is left. */
-  .search-box {
-    width: auto;
-    flex: 1;
-  }
+@media (min-width: 769px) {
+  /* On desktop the search bar doesn't span the full row — it stays at a
+   * comfortable, predictable size and sits at the start of the row. */
+  .search-box { width: 380px; }
 }

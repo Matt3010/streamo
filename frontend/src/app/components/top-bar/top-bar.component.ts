@@ -15,18 +15,18 @@ import type { MediaType } from '../../models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="top-bar">
-      <div class="search-box">
-        <input type="text" placeholder="Cerca..." [value]="query()" (input)="onInput($event)" (keydown.enter)="submitSearch()">
-        <button class="search-btn" aria-label="Cerca" (click)="submitSearch()">
-          <app-icon name="search"></app-icon>
-        </button>
-      </div>
       <div class="account-area">
         @if (auth.isLoggedIn()) {
           <app-account-menu />
         } @else {
           <button class="account-btn" (click)="authModal.open()">Accedi</button>
         }
+      </div>
+      <div class="search-box">
+        <input type="text" placeholder="Cerca..." [value]="query()" (input)="onInput($event)" (keydown.enter)="submitSearch()">
+        <button class="search-btn" aria-label="Cerca" (click)="submitSearch()">
+          <app-icon name="search"></app-icon>
+        </button>
       </div>
     </div>
   `,
