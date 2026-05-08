@@ -6,7 +6,6 @@ import { IconComponent } from '../icon/icon.component';
 import { AccountMenuComponent } from '../account-menu/account-menu.component';
 import { AuthService } from '../../services/auth.service';
 import { AuthModalService } from '../../services/auth-modal.service';
-import type { MediaType } from '../../models';
 
 @Component({
   selector: 'app-top-bar',
@@ -22,12 +21,14 @@ import type { MediaType } from '../../models';
           <button class="account-btn" (click)="authModal.open()">Accedi</button>
         }
       </div>
-      <div class="search-box">
-        <input type="text" placeholder="Cerca..." [value]="query()" (input)="onInput($event)" (keydown.enter)="submitSearch()">
-        <button class="search-btn" aria-label="Cerca" (click)="submitSearch()">
-          <app-icon name="search"></app-icon>
-        </button>
-      </div>
+      @if (showSearch()) {
+        <div class="search-box">
+          <input type="text" placeholder="Cerca..." [value]="query()" (input)="onInput($event)" (keydown.enter)="submitSearch()">
+          <button class="search-btn" aria-label="Cerca" (click)="submitSearch()">
+            <app-icon name="search"></app-icon>
+          </button>
+        </div>
+      }
     </div>
   `,
   styleUrl: './top-bar.component.css'
@@ -39,18 +40,18 @@ export class TopBarComponent {
 
   readonly query = signal('');
 
-  // Recompute the inferred type whenever navigation finishes — the search
-  // submission needs to know which catalog (movies/tv) the user is currently
-  // browsing so it can route to /search/{type}.
+  // Re-fires whenever a navigation completes so the URL-derived computeds
+  // below can recalculate.
   private readonly nav = toSignal(
     this.router.events.pipe(filter(e => e instanceof NavigationEnd)),
     { initialValue: null }
   );
 
-  private readonly currentType = computed<MediaType>(() => {
+  // Search is only meaningful on the home/browse page — hide it elsewhere
+  // (watch, list, search results) so the top bar shows just the account area.
+  protected readonly showSearch = computed<boolean>(() => {
     this.nav();
-    const m = this.router.url.match(/^\/(?:browse|watch|search)\/(movie|tv)\b/);
-    return (m?.[1] as MediaType) ?? 'movie';
+    return /^\/browse(?:[/?#]|$)/.test(this.router.url);
   });
 
   protected onInput(ev: Event): void {
@@ -60,6 +61,8 @@ export class TopBarComponent {
 
   protected submitSearch(): void {
     const q = this.query().trim();
-    if (q) void this.router.navigate(['/search', this.currentType()], { queryParams: { q } });
+    // From /browse the user hasn't picked a type, so default the search to
+    // movies. /search/movie is a valid route either way.
+    if (q) void this.router.navigate(['/search', 'movie'], { queryParams: { q } });
   }
 }
