@@ -40,7 +40,7 @@ router.post('/auth/register', authLimiter, async (req, res) => {
   if (password.length < 6) return res.status(400).json({ error: 'weak_password' });
 
   const normalized = (email as string).trim().toLowerCase();
-  const isSuperAdmin = SUPER_ADMIN_EMAIL && normalized === SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = Boolean(SUPER_ADMIN_EMAIL) && normalized === SUPER_ADMIN_EMAIL;
 
   // Super admin doesn't need a token; others do
   if (!isSuperAdmin) {
@@ -110,7 +110,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
   if (!row || !(await bcryptCompare(password, row.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
-  const isAdmin = SUPER_ADMIN_EMAIL && row.email.toLowerCase() === SUPER_ADMIN_EMAIL;
+  const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && row.email.toLowerCase() === SUPER_ADMIN_EMAIL;
   const user: User = { id: row.id, email: row.email, autoplay_next: row.autoplay_next, is_admin: isAdmin };
   setAuthCookie(res, user);
   res.json({ user });
@@ -123,7 +123,7 @@ router.post('/auth/logout', (_req, res) => {
 
 router.get('/auth/me', requireAuth, (req, res) => {
   const row = db.prepare('SELECT autoplay_next FROM users WHERE id = ?').get(req.user!.id) as { autoplay_next: 0 | 1 } | undefined;
-  const isAdmin = SUPER_ADMIN_EMAIL && req.user!.email.toLowerCase() === SUPER_ADMIN_EMAIL;
+  const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && req.user!.email.toLowerCase() === SUPER_ADMIN_EMAIL;
   const user: User = { id: req.user!.id, email: req.user!.email, autoplay_next: row ? row.autoplay_next : 1, is_admin: isAdmin };
   res.json({ user });
 });
