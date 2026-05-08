@@ -215,7 +215,29 @@ export class WatchComponent {
     if (!seasons) return '';
     const ses = seasons === 1 ? 'stagione' : 'stagioni';
     const eps = episodes === 1 ? 'episodio' : 'episodi';
-    return episodes ? `${seasons} ${ses} · ${episodes} ${eps}` : `${seasons} ${ses}`;
+    if (!episodes) return `${seasons} ${ses}`;
+
+    // Compute how many episodes have already aired by walking the seasons
+    // list up to last_episode_to_air. If TMDB doesn't expose either field
+    // we just fall back to the total count.
+    const last = it?.last_episode_to_air;
+    let aired = 0;
+    if (last && it?.seasons?.length) {
+      for (const s of it.seasons) {
+        if (s.season_number === 0) continue;
+        if (last.season_number === undefined) continue;
+        if (s.season_number < last.season_number) {
+          aired += s.episode_count ?? 0;
+        } else if (s.season_number === last.season_number) {
+          aired += last.episode_number ?? 0;
+        }
+      }
+    }
+
+    if (aired > 0 && aired < episodes) {
+      return `${seasons} ${ses} · ${aired}/${episodes} ${eps} usciti`;
+    }
+    return `${seasons} ${ses} · ${episodes} ${eps}`;
   });
 
   // Same-origin URL but Angular still sanitizes iframe src by default.

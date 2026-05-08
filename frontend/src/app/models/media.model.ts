@@ -38,13 +38,22 @@ export interface TmdbItem {
   genres?: TmdbGenre[];
   credits?: TmdbCredits;
   seasons?: TmdbSeasonInfo[];
+  /** Latest episode that has already aired — used to compute "X usciti su Y". */
+  last_episode_to_air?: TmdbEpisodeRef | null;
+}
+
+export interface TmdbEpisodeRef {
+  season_number?: number;
+  episode_number?: number;
+  air_date?: string | null;
 }
 
 export interface TmdbSeasonInfo {
   season_number: number;
   episode_count?: number;
+  air_date?: string | null;
 }
 
 export interface TmdbSeasonDetails {
-  episodes?: Array<{ episode_number: number }>;
+  episodes?: Array<{ episode_number: number; air_date?: string | null }>;
 }

@@ -55,12 +55,18 @@ export class PlayerService {
     if (!seasons.length) return null;
     const cs = this.selectedSeason();
     const ce = this.selectedEpisode();
-    const cur = seasons.find(s => s.season_number === cs);
-    if (cur && cur.episode_count && ce + 1 <= cur.episode_count) {
+    // Prefer the live (already-aired) episode list for the current season so
+    // we don't suggest jumping to an episode TMDB lists in the season but
+    // hasn't aired yet.
+    const eps = this.episodes();
+    if (eps.some(n => n === ce + 1)) {
       return { season: cs, episode: ce + 1 };
     }
+    const last = item?.last_episode_to_air;
     const future = seasons
       .filter(s => s.season_number > cs && (s.episode_count ?? 0) > 0)
+      // If we know the latest aired episode, only consider seasons up to it.
+      .filter(s => !last || s.season_number <= (last.season_number ?? Infinity))
       .sort((a, b) => a.season_number - b.season_number)[0];
     return future ? { season: future.season_number, episode: 1 } : null;
   });
@@ -231,8 +237,9 @@ export class PlayerService {
 
     this.selectedSeason.set(season);
     const seasonData = await this.tmdb.getSeasonDetails(item.id, season);
-    const count = seasonData?.episodes?.length ?? 10;
-    this.episodes.set(Array.from({ length: count }, (_, i) => i + 1));
+    const airedNumbers = airedEpisodeNumbers(seasonData?.episodes);
+    const fallbackCount = (item.seasons ?? []).find(s => s.season_number === season)?.episode_count ?? 10;
+    this.episodes.set(airedNumbers.length ? airedNumbers : Array.from({ length: fallbackCount }, (_, i) => i + 1));
     this.selectedEpisode.set(1);
 
     this.resetPlayer();
@@ -292,9 +299,9 @@ export class PlayerService {
     this.selectedSeason.set(targetSeason);
 
     const seasonData = await this.tmdb.getSeasonDetails(Number(tmdbId), targetSeason);
+    const airedNumbers = airedEpisodeNumbers(seasonData?.episodes);
     const fallback = seasonsList.find(s => s.season_number === targetSeason)?.episode_count ?? 10;
-    const count = seasonData?.episodes?.length ?? fallback;
-    this.episodes.set(Array.from({ length: count }, (_, i) => i + 1));
+    this.episodes.set(airedNumbers.length ? airedNumbers : Array.from({ length: fallback }, (_, i) => i + 1));
 
     const targetEpisode = resumeEpisode > 0 ? resumeEpisode : 1;
     this.selectedEpisode.set(targetEpisode);
@@ -346,9 +353,9 @@ export class PlayerService {
 
     if (seasonChanged) {
       const seasonData = await this.tmdb.getSeasonDetails(item.id, next.season);
+      const airedNumbers = airedEpisodeNumbers(seasonData?.episodes);
       const fallback = (item.seasons ?? []).find(s => s.season_number === next.season)?.episode_count ?? 10;
-      const count = seasonData?.episodes?.length ?? fallback;
-      this.episodes.set(Array.from({ length: count }, (_, i) => i + 1));
+      this.episodes.set(airedNumbers.length ? airedNumbers : Array.from({ length: fallback }, (_, i) => i + 1));
     }
 
     this.resetPlayer();
@@ -486,4 +493,21 @@ function formatTime(seconds: number): string {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+// Returns the episode numbers from a TMDB season-details payload that have
+// already aired (no air_date treated as aired so episodes without a confirmed
+// date still surface). End-of-day cutoff so today's episodes show immediately.
+function airedEpisodeNumbers(eps: Array<{ episode_number: number; air_date?: string | null }> | undefined): number[] {
+  if (!eps?.length) return [];
+  const cutoff = new Date();
+  cutoff.setHours(23, 59, 59, 999);
+  return eps
+    .filter(e => {
+      if (!e.air_date) return true;
+      const d = new Date(e.air_date);
+      return !Number.isNaN(d.getTime()) && d <= cutoff;
+    })
+    .map(e => e.episode_number)
+    .sort((a, b) => a - b);
 }
