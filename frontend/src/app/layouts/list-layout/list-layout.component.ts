@@ -9,7 +9,7 @@ import { TopBarComponent } from '../../components/top-bar/top-bar.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main>
-      <app-top-bar [showTabs]="false" />
+      <app-top-bar />
       <router-outlet />
     </main>
   `

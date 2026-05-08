@@ -1,13 +1,12 @@
 .top-bar {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 2rem;
 }
 
-/* Match the row-container's horizontal padding (set in card-row) so the tabs
-   line up with the first card. Mirror the same breakpoint. */
+/* Match the card-row horizontal inset so the search bar lines up with the
+   first card / section title. Same breakpoint as .row-container. */
 @media (min-width: 769px) {
   .top-bar { padding: 0 4rem; }
 }
@@ -16,7 +15,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-left: auto;
+  width: 320px;
+  flex-shrink: 0;
 }
 
 .search-box input {
@@ -26,14 +26,16 @@
   padding: 0.5rem 1rem;
   border-radius: 25px;
   font-size: 0.9rem;
-  width: 200px;
-  transition: all 0.2s ease;
+  flex: 1;
+  min-width: 0;
+  /* No size transitions — the box keeps the same width whether the input is
+   * focused, hovered, or idle. Only the border tint animates. */
+  transition: border-color 0.2s ease;
 }
 
 .search-box input:focus {
   outline: none;
   border-color: var(--accent);
-  width: 260px;
 }
 
 .search-box input::placeholder {
@@ -52,6 +54,7 @@
   align-items: center;
   justify-content: center;
   transition: background 0.2s ease;
+  flex-shrink: 0;
 }
 
 .search-btn:hover { background: var(--accent-hover); }
@@ -60,19 +63,17 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  margin-left: auto;
   position: relative;
+  flex-shrink: 0;
 }
 
 @media (max-width: 640px) {
-  .top-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1rem;
+  .top-bar { gap: 0.75rem; }
+  /* Phones get a fluid search bar — taking the full row would push the
+   * account button to wrap, so let it absorb whatever space is left. */
+  .search-box {
+    width: auto;
+    flex: 1;
   }
-
-  .search-box { margin-left: 0; }
-  .search-box input { flex: 1; width: auto; }
-  .search-box input:focus { width: auto; }
-
-  .account-area { align-self: flex-end; }
 }

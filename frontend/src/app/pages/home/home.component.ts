@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, input, signal } fro
 import { Router } from '@angular/router';
 import { faCirclePlay, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
+import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { ProgressService } from '../../services/progress.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -10,6 +11,11 @@ import { PlayerService } from '../../services/player.service';
 import { SECTIONS } from './sections.config';
 import { computeWatchStatus } from '../../services/watchlist-status.util';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
+
+const TYPE_TABS: ReadonlyArray<UiTab<MediaType>> = [
+  { value: 'movie', label: 'Film' },
+  { value: 'tv', label: 'Serie TV' }
+];
 
 interface SectionState {
   config: SectionConfig;
@@ -20,9 +26,13 @@ interface SectionState {
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [SectionRowComponent],
+  imports: [SectionRowComponent, UiTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <div class="home-tabs">
+      <ui-tabs [tabs]="typeTabs" [value]="type()" (valueChange)="onTypeChange($event)" />
+    </div>
+
     @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
       <app-section-row
         title="Continua a guardare"
@@ -51,7 +61,17 @@ interface SectionState {
         [loading]="s.loading"
         (cardClick)="open($event)" />
     }
-  `
+  `,
+  styles: [`
+    .home-tabs {
+      display: flex;
+      margin-bottom: 1.75rem;
+    }
+
+    @media (min-width: 769px) {
+      .home-tabs { padding-left: 4rem; }
+    }
+  `]
 })
 export class HomeComponent {
   private readonly tmdb = inject(TmdbService);
@@ -64,6 +84,7 @@ export class HomeComponent {
   // Route :type param via withComponentInputBinding().
   readonly type = input.required<MediaType>();
 
+  protected readonly typeTabs = TYPE_TABS;
   protected readonly continueIcon = faCirclePlay;
   protected readonly watchlistIcon = faBookmark;
 
@@ -98,6 +119,10 @@ export class HomeComponent {
     if (item.season) queryParams['s'] = item.season;
     if (item.episode) queryParams['e'] = item.episode;
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { queryParams });
+  }
+
+  protected onTypeChange(t: MediaType): void {
+    if (t !== this.type()) void this.router.navigate(['/browse', t]);
   }
 
   private async loadTmdbSections(type: MediaType): Promise<void> {
