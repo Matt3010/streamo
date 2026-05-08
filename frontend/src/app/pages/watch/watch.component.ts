@@ -35,21 +35,33 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
         <div class="player-container">
         @if (loading() && player.currentItemType() !== 'movie') {
           <div class="episode-controls active">
-            <div class="skeleton skeleton-select"></div>
-            <div class="skeleton skeleton-select"></div>
+            <div class="select-group">
+              <div class="skeleton skeleton-label"></div>
+              <div class="skeleton skeleton-select"></div>
+            </div>
+            <div class="select-group">
+              <div class="skeleton skeleton-label"></div>
+              <div class="skeleton skeleton-select"></div>
+            </div>
           </div>
         } @else if (player.currentItemType() === 'tv' && player.seasons().length > 0) {
           <div class="episode-controls active">
-            <select (change)="onSeasonChange($event)">
-              @for (s of player.seasons(); track s) {
-                <option [value]="s" [selected]="s === player.selectedSeason()">Stagione {{ s }}</option>
-              }
-            </select>
-            <select (change)="onEpisodeChange($event)">
-              @for (e of player.episodes(); track e) {
-                <option [value]="e" [selected]="e === player.selectedEpisode()">Episodio {{ e }}</option>
-              }
-            </select>
+            <label class="select-group">
+              <span class="select-label">Stagione</span>
+              <select (change)="onSeasonChange($event)">
+                @for (s of player.seasons(); track s) {
+                  <option [value]="s" [selected]="s === player.selectedSeason()">Stagione {{ s }}</option>
+                }
+              </select>
+            </label>
+            <label class="select-group">
+              <span class="select-label">Episodio</span>
+              <select (change)="onEpisodeChange($event)">
+                @for (e of player.episodes(); track e) {
+                  <option [value]="e" [selected]="e === player.selectedEpisode()">Episodio {{ e }}</option>
+                }
+              </select>
+            </label>
           </div>
         }
 
