@@ -1,4 +1,17 @@
 (function() {
+  // Neutralize timing-based debugger detection by making Date always return same delta
+  var fakeTime = Date.now();
+  var origDateNow = Date.now;
+  var origGetTime = Date.prototype.getTime;
+
+  Date.now = function() {
+    return fakeTime++;
+  };
+
+  Date.prototype.getTime = function() {
+    return fakeTime++;
+  };
+
   // Override Function constructor to strip debugger statements
   var OrigFunction = Function;
   Function = function() {
@@ -21,7 +34,7 @@
   // Disable console.clear
   console.clear = function() {};
 
-  // Block setInterval/setTimeout debugger traps
+  // Block setInterval/setTimeout with debugger
   var origSetInterval = window.setInterval;
   window.setInterval = function(fn, delay) {
     if (typeof fn === 'string' && fn.includes('debugger')) return 0;

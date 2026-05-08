@@ -120,9 +120,10 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '</head>' '<script src="/scripts/anti-debugger.js"></script><script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
+        sub_filter '<head>' '<head><script src="/scripts/anti-debugger.js"></script>';
+        sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
-        sub_filter_once on;
+        sub_filter_once off;
     }
 
     # ---- VixSrc playlist/streaming endpoints ----
@@ -166,9 +167,10 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '</head>' '<script src="/scripts/anti-debugger.js"></script><script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
+        sub_filter '<head>' '<head><script src="/scripts/anti-debugger.js"></script>';
+        sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
-        sub_filter_once on;
+        sub_filter_once off;
     }
 
     # ---- VixSrc static asset fallback ----
