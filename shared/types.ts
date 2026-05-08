@@ -51,6 +51,11 @@ export interface WatchlistItem {
   watched_count?: number;
   total_seasons?: number;
   total_episodes?: number;
+  /** Episodes that have already aired (sum across seasons up to and
+   * including last_episode_to_air). Differs from total_episodes for
+   * shows still releasing. Falls back to total_episodes when TMDB
+   * doesn't expose air data. */
+  aired_episodes?: number;
   seasons?: WatchlistSeasonInfo[];
   // Where the watch page should resume — already pivoted past finished
   // episodes by the backend. Lets the card click navigate straight to the

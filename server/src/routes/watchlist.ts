@@ -98,10 +98,21 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     const prog = progressByTmdb.get(r.tmdb_id) ?? { last_season: 0, last_episode: 0, watched_count: 0 };
     const tmdb = await getTmdbTvSummary(r.tmdb_id);
     const totalEpisodes = tmdb?.number_of_episodes ?? 0;
+    // Aired count = episodes in seasons before last_episode_to_air.season +
+    // last_episode_to_air.episode within that season. Falls back to
+    // total_episodes when TMDB doesn't expose air data (older cache rows
+    // or shows without an aired episode yet).
+    const lea = tmdb?.last_episode_to_air;
+    const airedEpisodes = (lea && tmdb)
+      ? tmdb.seasons
+          .filter(s => s.season_number < lea.season_number)
+          .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
+      : totalEpisodes;
     let status = r.status;
-    // Auto-flip done → todo when new episodes have been released since the
-    // user last marked the show as caught up.
-    if (status === 'done' && totalEpisodes > 0 && prog.watched_count < totalEpisodes) {
+    // Auto-flip done → todo when new aired episodes have been released since
+    // the user last marked the show as caught up. Compared against aired (not
+    // total) so future-scheduled episodes don't immediately undo "done".
+    if (status === 'done' && airedEpisodes > 0 && prog.watched_count < airedEpisodes) {
       db.prepare(`
         UPDATE watchlist SET status = 'todo'
         WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
@@ -121,6 +132,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       watched_count: prog.watched_count,
       total_seasons: tmdb?.number_of_seasons ?? 0,
       total_episodes: totalEpisodes,
+      aired_episodes: airedEpisodes,
       seasons: tmdb?.seasons ?? [],
       next_season: next?.season,
       next_episode: next?.episode,

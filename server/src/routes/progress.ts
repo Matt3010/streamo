@@ -74,16 +74,24 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
     return;
   }
 
-  // TV: need TMDB total_episodes to decide.
+  // TV: count aired episodes (last_episode_to_air) — falling back to
+  // total_episodes when TMDB doesn't expose air info. Comparing against
+  // aired lets a fully-caught-up viewer of an ongoing show flip to 'done'.
   const summary = await getTmdbTvSummary(tmdbId);
-  const totalEp = summary?.number_of_episodes ?? 0;
-  if (!totalEp) return;
+  if (!summary) return;
+  const lea = summary.last_episode_to_air;
+  const airedEp = lea
+    ? summary.seasons
+        .filter(s => s.season_number < lea.season_number)
+        .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
+    : (summary.number_of_episodes ?? 0);
+  if (!airedEp) return;
   const cnt = db.prepare(`
     SELECT SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END) AS watched
     FROM progress
     WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
   `).get(userId, tmdbId) as { watched: number | null } | undefined;
-  if ((cnt?.watched ?? 0) >= totalEp) {
+  if ((cnt?.watched ?? 0) >= airedEp) {
     db.prepare(`UPDATE watchlist SET status = 'done' WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'`)
       .run(userId, tmdbId);
   }

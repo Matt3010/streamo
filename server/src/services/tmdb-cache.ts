@@ -6,6 +6,10 @@ export interface TmdbTvSummary {
   number_of_seasons: number;
   number_of_episodes: number;
   seasons: WatchlistSeasonInfo[];
+  /** Latest episode that has already aired — used to count released-only
+   * episodes for the "Mancano N episodi" badge. Null if the show hasn't
+   * started airing yet. */
+  last_episode_to_air?: { season_number: number; episode_number: number } | null;
 }
 
 interface RawTmdbSeason {
@@ -13,10 +17,16 @@ interface RawTmdbSeason {
   episode_count?: number;
 }
 
+interface RawTmdbEpisodeRef {
+  season_number?: number;
+  episode_number?: number;
+}
+
 interface RawTmdbTv {
   number_of_seasons?: number;
   number_of_episodes?: number;
   seasons?: RawTmdbSeason[];
+  last_episode_to_air?: RawTmdbEpisodeRef | null;
 }
 
 interface CacheRow {
@@ -42,12 +52,16 @@ export async function getTmdbTvSummary(tmdbId: number | string): Promise<TmdbTvS
     const res = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
     if (!res.ok) return null;
     const data = await res.json() as RawTmdbTv;
+    const lea = data.last_episode_to_air;
     const stored: TmdbTvSummary = {
       number_of_seasons: data.number_of_seasons ?? 0,
       number_of_episodes: data.number_of_episodes ?? 0,
       seasons: (data.seasons ?? [])
         .filter((s): s is Required<Pick<RawTmdbSeason, 'season_number'>> & RawTmdbSeason => typeof s.season_number === 'number' && s.season_number > 0)
-        .map(s => ({ season_number: s.season_number!, episode_count: s.episode_count ?? 0 }))
+        .map(s => ({ season_number: s.season_number!, episode_count: s.episode_count ?? 0 })),
+      last_episode_to_air: (lea && typeof lea.season_number === 'number' && typeof lea.episode_number === 'number')
+        ? { season_number: lea.season_number, episode_number: lea.episode_number }
+        : null
     };
     db.prepare('INSERT OR REPLACE INTO tmdb_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)').run(key, JSON.stringify(stored), now);
     return stored;
