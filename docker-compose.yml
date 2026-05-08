@@ -23,5 +23,8 @@ services:
     environment:
       # Required — used by the nginx template to inject the TMDB API key.
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
+      # Cloudflare Worker URL for proxying vixsrc requests (hides origin IP).
+      # Deploy the worker in cloudflare-worker/ first, then set this.
+      - VIXSRC_PROXY_URL=${VIXSRC_PROXY_URL:?VIXSRC_PROXY_URL must be set in .env}
     depends_on:
       - backend

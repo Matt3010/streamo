@@ -11,6 +11,10 @@ server {
 
     resolver 8.8.8.8 ipv6=off valid=30s;
 
+    # Cloudflare Worker proxy URL (hides origin IP from streaming providers)
+    # Set via environment variable, e.g.: VIXSRC_PROXY_URL=https://vixsrc-proxy.yourname.workers.dev
+    set $vixsrc_proxy "${VIXSRC_PROXY_URL}";
+
     gzip on;
     gzip_types text/plain text/css application/javascript application/json text/html;
 
@@ -70,50 +74,36 @@ server {
 
     # ---- VixSrc namespaced API ----
     location /api/vixsrc/ {
-        proxy_pass https://vixsrc.to/api/;
+        proxy_pass $vixsrc_proxy/vixsrc/api/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Origin https://vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
     }
 
     # ---- VixSrc generic API (fallback) ----
     location /api/ {
-        proxy_pass https://vixsrc.to/api/;
+        proxy_pass $vixsrc_proxy/vixsrc/api/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Origin https://vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
     # ---- VixSrc Next.js assets ----
     location /_next/ {
-        proxy_pass https://vixsrc.to/_next/;
+        proxy_pass $vixsrc_proxy/vixsrc/_next/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
-    # ---- vix-content.net CDN proxy: /cdn/<sub>/<path> → https://<sub>.vix-content.net/<path>
+    # ---- vix-content.net CDN proxy: /cdn/<sub>/<path> → Worker → <sub>.vix-content.net/<path>
     # Target of url-rewrite.js for any *.vix-content.net request (HLS chunks,
-    # thumbnails, etc.) — keeps traffic on this origin so carriers that
-    # DNS-block vix-content.net don't see it directly.
+    # thumbnails, etc.) — routes through Cloudflare Worker to hide origin IP.
     location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
-        set $cdn_host "$1.vix-content.net";
-        proxy_pass https://$cdn_host/$2$is_args$args;
+        proxy_pass $vixsrc_proxy/cdn/$1/$2$is_args$args;
         proxy_ssl_server_name on;
-        proxy_set_header Host $cdn_host;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
-    # ---- VixCloud proxy: /vixcloud/<path> → https://vixcloud.co/<path>
+    # ---- VixCloud proxy: /vixcloud/<path> → Worker → vixcloud.co/<path>
     location /vixcloud/ {
-        proxy_pass https://vixcloud.co/;
+        proxy_pass $vixsrc_proxy/vixcloud/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
     # ---- VixSrc embed player with ad-block injection ----
@@ -126,10 +116,8 @@ server {
         auth_request /auth-check;
         error_page 401 = @auth_required;
 
-        proxy_pass https://vixsrc.to/embed/;
+        proxy_pass $vixsrc_proxy/vixsrc/embed/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
@@ -139,33 +127,26 @@ server {
 
     # ---- VixSrc playlist/streaming endpoints ----
     location /playlist/ {
-        proxy_pass https://vixsrc.to/playlist/;
+        proxy_pass $vixsrc_proxy/vixsrc/playlist/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
     # ---- JW Player assets ----
     location ~ ^/jwplayer- {
-        proxy_pass https://vixsrc.to$request_uri;
+        proxy_pass $vixsrc_proxy/vixsrc$request_uri;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
     # ---- VixSrc build assets ----
     location /build/ {
-        proxy_pass https://vixsrc.to/build/;
+        proxy_pass $vixsrc_proxy/vixsrc/build/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
     # ---- VixSrc favicon ----
     location = /favicon.ico {
-        proxy_pass https://vixsrc.to/favicon.ico;
+        proxy_pass $vixsrc_proxy/vixsrc/favicon.ico;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
     }
 
     # ---- VixSrc Player with ad-block + auto-seek injection ----
@@ -181,10 +162,8 @@ server {
         # query strings when proxy_pass uses a variable in the URI — without
         # it, `?start=<seconds>` (used by the player to resume mid-episode)
         # gets silently dropped before reaching upstream.
-        proxy_pass https://vixsrc.to/$vix_path$is_args$args;
+        proxy_pass $vixsrc_proxy/vixsrc/$vix_path$is_args$args;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
@@ -198,10 +177,8 @@ server {
     }
 
     location @vixsrc_proxy {
-        proxy_pass https://vixsrc.to$request_uri;
+        proxy_pass $vixsrc_proxy/vixsrc$request_uri;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
     }
 
     # ---- Frontend SPA ----
