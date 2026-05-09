@@ -8,7 +8,6 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { SECTIONS } from './sections.config';
-import { computeWatchStatus } from '../../services/watchlist-status.util';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
 
 interface SectionState {
@@ -69,15 +68,11 @@ export class HomeComponent {
   protected readonly userLoading = signal(false);
   protected readonly sectionStates = signal<SectionState[]>([]);
 
-  // Sequence number — only the latest in-flight user load is allowed to write
-  // state. The TMDB sections load is fire-and-forget once at construction.
   private userSeq = 0;
 
   constructor() {
     void this.loadTmdbSections();
 
-    // Reload user sections on auth change, after a progress save (player closes/saves),
-    // or when the watchlist is mutated from anywhere.
     effect(() => {
       this.auth.currentUser();
       this.player.progressTick();
@@ -94,8 +89,6 @@ export class HomeComponent {
   }
 
   private async loadTmdbSections(): Promise<void> {
-    // Show skeleton placeholders immediately so the layout is stable and the
-    // user sees a clear "loading" state instead of empty rows that flash.
     this.sectionStates.set(SECTIONS.map(c => ({ config: c, items: [], loading: true })));
 
     const results = await Promise.all(SECTIONS.map(c => this.tmdb.list(c.endpoint)));
@@ -114,30 +107,33 @@ export class HomeComponent {
       this.userLoading.set(false);
       return;
     }
+
     this.userLoading.set(true);
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
+
     this.userLoading.set(false);
     this.continueItems.set(progress.map(p => ({
-      tmdb_id: p.tmdb_id, media_type: p.media_type, title: p.title ?? 'Senza titolo',
-      poster: p.poster, season: p.season, episode: p.episode, position: p.position, duration: p.duration
+      tmdb_id: p.tmdb_id,
+      media_type: p.media_type,
+      title: p.title ?? 'Senza titolo',
+      poster: p.poster,
+      season: p.season,
+      episode: p.episode,
+      position: p.position,
+      duration: p.duration
     })));
-    // Hide items marked "Visto" — the home row is for things still to watch.
-    // Carry the same enrichment the watchlist page uses so the cards show the
-    // progress bar + "Mancano N episodi" badge. The backend resolves
-    // `next_season` / `next_episode` (already pivoted past 'ended' eps), so
-    // a click navigates straight to the right (s, e) without a follow-up
-    // fetch on the watch page.
+
     this.watchlistItems.set(wl.filter(w => (w.status ?? 'todo') !== 'done').map(w => ({
       tmdb_id: w.tmdb_id,
       media_type: w.media_type,
       title: w.title ?? 'Senza titolo',
       poster: w.poster,
-      season: w.next_season,
-      episode: w.next_episode,
+      season: w.resume_season,
+      episode: w.resume_episode,
       position: w.position,
       duration: w.duration,
-      watchStatus: computeWatchStatus(w)
+      watchStatus: w.watch_status_text
     })));
   }
 }

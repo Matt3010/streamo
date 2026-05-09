@@ -7,7 +7,6 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import { computeWatchStatus } from '../../services/watchlist-status.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
@@ -197,9 +196,8 @@ export class UserListViewComponent {
     this.toast.show(next === 'done'
       ? `${item.title}: segnato come visto`
       : `${item.title}: rimesso in "Da guardare"`);
-    // Re-fetch so watched_count + watchStatus reflect the new progress that
-    // the backend inserted alongside status='done'. (Going to 'todo' wipes
-    // progress; reloading keeps the badge consistent.)
+    // Re-fetch so the backend can recompute the resolved watchlist view-model
+    // (resume target, badge text, and effective done/todo state).
     void this.load(this.kind());
   }
 
@@ -214,9 +212,9 @@ export class UserListViewComponent {
         tmdb_id: w.tmdb_id, media_type: w.media_type,
         title: w.title ?? 'Senza titolo', poster: w.poster,
         status: w.status ?? 'todo',
-        watchStatus: computeWatchStatus(w),
-        season: w.next_season,
-        episode: w.next_episode,
+        watchStatus: w.watch_status_text,
+        season: w.resume_season,
+        episode: w.resume_episode,
         position: w.position,
         duration: w.duration
       })));

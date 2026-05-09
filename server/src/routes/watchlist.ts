@@ -25,6 +25,13 @@ interface ProgressAggregate {
   watched_count: number;
 }
 
+interface LatestTvProgressRow {
+  season: number;
+  episode: number;
+  position: number;
+  duration: number;
+}
+
 function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): number {
   if (!summary) return 0;
   const lea = summary.last_episode_to_air;
@@ -33,6 +40,40 @@ function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSumma
         .filter(s => s.season_number < lea.season_number)
         .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
     : (summary.number_of_episodes ?? 0);
+}
+
+function formatMovieRemaining(position: number | undefined, duration: number | undefined): string | undefined {
+  const pos = position ?? 0;
+  const dur = duration ?? 0;
+  if (dur <= 0 || pos <= 0 || pos >= dur) return undefined;
+
+  const remainingMinutes = Math.ceil((dur - pos) / 60);
+  if (remainingMinutes <= 0) return undefined;
+  if (remainingMinutes < 60) {
+    return remainingMinutes === 1 ? 'Manca 1 min' : `Mancano ${remainingMinutes} min`;
+  }
+
+  const hours = Math.floor(remainingMinutes / 60);
+  const minutes = remainingMinutes % 60;
+  const timeLeft = minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
+  return hours === 1 && minutes === 0 ? `Manca ${timeLeft}` : `Mancano ${timeLeft}`;
+}
+
+function formatTvStatusText(
+  airedEpisodes: number,
+  watchedCount: number,
+  doneAiredEpisodes: number,
+  caughtUp: boolean
+): string | undefined {
+  if (airedEpisodes <= 0) return undefined;
+  if (caughtUp) return 'Sei al passo';
+
+  const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
+  if (watchedBaseline <= 0) return undefined;
+
+  const remaining = Math.max(0, airedEpisodes - watchedBaseline);
+  if (remaining === 0) return 'Sei al passo';
+  return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }
 
 router.post('/user/watchlist', requireAuth, (req, res) => {
@@ -55,7 +96,6 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     ORDER BY added_at DESC
   `).all(req.user!.id) as WatchlistRow[];
 
-  // Latest in-flight progress row per item: drives the percentage bar.
   const latestProgress = new Map<string, { position: number; duration: number }>();
   if (rows.length > 0) {
     const latestRows = db.prepare(`
@@ -76,10 +116,9 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     }
   }
 
-  // Per-show progress aggregate for TV items: latest real season/episode touched
-  // plus how many episodes actually crossed WATCHED_THRESHOLD.
   const tvIds = rows.filter(r => r.media_type === 'tv').map(r => r.tmdb_id);
   const progressByTmdb = new Map<number, ProgressAggregate>();
+  const latestTvProgressByTmdb = new Map<number, LatestTvProgressRow>();
   if (tvIds.length > 0) {
     const placeholders = tvIds.map(() => '?').join(',');
     const seasons = db.prepare(`
@@ -101,23 +140,46 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
         watched_count: s.watched_count
       });
     }
+
+    const latestRows = db.prepare(`
+      SELECT tmdb_id, season, episode, position, duration FROM (
+        SELECT tmdb_id, season, episode, position, duration, updated_at,
+               ROW_NUMBER() OVER (PARTITION BY tmdb_id ORDER BY updated_at DESC, season DESC, episode DESC) AS rn
+        FROM progress
+        WHERE user_id = ? AND media_type = 'tv' AND synthetic = 0 AND tmdb_id IN (${placeholders})
+      )
+      WHERE rn = 1
+    `).all(req.user!.id, ...tvIds) as Array<{ tmdb_id: number; season: number; episode: number; position: number; duration: number }>;
+    for (const row of latestRows) {
+      latestTvProgressByTmdb.set(row.tmdb_id, {
+        season: row.season,
+        episode: row.episode,
+        position: row.position,
+        duration: row.duration
+      });
+    }
   }
 
   const items: WatchlistItem[] = await Promise.all(rows.map(async (r) => {
     const inFlight = latestProgress.get(`${r.media_type}:${r.tmdb_id}`);
     if (r.media_type !== 'tv') {
-      return inFlight ? { ...r, position: inFlight.position, duration: inFlight.duration } : r;
+      return {
+        ...r,
+        watch_status_text: formatMovieRemaining(inFlight?.position, inFlight?.duration),
+        ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})
+      };
     }
 
     const prog = progressByTmdb.get(r.tmdb_id) ?? { last_season: 0, last_episode: 0, watched_count: 0 };
+    const latestTv = latestTvProgressByTmdb.get(r.tmdb_id);
     const tmdb = await getTmdbTvSummary(r.tmdb_id);
     const totalEpisodes = tmdb?.number_of_episodes ?? 0;
     const airedEpisodes = getAiredEpisodesCount(tmdb);
+    const resume = await resolveNextPlayable(req.user!.id, r.tmdb_id);
+
     let status = r.status;
     let doneAiredEpisodes = r.done_aired_episodes ?? 0;
 
-    // Legacy/manual done rows created before done_aired_episodes existed should
-    // be pinned to "caught up as of now" once, so future releases can flip them.
     if (status === 'done' && doneAiredEpisodes === 0 && airedEpisodes > 0) {
       db.prepare(`
         UPDATE watchlist SET done_aired_episodes = ?
@@ -126,17 +188,30 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       doneAiredEpisodes = airedEpisodes;
     }
 
-    // New aired episodes since the user manually marked "Visto": flip back to
-    // todo, but keep the baseline so the badge can say how many are newly missing.
+    const caughtUp = !!latestTv
+      && latestTv.duration > 0
+      && latestTv.position >= latestTv.duration
+      && !!resume
+      && resume.season === latestTv.season
+      && resume.episode === latestTv.episode;
+
+    if (caughtUp && status !== 'done') {
+      status = 'done';
+      doneAiredEpisodes = airedEpisodes;
+      db.prepare(`
+        UPDATE watchlist SET status = 'done', done_aired_episodes = ?
+        WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+      `).run(doneAiredEpisodes, req.user!.id, r.tmdb_id);
+    }
+
     if (status === 'done' && doneAiredEpisodes > 0 && airedEpisodes > doneAiredEpisodes) {
+      status = 'todo';
       db.prepare(`
         UPDATE watchlist SET status = 'todo'
         WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
       `).run(req.user!.id, r.tmdb_id);
-      status = 'todo';
     }
 
-    const next = await resolveNextPlayable(req.user!.id, r.tmdb_id);
     return {
       ...r,
       status,
@@ -148,8 +223,10 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       total_episodes: totalEpisodes,
       aired_episodes: airedEpisodes,
       seasons: tmdb?.seasons ?? [],
-      next_season: next?.season,
-      next_episode: next?.episode,
+      caught_up: caughtUp,
+      watch_status_text: formatTvStatusText(airedEpisodes, prog.watched_count, doneAiredEpisodes, caughtUp),
+      resume_season: resume?.season,
+      resume_episode: resume?.episode,
       ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})
     };
   }));
@@ -183,9 +260,6 @@ router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
-  // Watchlist and progress are independent: removing a title from the list
-  // must not erase the user's viewing position. Cleanup of progress is
-  // handled separately via the history endpoints.
   db.prepare(`DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?`).run(req.user!.id, tmdb_id, type);
   res.json({ ok: true });
 });

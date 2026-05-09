@@ -62,11 +62,13 @@ export interface WatchlistItem {
    * doesn't expose air data. */
   aired_episodes?: number;
   seasons?: WatchlistSeasonInfo[];
+  watch_status_text?: string;
+  caught_up?: boolean;
   // Where the watch page should resume — already pivoted past finished
   // episodes by the backend. Lets the card click navigate straight to the
   // right (s, e) without an extra fetch.
-  next_season?: number;
-  next_episode?: number;
+  resume_season?: number;
+  resume_episode?: number;
   // Latest in-flight progress, drives the card progress bar
   position?: number;
   duration?: number;
