@@ -22,12 +22,40 @@ import { AuthModalService } from '../../services/auth-modal.service';
         }
       </div>
       @if (showSearch()) {
-        <div class="search-box">
-          <input type="text" placeholder="Cerca..." [value]="query()" (input)="onInput($event)" (keydown.enter)="submitSearch()">
-          <button class="search-btn" aria-label="Cerca" (click)="submitSearch()">
-            <app-icon name="search"></app-icon>
-          </button>
-        </div>
+        <section class="search-panel" aria-label="Ricerca catalogo">
+          <div class="search-intro">
+            <span class="search-badge">
+              <app-icon name="search"></app-icon>
+            </span>
+            <div class="search-copy">
+              <p class="search-title">Cerca nel catalogo</p>
+              <p class="search-hint">Film e serie TV, con i risultati più recenti in cima.</p>
+            </div>
+          </div>
+
+          <div class="search-box">
+            <label class="search-field" aria-label="Termine di ricerca">
+              <app-icon name="search"></app-icon>
+              <input
+                type="text"
+                placeholder="Titolo, film o serie TV"
+                [value]="query()"
+                (input)="onInput($event)"
+                (keydown.enter)="submitSearch()"
+                (keydown.escape)="clearQuery()">
+              @if (query().trim()) {
+                <button type="button" class="clear-btn" aria-label="Cancella ricerca" (click)="clearQuery()">
+                  <app-icon name="close"></app-icon>
+                </button>
+              }
+            </label>
+
+            <button class="search-btn" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
+              <app-icon name="search"></app-icon>
+              <span>Cerca</span>
+            </button>
+          </div>
+        </section>
       }
     </div>
   `,
@@ -57,6 +85,10 @@ export class TopBarComponent {
   protected onInput(ev: Event): void {
     const target = ev.target;
     if (target instanceof HTMLInputElement) this.query.set(target.value);
+  }
+
+  protected clearQuery(): void {
+    this.query.set('');
   }
 
   protected submitSearch(): void {
