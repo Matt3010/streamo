@@ -69,6 +69,40 @@
   color: var(--text-muted);
 }
 
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.live-pill-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #7a7a7a;
+  box-shadow: 0 0 0 3px rgba(122, 122, 122, 0.14);
+}
+
+.live-pill.connected {
+  color: #9be7ae;
+  border-color: rgba(46, 160, 67, 0.26);
+  background: rgba(46, 160, 67, 0.08);
+}
+
+.live-pill.connected .live-pill-dot {
+  background: #2ea043;
+  box-shadow: 0 0 0 3px rgba(46, 160, 67, 0.16);
+}
+
 .loading, .empty {
   color: var(--text-muted);
   font-size: 0.9rem;

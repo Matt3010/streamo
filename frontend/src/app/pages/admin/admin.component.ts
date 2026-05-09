@@ -104,7 +104,10 @@ function timeAgo(timestamp: number): string {
       <section class="admin-section">
         <div class="section-header">
           <h3>Sessioni Live</h3>
-          <span class="refresh-info">{{ admin.sessionsLiveConnected() ? 'Canale live attivo' : 'Connessione live in corso...' }}</span>
+          <span class="live-pill" [class.connected]="admin.sessionsLiveConnected()">
+            <span class="live-pill-dot" aria-hidden="true"></span>
+            <span>{{ admin.sessionsLiveConnected() ? 'Canale live attivo' : 'Canale live non connesso' }}</span>
+          </span>
         </div>
 
         @if (admin.sessions().length === 0) {
