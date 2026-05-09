@@ -40,6 +40,10 @@
   z-index: 19;
 }
 
+.search-panel.open {
+  background: #141414;
+}
+
 .search-panel:not(.open) {
   width: fit-content;
   max-width: min(20.5rem, calc(100vw - 1.4rem));
