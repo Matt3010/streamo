@@ -3,9 +3,12 @@ import type { MediaType, HistoryItem } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class HistoryService {
-  async list(): Promise<HistoryItem[]> {
+  async list(filters?: { media_type?: MediaType }): Promise<HistoryItem[]> {
     try {
-      const res = await fetch('/api/user/history');
+      const qs = new URLSearchParams();
+      if (filters?.media_type) qs.set('media_type', filters.media_type);
+      const url = qs.size ? `/api/user/history?${qs.toString()}` : '/api/user/history';
+      const res = await fetch(url);
       if (!res.ok) return [];
       const data = await res.json() as { items: HistoryItem[] };
       return data.items ?? [];

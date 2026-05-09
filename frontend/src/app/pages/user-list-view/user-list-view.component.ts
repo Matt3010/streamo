@@ -11,12 +11,20 @@ import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
 export type ViewMode = 'grid' | 'list';
+type MediaFilter = 'all' | 'tv' | 'movie';
+type BackendMediaFilter = Exclude<MediaFilter, 'all'>;
 
 const VIEW_MODE_KEY = 'vixstream.user-list.view-mode';
 
 const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   { value: 'todo', label: 'Da guardare' },
   { value: 'done', label: 'Visto' }
+];
+
+const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
+  { value: 'all', label: 'Tutti' },
+  { value: 'tv', label: 'TV' },
+  { value: 'movie', label: 'Film' }
 ];
 
 @Component({
@@ -49,11 +57,12 @@ const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
       </div>
     </div>
 
-    @if (kind() === 'watchlist') {
-      <div class="filter-bar">
+    <div class="filter-bar">
+      @if (kind() === 'watchlist') {
         <ui-tabs [tabs]="statusTabs" [(value)]="statusFilter" />
-      </div>
-    }
+      }
+      <ui-tabs [tabs]="mediaTabs" [(value)]="mediaFilter" />
+    </div>
 
     @if (loading()) {
       <div class="loading"><div class="spinner"></div></div>
@@ -120,37 +129,48 @@ export class UserListViewComponent {
   private readonly toast = inject(ToastService);
   private readonly navSource = inject(NavigationSourceService);
 
-  // Route :kind param via withComponentInputBinding().
   readonly kind = input.required<UserListType>();
 
   protected readonly statusTabs = STATUS_TABS;
+  protected readonly mediaTabs = MEDIA_TABS;
   protected readonly statusFilter = signal<WatchlistStatus>('todo');
+  protected readonly mediaFilter = signal<MediaFilter>('all');
   protected readonly viewMode = signal<ViewMode>(loadViewMode());
 
   protected readonly items = signal<CardItem[]>([]);
   protected readonly loading = signal(false);
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
 
-  // Watchlist gets status-filtered; history shows everything.
-  protected readonly filteredItems = computed(() => {
-    const all = this.items();
-    if (this.kind() !== 'watchlist') return all;
-    const want = this.statusFilter();
-    return all.filter(it => (it.status ?? 'todo') === want);
-  });
+  protected readonly filteredItems = computed(() => this.items());
 
   protected readonly emptyTitle = computed(() => {
-    if (this.kind() !== 'watchlist') return 'La cronologia è vuota';
-    return this.statusFilter() === 'done' ? 'Nessun titolo segnato come visto' : 'La tua lista è vuota';
+    const media = this.mediaFilter();
+    if (this.kind() !== 'watchlist') {
+      return media === 'all'
+        ? 'La cronologia è vuota'
+        : `Nessun ${mediaLabel(media)} nella cronologia`;
+    }
+    if (this.statusFilter() === 'done') {
+      return media === 'all'
+        ? 'Nessun titolo segnato come visto'
+        : `Nessun ${mediaLabel(media)} segnato come visto`;
+    }
+    return media === 'all'
+      ? 'La tua lista è vuota'
+      : `Nessun ${mediaLabel(media)} nella tua lista`;
   });
 
   protected readonly emptyHint = computed(() => {
+    const media = this.mediaFilter();
     if (this.kind() !== 'watchlist') {
-      return 'I titoli che inizi a guardare verranno tracciati qui.';
+      return media === 'all'
+        ? 'I titoli che inizi a guardare verranno tracciati qui.'
+        : `Prova a cambiare filtro o inizia a guardare ${mediaHintTarget(media)}.`;
     }
-    return this.statusFilter() === 'done'
-      ? 'I titoli che marchi come visti dal pulsante ✓ appariranno qui.'
-      : 'Apri un film o una serie e clicca il segnalibro per aggiungerlo alla tua lista.';
+    if (this.statusFilter() === 'done') {
+      return 'I titoli che marchi come visti dal pulsante check appariranno qui.';
+    }
+    return `Apri ${mediaHintTarget(media)} e clicca il segnalibro per aggiungerl${media === 'tv' ? 'a' : 'o'} alla tua lista.`;
   });
 
   private seq = 0;
@@ -158,7 +178,9 @@ export class UserListViewComponent {
   constructor() {
     effect(() => {
       const kind = this.kind();
-      void this.load(kind);
+      const media = this.mediaFilter();
+      const status = kind === 'watchlist' ? this.statusFilter() : undefined;
+      void this.load(kind, media, status);
     });
   }
 
@@ -196,21 +218,22 @@ export class UserListViewComponent {
     this.toast.show(next === 'done'
       ? `${item.title}: segnato come visto`
       : `${item.title}: rimesso in "Da guardare"`);
-    // Re-fetch so the backend can recompute the resolved watchlist view-model
-    // (resume target, badge text, and effective done/todo state).
-    void this.load(this.kind());
+    void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
   }
 
-  private async load(kind: UserListType): Promise<void> {
+  private async load(kind: UserListType, media: MediaFilter, status?: WatchlistStatus): Promise<void> {
     const mySeq = ++this.seq;
     this.loading.set(true);
     this.items.set([]);
+    const mediaType = media === 'all' ? undefined : media as BackendMediaFilter;
     if (kind === 'watchlist') {
-      const list = await this.watchlist.list();
+      const list = await this.watchlist.list({ status, ...(mediaType ? { media_type: mediaType } : {}) });
       if (mySeq !== this.seq) return;
       this.items.set(list.map(w => ({
-        tmdb_id: w.tmdb_id, media_type: w.media_type,
-        title: w.title ?? 'Senza titolo', poster: w.poster,
+        tmdb_id: w.tmdb_id,
+        media_type: w.media_type,
+        title: w.title ?? 'Senza titolo',
+        poster: w.poster,
         status: w.status ?? 'todo',
         watchStatus: w.watch_status_text,
         season: w.resume_season,
@@ -219,12 +242,15 @@ export class UserListViewComponent {
         duration: w.duration
       })));
     } else {
-      const list = await this.history.list();
+      const list = await this.history.list(mediaType ? { media_type: mediaType } : undefined);
       if (mySeq !== this.seq) return;
       this.items.set(list.map(h => ({
-        tmdb_id: h.tmdb_id, media_type: h.media_type,
-        title: h.title ?? 'Senza titolo', poster: h.poster,
-        season: h.season, episode: h.episode
+        tmdb_id: h.tmdb_id,
+        media_type: h.media_type,
+        title: h.title ?? 'Senza titolo',
+        poster: h.poster,
+        season: h.season,
+        episode: h.episode
       })));
     }
     this.loading.set(false);
@@ -238,4 +264,14 @@ function loadViewMode(): ViewMode {
   } catch {
     return 'grid';
   }
+}
+
+function mediaLabel(filter: MediaFilter): string {
+  return filter === 'tv' ? 'serie TV' : filter === 'movie' ? 'film' : 'titolo';
+}
+
+function mediaHintTarget(filter: MediaFilter): string {
+  if (filter === 'tv') return 'una serie TV';
+  if (filter === 'movie') return 'un film';
+  return 'un film o una serie';
 }

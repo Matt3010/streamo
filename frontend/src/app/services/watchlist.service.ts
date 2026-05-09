@@ -6,9 +6,13 @@ export class WatchlistService {
   /** Bumped after any add/remove so dependent UIs (Home "La mia lista") refresh. */
   readonly tick = signal(0);
 
-  async list(): Promise<WatchlistItem[]> {
+  async list(filters?: { status?: WatchlistStatus; media_type?: MediaType }): Promise<WatchlistItem[]> {
     try {
-      const res = await fetch('/api/user/watchlist');
+      const qs = new URLSearchParams();
+      if (filters?.status) qs.set('status', filters.status);
+      if (filters?.media_type) qs.set('media_type', filters.media_type);
+      const url = qs.size ? `/api/user/watchlist?${qs.toString()}` : '/api/user/watchlist';
+      const res = await fetch(url);
       if (!res.ok) return [];
       const data = await res.json() as { items: WatchlistItem[] };
       return data.items ?? [];

@@ -27,14 +27,26 @@ router.post('/user/history', requireAuth, (req, res) => {
 });
 
 router.get('/user/history', requireAuth, (req, res) => {
+  const mediaFilter = typeof req.query.media_type === 'string' ? req.query.media_type : '';
+  if (mediaFilter && !['movie', 'tv'].includes(mediaFilter)) {
+    return res.status(400).json({ error: 'invalid_type' });
+  }
+
+  const where = ['user_id = ?'];
+  const params: Array<number | string> = [req.user!.id];
+  if (mediaFilter) {
+    where.push('media_type = ?');
+    params.push(mediaFilter);
+  }
+
   const rows = db.prepare(`
     SELECT tmdb_id, media_type, season, episode, title, poster, MAX(watched_at) as watched_at
     FROM history
-    WHERE user_id = ?
+    WHERE ${where.join(' AND ')}
     GROUP BY tmdb_id, media_type
     ORDER BY watched_at DESC
     LIMIT 50
-  `).all(req.user!.id);
+  `).all(...params);
   res.json({ items: rows });
 });
 

@@ -34,6 +34,9 @@
 .filter-bar {
   max-width: 1400px;
   margin: 0 auto 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 /* === List view === */
@@ -144,6 +147,9 @@
 }
 
 @media (max-width: 640px) {
+  .filter-bar {
+    gap: 0.45rem;
+  }
   /* Compact buttons on phones so the title and sub-line keep room. */
   .row-action { width: 32px; height: 32px; }
   .row-action svg { width: 14px; height: 14px; }

@@ -90,11 +90,28 @@ router.post('/user/watchlist', requireAuth, (req, res) => {
 });
 
 router.get('/user/watchlist', requireAuth, async (req, res) => {
+  const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
+  const mediaFilter = typeof req.query.media_type === 'string' ? req.query.media_type : '';
+  if (statusFilter && !['todo', 'done'].includes(statusFilter)) {
+    return res.status(400).json({ error: 'invalid_status' });
+  }
+  if (mediaFilter && !['movie', 'tv'].includes(mediaFilter)) {
+    return res.status(400).json({ error: 'invalid_type' });
+  }
+
+  const where = ['user_id = ?'];
+  const params: Array<number | string> = [req.user!.id];
+  if (mediaFilter) {
+    where.push('media_type = ?');
+    params.push(mediaFilter);
+  }
+
   const rows = db.prepare(`
     SELECT tmdb_id, media_type, title, poster, status, done_aired_episodes, added_at
-    FROM watchlist WHERE user_id = ?
+    FROM watchlist
+    WHERE ${where.join(' AND ')}
     ORDER BY added_at DESC
-  `).all(req.user!.id) as WatchlistRow[];
+  `).all(...params) as WatchlistRow[];
 
   const latestProgress = new Map<string, { position: number; duration: number }>();
   if (rows.length > 0) {
@@ -160,7 +177,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     }
   }
 
-  const items: WatchlistItem[] = await Promise.all(rows.map(async (r) => {
+  const allItems: WatchlistItem[] = await Promise.all(rows.map(async (r) => {
     const inFlight = latestProgress.get(`${r.media_type}:${r.tmdb_id}`);
     if (r.media_type !== 'tv') {
       return {
@@ -223,6 +240,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     };
   }));
 
+  const items = statusFilter ? allItems.filter(item => item.status === statusFilter) : allItems;
   res.json({ items });
 });
 
