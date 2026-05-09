@@ -9,6 +9,7 @@ interface AuthResponse {
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   readonly currentUser = signal<User | null>(null);
+  readonly authResolved = signal(false);
   readonly isLoggedIn = computed(() => this.currentUser() !== null);
   readonly isAdmin = computed(() => this.currentUser()?.is_admin === true);
 
@@ -26,7 +27,9 @@ export class AuthService {
           const data = await res.json() as { user: User };
           this.currentUser.set(data.user);
         }
-      } catch {}
+      } catch {} finally {
+        this.authResolved.set(true);
+      }
     })();
     return this.authCheckPromise;
   }
@@ -44,6 +47,7 @@ export class AuthService {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
     this.currentUser.set(null);
+    this.authResolved.set(true);
     // Reset the cache so the next checkAuth() actually round-trips to
     // /api/auth/me instead of reusing the resolved promise from the
     // previous (logged-in) session.
@@ -76,9 +80,11 @@ export class AuthService {
         body: JSON.stringify(body)
       });
       const data = await res.json() as AuthResponse;
+      this.authResolved.set(true);
       if (res.ok && data.user) this.currentUser.set(data.user);
       return data;
     } catch {
+      this.authResolved.set(true);
       return { error: 'network_error' };
     }
   }

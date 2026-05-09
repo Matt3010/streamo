@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { ActivatedRouteSnapshot, Router, RouterOutlet } from '@angular/router';
 import { AuthModalComponent } from './components/auth-modal/auth-modal.component';
 import { ToastComponent } from './components/toast/toast.component';
 import { AuthService } from './services/auth.service';
@@ -17,8 +17,32 @@ import { AuthService } from './services/auth.service';
 })
 export class AppComponent {
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private sawAuthenticated = false;
 
   constructor() {
     void this.auth.checkAuth();
+
+    effect(() => {
+      const user = this.auth.currentUser();
+      const resolved = this.auth.authResolved();
+      if (!resolved) return;
+
+      if (user) {
+        this.sawAuthenticated = true;
+        return;
+      }
+
+      if (!this.sawAuthenticated) return;
+      if (!routeRequiresAuth(this.router.routerState.snapshot.root)) return;
+
+      void this.router.navigate(['/browse']);
+    });
   }
+}
+
+function routeRequiresAuth(route: ActivatedRouteSnapshot | null): boolean {
+  if (!route) return false;
+  if (route.data['requiresAuth'] === true) return true;
+  return route.children.some(child => routeRequiresAuth(child));
 }

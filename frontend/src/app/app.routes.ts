@@ -21,6 +21,7 @@ export const routes: Routes = [
       {
         path: 'watch/:type/:id',
         canActivate: [requireAuthGuard],
+        data: { requiresAuth: true },
         loadComponent: () => import('./pages/watch/watch.component').then(m => m.WatchComponent)
       },
       {
@@ -30,6 +31,7 @@ export const routes: Routes = [
       {
         path: 'admin',
         canActivate: [adminGuard],
+        data: { requiresAuth: true },
         loadComponent: () => import('./pages/admin/admin.component').then(m => m.AdminComponent)
       }
     ]
@@ -40,6 +42,8 @@ export const routes: Routes = [
     children: [
       {
         path: ':kind',
+        canActivate: [requireAuthGuard],
+        data: { requiresAuth: true },
         loadComponent: () => import('./pages/user-list-view/user-list-view.component').then(m => m.UserListViewComponent)
       }
     ]

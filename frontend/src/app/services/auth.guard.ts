@@ -18,7 +18,7 @@ export const requireAuthGuard: CanActivateFn = async () => {
   await auth.checkAuth();
   if (auth.isLoggedIn()) return true;
 
-  toast.show('Accedi per guardare film e serie TV');
+  toast.show('Accedi per continuare');
   modal.open();
   return router.createUrlTree(['/browse']);
 };
