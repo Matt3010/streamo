@@ -8,6 +8,7 @@ import progressRoutes from './routes/progress';
 import historyRoutes from './routes/history';
 import watchlistRoutes from './routes/watchlist';
 import adminRoutes from './routes/admin';
+import playbackRoutes from './routes/playback';
 import { attachAdminLiveSessions } from './services/admin-live';
 
 const app = express();
@@ -21,6 +22,7 @@ app.use(progressRoutes);
 app.use(historyRoutes);
 app.use(watchlistRoutes);
 app.use(adminRoutes);
+app.use(playbackRoutes);
 
 const server = http.createServer(app);
 attachAdminLiveSessions(server);

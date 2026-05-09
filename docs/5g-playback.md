@@ -15,6 +15,26 @@ AGCOM su `vixsrc.to`, `vixcloud.co`, `*.vix-content.net`.
   hardcoded a `sc-u8-XX.vix-content.net`, `vixcloud.co`, `vixsrc.to`,
   e quei domini sono DNS-bloccati dai carrier.
 
+## Soluzione consigliata
+
+- NON riscrivere bundle JS minificati o HTML inline con `sub_filter`
+  generico: e' troppo facile corrompere JW Player.
+- Riscrivere solo le response HLS testuali (`.m3u8`) lato server,
+  lasciando segmenti video e asset statici in puro proxy pass-through.
+- In pratica:
+  - `/playlist/...` deve passare da una rotta backend che fetch-a
+    `https://vixsrc.to/playlist/...`
+  - se la response e' una playlist, sostituisce solo:
+    - `https://sc-u8-xx.vix-content.net/...` -> `/cdn/sc-u8-xx/...`
+    - `https://vixcloud.co/...` -> `/vixcloud/...`
+    - `https://vixsrc.to/...` -> `/...`
+  - i `.ts` continuano a passare da nginx verso l'host upstream senza
+    `sub_filter`, cosi restano intatti range, buffering e content-type
+- Questa e' la prima strategia che evita insieme:
+  - corruzione del bundle
+  - monkey-patch fragili nel browser
+  - manipolazione dei media chunk
+
 ## Baseline funzionante (commit `e42317b`)
 
 `nginx.conf.template` essenziale:
@@ -144,7 +164,7 @@ browser non vanno più in timeout.
 - Pi remoto: `192.168.1.99`, accesso via cloudflared SSH
   (`ssh.scanferlamatteo.work`).
 - Repo: `~/streamingimmunity`.
-- Deploy: `git pull && docker compose up -d --build vixstream`.
+- Deploy: `git pull && docker compose up -d --build backend vixstream`.
 - Dominio pubblico: `cinema.scanferlamatteo.work` (cloudflared tunnel).
 - I `.ts` da 1.5–2 MB possono caricare in <1s in Wi-Fi ma fallire su
   5G non per banda, ma per blocco DNS sui domini upstream.
