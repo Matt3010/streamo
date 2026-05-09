@@ -196,15 +196,6 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       && latestTv.position >= latestTv.duration * WATCHED_THRESHOLD
       && noLaterAiredEpisode;
 
-    if (caughtUp && status !== 'done') {
-      status = 'done';
-      doneAiredEpisodes = airedEpisodes;
-      db.prepare(`
-        UPDATE watchlist SET status = 'done', done_aired_episodes = ?
-        WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
-      `).run(doneAiredEpisodes, req.user!.id, r.tmdb_id);
-    }
-
     if (status === 'done' && doneAiredEpisodes > 0 && airedEpisodes > doneAiredEpisodes) {
       status = 'todo';
       db.prepare(`

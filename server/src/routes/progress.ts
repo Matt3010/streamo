@@ -95,7 +95,21 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
     WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
   `).get(userId, tmdbId) as { watched: number | null } | undefined;
 
-  if ((cnt?.watched ?? 0) >= airedEp) {
+  const latest = db.prepare(`
+    SELECT season, episode, position, duration FROM progress
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
+    ORDER BY updated_at DESC, season DESC, episode DESC
+    LIMIT 1
+  `).get(userId, tmdbId) as { season: number; episode: number; position: number; duration: number } | undefined;
+  const noLaterAiredEpisode = latest
+    ? (await findNextEpisode(tmdbId, latest.season, latest.episode)) === null
+    : false;
+  const caughtUp = !!latest
+    && latest.duration > 0
+    && latest.position >= latest.duration * WATCHED_THRESHOLD
+    && noLaterAiredEpisode;
+
+  if ((cnt?.watched ?? 0) >= airedEp || caughtUp) {
     db.prepare(`
       UPDATE watchlist SET status = 'done', done_aired_episodes = ?
       WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
