@@ -23,7 +23,7 @@ import { AuthModalService } from '../../services/auth-modal.service';
       </div>
       @if (showSearch()) {
         <section class="search-panel" aria-label="Ricerca catalogo">
-          <div class="search-intro">
+          <button type="button" class="search-intro" (click)="openSearch()">
             <span class="search-badge">
               <app-icon name="search"></app-icon>
             </span>
@@ -31,30 +31,35 @@ import { AuthModalService } from '../../services/auth-modal.service';
               <p class="search-title">Cerca nel catalogo</p>
               <p class="search-hint">Film e serie TV, con i risultati più recenti in cima.</p>
             </div>
-          </div>
+          </button>
 
-          <div class="search-box">
-            <label class="search-field" aria-label="Termine di ricerca">
-              <app-icon name="search"></app-icon>
-              <input
-                type="text"
-                placeholder="Titolo, film o serie TV"
-                [value]="query()"
-                (input)="onInput($event)"
-                (keydown.enter)="submitSearch()"
-                (keydown.escape)="clearQuery()">
-              @if (query().trim()) {
-                <button type="button" class="clear-btn" aria-label="Cancella ricerca" (click)="clearQuery()">
-                  <app-icon name="close"></app-icon>
+          @if (searchOpen()) {
+            <div class="search-box">
+              <label class="search-field" aria-label="Termine di ricerca">
+                <app-icon name="search"></app-icon>
+                <input
+                  type="text"
+                  placeholder="Titolo, film o serie TV"
+                  [value]="query()"
+                  (input)="onInput($event)"
+                  (keydown.enter)="submitSearch()"
+                  (keydown.escape)="handleEscape()">
+                @if (query().trim()) {
+                  <button type="button" class="clear-btn" aria-label="Cancella ricerca" (click)="clearQuery()">
+                    <app-icon name="close"></app-icon>
+                  </button>
+                }
+              </label>
+
+              <div class="search-actions">
+                <button class="ghost-btn" type="button" (click)="closeSearch()">Chiudi</button>
+                <button class="search-btn" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
+                  <app-icon name="search"></app-icon>
+                  <span>Cerca</span>
                 </button>
-              }
-            </label>
-
-            <button class="search-btn" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
-              <app-icon name="search"></app-icon>
-              <span>Cerca</span>
-            </button>
-          </div>
+              </div>
+            </div>
+          }
         </section>
       }
     </div>
@@ -67,16 +72,13 @@ export class TopBarComponent {
   private readonly router = inject(Router);
 
   readonly query = signal('');
+  readonly searchOpen = signal(false);
 
-  // Re-fires whenever a navigation completes so the URL-derived computeds
-  // below can recalculate.
   private readonly nav = toSignal(
     this.router.events.pipe(filter(e => e instanceof NavigationEnd)),
     { initialValue: null }
   );
 
-  // Search is only meaningful on the home/browse page — hide it elsewhere
-  // (watch, list, search results) so the top bar shows just the account area.
   protected readonly showSearch = computed<boolean>(() => {
     this.nav();
     return /^\/browse(?:[/?#]|$)/.test(this.router.url);
@@ -87,12 +89,28 @@ export class TopBarComponent {
     if (target instanceof HTMLInputElement) this.query.set(target.value);
   }
 
+  protected openSearch(): void {
+    this.searchOpen.set(true);
+  }
+
+  protected closeSearch(): void {
+    this.searchOpen.set(false);
+  }
+
   protected clearQuery(): void {
     this.query.set('');
   }
 
+  protected handleEscape(): void {
+    if (this.query().trim()) this.clearQuery();
+    else this.closeSearch();
+  }
+
   protected submitSearch(): void {
     const q = this.query().trim();
-    if (q) void this.router.navigate(['/search'], { queryParams: { q } });
+    if (q) {
+      this.searchOpen.set(false);
+      void this.router.navigate(['/search'], { queryParams: { q } });
+    }
   }
 }
