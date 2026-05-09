@@ -15,6 +15,7 @@ interface WatchlistRow {
   title: string | null;
   poster: string | null;
   status: 'todo' | 'done';
+  done_aired_episodes: number;
   added_at: number;
 }
 
@@ -22,6 +23,16 @@ interface ProgressAggregate {
   last_season: number;
   last_episode: number;
   watched_count: number;
+}
+
+function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): number {
+  if (!summary) return 0;
+  const lea = summary.last_episode_to_air;
+  return lea
+    ? summary.seasons
+        .filter(s => s.season_number < lea.season_number)
+        .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
+    : (summary.number_of_episodes ?? 0);
 }
 
 router.post('/user/watchlist', requireAuth, (req, res) => {
@@ -39,12 +50,12 @@ router.post('/user/watchlist', requireAuth, (req, res) => {
 
 router.get('/user/watchlist', requireAuth, async (req, res) => {
   const rows = db.prepare(`
-    SELECT tmdb_id, media_type, title, poster, status, added_at
+    SELECT tmdb_id, media_type, title, poster, status, done_aired_episodes, added_at
     FROM watchlist WHERE user_id = ?
     ORDER BY added_at DESC
   `).all(req.user!.id) as WatchlistRow[];
 
-  // Latest in-flight progress row per item — drives the percentage bar.
+  // Latest in-flight progress row per item: drives the percentage bar.
   const latestProgress = new Map<string, { position: number; duration: number }>();
   if (rows.length > 0) {
     const latestRows = db.prepare(`
@@ -53,6 +64,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
                ROW_NUMBER() OVER (PARTITION BY tmdb_id, media_type ORDER BY updated_at DESC) AS rn
         FROM progress
         WHERE user_id = ?
+          AND synthetic = 0
       )
       WHERE rn = 1
         AND duration > 0
@@ -64,7 +76,8 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     }
   }
 
-  // Per-show progress aggregate for TV items: max season touched + watched_count.
+  // Per-show progress aggregate for TV items: latest real season/episode touched
+  // plus how many episodes actually crossed WATCHED_THRESHOLD.
   const tvIds = rows.filter(r => r.media_type === 'tv').map(r => r.tmdb_id);
   const progressByTmdb = new Map<number, ProgressAggregate>();
   if (tvIds.length > 0) {
@@ -74,13 +87,13 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
         MAX(season) AS max_season,
         SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END) AS watched_count
       FROM progress
-      WHERE user_id = ? AND media_type = 'tv' AND tmdb_id IN (${placeholders})
+      WHERE user_id = ? AND media_type = 'tv' AND synthetic = 0 AND tmdb_id IN (${placeholders})
       GROUP BY tmdb_id
     `).all(req.user!.id, ...tvIds) as Array<{ tmdb_id: number; max_season: number; watched_count: number }>;
     for (const s of seasons) {
       const ep = db.prepare(`
         SELECT MAX(episode) AS max_episode FROM progress
-        WHERE user_id = ? AND media_type = 'tv' AND tmdb_id = ? AND season = ?
+        WHERE user_id = ? AND media_type = 'tv' AND synthetic = 0 AND tmdb_id = ? AND season = ?
       `).get(req.user!.id, s.tmdb_id, s.max_season) as { max_episode: number | null } | undefined;
       progressByTmdb.set(s.tmdb_id, {
         last_season: s.max_season,
@@ -90,43 +103,44 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     }
   }
 
-  const items: WatchlistItem[] = await Promise.all(rows.map(async r => {
+  const items: WatchlistItem[] = await Promise.all(rows.map(async (r) => {
     const inFlight = latestProgress.get(`${r.media_type}:${r.tmdb_id}`);
     if (r.media_type !== 'tv') {
       return inFlight ? { ...r, position: inFlight.position, duration: inFlight.duration } : r;
     }
+
     const prog = progressByTmdb.get(r.tmdb_id) ?? { last_season: 0, last_episode: 0, watched_count: 0 };
     const tmdb = await getTmdbTvSummary(r.tmdb_id);
     const totalEpisodes = tmdb?.number_of_episodes ?? 0;
-    // Aired count = episodes in seasons before last_episode_to_air.season +
-    // last_episode_to_air.episode within that season. Falls back to
-    // total_episodes when TMDB doesn't expose air data (older cache rows
-    // or shows without an aired episode yet).
-    const lea = tmdb?.last_episode_to_air;
-    const airedEpisodes = (lea && tmdb)
-      ? tmdb.seasons
-          .filter(s => s.season_number < lea.season_number)
-          .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
-      : totalEpisodes;
+    const airedEpisodes = getAiredEpisodesCount(tmdb);
     let status = r.status;
-    // Auto-flip done → todo when new aired episodes have been released since
-    // the user last marked the show as caught up. Compared against aired (not
-    // total) so future-scheduled episodes don't immediately undo "done".
-    if (status === 'done' && airedEpisodes > 0 && prog.watched_count < airedEpisodes) {
+    let doneAiredEpisodes = r.done_aired_episodes ?? 0;
+
+    // Legacy/manual done rows created before done_aired_episodes existed should
+    // be pinned to "caught up as of now" once, so future releases can flip them.
+    if (status === 'done' && doneAiredEpisodes === 0 && airedEpisodes > 0) {
+      db.prepare(`
+        UPDATE watchlist SET done_aired_episodes = ?
+        WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+      `).run(airedEpisodes, req.user!.id, r.tmdb_id);
+      doneAiredEpisodes = airedEpisodes;
+    }
+
+    // New aired episodes since the user manually marked "Visto": flip back to
+    // todo, but keep the baseline so the badge can say how many are newly missing.
+    if (status === 'done' && doneAiredEpisodes > 0 && airedEpisodes > doneAiredEpisodes) {
       db.prepare(`
         UPDATE watchlist SET status = 'todo'
         WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
       `).run(req.user!.id, r.tmdb_id);
       status = 'todo';
     }
-    // Where the watch page should land if the user clicks this card. Mirrors
-    // the /progress/next pivot (most recent touched episode, advanced past
-    // 'ended' ones). Lets the home/watchlist link straight via ?s=&e= without
-    // a follow-up fetch from the watch component.
+
     const next = await resolveNextPlayable(req.user!.id, r.tmdb_id);
     return {
       ...r,
       status,
+      done_aired_episodes: doneAiredEpisodes,
       last_season: prog.last_season,
       last_episode: prog.last_episode,
       watched_count: prog.watched_count,
@@ -149,41 +163,19 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   const status = (req.body || {}).status;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
   if (!['todo', 'done'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+
+  let doneAiredEpisodes = 0;
+  if (type === 'tv' && status === 'done') {
+    const summary = await getTmdbTvSummary(tmdb_id);
+    doneAiredEpisodes = getAiredEpisodesCount(summary);
+  }
+
   const result = db.prepare(`
-    UPDATE watchlist SET status = ?
+    UPDATE watchlist SET status = ?, done_aired_episodes = ?
     WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
-  `).run(status, req.user!.id, tmdb_id, type);
+  `).run(status, doneAiredEpisodes, req.user!.id, tmdb_id, type);
   if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
 
-  // Sync progress with the user's intent:
-  //  - status='done' → mark every episode watched
-  //  - status='todo' → wipe progress
-  if (type === 'tv') {
-    if (status === 'done') {
-      const summary = await getTmdbTvSummary(tmdb_id);
-      if (summary?.seasons?.length) {
-        const insert = db.prepare(`
-          INSERT INTO progress (user_id, tmdb_id, media_type, season, episode, position, duration)
-          VALUES (?, ?, 'tv', ?, ?, 1, 1)
-          ON CONFLICT(user_id, tmdb_id, media_type, season, episode) DO UPDATE SET
-            position = MAX(position, duration),
-            duration = MAX(duration, 1)
-        `);
-        const tx = db.transaction(() => {
-          for (const s of summary.seasons) {
-            for (let ep = 1; ep <= (s.episode_count || 0); ep++) {
-              insert.run(req.user!.id, tmdb_id, s.season_number, ep);
-            }
-          }
-        });
-        tx();
-      }
-    } else {
-      db.prepare(`
-        DELETE FROM progress WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
-      `).run(req.user!.id, tmdb_id);
-    }
-  }
   res.json({ ok: true });
 });
 

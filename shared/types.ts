@@ -46,6 +46,10 @@ export interface WatchlistItem {
   poster: string | null;
   status: WatchlistStatus;
   added_at: number;
+  /** For TV rows manually marked as done: number of aired episodes at the
+   * moment the user marked the show "Visto". Lets new releases flip back to
+   * todo without falsifying real playback progress. */
+  done_aired_episodes?: number;
   // TV-only enrichment computed by the backend
   last_season?: number;
   last_episode?: number;

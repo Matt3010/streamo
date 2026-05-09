@@ -17,11 +17,10 @@ export function computeWatchStatus(w: WatchlistItem): string {
   const airedEp = w.aired_episodes ?? w.total_episodes ?? 0;
   if (airedEp === 0) return ''; // TMDB data missing: say nothing.
 
-  // watched_count tracks episodes that crossed the WATCHED_THRESHOLD (>=80%).
-  // Using "max episode touched" instead would overcount: just opening the
-  // latest episode for a few seconds would falsely flip the badge to
-  // "Sei al passo" even though that episode isn't finished.
-  const watched = w.watched_count ?? 0;
+  // watched_count tracks episodes actually watched to threshold. For items
+  // manually marked as done, done_aired_episodes remembers the "caught up"
+  // baseline without falsifying real playback progress.
+  const watched = Math.max(w.watched_count ?? 0, w.done_aired_episodes ?? 0);
   if (watched === 0) return ''; // Not started: no badge.
 
   const remaining = Math.max(0, airedEp - watched);

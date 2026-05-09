@@ -22,6 +22,16 @@ interface ProgressRow {
   updated_at: number;
 }
 
+function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): number {
+  if (!summary) return 0;
+  const lea = summary.last_episode_to_air;
+  return lea
+    ? summary.seasons
+        .filter(s => s.season_number < lea.season_number)
+        .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
+    : (summary.number_of_episodes ?? 0);
+}
+
 router.post('/user/progress', requireAuth, async (req, res) => {
   const body = req.body || {};
   const tmdb_id = toInt(body.tmdb_id, { min: 1 });
@@ -36,11 +46,12 @@ router.post('/user/progress', requireAuth, async (req, res) => {
   if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
 
   db.prepare(`
-    INSERT INTO progress (user_id, tmdb_id, media_type, season, episode, position, duration, title, poster, backdrop, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s','now'))
+    INSERT INTO progress (user_id, tmdb_id, media_type, season, episode, position, duration, synthetic, title, poster, backdrop, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, strftime('%s','now'))
     ON CONFLICT(user_id, tmdb_id, media_type, season, episode) DO UPDATE SET
       position = excluded.position,
       duration = excluded.duration,
+      synthetic = 0,
       title = COALESCE(excluded.title, title),
       poster = COALESCE(excluded.poster, poster),
       backdrop = COALESCE(excluded.backdrop, backdrop),
@@ -48,8 +59,6 @@ router.post('/user/progress', requireAuth, async (req, res) => {
   `).run(req.user!.id, tmdb_id, media_type, season, episode, position, duration,
          body.title || null, body.poster || null, body.backdrop || null);
 
-  // Auto-flip watchlist status to 'done' when the user has effectively
-  // finished the title via real playback. Only flips upward (todo → done).
   await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
 
   res.json({ ok: true });
@@ -65,43 +74,36 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
   if (mediaType === 'movie') {
     const row = db.prepare(`
       SELECT position, duration FROM progress
-      WHERE user_id = ? AND tmdb_id = ? AND media_type = 'movie' AND season = 0 AND episode = 0
+      WHERE user_id = ? AND tmdb_id = ? AND media_type = 'movie' AND season = 0 AND episode = 0 AND synthetic = 0
     `).get(userId, tmdbId) as { position: number; duration: number } | undefined;
     if (row && row.duration > 0 && row.position >= row.duration * WATCHED_THRESHOLD) {
-      db.prepare(`UPDATE watchlist SET status = 'done' WHERE user_id = ? AND tmdb_id = ? AND media_type = 'movie'`)
-        .run(userId, tmdbId);
+      db.prepare(`
+        UPDATE watchlist SET status = 'done', done_aired_episodes = 0
+        WHERE user_id = ? AND tmdb_id = ? AND media_type = 'movie'
+      `).run(userId, tmdbId);
     }
     return;
   }
 
-  // TV: count aired episodes (last_episode_to_air) — falling back to
-  // total_episodes when TMDB doesn't expose air info. Comparing against
-  // aired lets a fully-caught-up viewer of an ongoing show flip to 'done'.
   const summary = await getTmdbTvSummary(tmdbId);
-  if (!summary) return;
-  const lea = summary.last_episode_to_air;
-  const airedEp = lea
-    ? summary.seasons
-        .filter(s => s.season_number < lea.season_number)
-        .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
-    : (summary.number_of_episodes ?? 0);
+  const airedEp = getAiredEpisodesCount(summary);
   if (!airedEp) return;
+
   const cnt = db.prepare(`
     SELECT SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END) AS watched
     FROM progress
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
   `).get(userId, tmdbId) as { watched: number | null } | undefined;
+
   if ((cnt?.watched ?? 0) >= airedEp) {
-    db.prepare(`UPDATE watchlist SET status = 'done' WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'`)
-      .run(userId, tmdbId);
+    db.prepare(`
+      UPDATE watchlist SET status = 'done', done_aired_episodes = ?
+      WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+    `).run(airedEp, userId, tmdbId);
   }
 }
 
 router.get('/user/progress', requireAuth, async (req, res) => {
-  // Latest progress row per show (deterministic via ROW_NUMBER — when several
-  // rows share updated_at, e.g. after a manual "mark up to S2E5", we pick the
-  // furthest-along episode). The ≥95% filter is NOT applied here so we can
-  // pivot a finished episode to "next episode, position 0" below.
   const rows = db.prepare(`
     SELECT tmdb_id, media_type, season, episode, position, duration,
            title, poster, backdrop, updated_at
@@ -112,6 +114,7 @@ router.get('/user/progress', requireAuth, async (req, res) => {
       ) AS rn
       FROM progress p
       WHERE p.user_id = ?
+        AND p.synthetic = 0
         AND p.position > 5
         AND NOT EXISTS (
           SELECT 1 FROM watchlist w
@@ -125,12 +128,6 @@ router.get('/user/progress', requireAuth, async (req, res) => {
     LIMIT 30
   `).all(req.user!.id) as ProgressRow[];
 
-  // Pivot to the next episode only when the user *actually* finished one —
-  // i.e. the iframe fired 'ended' and the handler saved position = duration.
-  // The CONTINUE_HIDE_THRESHOLD (95%) is too eager: at 97% the user might
-  // still want to scrub the last 90 seconds, so pivoting hides their real
-  // progress. 'ended' is the only signal that semantically means "done".
-  // Movies still drop out at the hide threshold (no next-episode pivot).
   const items = await Promise.all(rows.map(async (r) => {
     if (r.media_type === 'movie') {
       const movieNearEnd = r.duration > 0 && r.position >= r.duration * CONTINUE_HIDE_THRESHOLD;
@@ -147,10 +144,6 @@ router.get('/user/progress', requireAuth, async (req, res) => {
   res.json({ items: items.filter((x): x is ProgressRow => x !== null) });
 });
 
-// "Where to play next" — most recently touched episode, pivoted to the
-// following one if it's been fully watched. Mirrors the Continue watching
-// pivot in GET /user/progress so the dropdowns on the watch page land on
-// the same episode no matter where the user clicked through from.
 router.get('/user/progress/next/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
@@ -158,18 +151,13 @@ router.get('/user/progress/next/:type/:tmdb_id', requireAuth, async (req, res) =
   res.json({ next: await resolveNextPlayable(req.user!.id, tmdb_id) });
 });
 
-// All per-episode progress for a single TV series. Used by the watch page
-// to render progress bars on every episode card in one round-trip rather
-// than firing N separate /user/progress/tv/:id/:s/:e fetches as the user
-// scrolls. Must come BEFORE the generic /:type/:tmdb_id route below or
-// 'series' would be matched as a media_type.
 router.get('/user/progress/series/:tmdb_id', requireAuth, (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   if (!tmdb_id) return res.status(400).json({ error: 'invalid_params' });
 
   const items = db.prepare(`
     SELECT season, episode, position, duration FROM progress
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
   `).all(req.user!.id, tmdb_id);
   res.json({ items });
 });
@@ -183,7 +171,7 @@ router.get('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, (req
 
   const row = db.prepare(`
     SELECT position, duration FROM progress
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = ? AND season = ? AND episode = ?
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = ? AND season = ? AND episode = ? AND synthetic = 0
   `).get(req.user!.id, tmdb_id, type, season, episode);
   res.json({ progress: row || null });
 });

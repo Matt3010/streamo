@@ -1,17 +1,31 @@
 import { db } from '../db';
 import { getTmdbTvSummary } from './tmdb-cache';
 
+function airedEpisodesInSeason(
+  summary: Awaited<ReturnType<typeof getTmdbTvSummary>>,
+  season: number
+): number {
+  if (!summary) return 0;
+  const lea = summary.last_episode_to_air;
+  const seasonInfo = summary.seasons.find(s => s.season_number === season);
+  if (!seasonInfo) return 0;
+  if (!lea) return seasonInfo.episode_count;
+  if (season < lea.season_number) return seasonInfo.episode_count;
+  if (season > lea.season_number) return 0;
+  return Math.min(seasonInfo.episode_count, lea.episode_number);
+}
+
 // Walks TMDB's seasons array to find the episode immediately after
 // (season, episode). Returns null if no later episode has aired.
 export async function findNextEpisode(tmdbId: number, season: number, episode: number): Promise<{ season: number; episode: number } | null> {
   const summary = await getTmdbTvSummary(tmdbId);
   if (!summary?.seasons?.length) return null;
-  const current = summary.seasons.find(s => s.season_number === season);
-  if (current && episode + 1 <= current.episode_count) {
+  const currentAiredCount = airedEpisodesInSeason(summary, season);
+  if (currentAiredCount > 0 && episode + 1 <= currentAiredCount) {
     return { season, episode: episode + 1 };
   }
   const future = summary.seasons
-    .filter(s => s.season_number > season && s.episode_count > 0)
+    .filter(s => s.season_number > season && airedEpisodesInSeason(summary, s.season_number) > 0)
     .sort((a, b) => a.season_number - b.season_number)[0];
   return future ? { season: future.season_number, episode: 1 } : null;
 }
@@ -23,7 +37,7 @@ export async function findNextEpisode(tmdbId: number, season: number, episode: n
 export async function resolveNextPlayable(userId: number, tmdbId: number): Promise<{ season: number; episode: number } | null> {
   const last = db.prepare(`
     SELECT season, episode, position, duration FROM progress
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
     ORDER BY updated_at DESC, season DESC, episode DESC
     LIMIT 1
   `).get(userId, tmdbId) as { season: number; episode: number; position: number; duration: number } | undefined;
