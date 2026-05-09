@@ -61,8 +61,6 @@ export class TopBarComponent {
 
   protected submitSearch(): void {
     const q = this.query().trim();
-    // From /browse the user hasn't picked a type, so default the search to
-    // movies. /search/movie is a valid route either way.
-    if (q) void this.router.navigate(['/search', 'movie'], { queryParams: { q } });
+    if (q) void this.router.navigate(['/search'], { queryParams: { q } });
   }
 }

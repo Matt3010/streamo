@@ -24,7 +24,7 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/watch/watch.component').then(m => m.WatchComponent)
       },
       {
-        path: 'search/:type',
+        path: 'search',
         loadComponent: () => import('./pages/search-results/search-results.component').then(m => m.SearchResultsComponent)
       },
       {

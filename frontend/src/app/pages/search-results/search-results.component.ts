@@ -48,8 +48,7 @@ export class SearchResultsComponent {
   private readonly router = inject(Router);
   private readonly navSource = inject(NavigationSourceService);
 
-  // Route :type param + ?q= query param via withComponentInputBinding().
-  readonly type = input.required<MediaType>();
+  // Route ?q= query param via withComponentInputBinding().
   readonly q = input<string>('');
 
   protected readonly items = signal<CardItem[]>([]);
@@ -60,9 +59,8 @@ export class SearchResultsComponent {
 
   constructor() {
     effect(() => {
-      const t = this.type();
       const query = this.q().trim();
-      if (query) void this.runSearch(t, query);
+      if (query) void this.runSearch(query);
       else this.items.set([]);
     });
   }
@@ -75,22 +73,23 @@ export class SearchResultsComponent {
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id]);
   }
 
-  private async runSearch(type: MediaType, q: string): Promise<void> {
+  private async runSearch(q: string): Promise<void> {
     const mySeq = ++this.seq;
     this.loading.set(true);
     this.items.set([]);
-    const results = await this.tmdb.search(type, q);
+    const results = await this.tmdb.searchAll(q);
     if (mySeq !== this.seq) return; // newer search superseded this one
-    this.items.set(results.map(r => tmdbToCard(r, type)));
+    this.items.set(results.map(r => tmdbToCard(r)));
     this.loading.set(false);
   }
 }
 
-function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
+function tmdbToCard(item: TmdbItem): CardItem {
   const dateStr = item.release_date ?? item.first_air_date ?? '';
+  const mediaType: MediaType = item.media_type === 'tv' ? 'tv' : 'movie';
   return {
     tmdb_id: item.id,
-    media_type: type,
+    media_type: mediaType,
     title: item.title ?? item.name ?? 'Senza titolo',
     poster: item.poster_path ?? null,
     year: dateStr.split('-')[0] ?? '',

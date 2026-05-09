@@ -47,11 +47,12 @@ export class TmdbService {
     }
   }
 
-  async search(type: MediaType, query: string): Promise<TmdbItem[]> {
+  async searchAll(query: string): Promise<TmdbItem[]> {
     try {
-      const res = await fetch(`${TMDB_BASE}/search/${type}?query=${encodeURIComponent(query)}&language=it-IT`);
+      const res = await fetch(`${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`);
       const data = await res.json() as { results?: TmdbItem[] };
-      return data.results ?? [];
+      const results = data.results ?? [];
+      return results.filter((item): item is TmdbItem & { media_type: MediaType } => item.media_type === 'movie' || item.media_type === 'tv');
     } catch {
       return [];
     }
