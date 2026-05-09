@@ -12,6 +12,7 @@ import { TopBarComponent } from '../../components/top-bar/top-bar.component';
       <app-top-bar />
       <router-outlet />
     </main>
-  `
+  `,
+  styleUrl: './list-layout.component.css'
 })
 export class ListLayoutComponent {}
