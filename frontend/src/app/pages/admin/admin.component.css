@@ -1,23 +1,28 @@
 .admin-content {
-  max-width: 1000px;
+  max-width: 1400px;
   margin: 0 auto;
+  display: grid;
+  gap: 1rem;
 }
 
 .admin-section {
-  margin-bottom: 2.5rem;
+  background: rgba(20, 20, 20, 0.96);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
 }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.section-header h2 {
-  font-size: 1.25rem;
+.section-header h3 {
+  font-size: 1.1rem;
   font-weight: 600;
   margin: 0;
 }
@@ -32,10 +37,10 @@
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius);
-  font-size: 0.85rem;
-  width: 150px;
+  padding: 0.62rem 0.8rem;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  width: 180px;
 }
 
 .label-input:focus {
@@ -47,10 +52,10 @@
   background: var(--accent);
   color: #fff;
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
-  font-size: 0.85rem;
-  font-weight: 500;
+  padding: 0.62rem 1rem;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -67,16 +72,15 @@
 .loading, .empty {
   color: var(--text-muted);
   font-size: 0.9rem;
-  padding: 1rem;
+  padding: 1.1rem;
   text-align: center;
 }
 
-/* List styles similar to user-list-view */
 .item-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.45rem;
   padding: 0;
   margin: 0;
 }
@@ -85,15 +89,16 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.85rem;
+  border-radius: 14px;
+  padding: 0.72rem 0.9rem;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .item-row:hover {
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .item-row.revoked {
@@ -105,8 +110,8 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.24rem 0.55rem;
+  border-radius: 999px;
   flex-shrink: 0;
   background: var(--surface-hover);
   color: var(--text-muted);
@@ -135,7 +140,7 @@
 
 .item-title {
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -149,11 +154,9 @@
 .item-sub {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
   font-size: 0.78rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .item-meta {
@@ -171,7 +174,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
@@ -202,7 +205,6 @@
   cursor: default;
 }
 
-/* Revoke modal */
 .revoke-modal-content {
   padding: 1rem;
 }
@@ -254,6 +256,10 @@
 }
 
 @media (max-width: 640px) {
+  .admin-section {
+    padding: 0.85rem;
+  }
+
   .section-header {
     flex-direction: column;
     align-items: flex-start;
@@ -265,10 +271,15 @@
 
   .label-input {
     flex: 1;
+    width: 100%;
   }
 
   .token-status {
     display: none;
+  }
+
+  .item-row {
+    align-items: flex-start;
   }
 
   .row-action {

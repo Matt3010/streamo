@@ -40,7 +40,7 @@ function timeAgo(timestamp: number): string {
     <div class="admin-content">
       <section class="admin-section">
         <div class="section-header">
-          <h2>Token e Utenti</h2>
+          <h3>Token e Utenti</h3>
           <div class="section-actions">
             <input type="text" placeholder="Label (opzionale)" class="label-input"
                    [value]="newTokenLabel()" (input)="updateLabel($event)">
@@ -103,7 +103,7 @@ function timeAgo(timestamp: number): string {
 
       <section class="admin-section">
         <div class="section-header">
-          <h2>Sessioni Live</h2>
+          <h3>Sessioni Live</h3>
           <span class="refresh-info">Aggiornamento ogni 10s</span>
         </div>
 
