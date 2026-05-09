@@ -1,3 +1,88 @@
+.account-trigger {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: linear-gradient(180deg, rgba(26, 26, 26, 0.96), rgba(18, 18, 18, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  padding: 0.38rem 0.56rem 0.38rem 0.4rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.account-trigger:hover,
+.account-trigger.open {
+  border-color: rgba(229, 9, 20, 0.24);
+  background: linear-gradient(180deg, rgba(32, 32, 32, 0.98), rgba(20, 20, 20, 0.98));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+}
+
+.account-trigger.open {
+  transform: translateY(-1px);
+}
+
+.account-avatar {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(229, 9, 20, 0.92), rgba(255, 91, 46, 0.9));
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.account-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.05;
+}
+
+.account-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.account-name {
+  max-width: 10rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-chevron {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  border-right: 2px solid rgba(255, 255, 255, 0.72);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.72);
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.account-trigger.open .account-chevron {
+  transform: rotate(-135deg) translateX(-1px);
+  border-color: #fff;
+}
+
 .account-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -55,3 +140,13 @@
 }
 
 .account-menu .menu-toggle:hover { background: var(--surface-hover); }
+
+@media (max-width: 768px) {
+  .account-trigger {
+    padding-right: 0.5rem;
+  }
+
+  .account-name {
+    max-width: 7.5rem;
+  }
+}
