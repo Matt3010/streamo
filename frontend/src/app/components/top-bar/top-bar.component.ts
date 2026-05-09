@@ -22,7 +22,10 @@ import { AuthModalService } from '../../services/auth-modal.service';
         }
       </div>
       @if (showSearch()) {
-        <section class="search-panel" aria-label="Ricerca catalogo">
+        @if (searchOpen()) {
+          <button type="button" class="search-backdrop" aria-label="Chiudi ricerca" (click)="closeSearch()"></button>
+        }
+        <section class="search-panel" [class.open]="searchOpen()" aria-label="Ricerca catalogo">
           <button type="button" class="search-intro" (click)="openSearch()">
             <span class="search-badge">
               <app-icon name="search"></app-icon>
