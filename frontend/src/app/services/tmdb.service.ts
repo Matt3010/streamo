@@ -41,7 +41,7 @@ export class TmdbService {
     try {
       const res = await fetch(`${TMDB_BASE}${endpoint}?language=it-IT&region=IT`);
       const data = await res.json() as { results?: TmdbItem[] };
-      return data.results ?? [];
+      return sortByNewest(data.results ?? []);
     } catch {
       return [];
     }
@@ -52,7 +52,9 @@ export class TmdbService {
       const res = await fetch(`${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`);
       const data = await res.json() as { results?: TmdbItem[] };
       const results = data.results ?? [];
-      return results.filter((item): item is TmdbItem & { media_type: MediaType } => item.media_type === 'movie' || item.media_type === 'tv');
+      return sortByNewest(
+        results.filter((item): item is TmdbItem & { media_type: MediaType } => item.media_type === 'movie' || item.media_type === 'tv')
+      );
     } catch {
       return [];
     }
@@ -76,4 +78,15 @@ export class TmdbService {
     }
     this.cache.set(key, value);
   }
+}
+
+function sortByNewest<T extends TmdbItem>(items: T[]): T[] {
+  return [...items].sort((a, b) => newestTimestamp(b) - newestTimestamp(a));
+}
+
+function newestTimestamp(item: TmdbItem): number {
+  const raw = item.release_date ?? item.first_air_date ?? '';
+  if (!raw) return 0;
+  const ts = Date.parse(raw);
+  return Number.isFinite(ts) ? ts : 0;
 }
