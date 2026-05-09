@@ -9,11 +9,8 @@ import { ToastService } from '../../services/toast.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <button class="account-trigger" [class.open]="open()" (click)="toggle($event)">
-      <span class="account-avatar">{{ initial() }}</span>
-      <span class="account-copy">
-        <span class="account-label">Account</span>
-        <span class="account-name">{{ displayName() }}</span>
-      </span>
+      <span class="account-dot" aria-hidden="true"></span>
+      <span class="account-name">{{ displayName() }}</span>
       <span class="account-chevron" aria-hidden="true"></span>
     </button>
     @if (open()) {
@@ -45,7 +42,6 @@ export class AccountMenuComponent {
     const email = this.auth.currentUser()?.email ?? '';
     return email.split('@')[0] || email;
   });
-  protected readonly initial = computed(() => this.displayName().trim().charAt(0).toUpperCase() || 'U');
   protected readonly autoplayChecked = computed(() => this.auth.currentUser()?.autoplay_next === 1);
 
   @HostListener('document:click', ['$event'])
