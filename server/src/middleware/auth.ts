@@ -10,6 +10,8 @@ export interface AuthedUser {
   email: string;
 }
 
+export type AuthFailureReason = 'missing_token' | 'invalid_token' | 'access_revoked';
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
@@ -19,41 +21,71 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const token = req.cookies?.token;
+export function authenticateToken(token?: string): { user: AuthedUser | null; error?: AuthFailureReason } {
   if (!token) {
-    res.status(401).json({ error: 'unauthenticated' });
-    return;
+    return { user: null, error: 'missing_token' };
   }
-  try {
-    req.user = jwt.verify(token, JWT_SECRET) as AuthedUser;
 
-    // Super admin bypasses revocation check
-    if (SUPER_ADMIN_EMAIL && req.user.email.toLowerCase() === SUPER_ADMIN_EMAIL) {
-      next();
-      return;
+  try {
+    const user = jwt.verify(token, JWT_SECRET) as AuthedUser;
+
+    if (isSuperAdminUser(user)) {
+      return { user };
     }
 
-    // Check if user's invite token has been revoked
     const inviteRow = db.prepare(
       'SELECT revoked_at FROM invite_tokens WHERE used_by_user_id = ?'
-    ).get(req.user.id) as { revoked_at: number | null } | undefined;
+    ).get(user.id) as { revoked_at: number | null } | undefined;
 
     if (!inviteRow || inviteRow.revoked_at !== null) {
-      res.clearCookie('token', { path: '/' });
-      res.status(401).json({ error: 'access_revoked' });
-      return;
+      return { user: null, error: 'access_revoked' };
     }
 
-    next();
+    return { user };
   } catch {
-    res.status(401).json({ error: 'invalid_token' });
+    return { user: null, error: 'invalid_token' };
   }
+}
+
+export function isSuperAdminUser(user?: Pick<AuthedUser, 'email'> | null): boolean {
+  return !!SUPER_ADMIN_EMAIL && !!user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL;
+}
+
+export function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+
+  const prefix = `${name}=`;
+  for (const rawPart of cookieHeader.split(';')) {
+    const part = rawPart.trim();
+    if (!part.startsWith(prefix)) continue;
+    const value = part.slice(prefix.length);
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const result = authenticateToken(req.cookies?.token);
+  if (!result.user) {
+    if (result.error === 'access_revoked') {
+      res.clearCookie('token', { path: '/' });
+    }
+    res.status(401).json({ error: result.error ?? 'unauthenticated' });
+    return;
+  }
+
+  req.user = result.user;
+  next();
 }
 
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
-    if (!SUPER_ADMIN_EMAIL || req.user?.email.toLowerCase() !== SUPER_ADMIN_EMAIL) {
+    if (!isSuperAdminUser(req.user)) {
       res.status(403).json({ error: 'forbidden' });
       return;
     }
@@ -65,6 +97,7 @@ export function setAuthCookie(res: Response, user: AuthedUser): void {
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, {
     expiresIn: TOKEN_TTL
   });
+
   res.cookie('token', token, {
     httpOnly: true,
     sameSite: 'lax',

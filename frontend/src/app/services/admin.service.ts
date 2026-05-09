@@ -13,11 +13,19 @@ interface RevokeResponse {
   error?: string;
 }
 
+interface AdminSessionsSocketMessage {
+  type: 'sessions';
+  sessions: AdminSession[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   readonly tokens = signal<AdminTokenRow[]>([]);
   readonly sessions = signal<AdminSession[]>([]);
+  readonly sessionsLiveConnected = signal(false);
   readonly loading = signal(false);
+
+  private sessionsSocket: WebSocket | null = null;
 
   async fetchTokens(): Promise<void> {
     this.loading.set(true);
@@ -73,5 +81,50 @@ export class AdminService {
         this.sessions.set(data.sessions);
       }
     } catch {}
+  }
+
+  connectSessionsLive(): void {
+    if (this.sessionsSocket && (this.sessionsSocket.readyState === WebSocket.OPEN || this.sessionsSocket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${window.location.host}/api/admin/sessions/ws`;
+    const socket = new WebSocket(url);
+    this.sessionsSocket = socket;
+
+    socket.addEventListener('open', () => {
+      if (this.sessionsSocket !== socket) return;
+      this.sessionsLiveConnected.set(true);
+    });
+
+    socket.addEventListener('message', (event) => {
+      if (this.sessionsSocket !== socket) return;
+      try {
+        const message = JSON.parse(event.data as string) as AdminSessionsSocketMessage;
+        if (message.type === 'sessions') {
+          this.sessions.set(message.sessions);
+        }
+      } catch {}
+    });
+
+    socket.addEventListener('close', () => {
+      if (this.sessionsSocket !== socket) return;
+      this.sessionsLiveConnected.set(false);
+      this.sessionsSocket = null;
+    });
+
+    socket.addEventListener('error', () => {
+      if (this.sessionsSocket !== socket) return;
+      this.sessionsLiveConnected.set(false);
+    });
+  }
+
+  disconnectSessionsLive(): void {
+    this.sessionsLiveConnected.set(false);
+    if (!this.sessionsSocket) return;
+    const socket = this.sessionsSocket;
+    this.sessionsSocket = null;
+    socket.close();
   }
 }

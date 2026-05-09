@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import { db } from '../db';
 import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
-import type { AdminUserRow, AdminTokenRow, AdminSession } from '../../../shared/types';
+import { listLiveAdminSessions } from '../services/admin-sessions';
+import type { AdminUserRow, AdminTokenRow } from '../../../shared/types';
 
 const router = Router();
 
@@ -72,17 +73,7 @@ router.delete('/admin/tokens/:token', requireSuperAdmin, (req, res) => {
 
 // GET /admin/sessions - List currently watching users
 router.get('/admin/sessions', requireSuperAdmin, (_req, res) => {
-  const rows = db.prepare(`
-    SELECT p.user_id, u.email,
-           p.tmdb_id, p.media_type, p.season, p.episode,
-           p.position, p.duration, p.title, p.poster, p.updated_at
-    FROM progress p
-    JOIN users u ON u.id = p.user_id
-    WHERE p.updated_at > strftime('%s','now') - 60
-    ORDER BY p.updated_at DESC
-  `).all() as AdminSession[];
-
-  res.json({ sessions: rows });
+  res.json({ sessions: listLiveAdminSessions() });
 });
 
 export default router;

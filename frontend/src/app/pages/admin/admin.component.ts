@@ -1,10 +1,10 @@
-import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import type { AdminTokenRow, AdminSession } from '../../models';
+import type { AdminTokenRow } from '../../models';
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -104,7 +104,7 @@ function timeAgo(timestamp: number): string {
       <section class="admin-section">
         <div class="section-header">
           <h3>Sessioni Live</h3>
-          <span class="refresh-info">Aggiornamento ogni 10s</span>
+          <span class="refresh-info">{{ admin.sessionsLiveConnected() ? 'Canale live attivo' : 'Connessione live in corso...' }}</span>
         </div>
 
         @if (admin.sessions().length === 0) {
@@ -159,20 +159,14 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly revokeModalOpen = signal(false);
   protected readonly tokenToRevoke = signal<AdminTokenRow | null>(null);
 
-  private sessionsInterval: ReturnType<typeof setInterval> | null = null;
-
   ngOnInit(): void {
     void this.admin.fetchTokens();
     void this.admin.fetchSessions();
-    this.sessionsInterval = setInterval(() => {
-      void this.admin.fetchSessions();
-    }, 10_000);
+    this.admin.connectSessionsLive();
   }
 
   ngOnDestroy(): void {
-    if (this.sessionsInterval) {
-      clearInterval(this.sessionsInterval);
-    }
+    this.admin.disconnectSessionsLive();
   }
 
   protected back(): void {
