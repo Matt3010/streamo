@@ -31,7 +31,7 @@ import { AuthModalService } from '../../services/auth-modal.service';
               <app-icon name="search"></app-icon>
             </span>
             <div class="search-copy">
-              <p class="search-title">{{ searchOpen() ? 'Cerca nel catalogo' : 'Cerca film e serie' }}</p>
+              <p class="search-title">{{ searchOpen() ? 'Cerca nel catalogo' : 'Cerca' }}</p>
               @if (searchOpen()) {
                 <p class="search-hint">Film e serie TV, con i risultati più recenti in cima.</p>
               }

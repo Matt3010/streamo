@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  margin-bottom: 1.35rem;
+  margin-bottom: 0.6rem;
 }
 
 .account-area {
@@ -23,7 +23,7 @@
 }
 
 .search-panel {
-  width: 100%;
+  width: min(34rem, calc(100vw - 1.4rem));
   background: rgba(20, 20, 20, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 22px;
@@ -34,18 +34,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  position: relative;
-  z-index: 3;
+  position: fixed;
+  right: 0.7rem;
+  bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  z-index: 19;
 }
 
 .search-panel:not(.open) {
-  width: fit-content;
-  max-width: min(26rem, calc(100vw - 1.4rem));
+  width: auto;
   border-radius: 999px;
-  padding: 0.68rem 0.82rem;
+  padding: 0.56rem 0.64rem;
   background: rgba(20, 20, 20, 0.82);
   box-shadow:
-    0 8px 18px rgba(0, 0, 0, 0.16),
+    0 8px 18px rgba(0, 0, 0, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
@@ -64,7 +65,7 @@
 .search-badge {
   width: 36px;
   height: 36px;
-  border-radius: 12px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -228,12 +229,23 @@
   box-shadow: none;
 }
 
-@media (min-width: 769px) {
-  .search-panel {
-    width: min(720px, 100%);
-    padding: 0.9rem 1rem;
-  }
+.search-panel:not(.open) .search-copy {
+  display: none;
+}
 
+.search-panel:not(.open) .search-badge {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.search-panel:not(.open) .search-intro {
+  gap: 0.1rem;
+}
+
+@media (min-width: 769px) {
   .search-box {
     flex-direction: row;
     align-items: stretch;
@@ -269,13 +281,9 @@
   }
 
   .search-panel {
-    position: fixed;
-    right: 0.7rem;
-    bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
     width: min(24rem, calc(100vw - 1.4rem));
     border-radius: 24px;
     padding: 0.8rem;
-    z-index: 19;
     box-shadow:
       0 14px 28px rgba(0, 0, 0, 0.28),
       0 0 0 1px rgba(255, 255, 255, 0.04),
@@ -283,8 +291,7 @@
   }
 
   .search-panel:not(.open) {
-    width: min(18.5rem, calc(100vw - 1.4rem));
-    padding: 0.64rem 0.8rem;
+    padding: 0.54rem 0.58rem;
     border-radius: 999px;
     background: rgba(20, 20, 20, 0.88);
     backdrop-filter: blur(14px);
@@ -293,16 +300,9 @@
 
   .search-panel.open {
     left: 0.7rem;
+    right: 0.7rem;
     width: auto;
     border-radius: 24px;
-  }
-
-  .search-panel:not(.open) .search-copy {
-    gap: 0;
-  }
-
-  .search-panel:not(.open) .search-title {
-    font-size: 0.92rem;
   }
 
   .search-actions {
