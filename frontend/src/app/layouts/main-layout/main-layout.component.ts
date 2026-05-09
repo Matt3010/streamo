@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { FloatingSearchComponent } from '../../components/floating-search/floating-search.component';
 import { TopBarComponent } from '../../components/top-bar/top-bar.component';
 import { BackgroundService } from '../../services/background.service';
 
 @Component({
   selector: 'app-main-layout',
   standalone: true,
-  imports: [TopBarComponent, RouterOutlet],
+  imports: [TopBarComponent, FloatingSearchComponent, RouterOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (backdropUrl()) {
@@ -16,6 +17,7 @@ import { BackgroundService } from '../../services/background.service';
       <app-top-bar />
       <router-outlet />
     </main>
+    <app-floating-search />
   `,
   styleUrl: './main-layout.component.css'
 })
