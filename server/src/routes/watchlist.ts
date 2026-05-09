@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getTmdbTvSummary } from '../services/tmdb-cache';
-import { resolveNextPlayable } from '../services/next-episode';
+import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import type { WatchlistItem } from '../../../shared/types';
 
 const router = Router();
@@ -188,12 +188,13 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       doneAiredEpisodes = airedEpisodes;
     }
 
+    const noLaterAiredEpisode = latestTv
+      ? (await findNextEpisode(r.tmdb_id, latestTv.season, latestTv.episode)) === null
+      : false;
     const caughtUp = !!latestTv
       && latestTv.duration > 0
-      && latestTv.position >= latestTv.duration
-      && !!resume
-      && resume.season === latestTv.season
-      && resume.episode === latestTv.episode;
+      && latestTv.position >= latestTv.duration * WATCHED_THRESHOLD
+      && noLaterAiredEpisode;
 
     if (caughtUp && status !== 'done') {
       status = 'done';
