@@ -1,7 +1,5 @@
 :host {
   display: block;
-  /* min-width: 0 lets this flex/grid child actually shrink below its content
-     width — without it, the inner overflow-x: auto never kicks in. */
   min-width: 0;
 }
 
@@ -9,9 +7,6 @@
   position: relative;
 }
 
-/* Reserve space on each side for the scroll arrows so they don't overlap the
-   first/last card. Arrows are hidden on small screens so the padding kicks in
-   only when the arrows are visible. */
 .scroll-row {
   display: flex;
   gap: 0.5rem;
@@ -20,17 +15,11 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   scroll-behavior: smooth;
-  /* Vertical padding only — lets the hover lift+shadow render without being
-   * clipped. No horizontal padding so the first card lines up with the
-   * section title's icon chip on the left edge. */
   padding: 6px 0 12px;
 }
 
 .scroll-row::-webkit-scrollbar { display: none; }
 
-/* Fix card width inside the horizontal scroller. The card component itself
- * defaults to width: 100% (so it fills grid cells in /list and /search),
- * so the size is set here on the host element instead. */
 .scroll-row > app-card {
   flex-shrink: 0;
   width: 150px;
@@ -74,24 +63,87 @@
   .scroll-arrow { display: none; }
 }
 
-/* Skeleton placeholders — same dimensions as a card poster so the layout
- * doesn't shift once real items load. The shimmer makes the loading state
- * obvious instead of looking like a row of broken images. */
 .card-skeleton {
   flex-shrink: 0;
-  width: 185px;
+  width: 150px;
   aspect-ratio: 2 / 3;
   border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  scroll-snap-align: start;
+  position: relative;
+}
+
+.card-skeleton-poster,
+.card-skeleton-line,
+.card-skeleton-progress::before {
   background: linear-gradient(
     100deg,
-    var(--surface) 30%,
-    var(--surface-hover) 50%,
-    var(--surface) 70%
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.12) 45%,
+    rgba(255, 255, 255, 0.05) 65%
   );
   background-size: 200% 100%;
   animation: card-skeleton-shimmer 1.4s ease-in-out infinite;
-  scroll-snap-align: start;
 }
+
+.card-skeleton-poster {
+  position: absolute;
+  inset: 0;
+}
+
+.card-skeleton-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 2rem 0.75rem 1.25rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.65) 50%, transparent 100%);
+  z-index: 1;
+}
+
+.card-skeleton-line {
+  height: 0.7rem;
+  border-radius: 999px;
+}
+
+.card-skeleton-title {
+  width: 82%;
+  height: 0.82rem;
+  margin-bottom: 0.35rem;
+}
+
+.card-skeleton-meta {
+  width: 56%;
+  height: 0.62rem;
+}
+
+.card-skeleton-status {
+  width: 48%;
+  height: 0.58rem;
+  margin-top: 0.35rem;
+}
+
+.card-skeleton-progress {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.card-skeleton-progress::before {
+  content: '';
+  display: block;
+  width: 38%;
+  height: 100%;
+  background-size: 220% 100%;
+}
+
+@media (min-width: 640px) { .card-skeleton { width: 165px; } }
+@media (min-width: 1024px) { .card-skeleton { width: 175px; } }
 
 @keyframes card-skeleton-shimmer {
   0% { background-position: 200% 0; }

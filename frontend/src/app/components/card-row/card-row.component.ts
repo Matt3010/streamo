@@ -16,7 +16,19 @@ import type { CardItem } from '../../models';
       <div class="scroll-row" #row>
         @if (loading() && items().length === 0) {
           @for (n of skeletons; track n) {
-            <div class="card-skeleton" aria-hidden="true"></div>
+            <div class="card-skeleton" aria-hidden="true">
+              <div class="card-skeleton-poster"></div>
+              <div class="card-skeleton-overlay">
+                <div class="card-skeleton-line card-skeleton-title"></div>
+                <div class="card-skeleton-line card-skeleton-meta"></div>
+                @if (showProgress()) {
+                  <div class="card-skeleton-line card-skeleton-status"></div>
+                }
+              </div>
+              @if (showProgress()) {
+                <div class="card-skeleton-progress"></div>
+              }
+            </div>
           }
         } @else {
           @for (item of items(); track item.tmdb_id + '-' + item.media_type + '-' + (item.season ?? 0) + '-' + (item.episode ?? 0)) {
