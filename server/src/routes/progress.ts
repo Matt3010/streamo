@@ -5,6 +5,7 @@ import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
+import { notifyAdminSessionsChanged } from '../services/admin-live';
 import type { MediaType } from '../../../shared/types';
 
 const router = Router();
@@ -60,6 +61,7 @@ router.post('/user/progress', requireAuth, async (req, res) => {
          body.title || null, body.poster || null, body.backdrop || null);
 
   await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
+  notifyAdminSessionsChanged();
 
   res.json({ ok: true });
 });
@@ -200,6 +202,7 @@ router.delete('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, (
   db.prepare(`
     DELETE FROM progress WHERE user_id = ? AND tmdb_id = ? AND media_type = ? AND season = ? AND episode = ?
   `).run(req.user!.id, tmdb_id, type, season, episode);
+  notifyAdminSessionsChanged();
   res.json({ ok: true });
 });
 

@@ -1,6 +1,8 @@
 import { db } from '../db';
 import type { AdminSession } from '../../../shared/types';
 
+export const LIVE_SESSION_WINDOW_SECONDS = 60;
+
 export function listLiveAdminSessions(): AdminSession[] {
   return db.prepare(`
     SELECT p.user_id, u.email,
@@ -8,7 +10,7 @@ export function listLiveAdminSessions(): AdminSession[] {
            p.position, p.duration, p.title, p.poster, p.updated_at
     FROM progress p
     JOIN users u ON u.id = p.user_id
-    WHERE p.updated_at > strftime('%s','now') - 60
+    WHERE p.updated_at > strftime('%s','now') - ?
     ORDER BY p.updated_at DESC
-  `).all() as AdminSession[];
+  `).all(LIVE_SESSION_WINDOW_SECONDS) as AdminSession[];
 }
