@@ -2,6 +2,15 @@
   'use strict';
 
   var base = location.protocol + '//' + location.host;
+  var prefix = '[xhr-proxy-rewrite]';
+
+  function log() {
+    try {
+      var args = Array.prototype.slice.call(arguments);
+      args.unshift(prefix);
+      console.debug.apply(console, args);
+    } catch (e) {}
+  }
 
   function rewrite(url) {
     if (!url || typeof url !== 'string') return url;
@@ -30,8 +39,15 @@
   XMLHttpRequest.prototype.open = function (method, url) {
     var args = Array.prototype.slice.call(arguments);
     try {
-      args[1] = rewrite(url);
+      var original = args[1];
+      var rewritten = rewrite(url);
+      if (rewritten !== original) {
+        log('rewrite', method || 'GET', original, '->', rewritten);
+      }
+      args[1] = rewritten;
     } catch (e) {}
     return origOpen.apply(this, args);
   };
+
+  log('loaded', location.href);
 })();

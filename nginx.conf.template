@@ -118,7 +118,8 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '</head>' '<script src="/scripts/xhr-proxy-rewrite.js"></script><script src="/scripts/playback-debug.js"></script><script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
+        sub_filter '<head>' '<head><script src="/scripts/__XHR_PROXY_REWRITE_ASSET__"></script>';
+        sub_filter '</head>' '<script src="/scripts/__PLAYBACK_DEBUG_ASSET__"></script><script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once on;
     }
@@ -175,7 +176,8 @@ server {
         proxy_set_header Referer https://vixsrc.to/;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter '</head>' '<script src="/scripts/xhr-proxy-rewrite.js"></script><script src="/scripts/playback-debug.js"></script><script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
+        sub_filter '<head>' '<head><script src="/scripts/__XHR_PROXY_REWRITE_ASSET__"></script>';
+        sub_filter '</head>' '<script src="/scripts/__PLAYBACK_DEBUG_ASSET__"></script><script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once on;
     }
