@@ -153,9 +153,16 @@ function timeAgo(timestamp: number): string {
           <div class="logs-panel">
             <ul class="log-list">
               @for (log of playbackLogsDesc(); track trackPlaybackLog($index, log)) {
-                <li class="log-row">
+                <li class="log-row" [class.log-row-error]="playbackLogTone(log) === 'error'" [class.log-row-warn]="playbackLogTone(log) === 'warn'">
                   <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
-                  <code class="log-message">{{ log.message }}</code>
+                  <div class="log-stack">
+                    <div class="log-header">
+                      <span class="log-badge" [class.log-badge-ok]="playbackLogTone(log) === 'ok'" [class.log-badge-info]="playbackLogTone(log) === 'info'" [class.log-badge-warn]="playbackLogTone(log) === 'warn'" [class.log-badge-error]="playbackLogTone(log) === 'error'">
+                        {{ playbackLogLabel(log) }}
+                      </span>
+                    </div>
+                    <code class="log-message">{{ log.message }}</code>
+                  </div>
                 </li>
               }
             </ul>
@@ -183,9 +190,14 @@ function timeAgo(timestamp: number): string {
           <div class="logs-panel">
             <ul class="log-list">
               @for (log of transportLogsDesc(); track trackTransportLog($index, log)) {
-                <li class="log-row">
+                <li class="log-row" [class.log-row-error]="transportLogTone(log) === 'error'" [class.log-row-warn]="transportLogTone(log) === 'warn'">
                   <span class="log-time">{{ log.ts }}</span>
                   <div class="log-stack">
+                    <div class="log-header">
+                      <span class="log-badge" [class.log-badge-ok]="transportLogTone(log) === 'ok'" [class.log-badge-info]="transportLogTone(log) === 'info'" [class.log-badge-warn]="transportLogTone(log) === 'warn'" [class.log-badge-error]="transportLogTone(log) === 'error'">
+                        {{ transportLogLabel(log) }}
+                      </span>
+                    </div>
                     <code class="log-message">{{ transportLogSummary(log) }}</code>
                     <code class="log-detail">{{ log.request_uri }}</code>
                   </div>
@@ -340,5 +352,48 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected transportLogSummary(log: TransportLogEntry): string {
     return `${log.kind.toUpperCase()} ${log.status} upstream=${log.upstream_status} host=${log.upstream_host} rt=${log.request_time}s urt=${log.upstream_response_time}s`;
+  }
+
+  protected playbackLogTone(log: PlaybackLogEntry): 'ok' | 'info' | 'warn' | 'error' {
+    const message = log.message.toLowerCase();
+    if (message.includes('fetch-error') || message.includes('write-error') || message.includes('read-error') || message.includes(' status=5')) {
+      return 'error';
+    }
+    if (message.includes(' status=4')) {
+      return 'warn';
+    }
+    if (message.includes('status=200') || message.includes(' playlist=yes') || message.includes(' master ') || message.includes(' media ')) {
+      return 'ok';
+    }
+    return 'info';
+  }
+
+  protected playbackLogLabel(log: PlaybackLogEntry): string {
+    const tone = this.playbackLogTone(log);
+    return tone === 'ok' ? 'OK' : tone === 'warn' ? 'WARN' : tone === 'error' ? 'ERR' : 'INFO';
+  }
+
+  protected transportLogTone(log: TransportLogEntry): 'ok' | 'info' | 'warn' | 'error' {
+    if (log.status >= 500) {
+      return 'error';
+    }
+    if (log.status >= 400) {
+      return 'warn';
+    }
+    if (log.upstream_status.includes('500') || log.upstream_status.includes('502') || log.upstream_status.includes('503') || log.upstream_status.includes('504')) {
+      return 'error';
+    }
+    if (log.upstream_status.includes('404') || log.upstream_status.includes('401') || log.upstream_status.includes('403')) {
+      return 'warn';
+    }
+    if (log.status >= 200 && log.status < 400) {
+      return 'ok';
+    }
+    return 'info';
+  }
+
+  protected transportLogLabel(log: TransportLogEntry): string {
+    const tone = this.transportLogTone(log);
+    return tone === 'ok' ? 'OK' : tone === 'warn' ? 'WARN' : tone === 'error' ? 'ERR' : 'INFO';
   }
 }

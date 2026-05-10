@@ -276,6 +276,14 @@
   border-bottom: none;
 }
 
+.log-row-error {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.log-row-warn {
+  background: rgba(245, 158, 11, 0.06);
+}
+
 .log-time {
   color: var(--text-muted);
   font-size: 0.78rem;
@@ -298,6 +306,48 @@
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.log-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.log-badge-ok {
+  color: #9be7ae;
+  border-color: rgba(46, 160, 67, 0.3);
+  background: rgba(46, 160, 67, 0.14);
+}
+
+.log-badge-info {
+  color: #9ecbff;
+  border-color: rgba(74, 144, 226, 0.3);
+  background: rgba(74, 144, 226, 0.14);
+}
+
+.log-badge-warn {
+  color: #f6c768;
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.log-badge-error {
+  color: #ff9b9b;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.14);
 }
 
 .log-detail {
