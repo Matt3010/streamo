@@ -43,6 +43,16 @@
     } catch (e) {}
   }
 
+  function ping(kind, note) {
+    send({
+      kind: kind,
+      url: location.href,
+      host: location.host,
+      context: 'tracer',
+      note: note || ''
+    });
+  }
+
   function report(kind, url, context, note) {
     var parsed = interesting(url);
     if (!parsed) return;
@@ -89,6 +99,9 @@
       report('dom-attr', node.getAttribute('href'), node.tagName.toLowerCase(), note);
     }
     if (node.tagName === 'SCRIPT') {
+      if (node.src && node.src.indexOf('/scripts/playback-debug.js') !== -1) {
+        ping('script-seen', note);
+      }
       if (node.src) report('script-src', node.src, 'script', note);
       if (node.textContent) scanText('script-text', node.textContent, 'script-inline');
     }
@@ -100,6 +113,9 @@
       if (el.hasAttribute('src')) report('dom-attr', el.getAttribute('src'), el.tagName.toLowerCase(), note);
       if (el.hasAttribute('href')) report('dom-attr', el.getAttribute('href'), el.tagName.toLowerCase(), note);
       if (el.tagName === 'SCRIPT') {
+        if (el.src && el.src.indexOf('/scripts/playback-debug.js') !== -1) {
+          ping('script-seen', note);
+        }
         if (el.src) report('script-src', el.src, 'script', note);
         if (el.textContent) scanText('script-text', el.textContent, 'script-inline');
       }
@@ -107,6 +123,7 @@
   }
 
   function scanDocument() {
+    ping('boot', 'scan-document');
     report('page', location.href, 'location', 'iframe-page');
     scanNode(document.documentElement, 'initial-dom');
   }
@@ -155,8 +172,13 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scanDocument, { once: true });
+    ping('boot', 'loading');
+    document.addEventListener('DOMContentLoaded', function () {
+      ping('dom-ready', 'DOMContentLoaded');
+      scanDocument();
+    }, { once: true });
   } else {
+    ping('boot', 'already-ready');
     scanDocument();
   }
 })();
