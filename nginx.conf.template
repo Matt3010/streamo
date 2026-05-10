@@ -126,7 +126,7 @@ server {
         sub_filter '//vixcloud.co/' '//$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host"';
         sub_filter "'vixcloud.co'" "'$host'";
-        sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
+        sub_filter '</head>' '<script src="/scripts/playback-debug.js"></script><script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
     }
@@ -184,7 +184,7 @@ server {
         sub_filter '//vixcloud.co/' '//$host/vixcloud/';
         sub_filter '"vixcloud.co"' '"$host"';
         sub_filter "'vixcloud.co'" "'$host'";
-        sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
+        sub_filter '</head>' '<script src="/scripts/playback-debug.js"></script><script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
     }
