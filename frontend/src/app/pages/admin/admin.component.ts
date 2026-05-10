@@ -1,10 +1,10 @@
-import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import type { AdminTokenRow } from '../../models';
+import type { AdminTokenRow, PlaybackLogEntry } from '../../models';
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -132,6 +132,36 @@ function timeAgo(timestamp: number): string {
           </ul>
         }
       </section>
+
+      <section class="admin-section">
+        <div class="section-header">
+          <div class="section-heading">
+            <h3>Playback Logs</h3>
+            <span class="section-caption">
+              File: {{ admin.playbackLogPath() || '/data/playback.log' }} | Ultimi {{ admin.playbackLogCapacity() }}
+            </span>
+          </div>
+          <span class="live-pill" [class.connected]="admin.playbackLogsLiveConnected()">
+            <span class="live-pill-dot" aria-hidden="true"></span>
+            <span>{{ admin.playbackLogsLiveConnected() ? 'Socket log attivo' : 'Socket log non connesso' }}</span>
+          </span>
+        </div>
+
+        @if (playbackLogsDesc().length === 0) {
+          <p class="empty">Nessun log playback presente</p>
+        } @else {
+          <div class="logs-panel">
+            <ul class="log-list">
+              @for (log of playbackLogsDesc(); track trackPlaybackLog($index, log)) {
+                <li class="log-row">
+                  <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
+                  <code class="log-message">{{ log.message }}</code>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      </section>
     </div>
 
     <ui-modal [(open)]="revokeModalOpen" title="Conferma Revoca" size="sm">
@@ -161,15 +191,19 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly newTokenLabel = signal('');
   protected readonly revokeModalOpen = signal(false);
   protected readonly tokenToRevoke = signal<AdminTokenRow | null>(null);
+  protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
 
   ngOnInit(): void {
     void this.admin.fetchTokens();
     void this.admin.fetchSessions();
+    void this.admin.fetchPlaybackLogs();
     this.admin.connectSessionsLive();
+    this.admin.connectPlaybackLogsLive();
   }
 
   ngOnDestroy(): void {
     this.admin.disconnectSessionsLive();
+    this.admin.disconnectPlaybackLogsLive();
   }
 
   protected back(): void {
@@ -246,5 +280,20 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected timeAgo(timestamp: number): string {
     return timeAgo(timestamp);
+  }
+
+  protected formatPlaybackLogTime(timestampMs: number): string {
+    return new Date(timestampMs).toLocaleString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  }
+
+  protected trackPlaybackLog(_index: number, log: PlaybackLogEntry): string {
+    return `${log.ts}:${log.message}`;
   }
 }

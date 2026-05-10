@@ -1,1 +1,1 @@
-export type { AdminUserRow, AdminTokenRow, AdminSession } from '../../../../shared/types';
+export type { AdminUserRow, AdminTokenRow, AdminSession, PlaybackLogEntry } from '../../../../shared/types';

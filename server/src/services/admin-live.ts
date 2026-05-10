@@ -2,9 +2,11 @@ import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, isSuperAdminUser, readCookie } from '../middleware/auth';
 import { listLiveAdminSessions, LIVE_SESSION_WINDOW_SECONDS } from './admin-sessions';
-import type { AdminSession } from '../../../shared/types';
+import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs, subscribePlaybackLogs } from './playback-logs';
+import type { AdminSession, PlaybackLogEntry } from '../../../shared/types';
 
 const ADMIN_SESSIONS_WS_PATH = '/admin/sessions/ws';
+const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
 const EXPIRY_FUZZ_MS = 150;
 
 interface SessionsPayload {
@@ -12,27 +14,51 @@ interface SessionsPayload {
   sessions: AdminSession[];
 }
 
-let clients = new Set<WebSocket>();
+interface PlaybackLogsPayload {
+  type: 'playback-logs';
+  count: number;
+  capacity: number;
+  path: string;
+  logs: PlaybackLogEntry[];
+}
+
+let sessionClients = new Set<WebSocket>();
+let playbackLogClients = new Set<WebSocket>();
 let expiryTimeout: NodeJS.Timeout | null = null;
+let unsubscribePlaybackLogs: (() => void) | null = null;
 
 export function attachAdminLiveSessions(server: HttpServer): void {
-  const wss = new WebSocketServer({ noServer: true });
+  const sessionsWss = new WebSocketServer({ noServer: true });
+  const playbackLogsWss = new WebSocketServer({ noServer: true });
 
-  wss.on('connection', (ws) => {
-    clients.add(ws);
+  sessionsWss.on('connection', (ws) => {
+    sessionClients.add(ws);
     broadcastSessions();
 
     ws.on('close', () => {
-      clients.delete(ws);
-      if (clients.size === 0) {
+      sessionClients.delete(ws);
+      if (sessionClients.size === 0) {
         clearExpiryTimeout();
+      }
+    });
+  });
+
+  playbackLogsWss.on('connection', (ws) => {
+    playbackLogClients.add(ws);
+    ensurePlaybackLogSubscription();
+    broadcastPlaybackLogs();
+
+    ws.on('close', () => {
+      playbackLogClients.delete(ws);
+      if (playbackLogClients.size === 0) {
+        clearPlaybackLogSubscription();
       }
     });
   });
 
   server.on('upgrade', (req, socket, head) => {
     const pathname = getPathname(req);
-    if (pathname !== ADMIN_SESSIONS_WS_PATH) return;
+    if (pathname !== ADMIN_SESSIONS_WS_PATH && pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH) return;
 
     const token = readCookie(req.headers.cookie, 'token');
     const auth = authenticateToken(token);
@@ -47,19 +73,20 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       return;
     }
 
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit('connection', ws, req);
+    const target = pathname === ADMIN_SESSIONS_WS_PATH ? sessionsWss : playbackLogsWss;
+    target.handleUpgrade(req, socket, head, (ws) => {
+      target.emit('connection', ws, req);
     });
   });
 }
 
 export function notifyAdminSessionsChanged(): void {
-  if (clients.size === 0) return;
+  if (sessionClients.size === 0) return;
   broadcastSessions();
 }
 
 function broadcastSessions(): void {
-  if (clients.size === 0) {
+  if (sessionClients.size === 0) {
     clearExpiryTimeout();
     return;
   }
@@ -70,7 +97,7 @@ function broadcastSessions(): void {
     sessions
   } satisfies SessionsPayload);
 
-  for (const client of clients) {
+  for (const client of sessionClients) {
     if (client.readyState !== WebSocket.OPEN) continue;
     client.send(payload);
   }
@@ -80,7 +107,7 @@ function broadcastSessions(): void {
 
 function scheduleNextExpiry(sessions: AdminSession[]): void {
   clearExpiryTimeout();
-  if (clients.size === 0 || sessions.length === 0) return;
+  if (sessionClients.size === 0 || sessions.length === 0) return;
 
   let earliestExpiryMs = Number.POSITIVE_INFINITY;
   for (const session of sessions) {
@@ -101,6 +128,41 @@ function clearExpiryTimeout(): void {
   if (!expiryTimeout) return;
   clearTimeout(expiryTimeout);
   expiryTimeout = null;
+}
+
+function broadcastPlaybackLogs(): void {
+  if (playbackLogClients.size === 0) {
+    clearPlaybackLogSubscription();
+    return;
+  }
+
+  const logs = listPlaybackLogs();
+  const payload = JSON.stringify({
+    type: 'playback-logs',
+    count: logs.length,
+    capacity: getPlaybackLogCapacity(),
+    path: getPlaybackLogPath(),
+    logs
+  } satisfies PlaybackLogsPayload);
+
+  for (const client of playbackLogClients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    client.send(payload);
+  }
+}
+
+function ensurePlaybackLogSubscription(): void {
+  if (unsubscribePlaybackLogs) return;
+  unsubscribePlaybackLogs = subscribePlaybackLogs(() => {
+    if (playbackLogClients.size === 0) return;
+    broadcastPlaybackLogs();
+  });
+}
+
+function clearPlaybackLogSubscription(): void {
+  if (playbackLogClients.size > 0 || !unsubscribePlaybackLogs) return;
+  unsubscribePlaybackLogs();
+  unsubscribePlaybackLogs = null;
 }
 
 function getPathname(req: IncomingMessage): string {

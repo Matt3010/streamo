@@ -4,6 +4,7 @@ import { db } from '../db';
 import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
 import { listLiveAdminSessions } from '../services/admin-sessions';
+import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs } from '../services/playback-logs';
 import type { AdminUserRow, AdminTokenRow } from '../../../shared/types';
 
 const router = Router();
@@ -74,6 +75,17 @@ router.delete('/admin/tokens/:token', requireSuperAdmin, (req, res) => {
 // GET /admin/sessions - List currently watching users
 router.get('/admin/sessions', requireSuperAdmin, (_req, res) => {
   res.json({ sessions: listLiveAdminSessions() });
+});
+
+// GET /admin/playback-logs - List recent playback proxy logs
+router.get('/admin/playback-logs', requireSuperAdmin, (_req, res) => {
+  const logs = listPlaybackLogs();
+  res.json({
+    count: logs.length,
+    capacity: getPlaybackLogCapacity(),
+    path: getPlaybackLogPath(),
+    logs
+  });
 });
 
 export default router;

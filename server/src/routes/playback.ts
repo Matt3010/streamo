@@ -1,28 +1,15 @@
 import { Router, type Response as ExpressResponse } from 'express';
 import { requireAuth } from '../middleware/auth';
+import { logPlayback } from '../services/playback-logs';
 
 const router = Router();
-
-router.post('/user/playback-debug', requireAuth, (req, res) => {
-  const body = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
-  const kind = clip(asString(body.kind), 48);
-  const url = clip(asString(body.url), 512);
-  const host = clip(asString(body.host), 128);
-  const context = clip(asString(body.context), 128);
-  const note = clip(asString(body.note), 256);
-
-  console.log(
-    `[playback-debug] user=${req.user?.email ?? '-'} kind=${kind || '-'} host=${host || '-'} context=${context || '-'} note=${note || '-'} url=${url || '-'}`
-  );
-  res.status(204).end();
-});
 
 router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   const tail = req.params[0] ?? '';
   const query = req.url.indexOf('?');
   const search = query >= 0 ? req.url.slice(query) : '';
   const upstreamUrl = `https://vixsrc.to/playlist/${tail}${search}`;
-  console.log(`[playlist-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
+  logPlayback(`[playlist-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
 
   let upstream: Response;
   try {
@@ -36,14 +23,14 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'upstream_fetch_failed';
-    console.log(`[playlist-proxy] fetch-error user=${req.user?.email ?? '-'} upstream=${upstreamUrl} detail=${detail}`);
+    logPlayback(`[playlist-proxy] fetch-error user=${req.user?.email ?? '-'} upstream=${upstreamUrl} detail=${detail}`);
     res.status(502).json({ error: 'playlist_proxy_failed', detail });
     return;
   }
 
   const contentType = upstream.headers.get('content-type') ?? '';
   const isPlaylist = contentType.includes('mpegurl') || contentType.includes('m3u8');
-  console.log(
+  logPlayback(
     `[playlist-proxy] upstream user=${req.user?.email ?? '-'} status=${upstream.status} content_type=${contentType || '-'} playlist=${isPlaylist ? 'yes' : 'no'}`
   );
 
@@ -58,37 +45,6 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   res.status(upstream.status).send(rewritePlaylist(body));
 });
 
-router.get(/^\/playback\/storage\/(.*)$/, requireAuth, async (req, res) => {
-  const tail = req.params[0] ?? '';
-  const query = req.url.indexOf('?');
-  const search = query >= 0 ? req.url.slice(query) : '';
-  const upstreamUrl = `https://vixsrc.to/storage/${tail}${search}`;
-  console.log(`[storage-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl, {
-      headers: {
-        accept: req.headers.accept ?? '*/*',
-        'accept-encoding': 'identity',
-        referer: 'https://vixsrc.to/',
-        origin: 'https://vixsrc.to'
-      }
-    });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : 'upstream_fetch_failed';
-    console.log(`[storage-proxy] fetch-error user=${req.user?.email ?? '-'} upstream=${upstreamUrl} detail=${detail}`);
-    res.status(502).json({ error: 'storage_proxy_failed', detail });
-    return;
-  }
-
-  const contentType = upstream.headers.get('content-type') ?? '';
-  console.log(
-    `[storage-proxy] upstream user=${req.user?.email ?? '-'} status=${upstream.status} content_type=${contentType || '-'}`
-  );
-  copyHeaders(upstream, res, false);
-  res.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
-});
 
 function rewritePlaylist(body: string): string {
   const rewritten = body
@@ -169,14 +125,6 @@ function copyHeaders(upstream: Response, res: ExpressResponse, isPlaylist: boole
   if (contentType) {
     res.setHeader('content-type', contentType);
   }
-}
-
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-
-function clip(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
 }
 
 export default router;

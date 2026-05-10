@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import type { AdminTokenRow, AdminSession } from '../models';
+import type { AdminTokenRow, AdminSession, PlaybackLogEntry } from '../models';
 
 interface TokenCreateResponse {
   token: string;
@@ -18,14 +18,30 @@ interface AdminSessionsSocketMessage {
   sessions: AdminSession[];
 }
 
+interface PlaybackLogsResponse {
+  count: number;
+  capacity: number;
+  path: string;
+  logs: PlaybackLogEntry[];
+}
+
+interface AdminPlaybackLogsSocketMessage extends PlaybackLogsResponse {
+  type: 'playback-logs';
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   readonly tokens = signal<AdminTokenRow[]>([]);
   readonly sessions = signal<AdminSession[]>([]);
+  readonly playbackLogs = signal<PlaybackLogEntry[]>([]);
+  readonly playbackLogCapacity = signal(500);
+  readonly playbackLogPath = signal('');
   readonly sessionsLiveConnected = signal(false);
+  readonly playbackLogsLiveConnected = signal(false);
   readonly loading = signal(false);
 
   private sessionsSocket: WebSocket | null = null;
+  private playbackLogsSocket: WebSocket | null = null;
 
   async fetchTokens(): Promise<void> {
     this.loading.set(true);
@@ -83,6 +99,18 @@ export class AdminService {
     } catch {}
   }
 
+  async fetchPlaybackLogs(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/playback-logs');
+      if (res.ok) {
+        const data = await res.json() as PlaybackLogsResponse;
+        this.playbackLogs.set(data.logs);
+        this.playbackLogCapacity.set(data.capacity);
+        this.playbackLogPath.set(data.path);
+      }
+    } catch {}
+  }
+
   connectSessionsLive(): void {
     if (this.sessionsSocket && (this.sessionsSocket.readyState === WebSocket.OPEN || this.sessionsSocket.readyState === WebSocket.CONNECTING)) {
       return;
@@ -125,6 +153,53 @@ export class AdminService {
     if (!this.sessionsSocket) return;
     const socket = this.sessionsSocket;
     this.sessionsSocket = null;
+    socket.close();
+  }
+
+  connectPlaybackLogsLive(): void {
+    if (this.playbackLogsSocket && (this.playbackLogsSocket.readyState === WebSocket.OPEN || this.playbackLogsSocket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${window.location.host}/api/admin/playback-logs/ws`;
+    const socket = new WebSocket(url);
+    this.playbackLogsSocket = socket;
+
+    socket.addEventListener('open', () => {
+      if (this.playbackLogsSocket !== socket) return;
+      this.playbackLogsLiveConnected.set(true);
+    });
+
+    socket.addEventListener('message', (event) => {
+      if (this.playbackLogsSocket !== socket) return;
+      try {
+        const message = JSON.parse(event.data as string) as AdminPlaybackLogsSocketMessage;
+        if (message.type === 'playback-logs') {
+          this.playbackLogs.set(message.logs);
+          this.playbackLogCapacity.set(message.capacity);
+          this.playbackLogPath.set(message.path);
+        }
+      } catch {}
+    });
+
+    socket.addEventListener('close', () => {
+      if (this.playbackLogsSocket !== socket) return;
+      this.playbackLogsLiveConnected.set(false);
+      this.playbackLogsSocket = null;
+    });
+
+    socket.addEventListener('error', () => {
+      if (this.playbackLogsSocket !== socket) return;
+      this.playbackLogsLiveConnected.set(false);
+    });
+  }
+
+  disconnectPlaybackLogsLive(): void {
+    this.playbackLogsLiveConnected.set(false);
+    if (!this.playbackLogsSocket) return;
+    const socket = this.playbackLogsSocket;
+    this.playbackLogsSocket = null;
     socket.close();
   }
 }

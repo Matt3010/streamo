@@ -109,3 +109,8 @@ export interface AdminSession {
   poster: string | null;
   updated_at: number;
 }
+
+export interface PlaybackLogEntry {
+  ts: number;
+  message: string;
+}
