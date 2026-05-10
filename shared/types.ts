@@ -94,6 +94,7 @@ export interface AdminTokenRow {
   used_at: number | null;
   revoked_at: number | null;
   used_by_email: string | null;
+  can_manage?: boolean;
 }
 
 export interface AdminSession {

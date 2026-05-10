@@ -208,6 +208,10 @@
   color: var(--text-muted);
 }
 
+.protected-meta {
+  color: #9ecbff;
+}
+
 .row-actions {
   display: flex;
   align-items: center;

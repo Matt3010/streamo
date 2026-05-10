@@ -76,10 +76,13 @@ function timeAgo(timestamp: number): string {
                       <span class="item-meta">{{ token.label }}</span>
                     }
                     <span class="item-meta">Creato: {{ formatDate(token.created_at) }}</span>
+                    @if (!canManageToken(token)) {
+                      <span class="item-meta protected-meta">Token protetto</span>
+                    }
                   </span>
                 </div>
                 <div class="row-actions">
-                  @if (token.revoked_at === null) {
+                  @if (token.revoked_at === null && canManageToken(token)) {
                     <button class="row-action" title="Copia token" (click)="copyToken(token.token)">
                       <app-icon name="copy"></app-icon>
                     </button>
@@ -89,7 +92,7 @@ function timeAgo(timestamp: number): string {
                     <button class="row-action danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
                       <app-icon name="trash"></app-icon>
                     </button>
-                  } @else {
+                  } @else if (token.revoked_at !== null && canManageToken(token)) {
                     <button class="row-action" title="Riattiva" (click)="confirmReactivate(token)">
                       <app-icon name="rotate-left"></app-icon>
                     </button>
@@ -380,6 +383,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (token.revoked_at !== null) return 'REVOCATO';
     if (token.used_at !== null) return 'ATTIVO';
     return 'DISPONIBILE';
+  }
+
+  protected canManageToken(token: AdminTokenRow): boolean {
+    return token.can_manage !== false;
   }
 
   protected formatDate(timestamp: number): string {

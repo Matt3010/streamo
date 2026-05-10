@@ -34,6 +34,10 @@ router.get('/admin/tokens', requireSuperAdmin, (_req, res) => {
     ORDER BY created_at DESC
   `).all() as AdminTokenRow[];
 
+  for (const row of rows) {
+    row.can_manage = !row.used_by_email || row.used_by_email.toLowerCase() !== SUPER_ADMIN_EMAIL;
+  }
+
   res.json({ tokens: rows });
 });
 
@@ -59,11 +63,17 @@ router.delete('/admin/tokens/:token', requireSuperAdmin, (req, res) => {
 
   // Check current state
   const existing = db.prepare(
-    'SELECT used_at FROM invite_tokens WHERE token = ? AND revoked_at IS NULL'
-  ).get(token) as { used_at: number | null } | undefined;
+    `SELECT t.used_at,
+            (SELECT email FROM users WHERE id = t.used_by_user_id) AS used_by_email
+     FROM invite_tokens t
+     WHERE t.token = ? AND t.revoked_at IS NULL`
+  ).get(token) as { used_at: number | null; used_by_email: string | null } | undefined;
 
   if (!existing) {
     return res.status(404).json({ error: 'token_not_found_or_already_revoked' });
+  }
+  if (existing.used_by_email && existing.used_by_email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'cannot_modify_super_admin_token' });
   }
 
   db.prepare(
@@ -78,11 +88,17 @@ router.patch('/admin/tokens/:token/reactivate', requireSuperAdmin, (req, res) =>
   const { token } = req.params;
 
   const existing = db.prepare(
-    'SELECT used_at FROM invite_tokens WHERE token = ? AND revoked_at IS NOT NULL'
-  ).get(token) as { used_at: number | null } | undefined;
+    `SELECT t.used_at,
+            (SELECT email FROM users WHERE id = t.used_by_user_id) AS used_by_email
+     FROM invite_tokens t
+     WHERE t.token = ? AND t.revoked_at IS NOT NULL`
+  ).get(token) as { used_at: number | null; used_by_email: string | null } | undefined;
 
   if (!existing) {
     return res.status(404).json({ error: 'token_not_found_or_not_revoked' });
+  }
+  if (existing.used_by_email && existing.used_by_email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'cannot_modify_super_admin_token' });
   }
 
   db.prepare(
@@ -97,11 +113,17 @@ router.delete('/admin/tokens/:token/permanent', requireSuperAdmin, (req, res) =>
   const { token } = req.params;
 
   const existing = db.prepare(
-    'SELECT used_at FROM invite_tokens WHERE token = ?'
-  ).get(token) as { used_at: number | null } | undefined;
+    `SELECT t.used_at,
+            (SELECT email FROM users WHERE id = t.used_by_user_id) AS used_by_email
+     FROM invite_tokens t
+     WHERE t.token = ?`
+  ).get(token) as { used_at: number | null; used_by_email: string | null } | undefined;
 
   if (!existing) {
     return res.status(404).json({ error: 'token_not_found' });
+  }
+  if (existing.used_by_email && existing.used_by_email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'cannot_modify_super_admin_token' });
   }
 
   db.prepare('DELETE FROM invite_tokens WHERE token = ?').run(token);
