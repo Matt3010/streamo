@@ -6,6 +6,8 @@ import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { AdminTokenRow, PlaybackLogEntry, TransportLogEntry } from '../../models';
 
+type TokenAction = 'revoke' | 'reactivate' | 'delete';
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -79,20 +81,21 @@ function timeAgo(timestamp: number): string {
                 <div class="row-actions">
                   @if (token.revoked_at === null) {
                     <button class="row-action" title="Copia token" (click)="copyToken(token.token)">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                      </svg>
+                      <app-icon name="copy"></app-icon>
                     </button>
                     <button class="row-action danger" title="Revoca" (click)="confirmRevoke(token)">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                      </svg>
+                      <app-icon name="close"></app-icon>
+                    </button>
+                    <button class="row-action danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
+                      <app-icon name="trash"></app-icon>
                     </button>
                   } @else {
-                    <span class="revoked-label">Revocato</span>
+                    <button class="row-action" title="Riattiva" (click)="confirmReactivate(token)">
+                      <app-icon name="rotate-left"></app-icon>
+                    </button>
+                    <button class="row-action danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
+                      <app-icon name="trash"></app-icon>
+                    </button>
                   }
                 </div>
               </li>
@@ -153,11 +156,11 @@ function timeAgo(timestamp: number): string {
           <div class="logs-panel">
             <ul class="log-list">
               @for (log of playbackLogsDesc(); track trackPlaybackLog($index, log)) {
-                <li class="log-row" [class.log-row-error]="playbackLogTone(log) === 'error'" [class.log-row-warn]="playbackLogTone(log) === 'warn'">
+                <li class="log-row" [class.log-row-error]="playbackLogTone(log) === 'error'" [class.log-row-warn]="playbackLogTone(log) === 'warn'" [class.log-row-cancelled]="playbackLogTone(log) === 'cancelled'">
                   <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
                   <div class="log-stack">
                     <div class="log-header">
-                      <span class="log-badge" [class.log-badge-ok]="playbackLogTone(log) === 'ok'" [class.log-badge-info]="playbackLogTone(log) === 'info'" [class.log-badge-warn]="playbackLogTone(log) === 'warn'" [class.log-badge-error]="playbackLogTone(log) === 'error'">
+                      <span class="log-badge" [class.log-badge-ok]="playbackLogTone(log) === 'ok'" [class.log-badge-info]="playbackLogTone(log) === 'info'" [class.log-badge-warn]="playbackLogTone(log) === 'warn'" [class.log-badge-error]="playbackLogTone(log) === 'error'" [class.log-badge-cancelled]="playbackLogTone(log) === 'cancelled'">
                         {{ playbackLogLabel(log) }}
                       </span>
                     </div>
@@ -190,11 +193,11 @@ function timeAgo(timestamp: number): string {
           <div class="logs-panel">
             <ul class="log-list">
               @for (log of transportLogsDesc(); track trackTransportLog($index, log)) {
-                <li class="log-row" [class.log-row-error]="transportLogTone(log) === 'error'" [class.log-row-warn]="transportLogTone(log) === 'warn'">
+                <li class="log-row" [class.log-row-error]="transportLogTone(log) === 'error'" [class.log-row-warn]="transportLogTone(log) === 'warn'" [class.log-row-cancelled]="transportLogTone(log) === 'cancelled'">
                   <span class="log-time">{{ log.ts }}</span>
                   <div class="log-stack">
                     <div class="log-header">
-                      <span class="log-badge" [class.log-badge-ok]="transportLogTone(log) === 'ok'" [class.log-badge-info]="transportLogTone(log) === 'info'" [class.log-badge-warn]="transportLogTone(log) === 'warn'" [class.log-badge-error]="transportLogTone(log) === 'error'">
+                      <span class="log-badge" [class.log-badge-ok]="transportLogTone(log) === 'ok'" [class.log-badge-info]="transportLogTone(log) === 'info'" [class.log-badge-warn]="transportLogTone(log) === 'warn'" [class.log-badge-error]="transportLogTone(log) === 'error'" [class.log-badge-cancelled]="transportLogTone(log) === 'cancelled'">
                         {{ transportLogLabel(log) }}
                       </span>
                     </div>
@@ -209,19 +212,29 @@ function timeAgo(timestamp: number): string {
       </section>
     </div>
 
-    <ui-modal [(open)]="revokeModalOpen" title="Conferma Revoca" size="sm">
+    <ui-modal [(open)]="revokeModalOpen" [title]="confirmModalTitle()" size="sm">
       <div class="revoke-modal-content">
         <p>
-          @if (tokenToRevoke()?.used_by_email) {
+          @if (confirmAction() === 'revoke' && tokenToRevoke()?.used_by_email) {
             Sei sicuro di voler revocare l'accesso a <strong>{{ tokenToRevoke()?.used_by_email }}</strong>?
-          } @else {
+          } @else if (confirmAction() === 'revoke') {
             Sei sicuro di voler revocare questo token?
+          } @else if (confirmAction() === 'reactivate' && tokenToRevoke()?.used_by_email) {
+            Vuoi riattivare l'accesso per <strong>{{ tokenToRevoke()?.used_by_email }}</strong>?
+          } @else if (confirmAction() === 'reactivate') {
+            Vuoi riattivare questo token?
+          } @else if (tokenToRevoke()?.used_by_email) {
+            Vuoi eliminare definitivamente il token associato a <strong>{{ tokenToRevoke()?.used_by_email }}</strong>?
+          } @else {
+            Vuoi eliminare definitivamente questo token?
           }
         </p>
-        <p class="warning">L'utente verra disconnesso immediatamente.</p>
+        <p class="warning">{{ confirmModalWarning() }}</p>
         <div class="modal-actions">
           <button class="cancel-btn" (click)="cancelRevoke()">Annulla</button>
-          <button class="danger-btn" (click)="executeRevoke()">Revoca</button>
+          <button class="danger-btn" [class.neutral-btn]="confirmAction() === 'reactivate'" (click)="executeTokenAction()">
+            {{ confirmModalActionLabel() }}
+          </button>
         </div>
       </div>
     </ui-modal>
@@ -236,8 +249,30 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly newTokenLabel = signal('');
   protected readonly revokeModalOpen = signal(false);
   protected readonly tokenToRevoke = signal<AdminTokenRow | null>(null);
+  protected readonly confirmAction = signal<TokenAction>('revoke');
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
   protected readonly transportLogsDesc = computed(() => [...this.admin.transportLogs()].reverse());
+  protected readonly confirmModalTitle = computed(() =>
+    this.confirmAction() === 'revoke'
+      ? 'Conferma Revoca'
+      : this.confirmAction() === 'reactivate'
+        ? 'Conferma Riattivazione'
+        : 'Conferma Eliminazione'
+  );
+  protected readonly confirmModalActionLabel = computed(() =>
+    this.confirmAction() === 'revoke'
+      ? 'Revoca'
+      : this.confirmAction() === 'reactivate'
+        ? 'Riattiva'
+        : 'Elimina'
+  );
+  protected readonly confirmModalWarning = computed(() =>
+    this.confirmAction() === 'delete'
+      ? 'Questa operazione elimina il token in modo definitivo.'
+      : this.confirmAction() === 'reactivate'
+        ? 'L\'utente potra usare di nuovo l\'accesso associato a questo token.'
+        : 'L\'utente verra disconnesso immediatamente.'
+  );
 
   ngOnInit(): void {
     void this.admin.fetchTokens();
@@ -286,26 +321,58 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected confirmRevoke(token: AdminTokenRow): void {
     this.tokenToRevoke.set(token);
+    this.confirmAction.set('revoke');
+    this.revokeModalOpen.set(true);
+  }
+
+  protected confirmReactivate(token: AdminTokenRow): void {
+    this.tokenToRevoke.set(token);
+    this.confirmAction.set('reactivate');
+    this.revokeModalOpen.set(true);
+  }
+
+  protected confirmDelete(token: AdminTokenRow): void {
+    this.tokenToRevoke.set(token);
+    this.confirmAction.set('delete');
     this.revokeModalOpen.set(true);
   }
 
   protected cancelRevoke(): void {
     this.revokeModalOpen.set(false);
     this.tokenToRevoke.set(null);
+    this.confirmAction.set('revoke');
   }
 
-  protected async executeRevoke(): Promise<void> {
+  protected async executeTokenAction(): Promise<void> {
     const token = this.tokenToRevoke();
     if (!token) return;
 
-    const result = await this.admin.revokeToken(token.token);
+    const action = this.confirmAction();
+    const result = action === 'revoke'
+      ? await this.admin.revokeToken(token.token)
+      : action === 'reactivate'
+        ? await this.admin.reactivateToken(token.token)
+        : await this.admin.deleteTokenPermanently(token.token);
     this.revokeModalOpen.set(false);
     this.tokenToRevoke.set(null);
+    this.confirmAction.set('revoke');
 
     if (result.ok) {
-      this.toast.show(result.was_used ? 'Accesso revocato' : 'Token revocato');
+      if (action === 'revoke') {
+        this.toast.show(result.was_used ? 'Accesso revocato' : 'Token revocato');
+      } else if (action === 'reactivate') {
+        this.toast.show(result.was_used ? 'Accesso riattivato' : 'Token riattivato');
+      } else {
+        this.toast.show(result.was_used ? 'Token eliminato e accesso revocato' : 'Token eliminato definitivamente');
+      }
     } else {
-      this.toast.show('Errore nella revoca');
+      this.toast.show(
+        action === 'revoke'
+          ? 'Errore nella revoca'
+          : action === 'reactivate'
+            ? 'Errore nella riattivazione'
+            : 'Errore nell\'eliminazione'
+      );
     }
   }
 
@@ -354,8 +421,11 @@ export class AdminComponent implements OnInit, OnDestroy {
     return `${log.kind.toUpperCase()} ${log.status} upstream=${log.upstream_status} host=${log.upstream_host} rt=${log.request_time}s urt=${log.upstream_response_time}s`;
   }
 
-  protected playbackLogTone(log: PlaybackLogEntry): 'ok' | 'info' | 'warn' | 'error' {
+  protected playbackLogTone(log: PlaybackLogEntry): 'ok' | 'info' | 'warn' | 'error' | 'cancelled' {
     const message = log.message.toLowerCase();
+    if (message.includes(' status=499')) {
+      return 'cancelled';
+    }
     if (message.includes('fetch-error') || message.includes('write-error') || message.includes('read-error') || message.includes(' status=5')) {
       return 'error';
     }
@@ -370,10 +440,21 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected playbackLogLabel(log: PlaybackLogEntry): string {
     const tone = this.playbackLogTone(log);
-    return tone === 'ok' ? 'OK' : tone === 'warn' ? 'WARN' : tone === 'error' ? 'ERR' : 'INFO';
+    return tone === 'ok'
+      ? 'OK'
+      : tone === 'warn'
+        ? 'WARN'
+        : tone === 'error'
+          ? 'ERR'
+          : tone === 'cancelled'
+            ? 'CANCELLED'
+            : 'INFO';
   }
 
-  protected transportLogTone(log: TransportLogEntry): 'ok' | 'info' | 'warn' | 'error' {
+  protected transportLogTone(log: TransportLogEntry): 'ok' | 'info' | 'warn' | 'error' | 'cancelled' {
+    if (log.status === 499) {
+      return 'cancelled';
+    }
     if (log.status >= 500) {
       return 'error';
     }
@@ -394,6 +475,14 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected transportLogLabel(log: TransportLogEntry): string {
     const tone = this.transportLogTone(log);
-    return tone === 'ok' ? 'OK' : tone === 'warn' ? 'WARN' : tone === 'error' ? 'ERR' : 'INFO';
+    return tone === 'ok'
+      ? 'OK'
+      : tone === 'warn'
+        ? 'WARN'
+        : tone === 'error'
+          ? 'ERR'
+          : tone === 'cancelled'
+            ? 'CANCELLED'
+            : 'INFO';
   }
 }

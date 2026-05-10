@@ -153,6 +153,36 @@ export class AdminService {
     }
   }
 
+  async reactivateToken(token: string): Promise<RevokeResponse> {
+    try {
+      const res = await fetch(`/api/admin/tokens/${encodeURIComponent(token)}/reactivate`, {
+        method: 'PATCH'
+      });
+      const data = await res.json() as RevokeResponse;
+      if (res.ok) {
+        await this.fetchTokens();
+      }
+      return data;
+    } catch {
+      return { ok: false, was_used: false, error: 'network_error' };
+    }
+  }
+
+  async deleteTokenPermanently(token: string): Promise<RevokeResponse> {
+    try {
+      const res = await fetch(`/api/admin/tokens/${encodeURIComponent(token)}/permanent`, {
+        method: 'DELETE'
+      });
+      const data = await res.json() as RevokeResponse;
+      if (res.ok) {
+        await this.fetchTokens();
+      }
+      return data;
+    } catch {
+      return { ok: false, was_used: false, error: 'network_error' };
+    }
+  }
+
   async fetchSessions(): Promise<void> {
     try {
       const res = await fetch('/api/admin/sessions');

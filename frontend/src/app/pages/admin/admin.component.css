@@ -284,6 +284,10 @@
   background: rgba(245, 158, 11, 0.06);
 }
 
+.log-row-cancelled {
+  background: rgba(120, 134, 158, 0.08);
+}
+
 .log-time {
   color: var(--text-muted);
   font-size: 0.78rem;
@@ -350,6 +354,12 @@
   background: rgba(239, 68, 68, 0.14);
 }
 
+.log-badge-cancelled {
+  color: #c3cfdd;
+  border-color: rgba(148, 163, 184, 0.32);
+  background: rgba(100, 116, 139, 0.18);
+}
+
 .log-detail {
   color: var(--text-muted);
   font-size: 0.72rem;
@@ -408,6 +418,14 @@
 
 .danger-btn:hover {
   background: #dc2626;
+}
+
+.danger-btn.neutral-btn {
+  background: var(--accent);
+}
+
+.danger-btn.neutral-btn:hover {
+  background: var(--accent-hover);
 }
 
 @media (max-width: 640px) {

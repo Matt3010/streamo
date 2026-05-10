@@ -73,6 +73,42 @@ router.delete('/admin/tokens/:token', requireSuperAdmin, (req, res) => {
   res.json({ ok: true, was_used: existing.used_at !== null });
 });
 
+// PATCH /admin/tokens/:token/reactivate - Reactivate a revoked token
+router.patch('/admin/tokens/:token/reactivate', requireSuperAdmin, (req, res) => {
+  const { token } = req.params;
+
+  const existing = db.prepare(
+    'SELECT used_at FROM invite_tokens WHERE token = ? AND revoked_at IS NOT NULL'
+  ).get(token) as { used_at: number | null } | undefined;
+
+  if (!existing) {
+    return res.status(404).json({ error: 'token_not_found_or_not_revoked' });
+  }
+
+  db.prepare(
+    'UPDATE invite_tokens SET revoked_at = NULL WHERE token = ? AND revoked_at IS NOT NULL'
+  ).run(token);
+
+  res.json({ ok: true, was_used: existing.used_at !== null });
+});
+
+// DELETE /admin/tokens/:token/permanent - Permanently delete a token
+router.delete('/admin/tokens/:token/permanent', requireSuperAdmin, (req, res) => {
+  const { token } = req.params;
+
+  const existing = db.prepare(
+    'SELECT used_at FROM invite_tokens WHERE token = ?'
+  ).get(token) as { used_at: number | null } | undefined;
+
+  if (!existing) {
+    return res.status(404).json({ error: 'token_not_found' });
+  }
+
+  db.prepare('DELETE FROM invite_tokens WHERE token = ?').run(token);
+
+  res.json({ ok: true, was_used: existing.used_at !== null });
+});
+
 // GET /admin/sessions - List currently watching users
 router.get('/admin/sessions', requireSuperAdmin, (_req, res) => {
   res.json({ sessions: listLiveAdminSessions() });
