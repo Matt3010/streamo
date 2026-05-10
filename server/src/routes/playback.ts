@@ -41,13 +41,14 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   }
 
   const body = await upstream.text();
+  logPlaylistDetails(req.user?.email ?? '-', upstreamUrl, body);
   copyHeaders(upstream, res, true);
   res.status(upstream.status).send(rewritePlaylist(body));
 });
 
 
 function rewritePlaylist(body: string): string {
-  const rewritten = body
+  return body
     .replace(
       /https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
       '/cdn/$1$2'
@@ -72,32 +73,6 @@ function rewritePlaylist(body: string): string {
       /\/\/vixsrc\.to(\/[^\s"']*)/gi,
       '$1'
     );
-
-  return pruneHighBitrateVariant(rewritten);
-}
-
-function pruneHighBitrateVariant(body: string): string {
-  if (!body.includes('#EXT-X-STREAM-INF')) {
-    return body;
-  }
-
-  const lines = body.split(/\r?\n/);
-  const next: string[] = [];
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const nextLine = lines[i + 1] ?? '';
-    if (line.startsWith('#EXT-X-STREAM-INF:') && /(?:^|,)RESOLUTION=1920x1080(?:,|$)/i.test(line)) {
-      i += 1;
-      continue;
-    }
-    next.push(line);
-    if (nextLine === '' && i === lines.length - 2) {
-      // no-op: preserve original trailing newline behavior
-    }
-  }
-
-  return next.join('\n');
 }
 
 function copyHeaders(upstream: Response, res: ExpressResponse, isPlaylist: boolean): void {
@@ -125,6 +100,49 @@ function copyHeaders(upstream: Response, res: ExpressResponse, isPlaylist: boole
   if (contentType) {
     res.setHeader('content-type', contentType);
   }
+}
+
+function logPlaylistDetails(user: string, upstreamUrl: string, body: string): void {
+  if (!body.includes('#EXTM3U')) {
+    return;
+  }
+
+  if (body.includes('#EXT-X-STREAM-INF')) {
+    const variants = collectMasterVariants(body);
+    logPlayback(
+      `[playlist-proxy] master user=${user} upstream=${upstreamUrl} variants=${variants.length > 0 ? variants.join('|') : '-'}`
+    );
+    return;
+  }
+
+  const segmentCount = (body.match(/^#EXTINF:/gm) ?? []).length;
+  const keyMatch = body.match(/#EXT-X-KEY:.*URI="([^"]+)"/i);
+  const firstSegment = body
+    .split(/\r?\n/)
+    .find((line) => line.length > 0 && !line.startsWith('#'));
+
+  logPlayback(
+    `[playlist-proxy] media user=${user} upstream=${upstreamUrl} segments=${segmentCount} key=${keyMatch?.[1] ?? '-'} first_segment=${firstSegment ?? '-'}`
+  );
+}
+
+function collectMasterVariants(body: string): string[] {
+  const lines = body.split(/\r?\n/);
+  const variants: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.startsWith('#EXT-X-STREAM-INF:')) {
+      continue;
+    }
+
+    const nextLine = lines[i + 1] ?? '-';
+    const resolution = line.match(/(?:^|,)RESOLUTION=([^,]+)/i)?.[1] ?? '-';
+    const bandwidth = line.match(/(?:^|,)BANDWIDTH=([^,]+)/i)?.[1] ?? '-';
+    variants.push(`res=${resolution},bw=${bandwidth},uri=${nextLine}`);
+  }
+
+  return variants;
 }
 
 export default router;
