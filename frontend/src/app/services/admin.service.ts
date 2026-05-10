@@ -1,5 +1,6 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import type { AdminTokenRow, AdminSession, PlaybackLogEntry, TransportLogEntry } from '../models';
+import { LiveSocketService, type LiveSocketController } from './live-socket.service';
 
 interface TokenCreateResponse {
   token: string;
@@ -42,6 +43,8 @@ interface AdminTransportLogsSocketMessage extends TransportLogsResponse {
 
 @Injectable({ providedIn: 'root' })
 export class AdminService {
+  private readonly liveSocket = inject(LiveSocketService);
+
   readonly tokens = signal<AdminTokenRow[]>([]);
   readonly sessions = signal<AdminSession[]>([]);
   readonly playbackLogs = signal<PlaybackLogEntry[]>([]);
@@ -55,9 +58,54 @@ export class AdminService {
   readonly transportLogsLiveConnected = signal(false);
   readonly loading = signal(false);
 
-  private sessionsSocket: WebSocket | null = null;
-  private playbackLogsSocket: WebSocket | null = null;
-  private transportLogsSocket: WebSocket | null = null;
+  private readonly sessionsSocket: LiveSocketController;
+  private readonly playbackLogsSocket: LiveSocketController;
+  private readonly transportLogsSocket: LiveSocketController;
+
+  constructor() {
+    this.sessionsSocket = this.liveSocket.create({
+      path: '/api/admin/sessions/ws',
+      onConnected: (connected) => this.sessionsLiveConnected.set(connected),
+      onMessage: (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as AdminSessionsSocketMessage;
+          if (message.type === 'sessions') {
+            this.sessions.set(message.sessions);
+          }
+        } catch {}
+      }
+    });
+
+    this.playbackLogsSocket = this.liveSocket.create({
+      path: '/api/admin/playback-logs/ws',
+      onConnected: (connected) => this.playbackLogsLiveConnected.set(connected),
+      onMessage: (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as AdminPlaybackLogsSocketMessage;
+          if (message.type === 'playback-logs') {
+            this.playbackLogs.set(message.logs);
+            this.playbackLogCapacity.set(message.capacity);
+            this.playbackLogPath.set(message.path);
+          }
+        } catch {}
+      }
+    });
+
+    this.transportLogsSocket = this.liveSocket.create({
+      path: '/api/admin/transport-logs/ws',
+      onConnected: (connected) => this.transportLogsLiveConnected.set(connected),
+      onMessage: (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as AdminTransportLogsSocketMessage;
+          if (message.type === 'transport-logs') {
+            this.transportLogs.set(message.logs);
+            this.transportLogCapacity.set(message.capacity);
+            this.transportLogPath.set(message.path);
+          }
+        } catch {}
+      }
+    });
+  }
 
   async fetchTokens(): Promise<void> {
     this.loading.set(true);
@@ -140,141 +188,26 @@ export class AdminService {
   }
 
   connectSessionsLive(): void {
-    if (this.sessionsSocket && (this.sessionsSocket.readyState === WebSocket.OPEN || this.sessionsSocket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${window.location.host}/api/admin/sessions/ws`;
-    const socket = new WebSocket(url);
-    this.sessionsSocket = socket;
-
-    socket.addEventListener('open', () => {
-      if (this.sessionsSocket !== socket) return;
-      this.sessionsLiveConnected.set(true);
-    });
-
-    socket.addEventListener('message', (event) => {
-      if (this.sessionsSocket !== socket) return;
-      try {
-        const message = JSON.parse(event.data as string) as AdminSessionsSocketMessage;
-        if (message.type === 'sessions') {
-          this.sessions.set(message.sessions);
-        }
-      } catch {}
-    });
-
-    socket.addEventListener('close', () => {
-      if (this.sessionsSocket !== socket) return;
-      this.sessionsLiveConnected.set(false);
-      this.sessionsSocket = null;
-    });
-
-    socket.addEventListener('error', () => {
-      if (this.sessionsSocket !== socket) return;
-      this.sessionsLiveConnected.set(false);
-    });
+    this.sessionsSocket.connect();
   }
 
   disconnectSessionsLive(): void {
-    this.sessionsLiveConnected.set(false);
-    if (!this.sessionsSocket) return;
-    const socket = this.sessionsSocket;
-    this.sessionsSocket = null;
-    socket.close();
+    this.sessionsSocket.disconnect();
   }
 
   connectPlaybackLogsLive(): void {
-    if (this.playbackLogsSocket && (this.playbackLogsSocket.readyState === WebSocket.OPEN || this.playbackLogsSocket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${window.location.host}/api/admin/playback-logs/ws`;
-    const socket = new WebSocket(url);
-    this.playbackLogsSocket = socket;
-
-    socket.addEventListener('open', () => {
-      if (this.playbackLogsSocket !== socket) return;
-      this.playbackLogsLiveConnected.set(true);
-    });
-
-    socket.addEventListener('message', (event) => {
-      if (this.playbackLogsSocket !== socket) return;
-      try {
-        const message = JSON.parse(event.data as string) as AdminPlaybackLogsSocketMessage;
-        if (message.type === 'playback-logs') {
-          this.playbackLogs.set(message.logs);
-          this.playbackLogCapacity.set(message.capacity);
-          this.playbackLogPath.set(message.path);
-        }
-      } catch {}
-    });
-
-    socket.addEventListener('close', () => {
-      if (this.playbackLogsSocket !== socket) return;
-      this.playbackLogsLiveConnected.set(false);
-      this.playbackLogsSocket = null;
-    });
-
-    socket.addEventListener('error', () => {
-      if (this.playbackLogsSocket !== socket) return;
-      this.playbackLogsLiveConnected.set(false);
-    });
+    this.playbackLogsSocket.connect();
   }
 
   disconnectPlaybackLogsLive(): void {
-    this.playbackLogsLiveConnected.set(false);
-    if (!this.playbackLogsSocket) return;
-    const socket = this.playbackLogsSocket;
-    this.playbackLogsSocket = null;
-    socket.close();
+    this.playbackLogsSocket.disconnect();
   }
 
   connectTransportLogsLive(): void {
-    if (this.transportLogsSocket && (this.transportLogsSocket.readyState === WebSocket.OPEN || this.transportLogsSocket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${window.location.host}/api/admin/transport-logs/ws`;
-    const socket = new WebSocket(url);
-    this.transportLogsSocket = socket;
-
-    socket.addEventListener('open', () => {
-      if (this.transportLogsSocket !== socket) return;
-      this.transportLogsLiveConnected.set(true);
-    });
-
-    socket.addEventListener('message', (event) => {
-      if (this.transportLogsSocket !== socket) return;
-      try {
-        const message = JSON.parse(event.data as string) as AdminTransportLogsSocketMessage;
-        if (message.type === 'transport-logs') {
-          this.transportLogs.set(message.logs);
-          this.transportLogCapacity.set(message.capacity);
-          this.transportLogPath.set(message.path);
-        }
-      } catch {}
-    });
-
-    socket.addEventListener('close', () => {
-      if (this.transportLogsSocket !== socket) return;
-      this.transportLogsLiveConnected.set(false);
-      this.transportLogsSocket = null;
-    });
-
-    socket.addEventListener('error', () => {
-      if (this.transportLogsSocket !== socket) return;
-      this.transportLogsLiveConnected.set(false);
-    });
+    this.transportLogsSocket.connect();
   }
 
   disconnectTransportLogsLive(): void {
-    this.transportLogsLiveConnected.set(false);
-    if (!this.transportLogsSocket) return;
-    const socket = this.transportLogsSocket;
-    this.transportLogsSocket = null;
-    socket.close();
+    this.transportLogsSocket.disconnect();
   }
 }
