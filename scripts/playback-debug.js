@@ -4,6 +4,7 @@
   var endpoint = '/api/user/playback-debug';
   var seen = Object.create(null);
   var hostPattern = /(^|\.)vixsrc\.to$|(^|\.)vixcloud\.co$|(^|\.)(?:[a-z0-9-]+\.)?vix-content\.net$/i;
+  var localPathPattern = /^\/(?:playlist|storage|cdn)\//i;
   var textPattern = /https?:\/\/[^\s"'<>]+|\/\/[^\s"'<>]+|[a-z0-9-]+\.vix-content\.net/gi;
   var prefix = '[playback-debug]';
 
@@ -26,7 +27,11 @@
   function interesting(url) {
     var parsed = normalize(url);
     if (!parsed) return null;
-    if (parsed.host === location.host) return null;
+    if (parsed.host === location.host) {
+      if (!localPathPattern.test(parsed.pathname)) return null;
+      log('interesting-local', parsed.pathname);
+      return parsed;
+    }
     if (!hostPattern.test(parsed.host)) return null;
     log('interesting', parsed.host, parsed.pathname);
     return parsed;
