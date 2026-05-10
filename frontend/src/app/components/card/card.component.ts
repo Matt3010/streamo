@@ -34,7 +34,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
             </button>
           }
           @if (showRemove()) {
-            <button class="card-action card-remove" title="Rimuovi dalla lista"
+            <button class="card-action card-remove" title="Rimuovi"
                     (click)="onRemove($event)">
               <app-icon name="trash"></app-icon>
             </button>

@@ -60,6 +60,11 @@ router.post('/user/progress', requireAuth, async (req, res) => {
   `).run(req.user!.id, tmdb_id, media_type, season, episode, position, duration,
          body.title || null, body.poster || null, body.backdrop || null);
 
+  db.prepare(`
+    DELETE FROM hidden_continue
+    WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
+  `).run(req.user!.id, tmdb_id, media_type);
+
   await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
   notifyAdminSessionsChanged();
 
@@ -139,6 +144,12 @@ router.get('/user/progress', requireAuth, async (req, res) => {
             AND w.media_type = p.media_type
             AND w.status = 'done'
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM hidden_continue hc
+          WHERE hc.user_id = p.user_id
+            AND hc.tmdb_id = p.tmdb_id
+            AND hc.media_type = p.media_type
+        )
     ) WHERE rn = 1
     ORDER BY updated_at DESC
     LIMIT 30
@@ -176,6 +187,22 @@ router.get('/user/progress/series/:tmdb_id', requireAuth, (req, res) => {
     WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
   `).all(req.user!.id, tmdb_id);
   res.json({ items });
+});
+
+router.delete('/user/progress/title/:type/:tmdb_id', requireAuth, (req, res) => {
+  const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
+  const type = req.params.type;
+  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+
+  db.prepare(`
+    INSERT INTO hidden_continue (user_id, tmdb_id, media_type, hidden_at)
+    VALUES (?, ?, ?, strftime('%s','now'))
+    ON CONFLICT(user_id, tmdb_id, media_type) DO UPDATE SET
+      hidden_at = strftime('%s','now')
+  `).run(req.user!.id, tmdb_id, type);
+
+  notifyAdminSessionsChanged();
+  res.json({ ok: true });
 });
 
 router.get('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, (req, res) => {

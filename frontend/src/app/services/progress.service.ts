@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { signal } from '@angular/core';
 import type { MediaType, ProgressItem } from '../models';
 
 interface ProgressPayload {
@@ -15,6 +16,8 @@ interface ProgressPayload {
 
 @Injectable({ providedIn: 'root' })
 export class ProgressService {
+  readonly tick = signal(0);
+
   async list(): Promise<ProgressItem[]> {
     try {
       const res = await fetch('/api/user/progress');
@@ -72,6 +75,14 @@ export class ProgressService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      this.tick.update((n) => n + 1);
+    } catch {}
+  }
+
+  async hideTitle(tmdbId: string | number, type: MediaType): Promise<void> {
+    try {
+      await fetch(`/api/user/progress/title/${type}/${tmdbId}`, { method: 'DELETE' });
+      this.tick.update((n) => n + 1);
     } catch {}
   }
 }

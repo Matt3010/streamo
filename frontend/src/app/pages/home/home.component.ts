@@ -7,6 +7,7 @@ import { ProgressService } from '../../services/progress.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
+import { ToastService } from '../../services/toast.service';
 import { SECTIONS } from './sections.config';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
 
@@ -29,7 +30,9 @@ interface SectionState {
         [items]="continueItems()"
         [loading]="userLoading()"
         [showProgress]="true"
-        (cardClick)="open($event)" />
+        [showRemove]="true"
+        (cardClick)="open($event)"
+        (removeClick)="removeContinue($event)" />
     }
 
     @if (auth.isLoggedIn() && (watchlistItems().length > 0 || userLoading())) {
@@ -58,6 +61,7 @@ export class HomeComponent {
   private readonly watchlist = inject(WatchlistService);
   protected readonly auth = inject(AuthService);
   private readonly player = inject(PlayerService);
+  private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
 
   protected readonly continueIcon = faCirclePlay;
@@ -76,6 +80,7 @@ export class HomeComponent {
     effect(() => {
       this.auth.currentUser();
       this.player.progressTick();
+      this.progress.tick();
       this.watchlist.tick();
       void this.loadUserSections();
     });
@@ -86,6 +91,14 @@ export class HomeComponent {
     if (item.season) queryParams['s'] = item.season;
     if (item.episode) queryParams['e'] = item.episode;
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { queryParams });
+  }
+
+  protected async removeContinue(item: CardItem): Promise<void> {
+    await this.progress.hideTitle(item.tmdb_id, item.media_type);
+    this.continueItems.update((items) =>
+      items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+    );
+    this.toast.show(`${item.title}: nascosto da continua a guardare`);
   }
 
   private async loadTmdbSections(): Promise<void> {

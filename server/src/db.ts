@@ -39,6 +39,15 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_progress_user_updated ON progress(user_id, updated_at DESC);
 
+  CREATE TABLE IF NOT EXISTS hidden_continue (
+    user_id INTEGER NOT NULL,
+    tmdb_id INTEGER NOT NULL,
+    media_type TEXT NOT NULL,
+    hidden_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (user_id, tmdb_id, media_type),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
