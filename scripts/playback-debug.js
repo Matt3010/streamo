@@ -5,6 +5,15 @@
   var seen = Object.create(null);
   var hostPattern = /(^|\.)vixsrc\.to$|(^|\.)vixcloud\.co$|(^|\.)(?:[a-z0-9-]+\.)?vix-content\.net$/i;
   var textPattern = /https?:\/\/[^\s"'<>]+|\/\/[^\s"'<>]+|[a-z0-9-]+\.vix-content\.net/gi;
+  var prefix = '[playback-debug]';
+
+  function log() {
+    try {
+      var args = Array.prototype.slice.call(arguments);
+      args.unshift(prefix);
+      console.debug.apply(console, args);
+    } catch (e) {}
+  }
 
   function normalize(url) {
     try {
@@ -19,15 +28,18 @@
     if (!parsed) return null;
     if (parsed.host === location.host) return null;
     if (!hostPattern.test(parsed.host)) return null;
+    log('interesting', parsed.host, parsed.pathname);
     return parsed;
   }
 
   function send(payload) {
     var body = JSON.stringify(payload);
+    log('send', payload.kind, payload.host || '-', payload.note || '');
     try {
       if (navigator.sendBeacon) {
         var blob = new Blob([body], { type: 'application/json' });
-        navigator.sendBeacon(endpoint, blob);
+        var ok = navigator.sendBeacon(endpoint, blob);
+        log('beacon', ok ? 'ok' : 'fail', payload.kind);
         return;
       }
     } catch (e) {}
@@ -39,7 +51,11 @@
         keepalive: true,
         headers: { 'content-type': 'application/json' },
         body: body
-      }).catch(function () {});
+      }).then(function () {
+        log('fetch-ok', payload.kind);
+      }).catch(function (err) {
+        log('fetch-fail', payload.kind, err && err.message ? err.message : err);
+      });
     } catch (e) {}
   }
 
