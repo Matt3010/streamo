@@ -91,7 +91,7 @@ router.get(/^\/playback\/storage\/(.*)$/, requireAuth, async (req, res) => {
 });
 
 function rewritePlaylist(body: string): string {
-  return body
+  const rewritten = body
     .replace(
       /https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
       '/cdn/$1$2'
@@ -116,6 +116,32 @@ function rewritePlaylist(body: string): string {
       /\/\/vixsrc\.to(\/[^\s"']*)/gi,
       '$1'
     );
+
+  return pruneHighBitrateVariant(rewritten);
+}
+
+function pruneHighBitrateVariant(body: string): string {
+  if (!body.includes('#EXT-X-STREAM-INF')) {
+    return body;
+  }
+
+  const lines = body.split(/\r?\n/);
+  const next: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const nextLine = lines[i + 1] ?? '';
+    if (line.startsWith('#EXT-X-STREAM-INF:') && /(?:^|,)RESOLUTION=1920x1080(?:,|$)/i.test(line)) {
+      i += 1;
+      continue;
+    }
+    next.push(line);
+    if (nextLine === '' && i === lines.length - 2) {
+      // no-op: preserve original trailing newline behavior
+    }
+  }
+
+  return next.join('\n');
 }
 
 function copyHeaders(upstream: Response, res: ExpressResponse, isPlaylist: boolean): void {
