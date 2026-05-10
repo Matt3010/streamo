@@ -22,6 +22,7 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   const query = req.url.indexOf('?');
   const search = query >= 0 ? req.url.slice(query) : '';
   const upstreamUrl = `https://vixsrc.to/playlist/${tail}${search}`;
+  console.log(`[playlist-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
 
   let upstream: Response;
   try {
@@ -35,12 +36,16 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'upstream_fetch_failed';
+    console.log(`[playlist-proxy] fetch-error user=${req.user?.email ?? '-'} upstream=${upstreamUrl} detail=${detail}`);
     res.status(502).json({ error: 'playlist_proxy_failed', detail });
     return;
   }
 
   const contentType = upstream.headers.get('content-type') ?? '';
   const isPlaylist = contentType.includes('mpegurl') || contentType.includes('m3u8');
+  console.log(
+    `[playlist-proxy] upstream user=${req.user?.email ?? '-'} status=${upstream.status} content_type=${contentType || '-'} playlist=${isPlaylist ? 'yes' : 'no'}`
+  );
 
   if (!isPlaylist) {
     copyHeaders(upstream, res, false);
@@ -51,6 +56,38 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   const body = await upstream.text();
   copyHeaders(upstream, res, true);
   res.status(upstream.status).send(rewritePlaylist(body));
+});
+
+router.get(/^\/playback\/storage\/(.*)$/, requireAuth, async (req, res) => {
+  const tail = req.params[0] ?? '';
+  const query = req.url.indexOf('?');
+  const search = query >= 0 ? req.url.slice(query) : '';
+  const upstreamUrl = `https://vixsrc.to/storage/${tail}${search}`;
+  console.log(`[storage-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      headers: {
+        accept: req.headers.accept ?? '*/*',
+        'accept-encoding': 'identity',
+        referer: 'https://vixsrc.to/',
+        origin: 'https://vixsrc.to'
+      }
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'upstream_fetch_failed';
+    console.log(`[storage-proxy] fetch-error user=${req.user?.email ?? '-'} upstream=${upstreamUrl} detail=${detail}`);
+    res.status(502).json({ error: 'storage_proxy_failed', detail });
+    return;
+  }
+
+  const contentType = upstream.headers.get('content-type') ?? '';
+  console.log(
+    `[storage-proxy] upstream user=${req.user?.email ?? '-'} status=${upstream.status} content_type=${contentType || '-'}`
+  );
+  copyHeaders(upstream, res, false);
+  res.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
 });
 
 function rewritePlaylist(body: string): string {
