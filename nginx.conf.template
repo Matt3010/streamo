@@ -17,7 +17,7 @@ server {
     client_max_body_size 1m;
 
     # ---- Injected scripts (served from local files) ----
-    location /scripts/ {
+    location ^~ /scripts/ {
         alias /usr/share/nginx/html/scripts/;
         expires 1d;
         add_header Cache-Control "public, immutable";
@@ -83,7 +83,7 @@ server {
     }
 
     # ---- VixSrc Next.js assets ----
-    location /_next/ {
+    location ^~ /_next/ {
         proxy_pass https://vixsrc.to/_next/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
@@ -100,7 +100,7 @@ server {
     }
 
     # ---- VixCloud proxy ----
-    location /vixcloud/ {
+    location ^~ /vixcloud/ {
         proxy_pass https://vixcloud.co/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
@@ -108,7 +108,7 @@ server {
     }
 
     # ---- VixSrc embed player with ad-block injection ----
-    location /embed/ {
+    location ^~ /embed/ {
         auth_request /auth-check;
         error_page 401 = @auth_required;
 
@@ -124,7 +124,7 @@ server {
     }
 
     # ---- VixSrc playlist/streaming endpoints ----
-    location /playlist/ {
+    location ^~ /playlist/ {
         proxy_pass http://backend/playback/playlist/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -142,7 +142,7 @@ server {
     }
 
     # ---- VixSrc build assets ----
-    location /build/ {
+    location ^~ /build/ {
         proxy_pass https://vixsrc.to/build/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;
