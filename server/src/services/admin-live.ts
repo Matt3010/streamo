@@ -10,6 +10,7 @@ const ADMIN_SESSIONS_WS_PATH = '/admin/sessions/ws';
 const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
 const ADMIN_TRANSPORT_LOGS_WS_PATH = '/admin/transport-logs/ws';
 const EXPIRY_FUZZ_MS = 150;
+const HEARTBEAT_INTERVAL_MS = 30000;
 
 interface SessionsPayload {
   type: 'sessions';
@@ -35,7 +36,9 @@ interface TransportLogsPayload {
 let sessionClients = new Set<WebSocket>();
 let playbackLogClients = new Set<WebSocket>();
 let transportLogClients = new Set<WebSocket>();
+const heartbeatState = new WeakMap<WebSocket, boolean>();
 let expiryTimeout: NodeJS.Timeout | null = null;
+let heartbeatInterval: NodeJS.Timeout | null = null;
 let unsubscribePlaybackLogs: (() => void) | null = null;
 let unsubscribeTransportLogs: (() => void) | null = null;
 
@@ -46,6 +49,7 @@ export function attachAdminLiveSessions(server: HttpServer): void {
 
   sessionsWss.on('connection', (ws) => {
     sessionClients.add(ws);
+    trackClient(ws);
     broadcastSessions();
 
     ws.on('close', () => {
@@ -58,6 +62,7 @@ export function attachAdminLiveSessions(server: HttpServer): void {
 
   playbackLogsWss.on('connection', (ws) => {
     playbackLogClients.add(ws);
+    trackClient(ws);
     ensurePlaybackLogSubscription();
     broadcastPlaybackLogs();
 
@@ -71,6 +76,7 @@ export function attachAdminLiveSessions(server: HttpServer): void {
 
   transportLogsWss.on('connection', (ws) => {
     transportLogClients.add(ws);
+    trackClient(ws);
     ensureTransportLogSubscription();
     broadcastTransportLogs();
 
@@ -232,6 +238,61 @@ function clearTransportLogSubscription(): void {
   if (transportLogClients.size > 0 || !unsubscribeTransportLogs) return;
   unsubscribeTransportLogs();
   unsubscribeTransportLogs = null;
+}
+
+function trackClient(ws: WebSocket): void {
+  heartbeatState.set(ws, true);
+  ensureHeartbeatInterval();
+
+  ws.on('pong', () => {
+    heartbeatState.set(ws, true);
+  });
+
+  ws.on('close', () => {
+    heartbeatState.delete(ws);
+    clearHeartbeatIntervalIfIdle();
+  });
+}
+
+function ensureHeartbeatInterval(): void {
+  if (heartbeatInterval) {
+    return;
+  }
+
+  heartbeatInterval = setInterval(() => {
+    heartbeatClients(sessionClients);
+    heartbeatClients(playbackLogClients);
+    heartbeatClients(transportLogClients);
+    clearHeartbeatIntervalIfIdle();
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function clearHeartbeatIntervalIfIdle(): void {
+  if (heartbeatInterval && !hasAnyClients()) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+function heartbeatClients(clients: Set<WebSocket>): void {
+  for (const client of clients) {
+    if (client.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+
+    const alive = heartbeatState.get(client) ?? true;
+    if (!alive) {
+      client.terminate();
+      continue;
+    }
+
+    heartbeatState.set(client, false);
+    client.ping();
+  }
+}
+
+function hasAnyClients(): boolean {
+  return sessionClients.size > 0 || playbackLogClients.size > 0 || transportLogClients.size > 0;
 }
 
 function getPathname(req: IncomingMessage): string {
