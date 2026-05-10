@@ -1,3 +1,13 @@
+log_format playback_transport escape=json
+  '{"ts":"$time_iso8601",'
+  '"kind":"$playback_log_kind",'
+  '"request_uri":"$request_uri",'
+  '"status":$status,'
+  '"upstream_status":"$upstream_status",'
+  '"upstream_host":"$playback_upstream_host",'
+  '"request_time":$request_time,'
+  '"upstream_response_time":"$upstream_response_time"}';
+
 upstream backend {
     server backend:3000;
 }
@@ -5,6 +15,8 @@ upstream backend {
 server {
     listen 80;
     server_name localhost;
+    set $playback_log_kind "-";
+    set $playback_upstream_host "-";
 
     root /usr/share/nginx/html;
     index index.html;
@@ -93,6 +105,9 @@ server {
     # ---- vix-content.net CDN proxy ----
     location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
         set $cdn_host "$1.vix-content.net";
+        set $playback_log_kind "cdn";
+        set $playback_upstream_host $cdn_host;
+        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://$cdn_host/$2$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Host $cdn_host;
@@ -136,6 +151,9 @@ server {
     }
 
     location ^~ /storage/ {
+        set $playback_log_kind "storage";
+        set $playback_upstream_host "vixsrc.to";
+        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://vixsrc.to/storage/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixsrc.to;

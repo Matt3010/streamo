@@ -22,6 +22,8 @@ services:
     ports:
       - "7549:80"
     restart: unless-stopped
+    volumes:
+      - ./data:/data
     environment:
       # Required — used by the nginx template to inject the TMDB API key.
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}

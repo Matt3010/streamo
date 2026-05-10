@@ -3,10 +3,12 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, isSuperAdminUser, readCookie } from '../middleware/auth';
 import { listLiveAdminSessions, LIVE_SESSION_WINDOW_SECONDS } from './admin-sessions';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs, subscribePlaybackLogs } from './playback-logs';
-import type { AdminSession, PlaybackLogEntry } from '../../../shared/types';
+import { getTransportLogCapacity, getTransportLogPath, listTransportLogs, subscribeTransportLogs } from './transport-logs';
+import type { AdminSession, PlaybackLogEntry, TransportLogEntry } from '../../../shared/types';
 
 const ADMIN_SESSIONS_WS_PATH = '/admin/sessions/ws';
 const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
+const ADMIN_TRANSPORT_LOGS_WS_PATH = '/admin/transport-logs/ws';
 const EXPIRY_FUZZ_MS = 150;
 
 interface SessionsPayload {
@@ -22,14 +24,25 @@ interface PlaybackLogsPayload {
   logs: PlaybackLogEntry[];
 }
 
+interface TransportLogsPayload {
+  type: 'transport-logs';
+  count: number;
+  capacity: number;
+  path: string;
+  logs: TransportLogEntry[];
+}
+
 let sessionClients = new Set<WebSocket>();
 let playbackLogClients = new Set<WebSocket>();
+let transportLogClients = new Set<WebSocket>();
 let expiryTimeout: NodeJS.Timeout | null = null;
 let unsubscribePlaybackLogs: (() => void) | null = null;
+let unsubscribeTransportLogs: (() => void) | null = null;
 
 export function attachAdminLiveSessions(server: HttpServer): void {
   const sessionsWss = new WebSocketServer({ noServer: true });
   const playbackLogsWss = new WebSocketServer({ noServer: true });
+  const transportLogsWss = new WebSocketServer({ noServer: true });
 
   sessionsWss.on('connection', (ws) => {
     sessionClients.add(ws);
@@ -56,9 +69,26 @@ export function attachAdminLiveSessions(server: HttpServer): void {
     });
   });
 
+  transportLogsWss.on('connection', (ws) => {
+    transportLogClients.add(ws);
+    ensureTransportLogSubscription();
+    broadcastTransportLogs();
+
+    ws.on('close', () => {
+      transportLogClients.delete(ws);
+      if (transportLogClients.size === 0) {
+        clearTransportLogSubscription();
+      }
+    });
+  });
+
   server.on('upgrade', (req, socket, head) => {
     const pathname = getPathname(req);
-    if (pathname !== ADMIN_SESSIONS_WS_PATH && pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH) return;
+    if (
+      pathname !== ADMIN_SESSIONS_WS_PATH &&
+      pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
+      pathname !== ADMIN_TRANSPORT_LOGS_WS_PATH
+    ) return;
 
     const token = readCookie(req.headers.cookie, 'token');
     const auth = authenticateToken(token);
@@ -73,7 +103,11 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       return;
     }
 
-    const target = pathname === ADMIN_SESSIONS_WS_PATH ? sessionsWss : playbackLogsWss;
+    const target = pathname === ADMIN_SESSIONS_WS_PATH
+      ? sessionsWss
+      : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
+        ? playbackLogsWss
+        : transportLogsWss;
     target.handleUpgrade(req, socket, head, (ws) => {
       target.emit('connection', ws, req);
     });
@@ -163,6 +197,41 @@ function clearPlaybackLogSubscription(): void {
   if (playbackLogClients.size > 0 || !unsubscribePlaybackLogs) return;
   unsubscribePlaybackLogs();
   unsubscribePlaybackLogs = null;
+}
+
+function broadcastTransportLogs(): void {
+  if (transportLogClients.size === 0) {
+    clearTransportLogSubscription();
+    return;
+  }
+
+  const logs = listTransportLogs();
+  const payload = JSON.stringify({
+    type: 'transport-logs',
+    count: logs.length,
+    capacity: getTransportLogCapacity(),
+    path: getTransportLogPath(),
+    logs
+  } satisfies TransportLogsPayload);
+
+  for (const client of transportLogClients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    client.send(payload);
+  }
+}
+
+function ensureTransportLogSubscription(): void {
+  if (unsubscribeTransportLogs) return;
+  unsubscribeTransportLogs = subscribeTransportLogs(() => {
+    if (transportLogClients.size === 0) return;
+    broadcastTransportLogs();
+  });
+}
+
+function clearTransportLogSubscription(): void {
+  if (transportLogClients.size > 0 || !unsubscribeTransportLogs) return;
+  unsubscribeTransportLogs();
+  unsubscribeTransportLogs = null;
 }
 
 function getPathname(req: IncomingMessage): string {

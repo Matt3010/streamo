@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import type { AdminTokenRow, AdminSession, PlaybackLogEntry } from '../models';
+import type { AdminTokenRow, AdminSession, PlaybackLogEntry, TransportLogEntry } from '../models';
 
 interface TokenCreateResponse {
   token: string;
@@ -29,6 +29,17 @@ interface AdminPlaybackLogsSocketMessage extends PlaybackLogsResponse {
   type: 'playback-logs';
 }
 
+interface TransportLogsResponse {
+  count: number;
+  capacity: number;
+  path: string;
+  logs: TransportLogEntry[];
+}
+
+interface AdminTransportLogsSocketMessage extends TransportLogsResponse {
+  type: 'transport-logs';
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   readonly tokens = signal<AdminTokenRow[]>([]);
@@ -36,12 +47,17 @@ export class AdminService {
   readonly playbackLogs = signal<PlaybackLogEntry[]>([]);
   readonly playbackLogCapacity = signal(500);
   readonly playbackLogPath = signal('');
+  readonly transportLogs = signal<TransportLogEntry[]>([]);
+  readonly transportLogCapacity = signal(500);
+  readonly transportLogPath = signal('');
   readonly sessionsLiveConnected = signal(false);
   readonly playbackLogsLiveConnected = signal(false);
+  readonly transportLogsLiveConnected = signal(false);
   readonly loading = signal(false);
 
   private sessionsSocket: WebSocket | null = null;
   private playbackLogsSocket: WebSocket | null = null;
+  private transportLogsSocket: WebSocket | null = null;
 
   async fetchTokens(): Promise<void> {
     this.loading.set(true);
@@ -107,6 +123,18 @@ export class AdminService {
         this.playbackLogs.set(data.logs);
         this.playbackLogCapacity.set(data.capacity);
         this.playbackLogPath.set(data.path);
+      }
+    } catch {}
+  }
+
+  async fetchTransportLogs(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/transport-logs');
+      if (res.ok) {
+        const data = await res.json() as TransportLogsResponse;
+        this.transportLogs.set(data.logs);
+        this.transportLogCapacity.set(data.capacity);
+        this.transportLogPath.set(data.path);
       }
     } catch {}
   }
@@ -200,6 +228,53 @@ export class AdminService {
     if (!this.playbackLogsSocket) return;
     const socket = this.playbackLogsSocket;
     this.playbackLogsSocket = null;
+    socket.close();
+  }
+
+  connectTransportLogsLive(): void {
+    if (this.transportLogsSocket && (this.transportLogsSocket.readyState === WebSocket.OPEN || this.transportLogsSocket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${window.location.host}/api/admin/transport-logs/ws`;
+    const socket = new WebSocket(url);
+    this.transportLogsSocket = socket;
+
+    socket.addEventListener('open', () => {
+      if (this.transportLogsSocket !== socket) return;
+      this.transportLogsLiveConnected.set(true);
+    });
+
+    socket.addEventListener('message', (event) => {
+      if (this.transportLogsSocket !== socket) return;
+      try {
+        const message = JSON.parse(event.data as string) as AdminTransportLogsSocketMessage;
+        if (message.type === 'transport-logs') {
+          this.transportLogs.set(message.logs);
+          this.transportLogCapacity.set(message.capacity);
+          this.transportLogPath.set(message.path);
+        }
+      } catch {}
+    });
+
+    socket.addEventListener('close', () => {
+      if (this.transportLogsSocket !== socket) return;
+      this.transportLogsLiveConnected.set(false);
+      this.transportLogsSocket = null;
+    });
+
+    socket.addEventListener('error', () => {
+      if (this.transportLogsSocket !== socket) return;
+      this.transportLogsLiveConnected.set(false);
+    });
+  }
+
+  disconnectTransportLogsLive(): void {
+    this.transportLogsLiveConnected.set(false);
+    if (!this.transportLogsSocket) return;
+    const socket = this.transportLogsSocket;
+    this.transportLogsSocket = null;
     socket.close();
   }
 }

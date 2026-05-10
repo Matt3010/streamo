@@ -5,6 +5,7 @@ import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
 import { listLiveAdminSessions } from '../services/admin-sessions';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs } from '../services/playback-logs';
+import { getTransportLogCapacity, getTransportLogPath, listTransportLogs } from '../services/transport-logs';
 import type { AdminUserRow, AdminTokenRow } from '../../../shared/types';
 
 const router = Router();
@@ -84,6 +85,16 @@ router.get('/admin/playback-logs', requireSuperAdmin, (_req, res) => {
     count: logs.length,
     capacity: getPlaybackLogCapacity(),
     path: getPlaybackLogPath(),
+    logs
+  });
+});
+
+router.get('/admin/transport-logs', requireSuperAdmin, (_req, res) => {
+  const logs = listTransportLogs();
+  res.json({
+    count: logs.length,
+    capacity: getTransportLogCapacity(),
+    path: getTransportLogPath(),
     logs
   });
 });

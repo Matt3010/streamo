@@ -4,7 +4,7 @@ import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import type { AdminTokenRow, PlaybackLogEntry } from '../../models';
+import type { AdminTokenRow, PlaybackLogEntry, TransportLogEntry } from '../../models';
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -162,6 +162,39 @@ function timeAgo(timestamp: number): string {
           </div>
         }
       </section>
+
+      <section class="admin-section">
+        <div class="section-header">
+          <div class="section-heading">
+            <h3>Transport Logs</h3>
+            <span class="section-caption">
+              File: {{ admin.transportLogPath() || '/data/nginx-playback-access.log' }} | Ultimi {{ admin.transportLogCapacity() }}
+            </span>
+          </div>
+          <span class="live-pill" [class.connected]="admin.transportLogsLiveConnected()">
+            <span class="live-pill-dot" aria-hidden="true"></span>
+            <span>{{ admin.transportLogsLiveConnected() ? 'Socket transport attivo' : 'Socket transport non connesso' }}</span>
+          </span>
+        </div>
+
+        @if (transportLogsDesc().length === 0) {
+          <p class="empty">Nessun log cdn/storage presente</p>
+        } @else {
+          <div class="logs-panel">
+            <ul class="log-list">
+              @for (log of transportLogsDesc(); track trackTransportLog($index, log)) {
+                <li class="log-row">
+                  <span class="log-time">{{ log.ts }}</span>
+                  <div class="log-stack">
+                    <code class="log-message">{{ transportLogSummary(log) }}</code>
+                    <code class="log-detail">{{ log.request_uri }}</code>
+                  </div>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      </section>
     </div>
 
     <ui-modal [(open)]="revokeModalOpen" title="Conferma Revoca" size="sm">
@@ -192,18 +225,22 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly revokeModalOpen = signal(false);
   protected readonly tokenToRevoke = signal<AdminTokenRow | null>(null);
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
+  protected readonly transportLogsDesc = computed(() => [...this.admin.transportLogs()].reverse());
 
   ngOnInit(): void {
     void this.admin.fetchTokens();
     void this.admin.fetchSessions();
     void this.admin.fetchPlaybackLogs();
+    void this.admin.fetchTransportLogs();
     this.admin.connectSessionsLive();
     this.admin.connectPlaybackLogsLive();
+    this.admin.connectTransportLogsLive();
   }
 
   ngOnDestroy(): void {
     this.admin.disconnectSessionsLive();
     this.admin.disconnectPlaybackLogsLive();
+    this.admin.disconnectTransportLogsLive();
   }
 
   protected back(): void {
@@ -295,5 +332,13 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected trackPlaybackLog(_index: number, log: PlaybackLogEntry): string {
     return `${log.ts}:${log.message}`;
+  }
+
+  protected trackTransportLog(_index: number, log: TransportLogEntry): string {
+    return `${log.ts}:${log.kind}:${log.request_uri}:${log.status}:${log.upstream_status}`;
+  }
+
+  protected transportLogSummary(log: TransportLogEntry): string {
+    return `${log.kind.toUpperCase()} ${log.status} upstream=${log.upstream_status} host=${log.upstream_host} rt=${log.request_time}s urt=${log.upstream_response_time}s`;
   }
 }

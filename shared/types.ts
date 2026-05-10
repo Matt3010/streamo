@@ -114,3 +114,14 @@ export interface PlaybackLogEntry {
   ts: number;
   message: string;
 }
+
+export interface TransportLogEntry {
+  ts: string;
+  kind: string;
+  request_uri: string;
+  status: number;
+  upstream_status: string;
+  upstream_host: string;
+  request_time: number;
+  upstream_response_time: string;
+}
