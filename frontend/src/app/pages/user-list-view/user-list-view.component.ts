@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
-import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -32,7 +31,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
-  imports: [CardComponent, IconComponent, MediaRankBadgeComponent, UiTabsComponent],
+  imports: [CardComponent, IconComponent, UiTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -93,10 +92,6 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
             <div class="item-info">
               <span class="item-title">{{ it.title }}</span>
-              <app-media-rank-badge
-                [compact]="true"
-                [popularity]="it.popularity ?? null"
-                [voteCount]="it.voteCount ?? null" />
               @if (it.season && it.episode || it.watchStatus) {
                 <span class="item-sub">
                   @if (it.season && it.episode) {
