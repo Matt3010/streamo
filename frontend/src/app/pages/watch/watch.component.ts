@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
+import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
-import { UiModalComponent } from '../../ui/modal/modal.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
@@ -18,7 +18,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, UiModalComponent, MediaRankBadgeComponent, SectionHeaderComponent, SectionRowComponent],
+  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, SectionHeaderComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -280,16 +280,14 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
           (cardClick)="openRecommendation($event)" />
       }
 
-      <ui-modal [(open)]="clearProgressModalOpen" [title]="clearProgressModalTitle()" size="sm">
-        <div class="watch-confirm-modal">
-          <p>{{ clearProgressModalMessage() }}</p>
-          <p class="warning">{{ clearProgressModalWarning() }}</p>
-          <div class="modal-actions">
-            <button class="cancel-btn" (click)="cancelClearProgress()">Annulla</button>
-            <button class="danger-btn" (click)="confirmClearProgress()">Resetta</button>
-          </div>
-        </div>
-      </ui-modal>
+      <ui-confirm-modal
+        [(open)]="confirmModalOpen"
+        [title]="confirmModalTitle()"
+        [message]="confirmModalMessage()"
+        [warning]="confirmModalWarning()"
+        [actionLabel]="confirmModalActionLabel()"
+        (cancelled)="pendingConfirmAction.set(null)"
+        (confirmed)="executeConfirmedAction()" />
     </div>
   `,
   styleUrl: './watch.component.css'
@@ -309,7 +307,8 @@ export class WatchComponent {
   protected readonly recommendationsLoading = signal(false);
   protected readonly reviews = signal<TmdbReview[]>([]);
   protected readonly reviewsLoading = signal(false);
-  protected readonly clearProgressModalOpen = signal(false);
+  protected readonly confirmModalOpen = signal(false);
+  private readonly pendingConfirmAction = signal<'clear-progress' | 'remove-watchlist' | null>(null);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -404,11 +403,17 @@ export class WatchComponent {
     return this.player.resumeProgress() !== null;
   });
 
-  protected readonly clearProgressModalTitle = computed(() => {
+  protected readonly confirmModalTitle = computed(() => {
+    const action = this.pendingConfirmAction();
+    if (action === 'remove-watchlist') return 'Rimuovi Dalla Lista';
     return this.player.currentItemType() === 'tv' ? 'Resetta Ripresa Episodio' : 'Resetta Ripresa';
   });
 
-  protected readonly clearProgressModalMessage = computed(() => {
+  protected readonly confirmModalMessage = computed(() => {
+    const action = this.pendingConfirmAction();
+    if (action === 'remove-watchlist') {
+      return `Vuoi rimuovere ${this.title()} dalla tua lista?`;
+    }
     if (this.player.currentItemType() === 'tv') {
       const season = this.player.selectedSeason();
       const episode = this.player.selectedEpisode();
@@ -417,8 +422,14 @@ export class WatchComponent {
     return 'Vuoi davvero rimuovere la ripresa salvata per questo film?';
   });
 
-  protected readonly clearProgressModalWarning = computed(() => {
-    return 'Ripartirai dall’inizio al prossimo play.';
+  protected readonly confirmModalWarning = computed(() => {
+    return this.pendingConfirmAction() === 'remove-watchlist'
+      ? 'Potrai sempre riaggiungerlo più tardi.'
+      : 'Ripartirai dall’inizio al prossimo play.';
+  });
+
+  protected readonly confirmModalActionLabel = computed(() => {
+    return this.pendingConfirmAction() === 'remove-watchlist' ? 'Rimuovi' : 'Resetta';
   });
 
   protected readonly movieProgressPct = computed(() => {
@@ -596,20 +607,29 @@ export class WatchComponent {
   }
 
   protected toggleWatchlist(): void {
+    if (this.player.isInWatchlist()) {
+      this.pendingConfirmAction.set('remove-watchlist');
+      this.confirmModalOpen.set(true);
+      return;
+    }
     void this.player.toggleWatchlist();
   }
 
   protected openClearProgressModal(): void {
-    this.clearProgressModalOpen.set(true);
+    this.pendingConfirmAction.set('clear-progress');
+    this.confirmModalOpen.set(true);
   }
 
-  protected cancelClearProgress(): void {
-    this.clearProgressModalOpen.set(false);
-  }
-
-  protected confirmClearProgress(): void {
-    this.clearProgressModalOpen.set(false);
-    void this.player.clearSelectedProgress();
+  protected executeConfirmedAction(): void {
+    const action = this.pendingConfirmAction();
+    this.pendingConfirmAction.set(null);
+    if (action === 'remove-watchlist') {
+      void this.player.toggleWatchlist();
+      return;
+    }
+    if (action === 'clear-progress') {
+      void this.player.clearSelectedProgress();
+    }
   }
 
   protected reviewAuthor(review: TmdbReview): string {

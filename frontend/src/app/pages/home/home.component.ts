@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@ang
 import { Router } from '@angular/router';
 import { faCirclePlay, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
+import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { ProgressService } from '../../services/progress.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -21,7 +22,7 @@ interface SectionState {
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [SectionRowComponent],
+  imports: [SectionRowComponent, ConfirmModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
@@ -54,6 +55,15 @@ interface SectionState {
         [loading]="s.loading"
         (cardClick)="open($event)" />
     }
+
+    <ui-confirm-modal
+      [(open)]="removeContinueModalOpen"
+      title="Nascondi Da Continua a Guardare"
+      [message]="removeContinueMessage()"
+      warning="Il titolo sparirà da questa sezione finché non lo riprenderai."
+      actionLabel="Nascondi"
+      (cancelled)="pendingContinueRemoval.set(null)"
+      (confirmed)="confirmRemoveContinue()" />
   `
 })
 export class HomeComponent {
@@ -72,6 +82,9 @@ export class HomeComponent {
   protected readonly watchlistItems = signal<CardItem[]>([]);
   protected readonly userLoading = signal(false);
   protected readonly sectionStates = signal<SectionState[]>([]);
+  protected readonly removeContinueModalOpen = signal(false);
+  protected readonly pendingContinueRemoval = signal<CardItem | null>(null);
+  protected readonly removeContinueMessage = signal('Vuoi nascondere questo titolo da Continua a guardare?');
 
   private userSeq = 0;
 
@@ -95,6 +108,15 @@ export class HomeComponent {
   }
 
   protected async removeContinue(item: CardItem): Promise<void> {
+    this.pendingContinueRemoval.set(item);
+    this.removeContinueMessage.set(`Vuoi nascondere ${item.title} da Continua a guardare?`);
+    this.removeContinueModalOpen.set(true);
+  }
+
+  protected async confirmRemoveContinue(): Promise<void> {
+    const item = this.pendingContinueRemoval();
+    this.pendingContinueRemoval.set(null);
+    if (!item) return;
     await this.progress.hideTitle(item.tmdb_id, item.media_type);
     this.continueItems.update((items) =>
       items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))

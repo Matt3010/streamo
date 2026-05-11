@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -17,6 +18,9 @@ export type UserListType = 'watchlist' | 'history';
 export type ViewMode = 'grid' | 'list';
 type MediaFilter = 'all' | 'tv' | 'movie';
 type BackendMediaFilter = Exclude<MediaFilter, 'all'>;
+type PendingAction =
+  | { type: 'remove-item'; item: CardItem }
+  | { type: 'remove-watchlist'; item: CardItem };
 
 const VIEW_MODE_KEY = 'vixstream.user-list.view-mode';
 
@@ -34,7 +38,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
-  imports: [CardComponent, IconComponent, UiTabsComponent],
+  imports: [CardComponent, IconComponent, ConfirmModalComponent, UiTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -136,6 +140,15 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         }
       </ul>
     }
+
+    <ui-confirm-modal
+      [(open)]="confirmModalOpen"
+      [title]="confirmModalTitle()"
+      [message]="confirmModalMessage()"
+      [warning]="confirmModalWarning()"
+      [actionLabel]="confirmModalActionLabel()"
+      (cancelled)="pendingAction.set(null)"
+      (confirmed)="confirmPendingAction()" />
   `,
   styleUrl: './user-list-view.component.css'
 })
@@ -158,6 +171,8 @@ export class UserListViewComponent {
 
   protected readonly items = signal<CardItem[]>([]);
   protected readonly loading = signal(false);
+  protected readonly confirmModalOpen = signal(false);
+  protected readonly pendingAction = signal<PendingAction | null>(null);
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
 
   protected readonly filteredItems = computed(() => this.items());
@@ -192,6 +207,36 @@ export class UserListViewComponent {
     return `Apri ${mediaHintTarget(media)} e clicca il segnalibro per aggiungerl${media === 'tv' ? 'a' : 'o'} alla tua lista.`;
   });
 
+  protected readonly confirmModalTitle = computed(() => {
+    const action = this.pendingAction();
+    if (!action) return 'Conferma';
+    if (action.type === 'remove-watchlist') return 'Rimuovi Dalla Lista';
+    return this.kind() === 'watchlist' ? 'Rimuovi Dalla Lista' : 'Rimuovi Dalla Cronologia';
+  });
+
+  protected readonly confirmModalMessage = computed(() => {
+    const action = this.pendingAction();
+    const item = action?.item;
+    if (!item) return '';
+    if (action.type === 'remove-watchlist') {
+      return `Vuoi rimuovere ${item.title} dalla tua lista?`;
+    }
+    return this.kind() === 'watchlist'
+      ? `Vuoi rimuovere ${item.title} dalla tua lista?`
+      : `Vuoi rimuovere ${item.title} dalla cronologia?`;
+  });
+
+  protected readonly confirmModalWarning = computed(() => {
+    const action = this.pendingAction();
+    if (!action) return '';
+    if (action.type === 'remove-watchlist') return 'Potrai sempre riaggiungerlo più tardi.';
+    return this.kind() === 'watchlist'
+      ? 'Potrai sempre riaggiungerlo più tardi.'
+      : 'Questa voce sparirà dalla cronologia.';
+  });
+
+  protected readonly confirmModalActionLabel = computed(() => 'Rimuovi');
+
   private seq = 0;
 
   constructor() {
@@ -222,14 +267,8 @@ export class UserListViewComponent {
   }
 
   protected async onRemoveClick(item: CardItem): Promise<void> {
-    if (this.kind() === 'watchlist') {
-      await this.watchlist.remove(item.tmdb_id, item.media_type);
-      this.toast.show(`${item.title}: rimosso dalla lista`);
-    } else {
-      await this.history.remove(item.tmdb_id, item.media_type);
-      this.toast.show(`${item.title}: rimosso dalla cronologia`);
-    }
-    this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
+    this.pendingAction.set({ type: 'remove-item', item });
+    this.confirmModalOpen.set(true);
   }
 
   protected async onStatusToggle(item: CardItem): Promise<void> {
@@ -244,9 +283,37 @@ export class UserListViewComponent {
 
   protected async onWatchlistToggle(item: CardItem): Promise<void> {
     if (this.kind() !== 'history' || !this.auth.isLoggedIn()) return;
+    if (item.inWatchlist) {
+      this.pendingAction.set({ type: 'remove-watchlist', item });
+      this.confirmModalOpen.set(true);
+      return;
+    }
     const result = await toggleCardWatchlist(item, this.watchlist);
     this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
     this.toast.show(result.message);
+  }
+
+  protected async confirmPendingAction(): Promise<void> {
+    const action = this.pendingAction();
+    this.pendingAction.set(null);
+    if (!action) return;
+
+    if (action.type === 'remove-watchlist') {
+      await this.watchlist.remove(action.item.tmdb_id, action.item.media_type);
+      this.items.update((items) => setCardWatchlistFlag(items, action.item, false));
+      this.toast.show(`${action.item.title}: rimosso dalla lista`);
+      return;
+    }
+
+    const item = action.item;
+    if (this.kind() === 'watchlist') {
+      await this.watchlist.remove(item.tmdb_id, item.media_type);
+      this.toast.show(`${item.title}: rimosso dalla lista`);
+    } else {
+      await this.history.remove(item.tmdb_id, item.media_type);
+      this.toast.show(`${item.title}: rimosso dalla cronologia`);
+    }
+    this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
   }
 
   private async load(kind: UserListType, media: MediaFilter, status?: WatchlistStatus): Promise<void> {

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
@@ -14,7 +15,7 @@ import type { CardItem } from '../../models';
 @Component({
   selector: 'app-search-results',
   standalone: true,
-  imports: [CardComponent, IconComponent],
+  imports: [CardComponent, IconComponent, ConfirmModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -50,6 +51,15 @@ import type { CardItem } from '../../models';
         }
       </div>
     }
+
+    <ui-confirm-modal
+      [(open)]="confirmRemoveModalOpen"
+      title="Rimuovi Dalla Lista"
+      [message]="confirmRemoveMessage()"
+      warning="Potrai sempre riaggiungerlo più tardi."
+      actionLabel="Rimuovi"
+      (cancelled)="pendingRemoval.set(null)"
+      (confirmed)="confirmRemoveFromWatchlist()" />
   `
 })
 export class SearchResultsComponent {
@@ -66,6 +76,12 @@ export class SearchResultsComponent {
   protected readonly items = signal<CardItem[]>([]);
   protected readonly loading = signal(false);
   protected readonly headerText = computed(() => `Risultati per "${this.q()}"`);
+  protected readonly confirmRemoveModalOpen = signal(false);
+  protected readonly pendingRemoval = signal<CardItem | null>(null);
+  protected readonly confirmRemoveMessage = computed(() => {
+    const item = this.pendingRemoval();
+    return item ? `Vuoi rimuovere ${item.title} dalla tua lista?` : '';
+  });
 
   private seq = 0;
 
@@ -95,9 +111,23 @@ export class SearchResultsComponent {
 
   protected async onWatchlistToggle(item: CardItem): Promise<void> {
     if (!this.auth.isLoggedIn()) return;
+    if (item.inWatchlist) {
+      this.pendingRemoval.set(item);
+      this.confirmRemoveModalOpen.set(true);
+      return;
+    }
     const result = await toggleCardWatchlist(item, this.watchlist);
     this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
     this.toast.show(result.message);
+  }
+
+  protected async confirmRemoveFromWatchlist(): Promise<void> {
+    const item = this.pendingRemoval();
+    this.pendingRemoval.set(null);
+    if (!item) return;
+    await this.watchlist.remove(item.tmdb_id, item.media_type);
+    this.items.update((items) => setCardWatchlistFlag(items, item, false));
+    this.toast.show(`${item.title}: rimosso dalla lista`);
   }
 
   private async runSearch(q: string): Promise<void> {

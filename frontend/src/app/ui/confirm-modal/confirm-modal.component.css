@@ -1,0 +1,51 @@
+.confirm-modal-content {
+  padding: 1rem;
+}
+
+.confirm-modal-content p {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.confirm-modal-content .warning {
+  color: #ff9b9b;
+  font-size: 0.85rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.cancel-btn,
+.danger-btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.cancel-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.cancel-btn:hover {
+  background: var(--surface-hover);
+}
+
+.danger-btn {
+  background: #ef4444;
+  border: none;
+  color: #fff;
+}
+
+.danger-btn:hover {
+  background: #dc2626;
+}
