@@ -243,6 +243,29 @@
   gap: 0.38rem;
 }
 
+.inline-reset-btn {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.inline-reset-btn:hover {
+  color: #ff9b9b;
+}
+
+.inline-reset-btn:focus-visible {
+  outline: 2px solid rgba(239, 68, 68, 0.45);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
 .movie-progress-meta {
   display: flex;
   align-items: center;
@@ -620,6 +643,58 @@
 
 .review-link:hover {
   color: var(--accent);
+}
+
+.watch-confirm-modal {
+  padding: 1rem;
+}
+
+.watch-confirm-modal p {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.watch-confirm-modal .warning {
+  color: #ff9b9b;
+  font-size: 0.85rem;
+}
+
+.watch-confirm-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.watch-confirm-modal .cancel-btn,
+.watch-confirm-modal .danger-btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.watch-confirm-modal .cancel-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.watch-confirm-modal .cancel-btn:hover {
+  background: var(--surface-hover);
+}
+
+.watch-confirm-modal .danger-btn {
+  background: #ef4444;
+  border: none;
+  color: #fff;
+}
+
+.watch-confirm-modal .danger-btn:hover {
+  background: #dc2626;
 }
 
 .skeleton-review-card {

@@ -85,4 +85,13 @@ export class ProgressService {
       this.tick.update((n) => n + 1);
     } catch {}
   }
+
+  async remove(tmdbId: string | number, type: MediaType, season = 0, episode = 0): Promise<void> {
+    try {
+      let url = `/api/user/progress/${type}/${tmdbId}`;
+      if (type === 'tv') url += `/${season}/${episode}`;
+      await fetch(url, { method: 'DELETE' });
+      this.tick.update((n) => n + 1);
+    } catch {}
+  }
 }

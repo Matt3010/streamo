@@ -3,6 +3,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { UiModalComponent } from '../../ui/modal/modal.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
@@ -17,7 +18,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, MediaRankBadgeComponent, SectionHeaderComponent, SectionRowComponent],
+  imports: [IconComponent, UiModalComponent, MediaRankBadgeComponent, SectionHeaderComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -134,6 +135,9 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
             <div class="movie-progress-bar" aria-hidden="true">
               <span [style.width.%]="movieProgressPct()"></span>
             </div>
+            <button type="button" class="inline-reset-btn" (click)="openClearProgressModal()">
+              Resetta ripresa
+            </button>
           </div>
         }
 
@@ -178,6 +182,11 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
                 </button>
               }
             </div>
+            @if (canClearProgress()) {
+              <button type="button" class="inline-reset-btn" (click)="openClearProgressModal()">
+                Resetta ripresa episodio
+              </button>
+            }
           </div>
         }
 
@@ -270,6 +279,17 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
           [loading]="recommendationsLoading()"
           (cardClick)="openRecommendation($event)" />
       }
+
+      <ui-modal [(open)]="clearProgressModalOpen" [title]="clearProgressModalTitle()" size="sm">
+        <div class="watch-confirm-modal">
+          <p>{{ clearProgressModalMessage() }}</p>
+          <p class="warning">{{ clearProgressModalWarning() }}</p>
+          <div class="modal-actions">
+            <button class="cancel-btn" (click)="cancelClearProgress()">Annulla</button>
+            <button class="danger-btn" (click)="confirmClearProgress()">Resetta</button>
+          </div>
+        </div>
+      </ui-modal>
     </div>
   `,
   styleUrl: './watch.component.css'
@@ -289,6 +309,7 @@ export class WatchComponent {
   protected readonly recommendationsLoading = signal(false);
   protected readonly reviews = signal<TmdbReview[]>([]);
   protected readonly reviewsLoading = signal(false);
+  protected readonly clearProgressModalOpen = signal(false);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -376,6 +397,28 @@ export class WatchComponent {
     const p = this.player.resumeProgress();
     if (!p || p.duration <= 0) return false;
     return p.position / p.duration >= 0.8;
+  });
+
+  protected readonly canClearProgress = computed(() => {
+    if (this.loading() || this.isUpcomingTitle()) return false;
+    return this.player.resumeProgress() !== null;
+  });
+
+  protected readonly clearProgressModalTitle = computed(() => {
+    return this.player.currentItemType() === 'tv' ? 'Resetta Ripresa Episodio' : 'Resetta Ripresa';
+  });
+
+  protected readonly clearProgressModalMessage = computed(() => {
+    if (this.player.currentItemType() === 'tv') {
+      const season = this.player.selectedSeason();
+      const episode = this.player.selectedEpisode();
+      return `Vuoi davvero rimuovere la ripresa salvata per S${season} E${episode}?`;
+    }
+    return 'Vuoi davvero rimuovere la ripresa salvata per questo film?';
+  });
+
+  protected readonly clearProgressModalWarning = computed(() => {
+    return 'Ripartirai dall’inizio al prossimo play.';
   });
 
   protected readonly movieProgressPct = computed(() => {
@@ -554,6 +597,19 @@ export class WatchComponent {
 
   protected toggleWatchlist(): void {
     void this.player.toggleWatchlist();
+  }
+
+  protected openClearProgressModal(): void {
+    this.clearProgressModalOpen.set(true);
+  }
+
+  protected cancelClearProgress(): void {
+    this.clearProgressModalOpen.set(false);
+  }
+
+  protected confirmClearProgress(): void {
+    this.clearProgressModalOpen.set(false);
+    void this.player.clearSelectedProgress();
   }
 
   protected reviewAuthor(review: TmdbReview): string {

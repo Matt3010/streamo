@@ -344,6 +344,48 @@ export class PlayerService {
     }
   }
 
+  async clearSelectedProgress(): Promise<void> {
+    if (!this.auth.currentUser()) {
+      this.toast.show('Accedi per gestire il progresso');
+      return;
+    }
+
+    const item = this.currentItem();
+    const type = this.currentItemType();
+    if (!item || !type) return;
+
+    if (type === 'movie') {
+      this.resetPlayer();
+      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${item.id}`;
+      this.urlSeq++;
+      this.resumeProgress.set(null);
+      this.resumeText.set('');
+      await this.progress.remove(item.id, 'movie');
+      this.progressTick.update(n => n + 1);
+      this.toast.show('Progresso film azzerato');
+      return;
+    }
+
+    const season = this.selectedSeason();
+    const episode = this.selectedEpisode();
+
+    this.resetPlayer();
+    this.setEpisodeUrl(item.id, season, episode);
+    this.urlSeq++;
+    this.resumeProgress.set(null);
+    this.resumeText.set('');
+    this.seriesProgress.update(prev => {
+      const next = new Map(prev);
+      next.delete(progressKey(season, episode));
+      return next;
+    });
+
+    await this.progress.remove(item.id, 'tv', season, episode);
+    await this.refreshNextUnwatchedRef();
+    this.progressTick.update(n => n + 1);
+    this.toast.show(`Progresso S${season} E${episode} azzerato`);
+  }
+
   // ===== PRIVATE =====
   private async setupTVPlayer(tmdbId: string | number, item: TmdbItem, resumeSeason: number, resumeEpisode: number): Promise<void> {
     const seasonsList = availableSeasons(item);
