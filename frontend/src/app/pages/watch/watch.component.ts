@@ -136,7 +136,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
               <span [style.width.%]="movieProgressPct()"></span>
             </div>
             <button type="button" class="inline-reset-btn" (click)="openClearProgressModal()">
-              Resetta ripresa
+              Riparti dall'inizio
             </button>
           </div>
         }
@@ -184,7 +184,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
             </div>
             @if (canClearProgress()) {
               <button type="button" class="inline-reset-btn" (click)="openClearProgressModal()">
-                Resetta ripresa episodio
+                Riparti dall'inizio
               </button>
             }
           </div>
@@ -406,7 +406,7 @@ export class WatchComponent {
   protected readonly confirmModalTitle = computed(() => {
     const action = this.pendingConfirmAction();
     if (action === 'remove-watchlist') return 'Rimuovi Dalla Lista';
-    return this.player.currentItemType() === 'tv' ? 'Resetta Ripresa Episodio' : 'Resetta Ripresa';
+    return 'Riparti Dall\'Inizio';
   });
 
   protected readonly confirmModalMessage = computed(() => {
@@ -417,9 +417,9 @@ export class WatchComponent {
     if (this.player.currentItemType() === 'tv') {
       const season = this.player.selectedSeason();
       const episode = this.player.selectedEpisode();
-      return `Vuoi davvero rimuovere la ripresa salvata per S${season} E${episode}?`;
+      return `Vuoi ripartire dall'inizio per S${season} E${episode}?`;
     }
-    return 'Vuoi davvero rimuovere la ripresa salvata per questo film?';
+    return 'Vuoi ripartire dall\'inizio per questo film?';
   });
 
   protected readonly confirmModalWarning = computed(() => {
