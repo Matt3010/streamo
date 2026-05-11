@@ -72,3 +72,20 @@ export interface TmdbEpisodeDetail {
 export interface TmdbSeasonDetails {
   episodes?: TmdbEpisodeDetail[];
 }
+
+export interface TmdbReviewAuthorDetails {
+  username?: string;
+  name?: string;
+  avatar_path?: string | null;
+  rating?: number | null;
+}
+
+export interface TmdbReview {
+  id: string;
+  author: string;
+  content: string;
+  created_at?: string;
+  updated_at?: string;
+  url?: string;
+  author_details?: TmdbReviewAuthorDetails;
+}

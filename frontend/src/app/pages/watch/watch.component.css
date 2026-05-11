@@ -469,6 +469,113 @@
   padding-top: 1.75rem;
 }
 
+.watch-reviews {
+  display: block;
+  padding-top: 1.75rem;
+}
+
+.watch-reviews .section-title {
+  margin-bottom: 0.75rem;
+}
+
+.reviews-row {
+  display: flex;
+  gap: 0.9rem;
+  overflow-x: auto;
+  padding: 0.2rem 0 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-hover) transparent;
+}
+
+.reviews-row::-webkit-scrollbar { height: 6px; }
+.reviews-row::-webkit-scrollbar-track { background: transparent; }
+.reviews-row::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: 3px;
+}
+
+.review-card {
+  flex: 0 0 min(420px, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-height: 240px;
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)),
+    var(--surface);
+}
+
+.review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.review-author-block {
+  min-width: 0;
+}
+
+.review-author {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.review-date {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.review-rating {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffc107;
+}
+
+.review-content {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.review-link {
+  margin-top: auto;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.review-link:hover {
+  color: var(--accent);
+}
+
+.skeleton-review-card {
+  pointer-events: none;
+}
+
+.skeleton-review-head {
+  height: 1.2rem;
+  width: 60%;
+}
+
+.skeleton-review-line {
+  height: 0.95rem;
+  width: 100%;
+}
+
+.skeleton-review-line.short {
+  width: 72%;
+}
+
 @media (max-width: 640px) {
   .watch-header h2 { font-size: 1.5rem; }
   /* Drop the desktop min-width on the primary CTA so it can shrink with
@@ -481,6 +588,12 @@
   .episode-number { font-size: 1.35rem; }
   .episode-title { font-size: 0.9rem; }
   .episode-overview { font-size: 0.75rem; }
+
+  .review-card {
+    flex-basis: calc(100vw - 1.2rem);
+    min-height: 220px;
+    padding: 0.9rem;
+  }
 }
 
 /* ===== Skeleton loading states =====

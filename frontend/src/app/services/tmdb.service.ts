@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import type { MediaType, TmdbItem, TmdbSeasonDetails } from '../models';
+import type { MediaType, TmdbItem, TmdbReview, TmdbSeasonDetails } from '../models';
 
 const TMDB_BASE = '/api/tmdb';
 const CACHE_MAX = 100;
@@ -31,6 +31,17 @@ export class TmdbService {
       const res = await fetch(`${TMDB_BASE}/${type}/${tmdbId}/recommendations?language=it-IT`);
       if (!res.ok) return [];
       const data = await res.json() as { results?: TmdbItem[] };
+      return data.results ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getReviews(tmdbId: string | number, type: MediaType): Promise<TmdbReview[]> {
+    try {
+      const res = await fetch(`${TMDB_BASE}/${type}/${tmdbId}/reviews?language=it-IT`);
+      if (!res.ok) return [];
+      const data = await res.json() as { results?: TmdbReview[] };
       return data.results ?? [];
     } catch {
       return [];

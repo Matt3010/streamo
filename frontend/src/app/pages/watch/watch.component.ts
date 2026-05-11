@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute, signal } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
-import { faThumbsUp } from '@fortawesome/free-solid-svg-icons';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
@@ -10,12 +11,12 @@ import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { BackgroundService } from '../../services/background.service';
 import { getFullReleaseStatusText } from '../../utils/media-release.util';
-import type { CardItem, MediaType, TmdbItem } from '../../models';
+import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
 
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, MediaRankBadgeComponent, SectionRowComponent],
+  imports: [FaIconComponent, IconComponent, MediaRankBadgeComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -185,6 +186,54 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
       </div>
       </div>
 
+      @if (reviews().length > 0 || reviewsLoading()) {
+        <section class="watch-reviews content-section">
+          <h2 class="section-title">
+            <span class="icon"><fa-icon [icon]="reviewsIcon"></fa-icon></span>
+            Recensioni
+          </h2>
+
+          @if (reviewsLoading()) {
+            <div class="reviews-row">
+              @for (i of skeletonRange; track i) {
+                <article class="review-card skeleton-review-card">
+                  <div class="skeleton skeleton-review-head"></div>
+                  <div class="skeleton skeleton-review-line"></div>
+                  <div class="skeleton skeleton-review-line"></div>
+                  <div class="skeleton skeleton-review-line short"></div>
+                </article>
+              }
+            </div>
+          } @else {
+            <div class="reviews-row">
+              @for (review of reviews(); track review.id) {
+                <article class="review-card">
+                  <div class="review-head">
+                    <div class="review-author-block">
+                      <h3 class="review-author">{{ reviewAuthor(review) }}</h3>
+                      @if (reviewDate(review)) {
+                        <p class="review-date">{{ reviewDate(review) }}</p>
+                      }
+                    </div>
+                    @if (reviewRating(review)) {
+                      <span class="review-rating">★ {{ reviewRating(review) }}</span>
+                    }
+                  </div>
+
+                  <p class="review-content">{{ reviewExcerpt(review) }}</p>
+
+                  @if (review.url) {
+                    <a class="review-link" [href]="review.url" target="_blank" rel="noopener noreferrer">
+                      Leggi su TMDB
+                    </a>
+                  }
+                </article>
+              }
+            </div>
+          }
+        </section>
+      }
+
       @if (recommendations().length > 0 || recommendationsLoading()) {
         <app-section-row
           class="watch-recommendations"
@@ -208,8 +257,11 @@ export class WatchComponent {
   private readonly background = inject(BackgroundService);
 
   protected readonly recommendationsIcon = faThumbsUp;
+  protected readonly reviewsIcon = faCommentDots;
   protected readonly recommendations = signal<CardItem[]>([]);
   protected readonly recommendationsLoading = signal(false);
+  protected readonly reviews = signal<TmdbReview[]>([]);
+  protected readonly reviewsLoading = signal(false);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -223,6 +275,7 @@ export class WatchComponent {
   // Sequence guards out-of-order recommendation responses when the user
   // jumps between titles before the previous fetch resolves.
   private recommendationsSeq = 0;
+  private reviewsSeq = 0;
 
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -388,6 +441,16 @@ export class WatchComponent {
       void this.loadRecommendations(id, type);
     });
 
+    effect(() => {
+      const id = this.id();
+      const type = this.type();
+      if (!id || (type !== 'movie' && type !== 'tv')) {
+        this.reviews.set([]);
+        return;
+      }
+      void this.loadReviews(id, type);
+    });
+
     this.destroyRef.onDestroy(() => {
       this.player.cleanup();
       this.background.clear();
@@ -402,6 +465,16 @@ export class WatchComponent {
     if (seq !== this.recommendationsSeq) return;
     this.recommendations.set(results.slice(0, 20).map(it => tmdbToCard(it, type)));
     this.recommendationsLoading.set(false);
+  }
+
+  private async loadReviews(id: string, type: MediaType): Promise<void> {
+    const seq = ++this.reviewsSeq;
+    this.reviewsLoading.set(true);
+    this.reviews.set([]);
+    const results = await this.tmdb.getReviews(id, type);
+    if (seq !== this.reviewsSeq) return;
+    this.reviews.set(results.slice(0, 10));
+    this.reviewsLoading.set(false);
   }
 
   protected openRecommendation(item: CardItem): void {
@@ -429,6 +502,33 @@ export class WatchComponent {
 
   protected toggleWatchlist(): void {
     void this.player.toggleWatchlist();
+  }
+
+  protected reviewAuthor(review: TmdbReview): string {
+    return review.author_details?.name || review.author_details?.username || review.author || 'Anonimo';
+  }
+
+  protected reviewRating(review: TmdbReview): string {
+    const rating = review.author_details?.rating;
+    return typeof rating === 'number' ? rating.toFixed(1) : '';
+  }
+
+  protected reviewDate(review: TmdbReview): string {
+    const raw = review.updated_at || review.created_at;
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('it-IT', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(date);
+  }
+
+  protected reviewExcerpt(review: TmdbReview): string {
+    const text = review.content.trim();
+    if (text.length <= 360) return text;
+    return `${text.slice(0, 357).trimEnd()}...`;
   }
 
   protected onSeasonChange(ev: Event): void {
