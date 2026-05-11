@@ -125,8 +125,7 @@ export class HomeComponent {
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
 
-    this.userLoading.set(false);
-    this.continueItems.set(progress.map(p => ({
+    const progressCards = await enrichCardsWithTmdb(progress.map(p => ({
       tmdb_id: p.tmdb_id,
       media_type: p.media_type,
       title: p.title ?? 'Senza titolo',
@@ -135,9 +134,10 @@ export class HomeComponent {
       episode: p.episode,
       position: p.position,
       duration: p.duration
-    })));
+    })), this.tmdb);
+    if (seq !== this.userSeq) return;
 
-    this.watchlistItems.set(wl.filter(w => (w.status ?? 'todo') !== 'done').map(w => ({
+    const watchlistCards = await enrichCardsWithTmdb(wl.filter(w => (w.status ?? 'todo') !== 'done').map(w => ({
       tmdb_id: w.tmdb_id,
       media_type: w.media_type,
       title: w.title ?? 'Senza titolo',
@@ -147,7 +147,12 @@ export class HomeComponent {
       position: w.position,
       duration: w.duration,
       watchStatus: w.watch_status_text
-    })));
+    })), this.tmdb);
+    if (seq !== this.userSeq) return;
+
+    this.userLoading.set(false);
+    this.continueItems.set(progressCards);
+    this.watchlistItems.set(watchlistCards);
   }
 }
 
@@ -158,7 +163,23 @@ function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
     media_type: type,
     title: item.title ?? item.name ?? 'Senza titolo',
     poster: item.poster_path ?? null,
+    popularity: item.popularity,
+    voteCount: item.vote_count,
     year: dateStr.split('-')[0] ?? '',
     rating: item.vote_average ? item.vote_average.toFixed(1) : ''
   };
+}
+
+async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promise<CardItem[]> {
+  return Promise.all(items.map(async (item) => {
+    const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
+    if (!details) return item;
+    return {
+      ...item,
+      popularity: details.popularity,
+      voteCount: details.vote_count,
+      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
+      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? ''
+    };
+  }));
 }

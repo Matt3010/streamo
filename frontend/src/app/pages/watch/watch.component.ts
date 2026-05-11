@@ -3,6 +3,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -13,7 +14,7 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, SectionRowComponent],
+  imports: [IconComponent, MediaRankBadgeComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -30,14 +31,11 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
           } @else {
             <div class="watch-heading">
               <h2>{{ title() }}</h2>
-              @if (rankBadge(); as badge) {
-                <div class="rank-badge" [attr.aria-label]="badge.ariaLabel">
-                  <span class="rank-badge-dot" aria-hidden="true"></span>
-                  <span class="rank-badge-label">{{ badge.label }}</span>
-                  <span class="rank-badge-trend" aria-hidden="true">▲</span>
-                  <span class="rank-badge-value">{{ badge.value }}</span>
-                </div>
-              }
+              <app-media-rank-badge
+                class="watch-rank-badge"
+                align="right"
+                [popularity]="player.currentItem()?.popularity ?? null"
+                [voteCount]="player.currentItem()?.vote_count ?? null" />
             </div>
           }
         </div>
@@ -234,26 +232,6 @@ export class WatchComponent {
   protected readonly title = computed(() => {
     const it = this.player.currentItem();
     return it?.title ?? it?.name ?? '';
-  });
-
-  protected readonly rankBadge = computed<{
-    label: string;
-    value: string;
-    ariaLabel: string;
-  } | null>(() => {
-    const item = this.player.currentItem();
-    if (!item) return null;
-
-    const popularity = item.popularity ?? 0;
-    const votes = item.vote_count ?? 0;
-    if (popularity < 80 || votes < 40) return null;
-
-    const bucket = popularityToTopBucket(popularity);
-    return {
-      label: `Primi ${bucket}`,
-      value: formatBadgeValue(popularity),
-      ariaLabel: `Stimato tra i primi ${bucket}, popolarita ${formatBadgeValue(popularity)}`
-    };
   });
 
   protected readonly overview = computed(() => this.player.currentItem()?.overview ?? 'Descrizione non disponibile.');
@@ -472,6 +450,8 @@ function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
     media_type: type,
     title: item.title ?? item.name ?? 'Senza titolo',
     poster: item.poster_path ?? null,
+    popularity: item.popularity,
+    voteCount: item.vote_count,
     year: dateStr.split('-')[0] ?? '',
     rating: item.vote_average ? item.vote_average.toFixed(1) : ''
   };
@@ -502,18 +482,4 @@ function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, 
     return first ? `${first} min/episodio` : '';
   }
   return '';
-}
-
-function popularityToTopBucket(popularity: number): number {
-  if (popularity >= 5000) return 10;
-  if (popularity >= 2500) return 50;
-  if (popularity >= 1400) return 100;
-  if (popularity >= 800) return 250;
-  if (popularity >= 400) return 500;
-  if (popularity >= 200) return 1000;
-  return 2500;
-}
-
-function formatBadgeValue(popularity: number): string {
-  return Math.round(popularity).toLocaleString('it-IT');
 }

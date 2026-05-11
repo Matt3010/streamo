@@ -92,6 +92,8 @@ function tmdbToCard(item: TmdbItem): CardItem {
     media_type: mediaType,
     title: item.title ?? item.name ?? 'Senza titolo',
     poster: item.poster_path ?? null,
+    popularity: item.popularity,
+    voteCount: item.vote_count,
     year: dateStr.split('-')[0] ?? '',
     rating: item.vote_average ? item.vote_average.toFixed(1) : ''
   };

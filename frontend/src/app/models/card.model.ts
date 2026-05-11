@@ -15,6 +15,8 @@ export interface CardItem {
   media_type: MediaType;
   title: string;
   poster: string | null;
+  popularity?: number;
+  voteCount?: number;
   year?: string;
   rating?: string;
   season?: number;

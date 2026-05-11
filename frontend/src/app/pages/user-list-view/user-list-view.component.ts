@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
+import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
@@ -30,7 +32,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
-  imports: [CardComponent, IconComponent, UiTabsComponent],
+  imports: [CardComponent, IconComponent, MediaRankBadgeComponent, UiTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -91,6 +93,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
             <div class="item-info">
               <span class="item-title">{{ it.title }}</span>
+              <app-media-rank-badge
+                [compact]="true"
+                [popularity]="it.popularity ?? null"
+                [voteCount]="it.voteCount ?? null" />
               @if (it.season && it.episode || it.watchStatus) {
                 <span class="item-sub">
                   @if (it.season && it.episode) {
@@ -123,6 +129,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
   styleUrl: './user-list-view.component.css'
 })
 export class UserListViewComponent {
+  private readonly tmdb = inject(TmdbService);
   private readonly watchlist = inject(WatchlistService);
   private readonly history = inject(HistoryService);
   private readonly router = inject(Router);
@@ -229,7 +236,7 @@ export class UserListViewComponent {
     if (kind === 'watchlist') {
       const list = await this.watchlist.list({ status, ...(mediaType ? { media_type: mediaType } : {}) });
       if (mySeq !== this.seq) return;
-      this.items.set(list.map(w => ({
+      const items = await enrichCardsWithTmdb(list.map(w => ({
         tmdb_id: w.tmdb_id,
         media_type: w.media_type,
         title: w.title ?? 'Senza titolo',
@@ -240,21 +247,39 @@ export class UserListViewComponent {
         episode: w.resume_episode,
         position: w.position,
         duration: w.duration
-      })));
+      })), this.tmdb);
+      if (mySeq !== this.seq) return;
+      this.items.set(items);
     } else {
       const list = await this.history.list(mediaType ? { media_type: mediaType } : undefined);
       if (mySeq !== this.seq) return;
-      this.items.set(list.map(h => ({
+      const items = await enrichCardsWithTmdb(list.map(h => ({
         tmdb_id: h.tmdb_id,
         media_type: h.media_type,
         title: h.title ?? 'Senza titolo',
         poster: h.poster,
         season: h.season,
         episode: h.episode
-      })));
+      })), this.tmdb);
+      if (mySeq !== this.seq) return;
+      this.items.set(items);
     }
     this.loading.set(false);
   }
+}
+
+async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promise<CardItem[]> {
+  return Promise.all(items.map(async (item) => {
+    const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
+    if (!details) return item;
+    return {
+      ...item,
+      popularity: details.popularity,
+      voteCount: details.vote_count,
+      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
+      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? ''
+    };
+  }));
 }
 
 function loadViewMode(): ViewMode {
