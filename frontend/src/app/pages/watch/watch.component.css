@@ -445,6 +445,33 @@
   box-shadow: inset 0 -40px 60px -30px rgba(0, 0, 0, 0.85);
 }
 
+.episode-reset-btn {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 4;
+  transition: background 0.15s ease;
+}
+
+.episode-reset-btn:hover {
+  background: rgba(229, 9, 20, 0.88);
+}
+
+.episode-reset-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 .episode-thumb.no-image {
   background-color: var(--surface);
   box-shadow: none;

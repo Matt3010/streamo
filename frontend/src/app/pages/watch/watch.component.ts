@@ -17,6 +17,10 @@ import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-rel
 import { runWithPending } from '../../utils/pending.util';
 import type { CardItem, MediaType, TmdbReview } from '../../models';
 
+type ConfirmAction =
+  | { type: 'remove-watchlist' }
+  | { type: 'clear-progress'; season?: number; episode?: number };
+
 @Component({
   selector: 'app-watch',
   standalone: true,
@@ -140,8 +144,8 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
             <div class="movie-progress-bar" aria-hidden="true">
               <span [style.width.%]="movieProgressPct()"></span>
             </div>
-            <button type="button" class="inline-reset-btn" [uiPending]="clearProgressPending()" (click)="openClearProgressModal()">
-              Riparti dall'inizio
+            <button type="button" class="inline-reset-btn" [uiPending]="clearProgressPendingKey() === 'movie'" (click)="openClearProgressModal()">
+              {{ clearProgressButtonLabel() }}
             </button>
           </div>
         }
@@ -170,6 +174,16 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
                   <div class="episode-thumb"
                        [class.no-image]="!ep.still_path"
                        [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
+                    @if (canClearEpisodeProgress(ep.episode_number)) {
+                      <button type="button"
+                              class="episode-reset-btn"
+                              [uiPending]="clearProgressPendingKey() === episodeProgressKey(ep.episode_number)"
+                              aria-label="Azzera progresso episodio"
+                              title="Azzera progresso episodio"
+                              (click)="openEpisodeClearProgressModal(ep.episode_number, $event)">
+                        <app-icon name="trash"></app-icon>
+                      </button>
+                    }
                     <span class="episode-number">{{ ep.episode_number }}</span>
                     @if (episodeProgressLabel(ep)) {
                       <span class="episode-duration">{{ episodeProgressLabel(ep) }}</span>
@@ -187,11 +201,6 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
                 </button>
               }
             </div>
-            @if (canClearProgress()) {
-              <button type="button" class="inline-reset-btn" [uiPending]="clearProgressPending()" (click)="openClearProgressModal()">
-                Riparti dall'inizio
-              </button>
-            }
           </div>
         }
 
@@ -314,8 +323,8 @@ export class WatchComponent {
   protected readonly reviewsLoading = signal(false);
   protected readonly confirmModalOpen = signal(false);
   protected readonly watchlistPending = signal(false);
-  protected readonly clearProgressPending = signal(false);
-  private readonly pendingConfirmAction = signal<'clear-progress' | 'remove-watchlist' | null>(null);
+  protected readonly clearProgressPendingKey = signal<string | null>(null);
+  private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -412,31 +421,35 @@ export class WatchComponent {
 
   protected readonly confirmModalTitle = computed(() => {
     const action = this.pendingConfirmAction();
-    if (action === 'remove-watchlist') return 'Rimuovi Dalla Lista';
+    if (action?.type === 'remove-watchlist') return 'Rimuovi Dalla Lista';
     return 'Riparti Dall\'Inizio';
   });
 
   protected readonly confirmModalMessage = computed(() => {
     const action = this.pendingConfirmAction();
-    if (action === 'remove-watchlist') {
+    if (action?.type === 'remove-watchlist') {
       return `Vuoi rimuovere ${this.title()} dalla tua lista?`;
     }
     if (this.player.currentItemType() === 'tv') {
-      const season = this.player.selectedSeason();
-      const episode = this.player.selectedEpisode();
+      const season = action?.type === 'clear-progress' ? (action.season ?? this.player.selectedSeason()) : this.player.selectedSeason();
+      const episode = action?.type === 'clear-progress' ? (action.episode ?? this.player.selectedEpisode()) : this.player.selectedEpisode();
       return `Vuoi ripartire dall'inizio per S${season} E${episode}?`;
     }
     return 'Vuoi ripartire dall\'inizio per questo film?';
   });
 
   protected readonly confirmModalWarning = computed(() => {
-    return this.pendingConfirmAction() === 'remove-watchlist'
+    return this.pendingConfirmAction()?.type === 'remove-watchlist'
       ? 'Potrai sempre riaggiungerlo più tardi.'
       : 'Ripartirai dall’inizio al prossimo play.';
   });
 
   protected readonly confirmModalActionLabel = computed(() => {
-    return this.pendingConfirmAction() === 'remove-watchlist' ? 'Rimuovi' : 'Resetta';
+    return this.pendingConfirmAction()?.type === 'remove-watchlist' ? 'Rimuovi' : 'Resetta';
+  });
+
+  protected readonly clearProgressButtonLabel = computed(() => {
+    return 'Riparti dall\'inizio';
   });
 
   protected readonly movieProgressPct = computed(() => {
@@ -615,7 +628,7 @@ export class WatchComponent {
 
   protected toggleWatchlist(): void {
     if (this.player.isInWatchlist()) {
-      this.pendingConfirmAction.set('remove-watchlist');
+      this.pendingConfirmAction.set({ type: 'remove-watchlist' });
       this.confirmModalOpen.set(true);
       return;
     }
@@ -623,7 +636,17 @@ export class WatchComponent {
   }
 
   protected openClearProgressModal(): void {
-    this.pendingConfirmAction.set('clear-progress');
+    this.pendingConfirmAction.set({ type: 'clear-progress' });
+    this.confirmModalOpen.set(true);
+  }
+
+  protected openEpisodeClearProgressModal(episodeNumber: number, event: Event): void {
+    event.stopPropagation();
+    this.pendingConfirmAction.set({
+      type: 'clear-progress',
+      season: this.player.selectedSeason(),
+      episode: episodeNumber
+    });
     this.confirmModalOpen.set(true);
   }
 
@@ -634,12 +657,26 @@ export class WatchComponent {
   protected executeConfirmedAction(): void {
     const action = this.pendingConfirmAction();
     this.pendingConfirmAction.set(null);
-    if (action === 'remove-watchlist') {
+    if (action?.type === 'remove-watchlist') {
       void runWithPending(this.watchlistPending, () => this.player.toggleWatchlist());
       return;
     }
-    if (action === 'clear-progress') {
-      void runWithPending(this.clearProgressPending, () => this.player.clearSelectedProgress());
+    if (action?.type === 'clear-progress') {
+      const key = this.player.currentItemType() === 'tv' && action.episode
+        ? `s${action.season ?? this.player.selectedSeason()}e${action.episode}`
+        : 'movie';
+      this.clearProgressPendingKey.set(key);
+      void (async () => {
+        try {
+          if (this.player.currentItemType() === 'tv' && action.episode) {
+            await this.player.clearEpisodeProgress(action.season ?? this.player.selectedSeason(), action.episode);
+          } else {
+            await this.player.clearSelectedProgress();
+          }
+        } finally {
+          this.clearProgressPendingKey.set(null);
+        }
+      })();
     }
   }
 
@@ -715,6 +752,17 @@ export class WatchComponent {
     if (totalSeconds <= 0) return '';
     const watchedSeconds = progress?.position && progress.position > 0 ? progress.position : 0;
     return `${formatTimeCompact(watchedSeconds)}/${formatTimeCompact(totalSeconds)}`;
+  }
+
+  protected canClearEpisodeProgress(episodeNumber: number): boolean {
+    const map = this.player.seriesProgress();
+    const key = `s${this.player.selectedSeason()}e${episodeNumber}`;
+    const progress = map.get(key);
+    return !!progress && progress.position > 0;
+  }
+
+  protected episodeProgressKey(episodeNumber: number): string {
+    return `s${this.player.selectedSeason()}e${episodeNumber}`;
   }
 }
 

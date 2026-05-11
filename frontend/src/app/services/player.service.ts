@@ -386,6 +386,36 @@ export class PlayerService {
     this.toast.show(`Progresso S${season} E${episode} azzerato`);
   }
 
+  async clearEpisodeProgress(season: number, episode: number): Promise<void> {
+    if (!this.auth.currentUser()) {
+      this.toast.show('Accedi per gestire il progresso');
+      return;
+    }
+
+    const item = this.currentItem();
+    if (!item || this.currentItemType() !== 'tv') return;
+
+    const isCurrentEpisode = season === this.selectedSeason() && episode === this.selectedEpisode();
+    if (isCurrentEpisode) {
+      this.resetPlayer();
+      this.setEpisodeUrl(item.id, season, episode);
+      this.urlSeq++;
+      this.resumeProgress.set(null);
+      this.resumeText.set('');
+    }
+
+    this.seriesProgress.update(prev => {
+      const next = new Map(prev);
+      next.delete(progressKey(season, episode));
+      return next;
+    });
+
+    await this.progress.remove(item.id, 'tv', season, episode);
+    await this.refreshNextUnwatchedRef();
+    this.progressTick.update(n => n + 1);
+    this.toast.show(`Progresso S${season} E${episode} azzerato`);
+  }
+
   // ===== PRIVATE =====
   private async setupTVPlayer(tmdbId: string | number, item: TmdbItem, resumeSeason: number, resumeEpisode: number): Promise<void> {
     const seasonsList = availableSeasons(item);
