@@ -11,13 +11,39 @@ interface LiveSocketOptions {
   onMessage: (event: MessageEvent, socket: WebSocket) => void;
 }
 
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 15000;
+
 @Injectable({ providedIn: 'root' })
 export class LiveSocketService {
   create(options: LiveSocketOptions): LiveSocketController {
     let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempts = 0;
+    let shouldReconnect = false;
 
-    return {
-      connect: () => {
+    const clearReconnectTimer = (): void => {
+      if (!reconnectTimer) return;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    };
+
+    const scheduleReconnect = (): void => {
+      if (!shouldReconnect || reconnectTimer) return;
+      const delayMs = Math.min(
+        RECONNECT_MAX_DELAY_MS,
+        RECONNECT_BASE_DELAY_MS * Math.max(1, 2 ** reconnectAttempts)
+      );
+      reconnectAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delayMs);
+    };
+
+    const connect = (): void => {
+      clearReconnectTimer();
+
         if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
           return;
         }
@@ -27,6 +53,7 @@ export class LiveSocketService {
 
         current.addEventListener('open', () => {
           if (socket !== current) return;
+          reconnectAttempts = 0;
           options.onConnected(true);
         });
 
@@ -39,15 +66,24 @@ export class LiveSocketService {
           if (socket !== current) return;
           options.onConnected(false);
           socket = null;
+          scheduleReconnect();
         });
 
         current.addEventListener('error', () => {
           if (socket !== current) return;
           options.onConnected(false);
         });
-      },
+    };
 
+    return {
+      connect: () => {
+        shouldReconnect = true;
+        connect();
+      },
       disconnect: () => {
+        shouldReconnect = false;
+        reconnectAttempts = 0;
+        clearReconnectTimer();
         options.onConnected(false);
         if (!socket) return;
         const current = socket;
