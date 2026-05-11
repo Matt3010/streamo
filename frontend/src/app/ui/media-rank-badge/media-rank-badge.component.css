@@ -21,24 +21,19 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.rank-badge-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+.rank-badge-icon {
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(36, 210, 96, 0.18) 0 42%, transparent 43%),
-    rgba(36, 210, 96, 0.12);
-  border: 1px solid rgba(45, 214, 107, 0.5);
-  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ff9f43;
 }
 
-.rank-badge-dot::after {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border-radius: 50%;
-  background: #32d46b;
+.rank-badge-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .rank-badge-label {
@@ -47,7 +42,6 @@
   white-space: nowrap;
 }
 
-.rank-badge-trend,
 .rank-badge-value {
   color: #b7c0d4;
   font-size: 0.95rem;
@@ -55,33 +49,24 @@
   white-space: nowrap;
 }
 
-.rank-badge-trend {
-  color: #84db8f;
-  font-size: 0.7rem;
-  transform: translateY(-1px);
-}
-
 :host(.compact) .rank-badge {
   padding: 0.35rem 0.62rem;
   gap: 0.32rem;
 }
 
-:host(.compact) .rank-badge-dot {
-  width: 13px;
-  height: 13px;
+:host(.compact) .rank-badge-icon {
+  width: 15px;
+  height: 15px;
 }
 
-:host(.compact) .rank-badge-dot::after {
-  inset: 3px;
+:host(.compact) .rank-badge-icon svg {
+  width: 12px;
+  height: 12px;
 }
 
 :host(.compact) .rank-badge-label,
 :host(.compact) .rank-badge-value {
   font-size: 0.78rem;
-}
-
-:host(.compact) .rank-badge-trend {
-  font-size: 0.6rem;
 }
 
 @media (max-width: 640px) {

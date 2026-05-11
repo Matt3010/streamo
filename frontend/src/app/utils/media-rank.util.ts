@@ -1,5 +1,5 @@
 export interface MediaRankBadgeData {
-  label: string;
+  label?: string;
   value: string;
   ariaLabel: string;
 }
@@ -9,9 +9,8 @@ export function getMediaRankBadge(popularity?: number, voteCount?: number): Medi
   if (score <= 0) return null;
   const value = formatBadgeValue(score);
   return {
-    label: 'Trending',
     value,
-    ariaLabel: `Trending score ${value}`
+    ariaLabel: `Popularity ${value}`
   };
 }
 

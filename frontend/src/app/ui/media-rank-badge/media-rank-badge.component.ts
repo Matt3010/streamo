@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { IconComponent } from '../icon/icon.component';
 import { getMediaRankBadge } from '../../utils/media-rank.util';
 
 @Component({
   selector: 'app-media-rank-badge',
   standalone: true,
+  imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.compact]': 'compact()',
@@ -12,9 +14,12 @@ import { getMediaRankBadge } from '../../utils/media-rank.util';
   template: `
     @if (badge(); as data) {
       <div class="rank-badge" [attr.aria-label]="data.ariaLabel">
-        <span class="rank-badge-dot" aria-hidden="true"></span>
-        <span class="rank-badge-label">{{ data.label }}</span>
-        <span class="rank-badge-trend" aria-hidden="true">▲</span>
+        <span class="rank-badge-icon" aria-hidden="true">
+          <app-icon name="fire"></app-icon>
+        </span>
+        @if (data.label) {
+          <span class="rank-badge-label">{{ data.label }}</span>
+        }
         <span class="rank-badge-value">{{ data.value }}</span>
       </div>
     }
