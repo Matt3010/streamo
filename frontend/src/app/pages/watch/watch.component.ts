@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, numberAttribute, signal, viewChild } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
@@ -11,6 +11,7 @@ import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { BackgroundService } from '../../services/background.service';
 import { tmdbToCardItem } from '../../utils/card-item.util';
+import { exitDocumentFullscreen, isLandscapeTouchViewport, requestElementFullscreen } from '../../utils/fullscreen.util';
 import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-release.util';
 import type { CardItem, MediaType, TmdbReview } from '../../models';
 
@@ -45,7 +46,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
           }
         </div>
 
-        <div class="player-container">
+        <div class="player-container" #playerContainer>
         @if (loading() && player.currentItemType() !== 'movie') {
           <div class="episode-controls active">
             <div class="select-group">
@@ -67,10 +68,13 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
         }
 
         @if (loading() || player.iframeSrc()) {
-          <div class="player-wrapper">
+          <div class="player-wrapper" #playerWrapper>
             @if (loading()) {
               <div class="skeleton skeleton-backdrop"></div>
             } @else {
+              <button type="button" class="landscape-close-btn" (click)="closePlayer()" aria-label="Chiudi player">
+                <app-icon name="close"></app-icon>
+              </button>
               <iframe [src]="iframeSrcSafe()" allowfullscreen
                       allow="autoplay; encrypted-media; fullscreen"></iframe>
             }
@@ -289,6 +293,8 @@ export class WatchComponent {
   protected readonly recommendationsLoading = signal(false);
   protected readonly reviews = signal<TmdbReview[]>([]);
   protected readonly reviewsLoading = signal(false);
+  private readonly playerWrapperRef = viewChild<ElementRef<HTMLDivElement>>('playerWrapper');
+  private readonly playerContainerRef = viewChild<ElementRef<HTMLDivElement>>('playerContainer');
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -503,7 +509,24 @@ export class WatchComponent {
       void this.loadReviews(id, type);
     });
 
+    effect(() => {
+      const src = this.player.iframeSrc();
+      if (!src) return;
+      queueMicrotask(() => {
+        void this.maybeEnterNativeFullscreen();
+      });
+    });
+
+    const onOrientationChange = () => {
+      void this.maybeEnterNativeFullscreen();
+    };
+    window.addEventListener('orientationchange', onOrientationChange);
+    window.addEventListener('resize', onOrientationChange);
+
     this.destroyRef.onDestroy(() => {
+      void exitDocumentFullscreen();
+      window.removeEventListener('orientationchange', onOrientationChange);
+      window.removeEventListener('resize', onOrientationChange);
       this.player.cleanup();
       this.background.clear();
     });
@@ -541,15 +564,17 @@ export class WatchComponent {
   }
 
   protected play(): void {
+    void this.enterFullscreenFromGesture();
     void this.player.playPrimary();
   }
 
   protected playNext(): void {
+    void this.enterFullscreenFromGesture();
     void this.player.playNextEpisode();
   }
 
   protected closePlayer(): void {
-    void this.player.stopPlayback();
+    void this.player.stopPlayback().then(() => exitDocumentFullscreen());
   }
 
   protected toggleWatchlist(): void {
@@ -604,7 +629,22 @@ export class WatchComponent {
     // card and then having to find the CTA again would be a wasted tap.
     // playEpisodeFromCard switches the player and starts the episode in
     // a single call. The CTA stays anchored to next-unwatched.
+    void this.enterFullscreenFromGesture();
     void this.player.playEpisodeFromCard(episodeNumber);
+  }
+
+  private async maybeEnterNativeFullscreen(): Promise<void> {
+    if (!this.player.iframeSrc()) return;
+    if (!isLandscapeTouchViewport()) return;
+
+    const target = this.playerWrapperRef()?.nativeElement ?? this.playerContainerRef()?.nativeElement;
+    await requestElementFullscreen(target);
+  }
+
+  private async enterFullscreenFromGesture(): Promise<void> {
+    if (!isLandscapeTouchViewport()) return;
+    const target = this.playerContainerRef()?.nativeElement;
+    await requestElementFullscreen(target);
   }
 
   // Progress percentage (0–100) for the given episode card in the
