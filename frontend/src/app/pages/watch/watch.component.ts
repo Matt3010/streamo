@@ -83,12 +83,7 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
           </div>
         } @else if (isUpcomingTitle()) {
           <div class="player-actions">
-            <div class="release-inline-note">
-              Disponibile dopo l'uscita
-              @if (releaseStatusStr()) {
-                <span>{{ releaseStatusStr() }}</span>
-              }
-            </div>
+            <div class="release-inline-note">{{ upcomingAvailabilityStr() }}</div>
             <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -350,6 +345,11 @@ export class WatchComponent {
     const item = this.player.currentItem();
     const type = this.player.currentItemType();
     return item !== null && type !== null ? isTitleUpcoming(item, type) : false;
+  });
+
+  protected readonly upcomingAvailabilityStr = computed(() => {
+    const status = this.releaseStatusStr().trim().replace(/\.$/, '');
+    return status ? `Disponibile: ${status}` : 'Disponibile dopo l\'uscita';
   });
 
   // 80% mirrors WATCHED_THRESHOLD on the backend — past that point we
