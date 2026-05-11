@@ -286,6 +286,7 @@ export class PlayerService {
   async changeSeason(season: number): Promise<void> {
     const item = this.currentItem();
     if (!item) return;
+    if (!this.seasons().includes(season)) return;
     this.saveCurrentEpisodeProgress();
 
     this.selectedSeason.set(season);
@@ -345,11 +346,13 @@ export class PlayerService {
 
   // ===== PRIVATE =====
   private async setupTVPlayer(tmdbId: string | number, item: TmdbItem, resumeSeason: number, resumeEpisode: number): Promise<void> {
-    const seasonsList = (item.seasons ?? []).filter(s => s.season_number > 0);
+    const seasonsList = availableSeasons(item);
     const seasonNumbers = seasonsList.length ? seasonsList.map(s => s.season_number) : [1];
     this.seasons.set(seasonNumbers);
 
-    const targetSeason = resumeSeason > 0 ? resumeSeason : (seasonNumbers[0] ?? 1);
+    const targetSeason = resumeSeason > 0 && seasonNumbers.includes(resumeSeason)
+      ? resumeSeason
+      : (seasonNumbers[0] ?? 1);
     this.selectedSeason.set(targetSeason);
 
     const seasonData = await this.tmdb.getSeasonDetails(Number(tmdbId), targetSeason);
@@ -656,6 +659,22 @@ function airedEpisodes(eps: TmdbEpisodeDetail[] | undefined): TmdbEpisodeDetail[
     })
     .slice()
     .sort((a, b) => a.episode_number - b.episode_number);
+}
+
+function availableSeasons(item: TmdbItem): Array<NonNullable<TmdbItem['seasons']>[number]> {
+  const seasons = (item.seasons ?? []).filter((season) => season.season_number > 0);
+  const lastAiredSeason = item.last_episode_to_air?.season_number;
+  if (lastAiredSeason !== undefined) {
+    return seasons.filter((season) => season.season_number <= lastAiredSeason);
+  }
+
+  const cutoff = new Date();
+  cutoff.setHours(23, 59, 59, 999);
+  return seasons.filter((season) => {
+    if (!season.air_date) return true;
+    const date = new Date(season.air_date);
+    return !Number.isNaN(date.getTime()) && date <= cutoff;
+  });
 }
 
 // Cheap stable key for the seriesProgress map. Keeps the lookup branch
