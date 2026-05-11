@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { IconComponent } from '../icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 import type { CardItem } from '../../models';
 
 const IMG_BASE = 'https://image.tmdb.org/t/p/w342';

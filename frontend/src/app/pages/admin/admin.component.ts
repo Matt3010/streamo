@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
-import { IconComponent } from '../../components/icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { AdminTokenRow, PlaybackLogEntry, TransportLogEntry } from '../../models';

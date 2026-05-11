@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs/operators';
-import { IconComponent } from '../icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 
 @Component({
   selector: 'app-floating-search',

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { CardComponent } from '../card/card.component';
-import { IconComponent } from '../icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 import type { CardItem } from '../../models';
 
 @Component({

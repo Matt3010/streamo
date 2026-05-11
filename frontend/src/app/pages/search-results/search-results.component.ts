@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
-import { IconComponent } from '../../components/icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { CardItem, MediaType, TmdbItem } from '../../models';

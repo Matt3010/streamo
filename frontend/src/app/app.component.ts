@@ -1,15 +1,17 @@
 import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
 import { ActivatedRouteSnapshot, Router, RouterOutlet } from '@angular/router';
 import { AuthModalComponent } from './components/auth-modal/auth-modal.component';
-import { ToastComponent } from './components/toast/toast.component';
+import { OfflineBannerComponent } from './components/offline-banner/offline-banner.component';
+import { ToastComponent } from './ui/toast/toast.component';
 import { AuthService } from './services/auth.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, AuthModalComponent, ToastComponent],
+  imports: [RouterOutlet, AuthModalComponent, OfflineBannerComponent, ToastComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <app-offline-banner />
     <router-outlet />
     <app-auth-modal />
     <app-toast />

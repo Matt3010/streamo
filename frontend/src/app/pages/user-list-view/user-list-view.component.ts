@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
-import { IconComponent } from '../../components/icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, HostListener, effect, inject, input, model, output } from '@angular/core';
-import { IconComponent } from '../../components/icon/icon.component';
+import { IconComponent } from '../icon/icon.component';
 import { BodyScrollLockService } from '../../services/body-scroll-lock.service';
 
 @Component({
