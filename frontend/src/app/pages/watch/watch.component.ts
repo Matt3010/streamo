@@ -10,8 +10,9 @@ import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { BackgroundService } from '../../services/background.service';
-import { getCompactReleaseStatusText, getFullReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
-import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
+import { tmdbToCardItem } from '../../utils/card-item.util';
+import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-release.util';
+import type { CardItem, MediaType, TmdbReview } from '../../models';
 
 @Component({
   selector: 'app-watch',
@@ -485,7 +486,7 @@ export class WatchComponent {
     this.recommendations.set([]);
     const results = await this.tmdb.getRecommendations(id, type);
     if (seq !== this.recommendationsSeq) return;
-    this.recommendations.set(results.slice(0, 20).map(it => tmdbToCard(it, type)));
+    this.recommendations.set(results.slice(0, 20).map(it => tmdbToCardItem(it, type, { releaseTextMode: 'upcoming-only' })));
     this.recommendationsLoading.set(false);
   }
 
@@ -587,24 +588,6 @@ export class WatchComponent {
     if (!p || p.duration <= 0) return 0;
     return Math.min(100, Math.max(0, (p.position / p.duration) * 100));
   }
-}
-
-function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
-  const dateStr = item.release_date ?? item.first_air_date ?? '';
-  const upcoming = isTitleUpcoming(item, type);
-  return {
-    tmdb_id: item.id,
-    media_type: type,
-    title: item.title ?? item.name ?? 'Senza titolo',
-    poster: item.poster_path ?? null,
-    popularity: item.popularity,
-    voteCount: item.vote_count,
-    year: dateStr.split('-')[0] ?? '',
-    rating: item.vote_average ? item.vote_average.toFixed(1) : '',
-    isUpcoming: upcoming,
-    upcomingBadge: getUpcomingBadgeText(item, type),
-    nextReleaseText: upcoming ? getCompactReleaseStatusText(item, type) : undefined
-  };
 }
 
 function formatTime(seconds: number): string {

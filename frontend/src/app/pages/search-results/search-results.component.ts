@@ -7,8 +7,9 @@ import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { ToastService } from '../../services/toast.service';
 import { WatchlistService } from '../../services/watchlist.service';
-import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
-import type { CardItem, MediaType, TmdbItem } from '../../models';
+import { tmdbToCardItem } from '../../utils/card-item.util';
+import { applyWatchlistFlags, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
+import type { CardItem } from '../../models';
 
 @Component({
   selector: 'app-search-results',
@@ -94,21 +95,9 @@ export class SearchResultsComponent {
 
   protected async onWatchlistToggle(item: CardItem): Promise<void> {
     if (!this.auth.isLoggedIn()) return;
-
-    if (item.inWatchlist) {
-      await this.watchlist.remove(item.tmdb_id, item.media_type);
-      this.items.update((items) => items.map((candidate) =>
-        isSameCard(candidate, item) ? { ...candidate, inWatchlist: false } : candidate
-      ));
-      this.toast.show(`${item.title}: rimosso dalla lista`);
-      return;
-    }
-
-    await this.watchlist.add(item.tmdb_id, item.media_type, item.title, item.poster);
-    this.items.update((items) => items.map((candidate) =>
-      isSameCard(candidate, item) ? { ...candidate, inWatchlist: true } : candidate
-    ));
-    this.toast.show(`${item.title}: aggiunto alla lista`);
+    const result = await toggleCardWatchlist(item, this.watchlist);
+    this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+    this.toast.show(result.message);
   }
 
   private async runSearch(q: string): Promise<void> {
@@ -117,7 +106,7 @@ export class SearchResultsComponent {
     this.items.set([]);
     const results = await this.tmdb.searchAll(q);
     if (mySeq !== this.seq) return; // newer search superseded this one
-    let items = results.map(r => tmdbToCard(r));
+    let items = results.map(r => tmdbToCardItem(r, r.media_type === 'tv' ? 'tv' : 'movie', { releaseTextMode: 'upcoming-only' }));
     if (this.auth.isLoggedIn()) {
       items = await this.withWatchlistFlags(items);
       if (mySeq !== this.seq) return;
@@ -141,33 +130,6 @@ export class SearchResultsComponent {
 
   private async withWatchlistFlags(items: CardItem[]): Promise<CardItem[]> {
     const list = await this.watchlist.list();
-    const ids = new Set(list.map((entry) => `${entry.media_type}:${entry.tmdb_id}`));
-    return items.map((item) => ({
-      ...item,
-      inWatchlist: ids.has(`${item.media_type}:${item.tmdb_id}`)
-    }));
+    return applyWatchlistFlags(items, list);
   }
-}
-
-function tmdbToCard(item: TmdbItem): CardItem {
-  const dateStr = item.release_date ?? item.first_air_date ?? '';
-  const mediaType: MediaType = item.media_type === 'tv' ? 'tv' : 'movie';
-  const upcoming = isTitleUpcoming(item, mediaType);
-  return {
-    tmdb_id: item.id,
-    media_type: mediaType,
-    title: item.title ?? item.name ?? 'Senza titolo',
-    poster: item.poster_path ?? null,
-    popularity: item.popularity,
-    voteCount: item.vote_count,
-    year: dateStr.split('-')[0] ?? '',
-    rating: item.vote_average ? item.vote_average.toFixed(1) : '',
-    isUpcoming: upcoming,
-    upcomingBadge: getUpcomingBadgeText(item, mediaType),
-    nextReleaseText: upcoming ? getCompactReleaseStatusText(item, mediaType) : undefined
-  };
-}
-
-function isSameCard(a: CardItem, b: CardItem): boolean {
-  return a.tmdb_id === b.tmdb_id && a.media_type === b.media_type;
 }

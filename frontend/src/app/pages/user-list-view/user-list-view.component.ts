@@ -3,12 +3,14 @@ import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
+import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
+import { enrichCardsWithTmdb } from '../../utils/card-item.util';
+import { applyWatchlistFlags, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
@@ -81,7 +83,9 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             [showRemove]="true"
             [showProgress]="true"
             [showStatusToggle]="kind() === 'watchlist'"
+            [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
             (cardClick)="onCardClick($event)"
+            (watchlistToggleClick)="onWatchlistToggle($event)"
             (statusToggleClick)="onStatusToggle($event)"
             (removeClick)="onRemoveClick($event)" />
         }
@@ -118,6 +122,14 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 <app-icon name="check"></app-icon>
               </button>
             }
+            @if (kind() === 'history' && auth.isLoggedIn()) {
+              <button class="row-action row-watchlist"
+                      [class.active]="it.inWatchlist === true"
+                      [title]="it.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                      (click)="onWatchlistToggle(it); $event.stopPropagation()">
+                <app-icon name="bookmark"></app-icon>
+              </button>
+            }
             <button class="row-action row-remove"
                     [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
                     (click)="onRemoveClick(it); $event.stopPropagation()">
@@ -131,6 +143,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
   styleUrl: './user-list-view.component.css'
 })
 export class UserListViewComponent {
+  protected readonly auth = inject(AuthService);
   private readonly tmdb = inject(TmdbService);
   private readonly watchlist = inject(WatchlistService);
   private readonly history = inject(HistoryService);
@@ -189,6 +202,8 @@ export class UserListViewComponent {
       const kind = this.kind();
       const media = this.mediaFilter();
       const status = kind === 'watchlist' ? this.statusFilter() : undefined;
+      this.auth.currentUser();
+      if (kind === 'history') this.watchlist.tick();
       void this.load(kind, media, status);
     });
   }
@@ -230,6 +245,13 @@ export class UserListViewComponent {
     void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
   }
 
+  protected async onWatchlistToggle(item: CardItem): Promise<void> {
+    if (this.kind() !== 'history' || !this.auth.isLoggedIn()) return;
+    const result = await toggleCardWatchlist(item, this.watchlist);
+    this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+    this.toast.show(result.message);
+  }
+
   private async load(kind: UserListType, media: MediaFilter, status?: WatchlistStatus): Promise<void> {
     const mySeq = ++this.seq;
     this.loading.set(true);
@@ -249,42 +271,28 @@ export class UserListViewComponent {
         episode: w.resume_episode,
         position: w.position,
         duration: w.duration
-      })), this.tmdb);
+      })), this.tmdb, { releaseTextMode: 'all' });
       if (mySeq !== this.seq) return;
       this.items.set(items);
     } else {
-      const list = await this.history.list(mediaType ? { media_type: mediaType } : undefined);
+      const [list, watchlist] = await Promise.all([
+        this.history.list(mediaType ? { media_type: mediaType } : undefined),
+        this.watchlist.list()
+      ]);
       if (mySeq !== this.seq) return;
-      const items = await enrichCardsWithTmdb(list.map(h => ({
+      const items = await enrichCardsWithTmdb(applyWatchlistFlags(list.map(h => ({
         tmdb_id: h.tmdb_id,
         media_type: h.media_type,
         title: h.title ?? 'Senza titolo',
         poster: h.poster,
         season: h.season,
         episode: h.episode
-      })), this.tmdb);
+      })), watchlist), this.tmdb, { releaseTextMode: 'all' });
       if (mySeq !== this.seq) return;
       this.items.set(items);
     }
     this.loading.set(false);
   }
-}
-
-async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promise<CardItem[]> {
-  return Promise.all(items.map(async (item) => {
-    const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
-    if (!details) return item;
-    return {
-      ...item,
-      popularity: details.popularity,
-      voteCount: details.vote_count,
-      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
-      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
-      isUpcoming: isTitleUpcoming(details, item.media_type),
-      upcomingBadge: getUpcomingBadgeText(details, item.media_type),
-      nextReleaseText: item.status !== undefined ? getCompactReleaseStatusText(details, item.media_type) : undefined
-    };
-  }));
 }
 
 function loadViewMode(): ViewMode {

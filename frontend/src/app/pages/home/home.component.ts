@@ -8,7 +8,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
-import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
+import { enrichCardsWithTmdb, tmdbToCardItem } from '../../utils/card-item.util';
 import { SECTIONS } from './sections.config';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
 
@@ -108,7 +108,7 @@ export class HomeComponent {
     const results = await Promise.all(SECTIONS.map(c => this.tmdb.list(c.endpoint)));
     this.sectionStates.set(SECTIONS.map((c, i) => ({
       config: c,
-      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCard(it, c.mediaType)),
+      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCardItem(it, c.mediaType, { releaseTextMode: 'upcoming-only' })),
       loading: false
     })));
   }
@@ -148,46 +148,11 @@ export class HomeComponent {
       position: w.position,
       duration: w.duration,
       watchStatus: w.watch_status_text
-    })), this.tmdb);
+    })), this.tmdb, { releaseTextMode: 'all' });
     if (seq !== this.userSeq) return;
 
     this.userLoading.set(false);
     this.continueItems.set(progressCards);
     this.watchlistItems.set(watchlistCards);
   }
-}
-
-function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
-  const dateStr = item.release_date ?? item.first_air_date ?? '';
-  const upcoming = isTitleUpcoming(item, type);
-  return {
-    tmdb_id: item.id,
-    media_type: type,
-    title: item.title ?? item.name ?? 'Senza titolo',
-    poster: item.poster_path ?? null,
-    popularity: item.popularity,
-    voteCount: item.vote_count,
-    year: dateStr.split('-')[0] ?? '',
-    rating: item.vote_average ? item.vote_average.toFixed(1) : '',
-    isUpcoming: upcoming,
-    upcomingBadge: getUpcomingBadgeText(item, type),
-    nextReleaseText: upcoming ? getCompactReleaseStatusText(item, type) : undefined
-  };
-}
-
-async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promise<CardItem[]> {
-  return Promise.all(items.map(async (item) => {
-    const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
-    if (!details) return item;
-    return {
-      ...item,
-      popularity: details.popularity,
-      voteCount: details.vote_count,
-      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
-      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
-      isUpcoming: isTitleUpcoming(details, item.media_type),
-      upcomingBadge: getUpcomingBadgeText(details, item.media_type),
-      nextReleaseText: getCompactReleaseStatusText(details, item.media_type)
-    };
-  }));
 }

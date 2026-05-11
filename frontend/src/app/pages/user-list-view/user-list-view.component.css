@@ -154,6 +154,13 @@
   border-color: var(--accent);
 }
 
+.row-watchlist.active,
+.row-watchlist:hover {
+  background: rgba(229, 9, 20, 0.88);
+  border-color: rgba(229, 9, 20, 0.88);
+  color: #fff;
+}
+
 .row-status:hover {
   background: #2ea043;
   border-color: #2ea043;

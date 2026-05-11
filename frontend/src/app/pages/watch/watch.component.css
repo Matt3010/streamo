@@ -503,6 +503,7 @@
   display: flex;
   gap: 0.9rem;
   overflow-x: auto;
+  scroll-snap-type: x mandatory;
   padding: 0.2rem 0 0.35rem;
   scrollbar-width: thin;
   scrollbar-color: var(--surface-hover) transparent;
@@ -517,6 +518,7 @@
 
 .review-card {
   flex: 0 0 min(420px, calc(100vw - 2rem));
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
