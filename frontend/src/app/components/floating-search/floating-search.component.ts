@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs/operators';
@@ -72,8 +72,25 @@ export class FloatingSearchComponent {
 
   protected readonly showSearch = computed<boolean>(() => {
     this.nav();
-    return /^\/browse(?:[/?#]|$)/.test(this.router.url);
+    const path = this.router.url.split('?')[0] ?? '';
+    return /^(\/browse|\/watch|\/search)(?:\/|$)/.test(path);
   });
+
+  protected readonly currentSearchQuery = computed<string>(() => {
+    this.nav();
+    const tree = this.router.parseUrl(this.router.url);
+    return tree.queryParams['q'] ?? '';
+  });
+
+  constructor() {
+    effect(() => {
+      const path = this.router.url.split('?')[0] ?? '';
+      const current = this.currentSearchQuery();
+      if (/^\/search(?:\/|$)/.test(path)) {
+        this.query.set(current);
+      }
+    });
+  }
 
   protected onInput(ev: Event): void {
     const target = ev.target;
@@ -81,6 +98,10 @@ export class FloatingSearchComponent {
   }
 
   protected openSearch(): void {
+    const current = this.currentSearchQuery();
+    if (current && !this.query().trim()) {
+      this.query.set(current);
+    }
     this.searchOpen.set(true);
   }
 
