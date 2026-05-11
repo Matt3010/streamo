@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs/operators';
@@ -32,6 +32,7 @@ import { IconComponent } from '../../ui/icon/icon.component';
             <label class="search-field" aria-label="Termine di ricerca">
               <app-icon name="search"></app-icon>
               <input
+                #searchInput
                 type="text"
                 placeholder="Titolo, film o serie TV"
                 [value]="query()"
@@ -46,11 +47,11 @@ import { IconComponent } from '../../ui/icon/icon.component';
             </label>
 
             <div class="search-actions">
-              <button class="ghost-btn" type="button" (click)="closeSearch()">Chiudi</button>
               <button class="search-btn" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
                 <app-icon name="search"></app-icon>
                 <span>Cerca</span>
               </button>
+              <button class="ghost-btn" type="button" (click)="closeSearch()">Chiudi</button>
             </div>
           </div>
         }
@@ -61,6 +62,7 @@ import { IconComponent } from '../../ui/icon/icon.component';
 })
 export class FloatingSearchComponent {
   private readonly router = inject(Router);
+  private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   readonly query = signal('');
   readonly searchOpen = signal(false);
@@ -76,19 +78,15 @@ export class FloatingSearchComponent {
     return /^(\/browse|\/watch|\/search)(?:\/|$)/.test(path);
   });
 
-  protected readonly currentSearchQuery = computed<string>(() => {
-    this.nav();
-    const tree = this.router.parseUrl(this.router.url);
-    return tree.queryParams['q'] ?? '';
-  });
-
   constructor() {
     effect(() => {
-      const path = this.router.url.split('?')[0] ?? '';
-      const current = this.currentSearchQuery();
-      if (/^\/search(?:\/|$)/.test(path)) {
-        this.query.set(current);
-      }
+      if (!this.searchOpen()) return;
+      const input = this.searchInput()?.nativeElement;
+      if (!input) return;
+      queueMicrotask(() => {
+        input.focus();
+        input.select();
+      });
     });
   }
 
@@ -98,10 +96,6 @@ export class FloatingSearchComponent {
   }
 
   protected openSearch(): void {
-    const current = this.currentSearchQuery();
-    if (current && !this.query().trim()) {
-      this.query.set(current);
-    }
     this.searchOpen.set(true);
   }
 
@@ -122,6 +116,7 @@ export class FloatingSearchComponent {
     const q = this.query().trim();
     if (q) {
       this.searchOpen.set(false);
+      this.query.set('');
       void this.router.navigate(['/search'], { queryParams: { q } });
     }
   }
