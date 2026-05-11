@@ -1,9 +1,11 @@
 :host {
   display: block;
+  width: 100%;
 }
 
 :host(.align-right) {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .rank-badge {
