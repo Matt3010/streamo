@@ -23,10 +23,6 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
         <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
       }
 
-      @if (item().upcomingBadge) {
-        <div class="card-state-badge">{{ item().upcomingBadge }}</div>
-      }
-
       @if (hasActions()) {
         <div class="card-actions">
           @if (showWatchlistToggle()) {

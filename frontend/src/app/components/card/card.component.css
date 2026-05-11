@@ -127,27 +127,6 @@
   background: var(--accent);
 }
 
-.card-state-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  max-width: calc(100% - 56px);
-  min-height: 28px;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(10, 10, 10, 0.88);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-}
-
 /* Top-right action buttons (status / remove) */
 .card-actions {
   position: absolute;

@@ -116,19 +116,6 @@
   font-weight: 600;
 }
 
-.item-upcoming-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0.12rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-
 .item-release-status {
   color: var(--text-muted);
   font-weight: 600;

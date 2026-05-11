@@ -125,6 +125,18 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
           </div>
         }
 
+        @if (!loading() && !isUpcomingTitle() && player.currentItemType() === 'movie' && movieProgressPct() !== null) {
+          <div class="movie-progress-block">
+            <div class="movie-progress-meta">
+              <span>Progresso</span>
+              <span>{{ movieProgressLabel() }}</span>
+            </div>
+            <div class="movie-progress-bar" aria-hidden="true">
+              <span [style.width.%]="movieProgressPct()"></span>
+            </div>
+          </div>
+        }
+
         @if (loading() && type() === 'tv') {
           <div class="episode-grid-section">
             <div class="skeleton skeleton-section-title"></div>
@@ -364,6 +376,20 @@ export class WatchComponent {
     const p = this.player.resumeProgress();
     if (!p || p.duration <= 0) return false;
     return p.position / p.duration >= 0.8;
+  });
+
+  protected readonly movieProgressPct = computed(() => {
+    if (this.player.currentItemType() !== 'movie') return null;
+    const progress = this.player.resumeProgress();
+    if (!progress || progress.duration <= 0) return null;
+    return Math.min(100, Math.max(0, (progress.position / progress.duration) * 100));
+  });
+
+  protected readonly movieProgressLabel = computed(() => {
+    if (this.player.currentItemType() !== 'movie') return '';
+    const progress = this.player.resumeProgress();
+    if (!progress || progress.duration <= 0) return '';
+    return `${formatTimeCompact(progress.position)}/${formatTimeCompact(progress.duration)}`;
   });
 
   // Episode number to highlight on the card grid for the season currently

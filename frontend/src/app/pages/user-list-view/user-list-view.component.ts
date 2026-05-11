@@ -97,13 +97,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
             <div class="item-info">
               <span class="item-title">{{ it.title }}</span>
-              @if (it.season && it.episode || it.upcomingBadge || it.watchStatus || it.nextReleaseText) {
+              @if (it.season && it.episode || it.watchStatus || it.nextReleaseText) {
                 <span class="item-sub">
                   @if (it.season && it.episode) {
                     <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
-                  }
-                  @if (it.upcomingBadge) {
-                    <span class="item-upcoming-badge">{{ it.upcomingBadge }}</span>
                   }
                   @if (it.watchStatus) {
                     <span class="item-watch-status">{{ it.watchStatus }}</span>
