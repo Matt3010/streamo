@@ -76,7 +76,10 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
           </div>
         } @else if (isUpcomingTitle()) {
           <div class="player-wrapper player-wrapper-upcoming">
-            <div class="upcoming-panel">
+            <div class="upcoming-placeholder">
+              <div class="upcoming-placeholder-icon">
+                <app-icon name="calendar"></app-icon>
+              </div>
               <span class="upcoming-pill">{{ upcomingBadgeText() }}</span>
               <h3>{{ upcomingTitle() }}</h3>
               @if (releaseStatusStr()) {
