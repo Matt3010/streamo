@@ -116,6 +116,11 @@
   font-weight: 600;
 }
 
+.item-release-status {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .row-action {
   width: 36px;
   height: 36px;

@@ -26,4 +26,6 @@ export interface CardItem {
   status?: WatchlistStatus;
   /** Optional secondary line (e.g. "Mancano 3 episodi" on the watchlist). */
   watchStatus?: string;
+  /** Compact upcoming-release hint for watchlist/continue-monitoring cards. */
+  nextReleaseText?: string;
 }

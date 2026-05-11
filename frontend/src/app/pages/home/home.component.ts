@@ -8,6 +8,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
+import { getCompactReleaseStatusText } from '../../utils/media-release.util';
 import { SECTIONS } from './sections.config';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
 
@@ -179,7 +180,8 @@ async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promis
       popularity: details.popularity,
       voteCount: details.vote_count,
       rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
-      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? ''
+      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
+      nextReleaseText: getCompactReleaseStatusText(details, item.media_type)
     };
   }));
 }

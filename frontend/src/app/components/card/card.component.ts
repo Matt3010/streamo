@@ -54,6 +54,9 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
         @if (item().watchStatus) {
           <div class="card-watch-status">{{ item().watchStatus }}</div>
         }
+        @if (item().nextReleaseText) {
+          <div class="card-release-status">{{ item().nextReleaseText }}</div>
+        }
       </div>
     </article>
   `,

@@ -91,6 +91,17 @@
   text-overflow: ellipsis;
 }
 
+.card-release-status {
+  margin-top: 0.22rem;
+  font-size: 0.68rem;
+  color: #d9dde7;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Progress bar inset from the edges so the rounded corners don't clip it
  * into a stub. Track is light grey (visible against the dark gradient) so
  * the unfilled portion communicates "how much is left" at a glance. */
