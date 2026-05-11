@@ -74,15 +74,6 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
                       allow="autoplay; encrypted-media; fullscreen"></iframe>
             }
           </div>
-        } @else if (isUpcomingTitle()) {
-          <div class="player-wrapper player-wrapper-upcoming">
-            <div class="upcoming-message">
-              <h3>{{ upcomingTitle() }}</h3>
-              @if (releaseStatusStr()) {
-                <p>{{ releaseStatusStr() }}</p>
-              }
-            </div>
-          </div>
         }
 
         @if (loading()) {
@@ -92,7 +83,12 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
           </div>
         } @else if (isUpcomingTitle()) {
           <div class="player-actions">
-            <div class="release-inline-note">Disponibile dopo l'uscita</div>
+            <div class="release-inline-note">
+              Disponibile dopo l'uscita
+              @if (releaseStatusStr()) {
+                <span>{{ releaseStatusStr() }}</span>
+              }
+            </div>
             <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -355,12 +351,6 @@ export class WatchComponent {
     const type = this.player.currentItemType();
     return item !== null && type !== null ? isTitleUpcoming(item, type) : false;
   });
-
-  protected readonly upcomingBadgeText = computed(() => this.type() === 'movie' ? 'Prossimamente' : 'Nuova serie');
-
-  protected readonly upcomingTitle = computed(() =>
-    this.type() === 'movie' ? 'Film non ancora disponibile' : 'Serie non ancora disponibile'
-  );
 
   // 80% mirrors WATCHED_THRESHOLD on the backend — past that point we
   // assume the user is "done enough" with this episode that they'd plausibly
