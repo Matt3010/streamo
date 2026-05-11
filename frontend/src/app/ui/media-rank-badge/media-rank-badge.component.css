@@ -1,10 +1,11 @@
 :host {
-  display: block;
-  width: 100%;
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
 }
 
 :host(.align-right) {
-  display: flex;
+  display: inline-flex;
   justify-content: flex-end;
 }
 

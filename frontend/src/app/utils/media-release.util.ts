@@ -33,7 +33,7 @@ export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): st
   if (type === 'movie') {
     const date = parseDateOnly(item.release_date);
     if (date && isFutureDate(date)) {
-      return `Film il ${formatDateShort(date)}`;
+      return `Esce il ${formatDateLong(date)}`;
     }
     return '';
   }

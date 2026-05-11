@@ -39,10 +39,21 @@ export class TmdbService {
 
   async getReviews(tmdbId: string | number, type: MediaType): Promise<TmdbReview[]> {
     try {
-      const res = await fetch(`${TMDB_BASE}/${type}/${tmdbId}/reviews?language=it-IT`);
-      if (!res.ok) return [];
-      const data = await res.json() as { results?: TmdbReview[] };
-      return data.results ?? [];
+      const urls = [
+        `${TMDB_BASE}/${type}/${tmdbId}/reviews?language=it-IT`,
+        `${TMDB_BASE}/${type}/${tmdbId}/reviews`,
+        `${TMDB_BASE}/${type}/${tmdbId}/reviews?language=en-US`
+      ];
+
+      for (const url of urls) {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json() as { results?: TmdbReview[] };
+        const reviews = data.results ?? [];
+        if (reviews.length > 0) return reviews;
+      }
+
+      return [];
     } catch {
       return [];
     }
