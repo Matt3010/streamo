@@ -620,6 +620,10 @@
   .release-inline-note {
     flex-basis: 100%;
   }
+  .player-actions > .action-btn.icon-only {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 
   /* Smaller episode cards on phones — fits ~1.6 cards per viewport so the
    * "swipe for more" affordance is obvious at a glance. */
