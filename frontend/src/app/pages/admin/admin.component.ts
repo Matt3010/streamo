@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { faFileLines, faSatelliteDish, faTicket, faTowerBroadcast } from '@fortawesome/free-solid-svg-icons';
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import type { AdminTokenRow, PlaybackLogEntry, TransportLogEntry } from '../../models';
@@ -24,7 +26,7 @@ function timeAgo(timestamp: number): string {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [UiModalComponent, IconComponent],
+  imports: [UiModalComponent, IconComponent, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -42,7 +44,7 @@ function timeAgo(timestamp: number): string {
     <div class="admin-content">
       <section class="admin-section">
         <div class="section-header">
-          <h3>Token e Utenti</h3>
+          <app-section-header title="Token e Utenti" [icon]="tokensIcon" />
           <div class="section-actions">
             <input type="text" placeholder="Label (opzionale)" class="label-input"
                    [value]="newTokenLabel()" (input)="updateLabel($event)">
@@ -109,7 +111,7 @@ function timeAgo(timestamp: number): string {
 
       <section class="admin-section">
         <div class="section-header">
-          <h3>Sessioni Live</h3>
+          <app-section-header title="Sessioni Live" [icon]="sessionsIcon" />
           <span class="live-pill" [class.connected]="admin.sessionsLiveConnected()">
             <span class="live-pill-dot" aria-hidden="true"></span>
             <span>{{ admin.sessionsLiveConnected() ? 'Canale live attivo' : 'Canale live non connesso' }}</span>
@@ -142,7 +144,7 @@ function timeAgo(timestamp: number): string {
       <section class="admin-section">
         <div class="section-header">
           <div class="section-heading">
-            <h3>Playback Logs</h3>
+            <app-section-header title="Playback Logs" [icon]="playbackLogsIcon" />
             <span class="section-caption">
               File: {{ admin.playbackLogPath() || '/data/playback.log' }} | Ultimi {{ admin.playbackLogCapacity() }}
             </span>
@@ -179,7 +181,7 @@ function timeAgo(timestamp: number): string {
       <section class="admin-section">
         <div class="section-header">
           <div class="section-heading">
-            <h3>Transport Logs</h3>
+            <app-section-header title="Transport Logs" [icon]="transportLogsIcon" />
             <span class="section-caption">
               File: {{ admin.transportLogPath() || '/data/nginx-playback-access.log' }} | Ultimi {{ admin.transportLogCapacity() }}
             </span>
@@ -248,6 +250,10 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly admin = inject(AdminService);
   private readonly toast = inject(ToastService);
   private readonly navSource = inject(NavigationSourceService);
+  protected readonly tokensIcon = faTicket;
+  protected readonly sessionsIcon = faSatelliteDish;
+  protected readonly playbackLogsIcon = faFileLines;
+  protected readonly transportLogsIcon = faTowerBroadcast;
 
   protected readonly newTokenLabel = signal('');
   protected readonly revokeModalOpen = signal(false);
