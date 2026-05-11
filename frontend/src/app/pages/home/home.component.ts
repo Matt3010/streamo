@@ -23,6 +23,7 @@ interface SectionState {
 
 type HomeConfirmAction =
   | { type: 'hide-continue'; item: CardItem }
+  | { type: 'mark-watchlist-done'; item: CardItem }
   | { type: 'remove-watchlist'; item: CardItem; source: 'continue' | 'watchlist' };
 
 @Component({
@@ -50,6 +51,9 @@ type HomeConfirmAction =
         <div class="home-empty-state">
           <p class="home-empty-title">Niente da riprendere</p>
           <p class="home-empty-hint">I titoli che inizi a guardare compariranno qui.</p>
+          <div class="home-empty-actions">
+            <button class="primary-btn" (click)="goToBrowse()">Scopri film popolari</button>
+          </div>
         </div>
       </section>
     }
@@ -73,6 +77,9 @@ type HomeConfirmAction =
         <div class="home-empty-state">
           <p class="home-empty-title">La tua lista è vuota</p>
           <p class="home-empty-hint">Aggiungi un film o una serie con il segnalibro per ritrovarli qui.</p>
+          <div class="home-empty-actions">
+            <button class="primary-btn" (click)="goToSearch()">Vai a cercare</button>
+          </div>
         </div>
       </section>
     }
@@ -141,6 +148,14 @@ export class HomeComponent {
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { queryParams });
   }
 
+  protected goToSearch(): void {
+    void this.router.navigate(['/search']);
+  }
+
+  protected goToBrowse(): void {
+    void this.router.navigate(['/browse']);
+  }
+
   protected async removeContinue(item: CardItem): Promise<void> {
     this.pendingAction.set({ type: 'hide-continue', item });
     this.confirmModalTitle.set('Nascondi Da Continua a Guardare');
@@ -168,10 +183,17 @@ export class HomeComponent {
 
   protected async toggleWatchlistStatus(item: CardItem): Promise<void> {
     const next: WatchlistStatus = (item.status ?? 'todo') === 'done' ? 'todo' : 'done';
+    if (next === 'done') {
+      this.pendingAction.set({ type: 'mark-watchlist-done', item });
+      this.confirmModalTitle.set('Segna Come Visto');
+      this.confirmModalMessage.set(`Vuoi segnare ${item.title} come visto?`);
+      this.confirmModalWarning.set('Il titolo verrà spostato fuori da questa sezione.');
+      this.confirmModalActionLabel.set('Segna come visto');
+      this.confirmModalOpen.set(true);
+      return;
+    }
     await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
-    this.toast.show(next === 'done'
-      ? `${item.title}: segnato come visto`
-      : `${item.title}: rimesso in "Da guardare"`);
+    this.toast.show(`${item.title}: rimesso in "Da guardare"`);
   }
 
   protected async removeFromHomeWatchlist(item: CardItem): Promise<void> {
@@ -199,6 +221,16 @@ export class HomeComponent {
         items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
       );
       this.toast.show(`${item.title}: nascosto da continua a guardare`);
+      return;
+    }
+
+    if (action.type === 'mark-watchlist-done') {
+      const item = action.item;
+      await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'done');
+      this.watchlistItems.update(items =>
+        items.filter(candidate => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+      );
+      this.toast.show(`${item.title}: segnato come visto`);
       return;
     }
 

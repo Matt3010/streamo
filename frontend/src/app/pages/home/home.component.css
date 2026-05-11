@@ -28,3 +28,10 @@
   line-height: 1.5;
   color: var(--text-muted);
 }
+
+.home-empty-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+}

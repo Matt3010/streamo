@@ -20,9 +20,12 @@ type MediaFilter = 'all' | 'tv' | 'movie';
 type BackendMediaFilter = Exclude<MediaFilter, 'all'>;
 type PendingAction =
   | { type: 'remove-item'; item: CardItem }
+  | { type: 'mark-done'; item: CardItem }
   | { type: 'remove-watchlist'; item: CardItem };
 
 const VIEW_MODE_KEY = 'vixstream.user-list.view-mode';
+const MEDIA_FILTER_KEY = 'vixstream.user-list.media-filter';
+const STATUS_FILTER_KEY = 'vixstream.user-list.status-filter';
 
 const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   { value: 'todo', label: 'Da guardare' },
@@ -78,6 +81,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       <div class="empty-state">
         <p class="empty-state-title">{{ emptyTitle() }}</p>
         <p class="empty-state-hint">{{ emptyHint() }}</p>
+        <div class="empty-state-actions">
+          @if (kind() === 'watchlist') {
+            <button class="primary-btn" (click)="goToSearch()">Vai a cercare</button>
+          } @else {
+            <button class="primary-btn" (click)="goToBrowse()">Scopri film popolari</button>
+          }
+        </div>
       </div>
     } @else if (viewMode() === 'grid') {
       <div class="content-grid">
@@ -166,8 +176,8 @@ export class UserListViewComponent {
 
   protected readonly statusTabs = STATUS_TABS;
   protected readonly mediaTabs = MEDIA_TABS;
-  protected readonly statusFilter = signal<WatchlistStatus>('todo');
-  protected readonly mediaFilter = signal<MediaFilter>('all');
+  protected readonly statusFilter = signal<WatchlistStatus>(loadStatusFilter());
+  protected readonly mediaFilter = signal<MediaFilter>(loadMediaFilter());
   protected readonly viewMode = signal<ViewMode>(loadViewMode());
 
   protected readonly items = signal<CardItem[]>([]);
@@ -211,6 +221,7 @@ export class UserListViewComponent {
   protected readonly confirmModalTitle = computed(() => {
     const action = this.pendingAction();
     if (!action) return 'Conferma';
+    if (action.type === 'mark-done') return 'Segna Come Visto';
     if (action.type === 'remove-watchlist') return 'Rimuovi Dalla Lista';
     return this.kind() === 'watchlist' ? 'Rimuovi Dalla Lista' : 'Rimuovi Dalla Cronologia';
   });
@@ -219,6 +230,9 @@ export class UserListViewComponent {
     const action = this.pendingAction();
     const item = action?.item;
     if (!item) return '';
+    if (action.type === 'mark-done') {
+      return `Vuoi segnare ${item.title} come visto?`;
+    }
     if (action.type === 'remove-watchlist') {
       return `Vuoi rimuovere ${item.title} dalla tua lista?`;
     }
@@ -230,13 +244,16 @@ export class UserListViewComponent {
   protected readonly confirmModalWarning = computed(() => {
     const action = this.pendingAction();
     if (!action) return '';
+    if (action.type === 'mark-done') return 'Il titolo verrà spostato nella sezione "Visto".';
     if (action.type === 'remove-watchlist') return 'Potrai sempre riaggiungerlo più tardi.';
     return this.kind() === 'watchlist'
       ? 'Potrai sempre riaggiungerlo più tardi.'
       : 'Questa voce sparirà dalla cronologia.';
   });
 
-  protected readonly confirmModalActionLabel = computed(() => 'Rimuovi');
+  protected readonly confirmModalActionLabel = computed(() => {
+    return this.pendingAction()?.type === 'mark-done' ? 'Segna come visto' : 'Rimuovi';
+  });
 
   private seq = 0;
 
@@ -249,6 +266,14 @@ export class UserListViewComponent {
       if (kind === 'history') this.watchlist.tick();
       void this.load(kind, media, status);
     });
+
+    effect(() => {
+      try { localStorage.setItem(MEDIA_FILTER_KEY, this.mediaFilter()); } catch { /* storage unavailable */ }
+    });
+
+    effect(() => {
+      try { localStorage.setItem(STATUS_FILTER_KEY, this.statusFilter()); } catch { /* storage unavailable */ }
+    });
   }
 
   protected setViewMode(mode: ViewMode): void {
@@ -258,6 +283,14 @@ export class UserListViewComponent {
 
   protected back(): void {
     this.navSource.goBack('/browse');
+  }
+
+  protected goToSearch(): void {
+    void this.router.navigate(['/search']);
+  }
+
+  protected goToBrowse(): void {
+    void this.router.navigate(['/browse']);
   }
 
   protected onCardClick(item: CardItem): void {
@@ -275,10 +308,13 @@ export class UserListViewComponent {
   protected async onStatusToggle(item: CardItem): Promise<void> {
     if (this.kind() !== 'watchlist') return;
     const next: WatchlistStatus = (item.status ?? 'todo') === 'done' ? 'todo' : 'done';
+    if (next === 'done') {
+      this.pendingAction.set({ type: 'mark-done', item });
+      this.confirmModalOpen.set(true);
+      return;
+    }
     await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
-    this.toast.show(next === 'done'
-      ? `${item.title}: segnato come visto`
-      : `${item.title}: rimesso in "Da guardare"`);
+    this.toast.show(`${item.title}: rimesso in "Da guardare"`);
     void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
   }
 
@@ -298,6 +334,13 @@ export class UserListViewComponent {
     const action = this.pendingAction();
     this.pendingAction.set(null);
     if (!action) return;
+
+    if (action.type === 'mark-done') {
+      await this.watchlist.setStatus(action.item.tmdb_id, action.item.media_type, 'done');
+      this.toast.show(`${action.item.title}: segnato come visto`);
+      void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
+      return;
+    }
 
     if (action.type === 'remove-watchlist') {
       await this.watchlist.remove(action.item.tmdb_id, action.item.media_type);
@@ -370,6 +413,24 @@ function loadViewMode(): ViewMode {
     return v === 'list' ? 'list' : 'grid';
   } catch {
     return 'grid';
+  }
+}
+
+function loadMediaFilter(): MediaFilter {
+  try {
+    const value = localStorage.getItem(MEDIA_FILTER_KEY);
+    return value === 'tv' || value === 'movie' ? value : 'all';
+  } catch {
+    return 'all';
+  }
+}
+
+function loadStatusFilter(): WatchlistStatus {
+  try {
+    const value = localStorage.getItem(STATUS_FILTER_KEY);
+    return value === 'done' ? 'done' : 'todo';
+  } catch {
+    return 'todo';
   }
 }
 

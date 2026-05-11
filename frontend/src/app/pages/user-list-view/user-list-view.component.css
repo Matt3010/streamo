@@ -40,6 +40,14 @@
   gap: 0.6rem;
 }
 
+.empty-state-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
 /* === List view === */
 .item-list {
   max-width: 1400px;
