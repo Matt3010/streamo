@@ -28,7 +28,17 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
           @if (loading()) {
             <div class="skeleton skeleton-title"></div>
           } @else {
-            <h2>{{ title() }}</h2>
+            <div class="watch-heading">
+              <h2>{{ title() }}</h2>
+              @if (rankBadge(); as badge) {
+                <div class="rank-badge" [attr.aria-label]="badge.ariaLabel">
+                  <span class="rank-badge-dot" aria-hidden="true"></span>
+                  <span class="rank-badge-label">{{ badge.label }}</span>
+                  <span class="rank-badge-trend" aria-hidden="true">▲</span>
+                  <span class="rank-badge-value">{{ badge.value }}</span>
+                </div>
+              }
+            </div>
           }
         </div>
 
@@ -224,6 +234,26 @@ export class WatchComponent {
   protected readonly title = computed(() => {
     const it = this.player.currentItem();
     return it?.title ?? it?.name ?? '';
+  });
+
+  protected readonly rankBadge = computed<{
+    label: string;
+    value: string;
+    ariaLabel: string;
+  } | null>(() => {
+    const item = this.player.currentItem();
+    if (!item) return null;
+
+    const popularity = item.popularity ?? 0;
+    const votes = item.vote_count ?? 0;
+    if (popularity < 80 || votes < 40) return null;
+
+    const bucket = popularityToTopBucket(popularity);
+    return {
+      label: `Primi ${bucket}`,
+      value: formatBadgeValue(popularity),
+      ariaLabel: `Stimato tra i primi ${bucket}, popolarita ${formatBadgeValue(popularity)}`
+    };
   });
 
   protected readonly overview = computed(() => this.player.currentItem()?.overview ?? 'Descrizione non disponibile.');
@@ -472,4 +502,18 @@ function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, 
     return first ? `${first} min/episodio` : '';
   }
   return '';
+}
+
+function popularityToTopBucket(popularity: number): number {
+  if (popularity >= 5000) return 10;
+  if (popularity >= 2500) return 50;
+  if (popularity >= 1400) return 100;
+  if (popularity >= 800) return 250;
+  if (popularity >= 400) return 500;
+  if (popularity >= 200) return 1000;
+  return 2500;
+}
+
+function formatBadgeValue(popularity: number): string {
+  return Math.round(popularity).toLocaleString('it-IT');
 }
