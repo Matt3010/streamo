@@ -3,9 +3,11 @@ import { faFileLines, faSatelliteDish, faTicket, faTowerBroadcast } from '@forta
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
+import { runWithPending } from '../../utils/pending.util';
 import type { AdminTokenRow, PlaybackLogEntry, TransportLogEntry } from '../../models';
 
 type TokenAction = 'revoke' | 'reactivate' | 'delete';
@@ -26,7 +28,7 @@ function timeAgo(timestamp: number): string {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [UiModalComponent, IconComponent, SectionHeaderComponent],
+  imports: [UiModalComponent, IconComponent, PendingButtonDirective, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -48,7 +50,7 @@ function timeAgo(timestamp: number): string {
           <div class="section-actions">
             <input type="text" placeholder="Label (opzionale)" class="label-input"
                    [value]="newTokenLabel()" (input)="updateLabel($event)">
-            <button class="action-btn" (click)="generateToken()">
+            <button class="action-btn" [uiPending]="generateTokenPending()" (click)="generateToken()">
               Genera Token
             </button>
           </div>
@@ -237,7 +239,7 @@ function timeAgo(timestamp: number): string {
         <p class="warning">{{ confirmModalWarning() }}</p>
         <div class="modal-actions">
           <button class="cancel-btn" (click)="cancelRevoke()">Annulla</button>
-          <button class="danger-btn" [class.neutral-btn]="confirmAction() === 'reactivate'" (click)="executeTokenAction()">
+          <button class="danger-btn" [class.neutral-btn]="confirmAction() === 'reactivate'" [uiPending]="tokenActionPending()" (click)="executeTokenAction()">
             {{ confirmModalActionLabel() }}
           </button>
         </div>
@@ -257,6 +259,8 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   protected readonly newTokenLabel = signal('');
   protected readonly revokeModalOpen = signal(false);
+  protected readonly generateTokenPending = signal(false);
+  protected readonly tokenActionPending = signal(false);
   protected readonly tokenToRevoke = signal<AdminTokenRow | null>(null);
   protected readonly confirmAction = signal<TokenAction>('revoke');
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
@@ -311,16 +315,18 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   protected async generateToken(): Promise<void> {
-    const label = this.newTokenLabel().trim() || undefined;
-    const result = await this.admin.createToken(label);
-    if (result) {
-      this.newTokenLabel.set('');
-      this.toast.show('Token generato');
-      await navigator.clipboard.writeText(result.token);
-      this.toast.show('Token copiato negli appunti');
-    } else {
-      this.toast.show('Errore nella generazione del token');
-    }
+    await runWithPending(this.generateTokenPending, async () => {
+      const label = this.newTokenLabel().trim() || undefined;
+      const result = await this.admin.createToken(label);
+      if (result) {
+        this.newTokenLabel.set('');
+        this.toast.show('Token generato');
+        await navigator.clipboard.writeText(result.token);
+        this.toast.show('Token copiato negli appunti');
+      } else {
+        this.toast.show('Errore nella generazione del token');
+      }
+    });
   }
 
   protected async copyToken(token: string): Promise<void> {
@@ -353,36 +359,38 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   protected async executeTokenAction(): Promise<void> {
-    const token = this.tokenToRevoke();
-    if (!token) return;
+    await runWithPending(this.tokenActionPending, async () => {
+      const token = this.tokenToRevoke();
+      if (!token) return;
 
-    const action = this.confirmAction();
-    const result = action === 'revoke'
-      ? await this.admin.revokeToken(token.token)
-      : action === 'reactivate'
-        ? await this.admin.reactivateToken(token.token)
-        : await this.admin.deleteTokenPermanently(token.token);
-    this.revokeModalOpen.set(false);
-    this.tokenToRevoke.set(null);
-    this.confirmAction.set('revoke');
+      const action = this.confirmAction();
+      const result = action === 'revoke'
+        ? await this.admin.revokeToken(token.token)
+        : action === 'reactivate'
+          ? await this.admin.reactivateToken(token.token)
+          : await this.admin.deleteTokenPermanently(token.token);
+      this.revokeModalOpen.set(false);
+      this.tokenToRevoke.set(null);
+      this.confirmAction.set('revoke');
 
-    if (result.ok) {
-      if (action === 'revoke') {
-        this.toast.show(result.was_used ? 'Accesso revocato' : 'Token revocato');
-      } else if (action === 'reactivate') {
-        this.toast.show(result.was_used ? 'Accesso riattivato' : 'Token riattivato');
+      if (result.ok) {
+        if (action === 'revoke') {
+          this.toast.show(result.was_used ? 'Accesso revocato' : 'Token revocato');
+        } else if (action === 'reactivate') {
+          this.toast.show(result.was_used ? 'Accesso riattivato' : 'Token riattivato');
+        } else {
+          this.toast.show(result.was_used ? 'Token eliminato e accesso revocato' : 'Token eliminato definitivamente');
+        }
       } else {
-        this.toast.show(result.was_used ? 'Token eliminato e accesso revocato' : 'Token eliminato definitivamente');
+        this.toast.show(
+          action === 'revoke'
+            ? 'Errore nella revoca'
+            : action === 'reactivate'
+              ? 'Errore nella riattivazione'
+              : 'Errore nell\'eliminazione'
+        );
       }
-    } else {
-      this.toast.show(
-        action === 'revoke'
-          ? 'Errore nella revoca'
-          : action === 'reactivate'
-            ? 'Errore nella riattivazione'
-            : 'Errore nell\'eliminazione'
-      );
-    }
+    });
   }
 
   protected getTokenStatus(token: AdminTokenRow): string {

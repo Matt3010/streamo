@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
+import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -11,7 +12,7 @@ import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { enrichCardsWithTmdb } from '../../utils/card-item.util';
-import { applyWatchlistFlags, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
+import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
@@ -41,7 +42,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
-  imports: [CardComponent, IconComponent, ConfirmModalComponent, UiTabsComponent],
+  imports: [CardComponent, IconComponent, ConfirmModalComponent, PendingButtonDirective, UiTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-header">
@@ -128,6 +129,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             </div>
             @if (kind() === 'watchlist' && !it.isUpcoming) {
               <button class="row-action row-status"
+                      [uiPending]="!!it.pendingAction"
                       [class.done]="it.status === 'done'"
                       [title]="it.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
                       (click)="onStatusToggle(it); $event.stopPropagation()">
@@ -136,6 +138,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             }
             @if (kind() === 'history' && auth.isLoggedIn()) {
               <button class="row-action row-watchlist"
+                      [uiPending]="!!it.pendingAction"
                       [class.active]="it.inWatchlist === true"
                       [title]="it.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                       (click)="onWatchlistToggle(it); $event.stopPropagation()">
@@ -143,6 +146,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               </button>
             }
             <button class="row-action row-remove"
+                    [uiPending]="!!it.pendingAction"
                     [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
                     (click)="onRemoveClick(it); $event.stopPropagation()">
               <app-icon name="trash"></app-icon>
@@ -313,9 +317,16 @@ export class UserListViewComponent {
       this.confirmModalOpen.set(true);
       return;
     }
-    await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
-    this.toast.show(`${item.title}: rimesso in "Da guardare"`);
-    void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
+    await runCardMutation(this.items, item, 'status', async () => {
+      await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
+      this.items.update(items => items.map(candidate => (
+        candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
+          ? { ...candidate, status: next }
+          : candidate
+      )));
+      this.toast.show(`${item.title}: rimesso in "Da guardare"`);
+      void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
+    });
   }
 
   protected async onWatchlistToggle(item: CardItem): Promise<void> {
@@ -325,9 +336,11 @@ export class UserListViewComponent {
       this.confirmModalOpen.set(true);
       return;
     }
-    const result = await toggleCardWatchlist(item, this.watchlist);
-    this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
-    this.toast.show(result.message);
+    await runCardMutation(this.items, item, 'watchlist', async () => {
+      const result = await toggleCardWatchlist(item, this.watchlist);
+      this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+      this.toast.show(result.message);
+    });
   }
 
   protected async confirmPendingAction(): Promise<void> {
@@ -336,28 +349,34 @@ export class UserListViewComponent {
     if (!action) return;
 
     if (action.type === 'mark-done') {
-      await this.watchlist.setStatus(action.item.tmdb_id, action.item.media_type, 'done');
-      this.toast.show(`${action.item.title}: segnato come visto`);
-      void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
+      await runCardMutation(this.items, action.item, 'status', async () => {
+        await this.watchlist.setStatus(action.item.tmdb_id, action.item.media_type, 'done');
+        this.toast.show(`${action.item.title}: segnato come visto`);
+        void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
+      });
       return;
     }
 
     if (action.type === 'remove-watchlist') {
-      await this.watchlist.remove(action.item.tmdb_id, action.item.media_type);
-      this.items.update((items) => setCardWatchlistFlag(items, action.item, false));
-      this.toast.show(`${action.item.title}: rimosso dalla lista`);
+      await runCardMutation(this.items, action.item, 'watchlist', async () => {
+        await this.watchlist.remove(action.item.tmdb_id, action.item.media_type);
+        this.items.update((items) => setCardWatchlistFlag(items, action.item, false));
+        this.toast.show(`${action.item.title}: rimosso dalla lista`);
+      });
       return;
     }
 
     const item = action.item;
-    if (this.kind() === 'watchlist') {
-      await this.watchlist.remove(item.tmdb_id, item.media_type);
-      this.toast.show(`${item.title}: rimosso dalla lista`);
-    } else {
-      await this.history.remove(item.tmdb_id, item.media_type);
-      this.toast.show(`${item.title}: rimosso dalla cronologia`);
-    }
-    this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
+    await runCardMutation(this.items, item, 'remove', async () => {
+      if (this.kind() === 'watchlist') {
+        await this.watchlist.remove(item.tmdb_id, item.media_type);
+        this.toast.show(`${item.title}: rimosso dalla lista`);
+      } else {
+        await this.history.remove(item.tmdb_id, item.media_type);
+        this.toast.show(`${item.title}: rimosso dalla cronologia`);
+      }
+      this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
+    });
   }
 
   protected cancelPendingAction(): void {

@@ -198,6 +198,12 @@ main {
 .primary-btn:hover { background: var(--accent-hover); }
 .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+button.ui-pending {
+  opacity: 0.65;
+  cursor: progress;
+  pointer-events: none;
+}
+
 /* Larger icon button — used by page-level icon actions */
 .icon-btn-lg {
   background: var(--surface);

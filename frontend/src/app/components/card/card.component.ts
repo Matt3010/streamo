@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import type { CardItem } from '../../models';
 
 const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
@@ -7,7 +8,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
 @Component({
   selector: 'app-card',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, PendingButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="card" [class.card-upcoming]="item().isUpcoming === true" (click)="cardClick.emit(item())">
@@ -27,6 +28,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
         <div class="card-actions">
           @if (showWatchlistToggle()) {
             <button class="card-action card-watchlist"
+                    [uiPending]="hasPendingAction()"
                     [class.active]="item().inWatchlist === true"
                     [title]="item().inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     (click)="onWatchlistToggle($event)">
@@ -35,6 +37,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
           }
           @if (canShowStatusToggle()) {
             <button class="card-action card-status"
+                    [uiPending]="hasPendingAction()"
                     [class.done]="item().status === 'done'"
                     [title]="item().status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
                     (click)="onStatusToggle($event)">
@@ -42,7 +45,9 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
             </button>
           }
           @if (showRemove()) {
-            <button class="card-action card-remove" [title]="removeTitle()" [attr.aria-label]="removeTitle()"
+            <button class="card-action card-remove"
+                    [uiPending]="hasPendingAction()"
+                    [title]="removeTitle()" [attr.aria-label]="removeTitle()"
                     (click)="onRemove($event)">
               <app-icon name="trash"></app-icon>
             </button>
@@ -100,6 +105,7 @@ export class CardComponent {
   });
 
   protected readonly canShowStatusToggle = computed(() => this.showStatusToggle() && this.item().isUpcoming !== true);
+  protected readonly hasPendingAction = computed(() => !!this.item().pendingAction);
   protected readonly hasActions = computed(
     () => this.canShowStatusToggle() || this.showWatchlistToggle() || this.showRemove()
   );

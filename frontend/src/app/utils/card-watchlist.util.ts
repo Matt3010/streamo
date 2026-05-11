@@ -1,5 +1,7 @@
+import type { WritableSignal } from '@angular/core';
 import type { CardItem } from '../models';
 import type { WatchlistService } from '../services/watchlist.service';
+import type { CardPendingAction } from '../models';
 
 export interface WatchlistToggleResult {
   inWatchlist: boolean;
@@ -25,6 +27,36 @@ export function setCardWatchlistFlag(items: CardItem[], target: CardItem, next: 
   return items.map((candidate) => (
     isSameCard(candidate, target) ? { ...candidate, inWatchlist: next } : candidate
   ));
+}
+
+export function setCardPendingAction(
+  items: CardItem[],
+  target: CardItem,
+  next: CardPendingAction | null
+): CardItem[] {
+  return items.map((candidate) => (
+    isSameCard(candidate, target)
+      ? { ...candidate, pendingAction: next ?? undefined }
+      : candidate
+  ));
+}
+
+export async function runCardMutation<T>(
+  items: WritableSignal<CardItem[]>,
+  target: CardItem,
+  action: CardPendingAction,
+  task: () => Promise<T>
+): Promise<T | undefined> {
+  const snapshot = items();
+  const current = snapshot.find((candidate) => isSameCard(candidate, target));
+  if (current?.pendingAction) return undefined;
+
+  items.update((entries) => setCardPendingAction(entries, target, action));
+  try {
+    return await task();
+  } finally {
+    items.update((entries) => setCardPendingAction(entries, target, null));
+  }
 }
 
 export async function toggleCardWatchlist(

@@ -10,7 +10,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
-import { applyWatchlistFlags, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
+import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import { enrichCardsWithTmdb, tmdbToCardItem } from '../../utils/card-item.util';
 import { SECTIONS } from './sections.config';
 import type { WatchlistStatus, CardItem, SectionConfig } from '../../models';
@@ -176,9 +176,11 @@ export class HomeComponent {
       this.confirmModalOpen.set(true);
       return;
     }
-    const result = await toggleCardWatchlist(item, this.watchlist);
-    this.continueItems.update(items => setCardWatchlistFlag(items, item, result.inWatchlist));
-    this.toast.show(result.message);
+    await runCardMutation(this.continueItems, item, 'watchlist', async () => {
+      const result = await toggleCardWatchlist(item, this.watchlist);
+      this.continueItems.update(items => setCardWatchlistFlag(items, item, result.inWatchlist));
+      this.toast.show(result.message);
+    });
   }
 
   protected async toggleWatchlistStatus(item: CardItem): Promise<void> {
@@ -192,8 +194,15 @@ export class HomeComponent {
       this.confirmModalOpen.set(true);
       return;
     }
-    await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
-    this.toast.show(`${item.title}: rimesso in "Da guardare"`);
+    await runCardMutation(this.watchlistItems, item, 'status', async () => {
+      await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
+      this.watchlistItems.update(items => items.map(candidate => (
+        candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
+          ? { ...candidate, status: next }
+          : candidate
+      )));
+      this.toast.show(`${item.title}: rimesso in "Da guardare"`);
+    });
   }
 
   protected async removeFromHomeWatchlist(item: CardItem): Promise<void> {
@@ -216,34 +225,41 @@ export class HomeComponent {
 
     if (action.type === 'hide-continue') {
       const item = action.item;
-      await this.progress.hideTitle(item.tmdb_id, item.media_type);
-      this.continueItems.update((items) =>
-        items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
-      );
-      this.toast.show(`${item.title}: nascosto da continua a guardare`);
+      await runCardMutation(this.continueItems, item, 'remove', async () => {
+        await this.progress.hideTitle(item.tmdb_id, item.media_type);
+        this.continueItems.update((items) =>
+          items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+        );
+        this.toast.show(`${item.title}: nascosto da continua a guardare`);
+      });
       return;
     }
 
     if (action.type === 'mark-watchlist-done') {
       const item = action.item;
-      await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'done');
-      this.watchlistItems.update(items =>
-        items.filter(candidate => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
-      );
-      this.toast.show(`${item.title}: segnato come visto`);
+      await runCardMutation(this.watchlistItems, item, 'status', async () => {
+        await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'done');
+        this.watchlistItems.update(items =>
+          items.filter(candidate => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+        );
+        this.toast.show(`${item.title}: segnato come visto`);
+      });
       return;
     }
 
     const { item, source } = action;
-    await this.watchlist.remove(item.tmdb_id, item.media_type);
-    if (source === 'continue') {
-      this.continueItems.update(items => setCardWatchlistFlag(items, item, false));
-    } else {
-      this.watchlistItems.update(items =>
-        items.filter(candidate => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
-      );
-    }
-    this.toast.show(`${item.title}: rimosso dalla lista`);
+    const itemsSignal = source === 'continue' ? this.continueItems : this.watchlistItems;
+    await runCardMutation(itemsSignal, item, 'watchlist', async () => {
+      await this.watchlist.remove(item.tmdb_id, item.media_type);
+      if (source === 'continue') {
+        this.continueItems.update(items => setCardWatchlistFlag(items, item, false));
+      } else {
+        this.watchlistItems.update(items =>
+          items.filter(candidate => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+        );
+      }
+      this.toast.show(`${item.title}: rimosso dalla lista`);
+    });
   }
 
   private async loadTmdbSections(): Promise<void> {

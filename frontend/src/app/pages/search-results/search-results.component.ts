@@ -9,7 +9,7 @@ import { NavigationSourceService } from '../../services/navigation-source.servic
 import { ToastService } from '../../services/toast.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { tmdbToCardItem } from '../../utils/card-item.util';
-import { applyWatchlistFlags, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
+import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import type { CardItem } from '../../models';
 
 @Component({
@@ -116,18 +116,22 @@ export class SearchResultsComponent {
       this.confirmRemoveModalOpen.set(true);
       return;
     }
-    const result = await toggleCardWatchlist(item, this.watchlist);
-    this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
-    this.toast.show(result.message);
+    await runCardMutation(this.items, item, 'watchlist', async () => {
+      const result = await toggleCardWatchlist(item, this.watchlist);
+      this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+      this.toast.show(result.message);
+    });
   }
 
   protected async confirmRemoveFromWatchlist(): Promise<void> {
     const item = this.pendingRemoval();
     this.pendingRemoval.set(null);
     if (!item) return;
-    await this.watchlist.remove(item.tmdb_id, item.media_type);
-    this.items.update((items) => setCardWatchlistFlag(items, item, false));
-    this.toast.show(`${item.title}: rimosso dalla lista`);
+    await runCardMutation(this.items, item, 'watchlist', async () => {
+      await this.watchlist.remove(item.tmdb_id, item.media_type);
+      this.items.update((items) => setCardWatchlistFlag(items, item, false));
+      this.toast.show(`${item.title}: rimosso dalla lista`);
+    });
   }
 
   protected cancelRemoveFromWatchlist(): void {

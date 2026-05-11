@@ -1,6 +1,8 @@
 import type { MediaType } from './media.model';
 import type { WatchlistStatus } from './watchlist.model';
 
+export type CardPendingAction = 'watchlist' | 'status' | 'remove';
+
 /**
  * Unified card data — used by every row in the app
  * (TMDB results, search, watchlist, continue watching, history view).
@@ -31,4 +33,6 @@ export interface CardItem {
   watchStatus?: string;
   /** Compact upcoming-release hint for watchlist/continue-monitoring cards. */
   nextReleaseText?: string;
+  /** Pending mutation currently affecting this card's actions. */
+  pendingAction?: CardPendingAction;
 }

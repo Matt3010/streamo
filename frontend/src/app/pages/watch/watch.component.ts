@@ -5,6 +5,7 @@ import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
+import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
@@ -13,12 +14,13 @@ import { NavigationSourceService } from '../../services/navigation-source.servic
 import { BackgroundService } from '../../services/background.service';
 import { tmdbToCardItem } from '../../utils/card-item.util';
 import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-release.util';
+import { runWithPending } from '../../utils/pending.util';
 import type { CardItem, MediaType, TmdbReview } from '../../models';
 
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, SectionHeaderComponent, SectionRowComponent],
+  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -87,6 +89,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
           <div class="player-actions">
             <div class="release-inline-note">{{ upcomingAvailabilityStr() }}</div>
             <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+                    [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     (click)="toggleWatchlist()">
@@ -105,6 +108,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
               </button>
             }
             <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+                    [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     (click)="toggleWatchlist()">
@@ -118,6 +122,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
               <span>Chiudi player</span>
             </button>
             <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+                    [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     (click)="toggleWatchlist()">
@@ -135,7 +140,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
             <div class="movie-progress-bar" aria-hidden="true">
               <span [style.width.%]="movieProgressPct()"></span>
             </div>
-            <button type="button" class="inline-reset-btn" (click)="openClearProgressModal()">
+            <button type="button" class="inline-reset-btn" [uiPending]="clearProgressPending()" (click)="openClearProgressModal()">
               Riparti dall'inizio
             </button>
           </div>
@@ -183,7 +188,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
               }
             </div>
             @if (canClearProgress()) {
-              <button type="button" class="inline-reset-btn" (click)="openClearProgressModal()">
+              <button type="button" class="inline-reset-btn" [uiPending]="clearProgressPending()" (click)="openClearProgressModal()">
                 Riparti dall'inizio
               </button>
             }
@@ -308,6 +313,8 @@ export class WatchComponent {
   protected readonly reviews = signal<TmdbReview[]>([]);
   protected readonly reviewsLoading = signal(false);
   protected readonly confirmModalOpen = signal(false);
+  protected readonly watchlistPending = signal(false);
+  protected readonly clearProgressPending = signal(false);
   private readonly pendingConfirmAction = signal<'clear-progress' | 'remove-watchlist' | null>(null);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
@@ -612,7 +619,7 @@ export class WatchComponent {
       this.confirmModalOpen.set(true);
       return;
     }
-    void this.player.toggleWatchlist();
+    void runWithPending(this.watchlistPending, () => this.player.toggleWatchlist());
   }
 
   protected openClearProgressModal(): void {
@@ -628,11 +635,11 @@ export class WatchComponent {
     const action = this.pendingConfirmAction();
     this.pendingConfirmAction.set(null);
     if (action === 'remove-watchlist') {
-      void this.player.toggleWatchlist();
+      void runWithPending(this.watchlistPending, () => this.player.toggleWatchlist());
       return;
     }
     if (action === 'clear-progress') {
-      void this.player.clearSelectedProgress();
+      void runWithPending(this.clearProgressPending, () => this.player.clearSelectedProgress());
     }
   }
 
