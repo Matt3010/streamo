@@ -286,7 +286,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
         [message]="confirmModalMessage()"
         [warning]="confirmModalWarning()"
         [actionLabel]="confirmModalActionLabel()"
-        (cancelled)="pendingConfirmAction.set(null)"
+        (cancelled)="cancelConfirmedAction()"
         (confirmed)="executeConfirmedAction()" />
     </div>
   `,
@@ -618,6 +618,10 @@ export class WatchComponent {
   protected openClearProgressModal(): void {
     this.pendingConfirmAction.set('clear-progress');
     this.confirmModalOpen.set(true);
+  }
+
+  protected cancelConfirmedAction(): void {
+    this.pendingConfirmAction.set(null);
   }
 
   protected executeConfirmedAction(): void {
