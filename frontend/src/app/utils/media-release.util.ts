@@ -1,10 +1,17 @@
 import type { MediaType, TmdbItem } from '../models';
 
 export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): string {
+  if (type === 'tv') {
+    const firstAirDate = parseDateOnly(item.first_air_date);
+    if (firstAirDate && isFutureDate(firstAirDate)) {
+      return `Nuova serie dal ${formatDateLong(firstAirDate)}.`;
+    }
+  }
+
   if (type === 'movie') {
     const date = parseDateOnly(item.release_date);
     if (date && isFutureDate(date)) {
-      return `Uscita prevista il ${formatDateLong(date)}.`;
+      return `Esce il ${formatDateLong(date)}.`;
     }
     return '';
   }
@@ -30,6 +37,13 @@ export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): strin
 }
 
 export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): string {
+  if (type === 'tv') {
+    const firstAirDate = parseDateOnly(item.first_air_date);
+    if (firstAirDate && isFutureDate(firstAirDate)) {
+      return `Dal ${formatDateLong(firstAirDate)}`;
+    }
+  }
+
   if (type === 'movie') {
     const date = parseDateOnly(item.release_date);
     if (date && isFutureDate(date)) {
@@ -50,6 +64,21 @@ export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): st
   }
 
   return '';
+}
+
+export function isTitleUpcoming(item: TmdbItem, type: MediaType): boolean {
+  if (type === 'movie') {
+    const date = parseDateOnly(item.release_date);
+    return date !== null && isFutureDate(date);
+  }
+
+  const firstAirDate = parseDateOnly(item.first_air_date);
+  return firstAirDate !== null && isFutureDate(firstAirDate);
+}
+
+export function getUpcomingBadgeText(item: TmdbItem, type: MediaType): string {
+  if (!isTitleUpcoming(item, type)) return '';
+  return type === 'movie' ? 'Prossimamente' : 'Nuova serie';
 }
 
 function findNextSeason(item: TmdbItem): { season: number; date: Date } | null {

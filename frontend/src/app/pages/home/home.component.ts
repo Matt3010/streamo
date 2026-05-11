@@ -8,7 +8,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
-import { getCompactReleaseStatusText } from '../../utils/media-release.util';
+import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
 import { SECTIONS } from './sections.config';
 import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
 
@@ -159,6 +159,7 @@ export class HomeComponent {
 
 function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
   const dateStr = item.release_date ?? item.first_air_date ?? '';
+  const upcoming = isTitleUpcoming(item, type);
   return {
     tmdb_id: item.id,
     media_type: type,
@@ -167,7 +168,10 @@ function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
     popularity: item.popularity,
     voteCount: item.vote_count,
     year: dateStr.split('-')[0] ?? '',
-    rating: item.vote_average ? item.vote_average.toFixed(1) : ''
+    rating: item.vote_average ? item.vote_average.toFixed(1) : '',
+    isUpcoming: upcoming,
+    upcomingBadge: getUpcomingBadgeText(item, type),
+    nextReleaseText: upcoming ? getCompactReleaseStatusText(item, type) : undefined
   };
 }
 
@@ -181,6 +185,8 @@ async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promis
       voteCount: details.vote_count,
       rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
       year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
+      isUpcoming: isTitleUpcoming(details, item.media_type),
+      upcomingBadge: getUpcomingBadgeText(details, item.media_type),
       nextReleaseText: getCompactReleaseStatusText(details, item.media_type)
     };
   }));

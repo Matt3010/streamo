@@ -5,6 +5,7 @@ import { WatchlistService } from './watchlist.service';
 import { HistoryService } from './history.service';
 import { AuthService } from './auth.service';
 import { ToastService } from './toast.service';
+import { isTitleUpcoming } from '../utils/media-release.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
 const VIXSRC_BASE = '/player';
@@ -250,6 +251,12 @@ export class PlayerService {
 
   // ===== START / EPISODE =====
   startVideo(): void {
+    const item = this.currentItem();
+    const type = this.currentItemType();
+    if (item && type && isTitleUpcoming(item, type)) {
+      this.toast.show(type === 'movie' ? 'Film non ancora disponibile' : 'Serie non ancora disponibile');
+      return;
+    }
     if (!this.pendingVideoUrl) return;
     this.iframeSrc.set(this.pendingVideoUrl);
     this.videoStartTime = Date.now();

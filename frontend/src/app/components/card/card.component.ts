@@ -10,7 +10,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
   imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <article class="card" (click)="cardClick.emit(item())">
+    <article class="card" [class.card-upcoming]="item().isUpcoming === true" (click)="cardClick.emit(item())">
       @if (item().poster) {
         <img class="card-poster" [src]="posterUrl()" [alt]="item().title" loading="lazy">
       } @else {
@@ -23,7 +23,11 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
         <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
       }
 
-      @if (showStatusToggle() || showWatchlistToggle() || showRemove()) {
+      @if (item().upcomingBadge) {
+        <div class="card-state-badge">{{ item().upcomingBadge }}</div>
+      }
+
+      @if (hasActions()) {
         <div class="card-actions">
           @if (showWatchlistToggle()) {
             <button class="card-action card-watchlist"
@@ -33,7 +37,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
               <app-icon name="bookmark"></app-icon>
             </button>
           }
-          @if (showStatusToggle()) {
+          @if (canShowStatusToggle()) {
             <button class="card-action card-status"
                     [class.done]="item().status === 'done'"
                     [title]="item().status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
@@ -97,6 +101,11 @@ export class CardComponent {
     const it = this.item();
     return it.media_type === 'tv' && it.season && it.episode ? `S${it.season} E${it.episode}` : '';
   });
+
+  protected readonly canShowStatusToggle = computed(() => this.showStatusToggle() && this.item().isUpcoming !== true);
+  protected readonly hasActions = computed(
+    () => this.canShowStatusToggle() || this.showWatchlistToggle() || this.showRemove()
+  );
 
   protected onRemove(e: MouseEvent): void {
     e.stopPropagation();

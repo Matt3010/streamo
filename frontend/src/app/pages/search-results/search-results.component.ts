@@ -7,6 +7,7 @@ import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { ToastService } from '../../services/toast.service';
 import { WatchlistService } from '../../services/watchlist.service';
+import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
 import type { CardItem, MediaType, TmdbItem } from '../../models';
 
 @Component({
@@ -151,6 +152,7 @@ export class SearchResultsComponent {
 function tmdbToCard(item: TmdbItem): CardItem {
   const dateStr = item.release_date ?? item.first_air_date ?? '';
   const mediaType: MediaType = item.media_type === 'tv' ? 'tv' : 'movie';
+  const upcoming = isTitleUpcoming(item, mediaType);
   return {
     tmdb_id: item.id,
     media_type: mediaType,
@@ -159,7 +161,10 @@ function tmdbToCard(item: TmdbItem): CardItem {
     popularity: item.popularity,
     voteCount: item.vote_count,
     year: dateStr.split('-')[0] ?? '',
-    rating: item.vote_average ? item.vote_average.toFixed(1) : ''
+    rating: item.vote_average ? item.vote_average.toFixed(1) : '',
+    isUpcoming: upcoming,
+    upcomingBadge: getUpcomingBadgeText(item, mediaType),
+    nextReleaseText: upcoming ? getCompactReleaseStatusText(item, mediaType) : undefined
   };
 }
 

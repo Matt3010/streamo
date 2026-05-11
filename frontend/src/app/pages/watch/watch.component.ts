@@ -10,7 +10,7 @@ import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { BackgroundService } from '../../services/background.service';
-import { getFullReleaseStatusText } from '../../utils/media-release.util';
+import { getCompactReleaseStatusText, getFullReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
 import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
 
 @Component({
@@ -52,7 +52,7 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
               <div class="skeleton skeleton-select"></div>
             </div>
           </div>
-        } @else if (player.currentItemType() === 'tv' && player.seasons().length > 0) {
+        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.seasons().length > 0) {
           <div class="episode-controls active">
             <label class="select-group">
               <span class="select-label">Stagione</span>
@@ -74,12 +74,32 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
                       allow="autoplay; encrypted-media; fullscreen"></iframe>
             }
           </div>
+        } @else if (isUpcomingTitle()) {
+          <div class="player-wrapper player-wrapper-upcoming">
+            <div class="upcoming-panel">
+              <span class="upcoming-pill">{{ upcomingBadgeText() }}</span>
+              <h3>{{ upcomingTitle() }}</h3>
+              @if (releaseStatusStr()) {
+                <p>{{ releaseStatusStr() }}</p>
+              }
+            </div>
+          </div>
         }
 
         @if (loading()) {
           <div class="player-actions">
             <div class="skeleton skeleton-btn"></div>
             <div class="skeleton skeleton-btn-icon"></div>
+          </div>
+        } @else if (isUpcomingTitle()) {
+          <div class="player-actions">
+            <div class="release-inline-note">Disponibile dopo l'uscita</div>
+            <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+                    [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    (click)="toggleWatchlist()">
+              <app-icon name="bookmark"></app-icon>
+            </button>
           </div>
         } @else if (!player.iframeSrc()) {
           <div class="player-actions">
@@ -127,7 +147,7 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
               }
             </div>
           </div>
-        } @else if (player.currentItemType() === 'tv' && player.episodes().length > 0) {
+        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0) {
           <div class="episode-grid-section">
             <h3 class="episode-grid-title">Episodi</h3>
             <div class="episode-grid">
@@ -330,6 +350,18 @@ export class WatchComponent {
     if (!item || !type) return '';
     return getFullReleaseStatusText(item, type);
   });
+
+  protected readonly isUpcomingTitle = computed(() => {
+    const item = this.player.currentItem();
+    const type = this.player.currentItemType();
+    return item !== null && type !== null ? isTitleUpcoming(item, type) : false;
+  });
+
+  protected readonly upcomingBadgeText = computed(() => this.type() === 'movie' ? 'Prossimamente' : 'Nuova serie');
+
+  protected readonly upcomingTitle = computed(() =>
+    this.type() === 'movie' ? 'Film non ancora disponibile' : 'Serie non ancora disponibile'
+  );
 
   // 80% mirrors WATCHED_THRESHOLD on the backend — past that point we
   // assume the user is "done enough" with this episode that they'd plausibly
@@ -570,6 +602,7 @@ export class WatchComponent {
 
 function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
   const dateStr = item.release_date ?? item.first_air_date ?? '';
+  const upcoming = isTitleUpcoming(item, type);
   return {
     tmdb_id: item.id,
     media_type: type,
@@ -578,7 +611,10 @@ function tmdbToCard(item: TmdbItem, type: MediaType): CardItem {
     popularity: item.popularity,
     voteCount: item.vote_count,
     year: dateStr.split('-')[0] ?? '',
-    rating: item.vote_average ? item.vote_average.toFixed(1) : ''
+    rating: item.vote_average ? item.vote_average.toFixed(1) : '',
+    isUpcoming: upcoming,
+    upcomingBadge: getUpcomingBadgeText(item, type),
+    nextReleaseText: upcoming ? getCompactReleaseStatusText(item, type) : undefined
   };
 }
 

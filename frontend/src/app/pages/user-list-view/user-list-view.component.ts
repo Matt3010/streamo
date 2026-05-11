@@ -8,7 +8,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import { getCompactReleaseStatusText } from '../../utils/media-release.util';
+import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from '../../utils/media-release.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
@@ -93,10 +93,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
             <div class="item-info">
               <span class="item-title">{{ it.title }}</span>
-              @if (it.season && it.episode || it.watchStatus || it.nextReleaseText) {
+              @if (it.season && it.episode || it.upcomingBadge || it.watchStatus || it.nextReleaseText) {
                 <span class="item-sub">
                   @if (it.season && it.episode) {
                     <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
+                  }
+                  @if (it.upcomingBadge) {
+                    <span class="item-upcoming-badge">{{ it.upcomingBadge }}</span>
                   }
                   @if (it.watchStatus) {
                     <span class="item-watch-status">{{ it.watchStatus }}</span>
@@ -107,7 +110,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 </span>
               }
             </div>
-            @if (kind() === 'watchlist') {
+            @if (kind() === 'watchlist' && !it.isUpcoming) {
               <button class="row-action row-status"
                       [class.done]="it.status === 'done'"
                       [title]="it.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
@@ -277,6 +280,8 @@ async function enrichCardsWithTmdb(items: CardItem[], tmdb: TmdbService): Promis
       voteCount: details.vote_count,
       rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
       year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
+      isUpcoming: isTitleUpcoming(details, item.media_type),
+      upcomingBadge: getUpcomingBadgeText(details, item.media_type),
       nextReleaseText: item.status !== undefined ? getCompactReleaseStatusText(details, item.media_type) : undefined
     };
   }));
