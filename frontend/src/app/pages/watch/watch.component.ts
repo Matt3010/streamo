@@ -150,6 +150,9 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
                        [class.no-image]="!ep.still_path"
                        [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
                     <span class="episode-number">{{ ep.episode_number }}</span>
+                    @if (episodeProgressLabel(ep)) {
+                      <span class="episode-duration">{{ episodeProgressLabel(ep) }}</span>
+                    }
                     @if (episodeProgress(ep.episode_number) > 0) {
                       <div class="episode-progress"><span [style.width.%]="episodeProgress(ep.episode_number)"></span></div>
                     }
@@ -588,10 +591,31 @@ export class WatchComponent {
     if (!p || p.duration <= 0) return 0;
     return Math.min(100, Math.max(0, (p.position / p.duration) * 100));
   }
+
+  protected episodeProgressLabel(ep: { episode_number: number; runtime?: number | null }): string {
+    const map = this.player.seriesProgress();
+    const key = `s${this.player.selectedSeason()}e${ep.episode_number}`;
+    const progress = map.get(key);
+    const totalSeconds = progress?.duration && progress.duration > 0
+      ? progress.duration
+      : (ep.runtime && ep.runtime > 0 ? ep.runtime * 60 : 0);
+    if (totalSeconds <= 0) return '';
+    const watchedSeconds = progress?.position && progress.position > 0 ? progress.position : 0;
+    return `${formatTimeCompact(watchedSeconds)}/${formatTimeCompact(totalSeconds)}`;
+  }
 }
 
 function formatTime(seconds: number): string {
   const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function formatTimeCompact(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;

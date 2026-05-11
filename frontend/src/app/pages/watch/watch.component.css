@@ -410,6 +410,17 @@
   line-height: 1;
 }
 
+.episode-duration {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
+  line-height: 1;
+}
+
 /* Progress pill identical to .card-progress on the home/watchlist cards
  * so the visual language is consistent across the app. Insets 6px from
  * the thumb edges, 4px tall, accent-coloured fill over a translucent
