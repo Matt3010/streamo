@@ -525,6 +525,17 @@ export class PlayerService {
     const type = this.currentItemType();
     if (!this.auth.currentUser() || !item || !type) return;
 
+    // Keep the currently-focused progress state in sync locally before the
+    // network round-trip so the watch page reflects saves immediately for
+    // movies and for the currently selected TV episode.
+    if (type === 'movie') {
+      this.resumeProgress.set({ position, duration });
+      this.resumeText.set(position > 10 ? `Riprendi da ${formatTime(position)}` : '');
+    } else if (season === this.selectedSeason() && episode === this.selectedEpisode()) {
+      this.resumeProgress.set({ position, duration });
+      this.resumeText.set(position > 10 ? `Riprendi da ${formatTime(position)}` : '');
+    }
+
     // Update the local seriesProgress map *before* the network round-trip
     // so progress bars on episode cards animate as the user watches, not
     // only after the next page-load. The map is read by the watch page.

@@ -149,7 +149,7 @@ server {
 
         sub_filter 'https://vixsrc.to/playlist/' 'https://$host/playlist/';
         sub_filter '//vixsrc.to/playlist/' '//$host/playlist/';
-        sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoplay-embed.js"></script><script src="/scripts/autoseek.js"></script></head>';
+        sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
     }
