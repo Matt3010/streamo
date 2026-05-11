@@ -167,6 +167,9 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
             @if (genresStr()) {
               <p class="player-genres">{{ genresStr() }}</p>
             }
+            @if (releaseStatusStr()) {
+              <p class="player-release-status">{{ releaseStatusStr() }}</p>
+            }
             <p>{{ overview() }}</p>
             @if (castStr()) {
               <p class="player-cast"><strong>Cast:</strong> {{ castStr() }}</p>
@@ -262,6 +265,49 @@ export class WatchComponent {
   protected readonly castStr = computed(() => {
     const c = this.player.currentItem()?.credits?.cast ?? [];
     return c.slice(0, 6).map(m => m.name).join(', ');
+  });
+
+  protected readonly releaseStatusStr = computed(() => {
+    const item = this.player.currentItem();
+    const type = this.player.currentItemType();
+    if (!item || !type) return '';
+
+    if (type === 'movie') {
+      const date = parseDateOnly(item.release_date);
+      if (date && isFutureDate(date)) {
+        return `Uscita prevista il ${formatDateLong(date)}.`;
+      }
+      return '';
+    }
+
+    const nextEpisode = item.next_episode_to_air;
+    const nextEpisodeDate = parseDateOnly(nextEpisode?.air_date);
+    if (nextEpisode && nextEpisodeDate) {
+      const season = nextEpisode.season_number ?? '?';
+      const episode = nextEpisode.episode_number ?? '?';
+      return `Prossimo episodio: S${season} E${episode} in uscita il ${formatDateLong(nextEpisodeDate)}.`;
+    }
+
+    const lastSeason = item.last_episode_to_air?.season_number ?? 0;
+    const nextSeason = (item.seasons ?? [])
+      .filter((season) => season.season_number > 0)
+      .map((season) => ({
+        season: season.season_number,
+        date: parseDateOnly(season.air_date)
+      }))
+      .filter((entry): entry is { season: number; date: Date } => entry.date !== null && entry.season > lastSeason)
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .find((entry) => isFutureDate(entry.date));
+
+    if (nextSeason) {
+      return `Prossima stagione: Stagione ${nextSeason.season} in uscita il ${formatDateLong(nextSeason.date)}.`;
+    }
+
+    if (item.status === 'Ended' || item.status === 'Canceled') {
+      return 'Serie conclusa.';
+    }
+
+    return '';
   });
 
   // 80% mirrors WATCHED_THRESHOLD on the backend — past that point we
@@ -482,4 +528,27 @@ function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, 
     return first ? `${first} min/episodio` : '';
   }
   return '';
+}
+
+function parseDateOnly(raw?: string | null): Date | null {
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isFutureDate(date: Date): boolean {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return date.getTime() > today.getTime();
+}
+
+function formatDateLong(date: Date): string {
+  return new Intl.DateTimeFormat('it-IT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(date);
 }

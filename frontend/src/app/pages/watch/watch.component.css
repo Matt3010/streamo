@@ -240,6 +240,12 @@
   font-size: 0.85rem !important;
 }
 
+.player-release-status {
+  font-size: 0.9rem !important;
+  color: var(--text) !important;
+  font-weight: 600;
+}
+
 .player-cast {
   font-size: 0.95rem !important;
   color: var(--text) !important;

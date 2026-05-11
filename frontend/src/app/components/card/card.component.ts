@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { IconComponent } from '../../ui/icon/icon.component';
-import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import type { CardItem } from '../../models';
 
 const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
@@ -8,7 +7,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
 @Component({
   selector: 'app-card',
   standalone: true,
-  imports: [IconComponent, MediaRankBadgeComponent],
+  imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="card" (click)="cardClick.emit(item())">
@@ -42,13 +41,6 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
           }
         </div>
       }
-
-      <div class="card-rank">
-        <app-media-rank-badge
-          [popularity]="item().popularity ?? null"
-          [voteCount]="item().voteCount ?? null"
-          [compact]="true" />
-      </div>
 
       <div class="card-overlay">
         <h3 class="card-title">{{ item().title }}</h3>

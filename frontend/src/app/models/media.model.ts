@@ -37,11 +37,13 @@ export interface TmdbItem {
   episode_run_time?: number[];
   number_of_seasons?: number;
   number_of_episodes?: number;
+  status?: string;
   genres?: TmdbGenre[];
   credits?: TmdbCredits;
   seasons?: TmdbSeasonInfo[];
   /** Latest episode that has already aired — used to compute "X usciti su Y". */
   last_episode_to_air?: TmdbEpisodeRef | null;
+  next_episode_to_air?: TmdbEpisodeRef | null;
 }
 
 export interface TmdbEpisodeRef {
@@ -53,6 +55,7 @@ export interface TmdbEpisodeRef {
 export interface TmdbSeasonInfo {
   season_number: number;
   episode_count?: number;
+  name?: string;
   air_date?: string | null;
 }
 
