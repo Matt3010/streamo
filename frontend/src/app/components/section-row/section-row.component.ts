@@ -1,20 +1,17 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { CardRowComponent } from '../card-row/card-row.component';
+import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import type { CardItem } from '../../models';
 
 @Component({
   selector: 'app-section-row',
   standalone: true,
-  imports: [CardRowComponent, FaIconComponent],
+  imports: [CardRowComponent, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="content-section">
-      <h2 class="section-title">
-        <span class="icon"><fa-icon [icon]="icon()"></fa-icon></span>
-        {{ title() }}
-      </h2>
+      <app-section-header [title]="title()" [icon]="icon()" />
       <app-card-row
         [items]="items()"
         [loading]="loading()"

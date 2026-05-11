@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute, signal } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
-import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
+import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -16,7 +16,7 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [FaIconComponent, IconComponent, MediaRankBadgeComponent, SectionRowComponent],
+  imports: [IconComponent, MediaRankBadgeComponent, SectionHeaderComponent, SectionRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -188,10 +188,7 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
 
       @if (reviews().length > 0 || reviewsLoading()) {
         <section class="watch-reviews content-section">
-          <h2 class="section-title">
-            <span class="icon"><fa-icon [icon]="reviewsIcon"></fa-icon></span>
-            Recensioni
-          </h2>
+          <app-section-header title="Recensioni" [icon]="reviewsIcon" />
 
           @if (reviewsLoading()) {
             <div class="reviews-row">
