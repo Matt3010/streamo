@@ -220,7 +220,11 @@ import type { CardItem, MediaType, TmdbItem, TmdbReview } from '../../models';
                   <p class="review-content">{{ reviewExcerpt(review) }}</p>
 
                   @if (review.url) {
-                    <a class="review-link" [href]="review.url" target="_blank" rel="noopener noreferrer">
+                    <a class="review-link"
+                       [href]="review.url"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       (click)="openReview($event, review.url)">
                       Leggi su TMDB
                     </a>
                   }
@@ -526,6 +530,17 @@ export class WatchComponent {
     const text = review.content.trim();
     if (text.length <= 360) return text;
     return `${text.slice(0, 357).trimEnd()}...`;
+  }
+
+  protected openReview(event: Event, url?: string): void {
+    if (!url) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      window.location.assign(url);
+    }
   }
 
   protected onSeasonChange(ev: Event): void {
