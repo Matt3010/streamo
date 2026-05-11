@@ -23,8 +23,16 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
         <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
       }
 
-      @if (showStatusToggle() || showRemove()) {
+      @if (showStatusToggle() || showWatchlistToggle() || showRemove()) {
         <div class="card-actions">
+          @if (showWatchlistToggle()) {
+            <button class="card-action card-watchlist"
+                    [class.active]="item().inWatchlist === true"
+                    [title]="item().inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                    (click)="onWatchlistToggle($event)">
+              <app-icon name="bookmark"></app-icon>
+            </button>
+          }
           @if (showStatusToggle()) {
             <button class="card-action card-status"
                     [class.done]="item().status === 'done'"
@@ -67,10 +75,12 @@ export class CardComponent {
   readonly showProgress = input(false);
   readonly showRemove = input(false);
   readonly showStatusToggle = input(false);
+  readonly showWatchlistToggle = input(false);
 
   readonly cardClick = output<CardItem>();
   readonly removeClick = output<CardItem>();
   readonly statusToggleClick = output<CardItem>();
+  readonly watchlistToggleClick = output<CardItem>();
 
   protected readonly posterUrl = computed(() => {
     const p = this.item().poster;
@@ -96,5 +106,10 @@ export class CardComponent {
   protected onStatusToggle(e: MouseEvent): void {
     e.stopPropagation();
     this.statusToggleClick.emit(this.item());
+  }
+
+  protected onWatchlistToggle(e: MouseEvent): void {
+    e.stopPropagation();
+    this.watchlistToggleClick.emit(this.item());
   }
 }

@@ -2,8 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
+import { ToastService } from '../../services/toast.service';
+import { WatchlistService } from '../../services/watchlist.service';
 import type { CardItem, MediaType, TmdbItem } from '../../models';
 
 @Component({
@@ -36,17 +39,24 @@ import type { CardItem, MediaType, TmdbItem } from '../../models';
       </div>
     } @else {
       <div class="content-grid">
-        @for (it of items(); track it.tmdb_id) {
-          <app-card [item]="it" (cardClick)="onCardClick($event)" />
+        @for (it of items(); track it.tmdb_id + '-' + it.media_type) {
+          <app-card
+            [item]="it"
+            [showWatchlistToggle]="auth.isLoggedIn()"
+            (cardClick)="onCardClick($event)"
+            (watchlistToggleClick)="onWatchlistToggle($event)" />
         }
       </div>
     }
   `
 })
 export class SearchResultsComponent {
+  protected readonly auth = inject(AuthService);
   private readonly tmdb = inject(TmdbService);
   private readonly router = inject(Router);
   private readonly navSource = inject(NavigationSourceService);
+  private readonly toast = inject(ToastService);
+  private readonly watchlist = inject(WatchlistService);
 
   // Route ?q= query param via withComponentInputBinding().
   readonly q = input<string>('');
@@ -63,6 +73,14 @@ export class SearchResultsComponent {
       if (query) void this.runSearch(query);
       else this.items.set([]);
     });
+
+    effect(() => {
+      this.auth.currentUser();
+      this.watchlist.tick();
+      const current = this.items();
+      if (current.length === 0) return;
+      void this.syncWatchlistFlags();
+    });
   }
 
   protected back(): void {
@@ -73,14 +91,60 @@ export class SearchResultsComponent {
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id]);
   }
 
+  protected async onWatchlistToggle(item: CardItem): Promise<void> {
+    if (!this.auth.isLoggedIn()) return;
+
+    if (item.inWatchlist) {
+      await this.watchlist.remove(item.tmdb_id, item.media_type);
+      this.items.update((items) => items.map((candidate) =>
+        isSameCard(candidate, item) ? { ...candidate, inWatchlist: false } : candidate
+      ));
+      this.toast.show(`${item.title}: rimosso dalla lista`);
+      return;
+    }
+
+    await this.watchlist.add(item.tmdb_id, item.media_type, item.title, item.poster);
+    this.items.update((items) => items.map((candidate) =>
+      isSameCard(candidate, item) ? { ...candidate, inWatchlist: true } : candidate
+    ));
+    this.toast.show(`${item.title}: aggiunto alla lista`);
+  }
+
   private async runSearch(q: string): Promise<void> {
     const mySeq = ++this.seq;
     this.loading.set(true);
     this.items.set([]);
     const results = await this.tmdb.searchAll(q);
     if (mySeq !== this.seq) return; // newer search superseded this one
-    this.items.set(results.map(r => tmdbToCard(r)));
+    let items = results.map(r => tmdbToCard(r));
+    if (this.auth.isLoggedIn()) {
+      items = await this.withWatchlistFlags(items);
+      if (mySeq !== this.seq) return;
+    }
+    this.items.set(items);
     this.loading.set(false);
+  }
+
+  private async syncWatchlistFlags(): Promise<void> {
+    if (!this.auth.isLoggedIn()) {
+      this.items.update((items) => items.map((item) => ({ ...item, inWatchlist: false })));
+      return;
+    }
+
+    const snapshot = this.items();
+    if (snapshot.length === 0) return;
+    const updated = await this.withWatchlistFlags(snapshot);
+    if (this.items() !== snapshot) return;
+    this.items.set(updated);
+  }
+
+  private async withWatchlistFlags(items: CardItem[]): Promise<CardItem[]> {
+    const list = await this.watchlist.list();
+    const ids = new Set(list.map((entry) => `${entry.media_type}:${entry.tmdb_id}`));
+    return items.map((item) => ({
+      ...item,
+      inWatchlist: ids.has(`${item.media_type}:${item.tmdb_id}`)
+    }));
   }
 }
 
@@ -97,4 +161,8 @@ function tmdbToCard(item: TmdbItem): CardItem {
     year: dateStr.split('-')[0] ?? '',
     rating: item.vote_average ? item.vote_average.toFixed(1) : ''
   };
+}
+
+function isSameCard(a: CardItem, b: CardItem): boolean {
+  return a.tmdb_id === b.tmdb_id && a.media_type === b.media_type;
 }
