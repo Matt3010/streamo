@@ -58,7 +58,7 @@ import type { CardItem } from '../../models';
       [message]="confirmRemoveMessage()"
       warning="Potrai sempre riaggiungerlo più tardi."
       actionLabel="Rimuovi"
-      (cancelled)="pendingRemoval.set(null)"
+      (cancelled)="cancelRemoveFromWatchlist()"
       (confirmed)="confirmRemoveFromWatchlist()" />
   `
 })
@@ -128,6 +128,10 @@ export class SearchResultsComponent {
     await this.watchlist.remove(item.tmdb_id, item.media_type);
     this.items.update((items) => setCardWatchlistFlag(items, item, false));
     this.toast.show(`${item.title}: rimosso dalla lista`);
+  }
+
+  protected cancelRemoveFromWatchlist(): void {
+    this.pendingRemoval.set(null);
   }
 
   private async runSearch(q: string): Promise<void> {

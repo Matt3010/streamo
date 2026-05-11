@@ -148,7 +148,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       [message]="confirmModalMessage()"
       [warning]="confirmModalWarning()"
       [actionLabel]="confirmModalActionLabel()"
-      (cancelled)="pendingAction.set(null)"
+      (cancelled)="cancelPendingAction()"
       (confirmed)="confirmPendingAction()" />
   `,
   styleUrl: './user-list-view.component.css'
@@ -315,6 +315,10 @@ export class UserListViewComponent {
       this.toast.show(`${item.title}: rimosso dalla cronologia`);
     }
     this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
+  }
+
+  protected cancelPendingAction(): void {
+    this.pendingAction.set(null);
   }
 
   private async load(kind: UserListType, media: MediaFilter, status?: WatchlistStatus): Promise<void> {
