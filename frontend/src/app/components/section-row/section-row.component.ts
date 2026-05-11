@@ -17,8 +17,13 @@ import type { CardItem } from '../../models';
         [loading]="loading()"
         [showProgress]="showProgress()"
         [showRemove]="showRemove()"
+        [removeTitle]="removeTitle()"
+        [showStatusToggle]="showStatusToggle()"
+        [showWatchlistToggle]="showWatchlistToggle()"
         (cardClick)="cardClick.emit($event)"
-        (removeClick)="removeClick.emit($event)" />
+        (removeClick)="removeClick.emit($event)"
+        (statusToggleClick)="statusToggleClick.emit($event)"
+        (watchlistToggleClick)="watchlistToggleClick.emit($event)" />
     </section>
   `,
   styleUrl: './section-row.component.css'
@@ -30,7 +35,12 @@ export class SectionRowComponent {
   readonly loading = input(false);
   readonly showProgress = input(false);
   readonly showRemove = input(false);
+  readonly removeTitle = input('Rimuovi');
+  readonly showStatusToggle = input(false);
+  readonly showWatchlistToggle = input(false);
 
   readonly cardClick = output<CardItem>();
   readonly removeClick = output<CardItem>();
+  readonly statusToggleClick = output<CardItem>();
+  readonly watchlistToggleClick = output<CardItem>();
 }

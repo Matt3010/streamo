@@ -3,15 +3,17 @@ import { Router } from '@angular/router';
 import { faCirclePlay, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
+import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { TmdbService } from '../../services/tmdb.service';
 import { ProgressService } from '../../services/progress.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
+import { applyWatchlistFlags, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import { enrichCardsWithTmdb, tmdbToCardItem } from '../../utils/card-item.util';
 import { SECTIONS } from './sections.config';
-import type { MediaType, TmdbItem, CardItem, SectionConfig } from '../../models';
+import type { WatchlistStatus, CardItem, SectionConfig } from '../../models';
 
 interface SectionState {
   config: SectionConfig;
@@ -19,10 +21,14 @@ interface SectionState {
   loading: boolean;
 }
 
+type HomeConfirmAction =
+  | { type: 'hide-continue'; item: CardItem }
+  | { type: 'remove-watchlist'; item: CardItem; source: 'continue' | 'watchlist' };
+
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [SectionRowComponent, ConfirmModalComponent],
+  imports: [SectionRowComponent, SectionHeaderComponent, ConfirmModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
@@ -33,8 +39,19 @@ interface SectionState {
         [loading]="userLoading()"
         [showProgress]="true"
         [showRemove]="true"
+        removeTitle="Nascondi"
+        [showWatchlistToggle]="true"
         (cardClick)="open($event)"
-        (removeClick)="removeContinue($event)" />
+        (removeClick)="removeContinue($event)"
+        (watchlistToggleClick)="toggleContinueWatchlist($event)" />
+    } @else if (auth.isLoggedIn() && !userLoading()) {
+      <section class="content-section">
+        <app-section-header title="Continua a guardare" [icon]="continueIcon" />
+        <div class="home-empty-state">
+          <p class="home-empty-title">Niente da riprendere</p>
+          <p class="home-empty-hint">I titoli che inizi a guardare compariranno qui.</p>
+        </div>
+      </section>
     }
 
     @if (auth.isLoggedIn() && (watchlistItems().length > 0 || userLoading())) {
@@ -44,7 +61,20 @@ interface SectionState {
         [items]="watchlistItems()"
         [loading]="userLoading()"
         [showProgress]="true"
-        (cardClick)="open($event)" />
+        [showRemove]="true"
+        removeTitle="Rimuovi dalla lista"
+        [showStatusToggle]="true"
+        (cardClick)="open($event)"
+        (statusToggleClick)="toggleWatchlistStatus($event)"
+        (removeClick)="removeFromHomeWatchlist($event)" />
+    } @else if (auth.isLoggedIn() && !userLoading()) {
+      <section class="content-section">
+        <app-section-header title="La mia lista" [icon]="watchlistIcon" />
+        <div class="home-empty-state">
+          <p class="home-empty-title">La tua lista è vuota</p>
+          <p class="home-empty-hint">Aggiungi un film o una serie con il segnalibro per ritrovarli qui.</p>
+        </div>
+      </section>
     }
 
     @for (s of sectionStates(); track s.config.id) {
@@ -57,14 +87,15 @@ interface SectionState {
     }
 
     <ui-confirm-modal
-      [(open)]="removeContinueModalOpen"
-      title="Nascondi Da Continua a Guardare"
-      [message]="removeContinueMessage()"
-      warning="Il titolo sparirà da questa sezione finché non lo riprenderai."
-      actionLabel="Nascondi"
-      (cancelled)="pendingContinueRemoval.set(null)"
-      (confirmed)="confirmRemoveContinue()" />
-  `
+      [(open)]="confirmModalOpen"
+      [title]="confirmModalTitle()"
+      [message]="confirmModalMessage()"
+      [warning]="confirmModalWarning()"
+      [actionLabel]="confirmModalActionLabel()"
+      (cancelled)="cancelHomeAction()"
+      (confirmed)="confirmHomeAction()" />
+  `,
+  styleUrl: './home.component.css'
 })
 export class HomeComponent {
   private readonly tmdb = inject(TmdbService);
@@ -82,9 +113,12 @@ export class HomeComponent {
   protected readonly watchlistItems = signal<CardItem[]>([]);
   protected readonly userLoading = signal(false);
   protected readonly sectionStates = signal<SectionState[]>([]);
-  protected readonly removeContinueModalOpen = signal(false);
-  protected readonly pendingContinueRemoval = signal<CardItem | null>(null);
-  protected readonly removeContinueMessage = signal('Vuoi nascondere questo titolo da Continua a guardare?');
+  protected readonly confirmModalOpen = signal(false);
+  private readonly pendingAction = signal<HomeConfirmAction | null>(null);
+  protected readonly confirmModalTitle = signal('Conferma');
+  protected readonly confirmModalMessage = signal('');
+  protected readonly confirmModalWarning = signal('');
+  protected readonly confirmModalActionLabel = signal('Conferma');
 
   private userSeq = 0;
 
@@ -108,20 +142,76 @@ export class HomeComponent {
   }
 
   protected async removeContinue(item: CardItem): Promise<void> {
-    this.pendingContinueRemoval.set(item);
-    this.removeContinueMessage.set(`Vuoi nascondere ${item.title} da Continua a guardare?`);
-    this.removeContinueModalOpen.set(true);
+    this.pendingAction.set({ type: 'hide-continue', item });
+    this.confirmModalTitle.set('Nascondi Da Continua a Guardare');
+    this.confirmModalMessage.set(`Vuoi nascondere ${item.title} da Continua a guardare?`);
+    this.confirmModalWarning.set('Il titolo sparirà da questa sezione finché non lo riprenderai.');
+    this.confirmModalActionLabel.set('Nascondi');
+    this.confirmModalOpen.set(true);
   }
 
-  protected async confirmRemoveContinue(): Promise<void> {
-    const item = this.pendingContinueRemoval();
-    this.pendingContinueRemoval.set(null);
-    if (!item) return;
-    await this.progress.hideTitle(item.tmdb_id, item.media_type);
-    this.continueItems.update((items) =>
-      items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
-    );
-    this.toast.show(`${item.title}: nascosto da continua a guardare`);
+  protected async toggleContinueWatchlist(item: CardItem): Promise<void> {
+    if (!this.auth.isLoggedIn()) return;
+    if (item.inWatchlist) {
+      this.pendingAction.set({ type: 'remove-watchlist', item, source: 'continue' });
+      this.confirmModalTitle.set('Rimuovi Dalla Lista');
+      this.confirmModalMessage.set(`Vuoi rimuovere ${item.title} dalla tua lista?`);
+      this.confirmModalWarning.set('Potrai sempre riaggiungerlo più tardi.');
+      this.confirmModalActionLabel.set('Rimuovi');
+      this.confirmModalOpen.set(true);
+      return;
+    }
+    const result = await toggleCardWatchlist(item, this.watchlist);
+    this.continueItems.update(items => setCardWatchlistFlag(items, item, result.inWatchlist));
+    this.toast.show(result.message);
+  }
+
+  protected async toggleWatchlistStatus(item: CardItem): Promise<void> {
+    const next: WatchlistStatus = (item.status ?? 'todo') === 'done' ? 'todo' : 'done';
+    await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
+    this.toast.show(next === 'done'
+      ? `${item.title}: segnato come visto`
+      : `${item.title}: rimesso in "Da guardare"`);
+  }
+
+  protected async removeFromHomeWatchlist(item: CardItem): Promise<void> {
+    this.pendingAction.set({ type: 'remove-watchlist', item, source: 'watchlist' });
+    this.confirmModalTitle.set('Rimuovi Dalla Lista');
+    this.confirmModalMessage.set(`Vuoi rimuovere ${item.title} dalla tua lista?`);
+    this.confirmModalWarning.set('Potrai sempre riaggiungerlo più tardi.');
+    this.confirmModalActionLabel.set('Rimuovi');
+    this.confirmModalOpen.set(true);
+  }
+
+  protected cancelHomeAction(): void {
+    this.pendingAction.set(null);
+  }
+
+  protected async confirmHomeAction(): Promise<void> {
+    const action = this.pendingAction();
+    this.pendingAction.set(null);
+    if (!action) return;
+
+    if (action.type === 'hide-continue') {
+      const item = action.item;
+      await this.progress.hideTitle(item.tmdb_id, item.media_type);
+      this.continueItems.update((items) =>
+        items.filter((candidate) => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+      );
+      this.toast.show(`${item.title}: nascosto da continua a guardare`);
+      return;
+    }
+
+    const { item, source } = action;
+    await this.watchlist.remove(item.tmdb_id, item.media_type);
+    if (source === 'continue') {
+      this.continueItems.update(items => setCardWatchlistFlag(items, item, false));
+    } else {
+      this.watchlistItems.update(items =>
+        items.filter(candidate => !(candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type))
+      );
+    }
+    this.toast.show(`${item.title}: rimosso dalla lista`);
   }
 
   private async loadTmdbSections(): Promise<void> {
@@ -148,7 +238,7 @@ export class HomeComponent {
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
 
-    const progressCards = await enrichCardsWithTmdb(progress.map(p => ({
+    const progressCardsRaw = await enrichCardsWithTmdb(progress.map(p => ({
       tmdb_id: p.tmdb_id,
       media_type: p.media_type,
       title: p.title ?? 'Senza titolo',
@@ -160,11 +250,14 @@ export class HomeComponent {
     })), this.tmdb);
     if (seq !== this.userSeq) return;
 
+    const progressCards = applyWatchlistFlags(progressCardsRaw, wl);
+
     const watchlistCards = await enrichCardsWithTmdb(wl.filter(w => (w.status ?? 'todo') !== 'done').map(w => ({
       tmdb_id: w.tmdb_id,
       media_type: w.media_type,
       title: w.title ?? 'Senza titolo',
       poster: w.poster,
+      status: w.status ?? 'todo',
       season: w.resume_season,
       episode: w.resume_episode,
       position: w.position,

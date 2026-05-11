@@ -47,7 +47,7 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
         </div>
 
         <div class="player-container">
-        @if (loading() && player.currentItemType() !== 'movie') {
+        @if (loading() && type() === 'tv') {
           <div class="episode-controls active">
             <div class="select-group">
               <div class="skeleton skeleton-label"></div>

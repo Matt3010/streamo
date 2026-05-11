@@ -85,6 +85,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
           <app-card
             [item]="it"
             [showRemove]="true"
+            [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
             [showProgress]="true"
             [showStatusToggle]="kind() === 'watchlist'"
             [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"

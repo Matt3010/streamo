@@ -42,7 +42,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
             </button>
           }
           @if (showRemove()) {
-            <button class="card-action card-remove" title="Rimuovi"
+            <button class="card-action card-remove" [title]="removeTitle()" [attr.aria-label]="removeTitle()"
                     (click)="onRemove($event)">
               <app-icon name="trash"></app-icon>
             </button>
@@ -74,6 +74,7 @@ export class CardComponent {
   readonly item = input.required<CardItem>();
   readonly showProgress = input(false);
   readonly showRemove = input(false);
+  readonly removeTitle = input('Rimuovi');
   readonly showStatusToggle = input(false);
   readonly showWatchlistToggle = input(false);
 
