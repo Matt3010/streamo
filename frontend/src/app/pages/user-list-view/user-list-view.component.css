@@ -74,6 +74,12 @@
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
 }
 
+.folder-card.expanded {
+  background:
+    radial-gradient(circle at top left, rgba(229, 9, 20, 0.2), transparent 42%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+}
+
 .folder-card-icon {
   width: 40px;
   height: 40px;
@@ -117,6 +123,23 @@
 .folder-card-chevron.expanded,
 .folder-row-arrow.expanded {
   transform: rotate(180deg);
+}
+
+.folder-card-panel {
+  grid-column: 1 / -1;
+  margin-top: -0.1rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(var(--radius) + 4px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.folder-card-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.4rem;
 }
 
 /* === List view === */
@@ -499,6 +522,10 @@
     padding-left: 0.35rem;
   }
 
+  .folder-card-panel {
+    padding: 0.55rem;
+  }
+
   .folder-modal-actions {
     justify-content: stretch;
     align-items: stretch;
@@ -510,5 +537,12 @@
 
   .folder-modal-actions button {
     width: 100%;
+  }
+}
+
+@media (min-width: 640px) {
+  .folder-card-panel-grid {
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+    gap: 0.6rem;
   }
 }
