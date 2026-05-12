@@ -45,6 +45,7 @@ interface DisplayEntry {
 const VIEW_MODE_KEY = 'streamo.user-list.view-mode';
 const MEDIA_FILTER_KEY = 'streamo.user-list.media-filter';
 const STATUS_FILTER_KEY = 'streamo.user-list.status-filter';
+const EXPANDED_FOLDERS_KEY = 'streamo.user-list.expanded-folders';
 
 const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   { value: 'todo', label: 'Da guardare' },
@@ -405,7 +406,7 @@ export class UserListViewComponent {
   protected readonly folderTargetItem = signal<CardItem | null>(null);
   protected readonly folderDraft = signal('');
   protected readonly savingFolder = signal(false);
-  protected readonly expandedFolders = signal<Record<string, boolean>>({});
+  protected readonly expandedFolders = signal<Record<string, boolean>>(loadExpandedFolders());
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
   protected readonly folderFeatureEnabled = computed(
     () => this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
@@ -512,6 +513,10 @@ export class UserListViewComponent {
 
     effect(() => {
       try { localStorage.setItem(STATUS_FILTER_KEY, this.statusFilter()); } catch { /* storage unavailable */ }
+    });
+
+    effect(() => {
+      try { localStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify(this.expandedFolders())); } catch { /* storage unavailable */ }
     });
 
     effect(() => {
@@ -772,6 +777,21 @@ function loadStatusFilter(): WatchlistStatus {
     return value === 'done' ? 'done' : 'todo';
   } catch {
     return 'todo';
+  }
+}
+
+function loadExpandedFolders(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_FOLDERS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([key, value]) => typeof key === 'string' && value === true)
+    ) as Record<string, boolean>;
+  } catch {
+    return {};
   }
 }
 
