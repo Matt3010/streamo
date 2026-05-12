@@ -70,14 +70,16 @@
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.folder-card:hover,
-.folder-card.expanded {
+.folder-card:hover {
   border-color: rgba(229, 9, 20, 0.42);
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
 }
 
 .folder-card.expanded {
+  border-color: var(--border);
+  transform: none;
+  box-shadow: none;
   background:
     radial-gradient(circle at top left, rgba(229, 9, 20, 0.18), transparent 42%),
     linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
@@ -131,12 +133,11 @@
 
 .folder-card-panel {
   grid-column: 1 / -1;
-  margin-top: 0.15rem;
-  padding: 0.3rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: calc(var(--radius) + 2px);
-  background: rgba(255, 255, 255, 0.025);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  margin-top: 0.1rem;
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .folder-card-panel-grid {
@@ -526,7 +527,7 @@
   }
 
   .folder-card-panel {
-    padding: 0.35rem;
+    padding: 0.25rem;
   }
 
   .folder-modal-actions {
