@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject
 import { faFileLines, faSatelliteDish, faTicket, faTowerBroadcast } from '@fortawesome/free-solid-svg-icons';
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
+import { BackButtonComponent } from '../../ui/back-button/back-button.component';
 import { IconComponent } from '../../ui/icon/icon.component';
-import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { ToastService } from '../../services/toast.service';
@@ -29,10 +29,17 @@ function timeAgo(timestamp: number): string {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [UiModalComponent, IconComponent, PageHeaderComponent, PendingButtonDirective, SectionHeaderComponent],
+  imports: [UiModalComponent, BackButtonComponent, IconComponent, PendingButtonDirective, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ui-page-header title="Pannello Admin" (backClick)="back()" />
+    <div class="page-header">
+      <div class="page-header-back">
+        <ui-back-button (pressed)="back()" />
+      </div>
+      <div class="page-header-row">
+        <h2>Pannello Admin</h2>
+      </div>
+    </div>
 
     <div class="admin-content">
       <section class="admin-section">

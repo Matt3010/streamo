@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
+import { BackButtonComponent } from '../../ui/back-button/back-button.component';
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { AuthService } from '../../services/auth.service';
@@ -8,10 +8,17 @@ import { ToastService } from '../../services/toast.service';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [PageHeaderComponent, SettingsToggleComponent],
+  imports: [BackButtonComponent, SettingsToggleComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ui-page-header title="Impostazioni" (backClick)="back()" />
+    <div class="page-header">
+      <div class="page-header-back">
+        <ui-back-button (pressed)="back()" />
+      </div>
+      <div class="page-header-row">
+        <h2>Impostazioni</h2>
+      </div>
+    </div>
 
     <section class="settings-panel">
       <header class="settings-header">

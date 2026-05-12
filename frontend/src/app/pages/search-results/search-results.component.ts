@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
-import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
+import { BackButtonComponent } from '../../ui/back-button/back-button.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
@@ -15,10 +15,17 @@ import type { CardItem } from '../../models';
 @Component({
   selector: 'app-search-results',
   standalone: true,
-  imports: [CardComponent, PageHeaderComponent, ConfirmModalComponent],
+  imports: [CardComponent, BackButtonComponent, ConfirmModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ui-page-header [title]="headerText()" (backClick)="back()" />
+    <div class="page-header">
+      <div class="page-header-back">
+        <ui-back-button (pressed)="back()" />
+      </div>
+      <div class="page-header-row">
+        <h2>{{ headerText() }}</h2>
+      </div>
+    </div>
 
     @if (loading()) {
       <div class="loading"><div class="spinner"></div><p>Cercando...</p></div>

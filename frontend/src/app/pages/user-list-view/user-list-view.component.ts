@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
+import { BackButtonComponent } from '../../ui/back-button/back-button.component';
 import { IconComponent } from '../../ui/icon/icon.component';
-import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
@@ -42,9 +42,9 @@ interface DisplayEntry {
   expanded: boolean;
 }
 
-const VIEW_MODE_KEY = 'vixstream.user-list.view-mode';
-const MEDIA_FILTER_KEY = 'vixstream.user-list.media-filter';
-const STATUS_FILTER_KEY = 'vixstream.user-list.status-filter';
+const VIEW_MODE_KEY = 'streamo.user-list.view-mode';
+const MEDIA_FILTER_KEY = 'streamo.user-list.media-filter';
+const STATUS_FILTER_KEY = 'streamo.user-list.status-filter';
 
 const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   { value: 'todo', label: 'Da guardare' },
@@ -62,8 +62,8 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
   standalone: true,
   imports: [
     CardComponent,
+    BackButtonComponent,
     IconComponent,
-    PageHeaderComponent,
     ConfirmModalComponent,
     PendingButtonDirective,
     UiTabsComponent,
@@ -71,8 +71,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ui-page-header [title]="title()" (backClick)="back()">
-      <div headerActions class="page-actions">
+    <div class="page-header">
+      <div class="page-header-back">
+        <ui-back-button (pressed)="back()" />
+      </div>
+      <div class="page-header-row">
+        <h2>{{ title() }}</h2>
+        <div class="page-actions">
           <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
             <button class="view-btn" [class.active]="viewMode() === 'grid'"
                     aria-label="Griglia" (click)="setViewMode('grid')">
@@ -83,8 +88,9 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               <app-icon name="list"></app-icon>
             </button>
           </div>
+        </div>
       </div>
-    </ui-page-header>
+    </div>
 
     <div class="filter-bar">
       @if (kind() === 'watchlist') {

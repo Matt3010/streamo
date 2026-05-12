@@ -17,7 +17,7 @@ services:
     expose:
       - "3000"
 
-  vixstream:
+  streamo:
     build: .
     ports:
       - "7549:80"

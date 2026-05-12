@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "vixstream": {
+    "streamo": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -43,8 +43,8 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "configurations": {
-            "production": { "buildTarget": "vixstream:build:production" },
-            "development": { "buildTarget": "vixstream:build:development" }
+            "production": { "buildTarget": "streamo:build:production" },
+            "development": { "buildTarget": "streamo:build:development" }
           },
           "defaultConfiguration": "development"
         }

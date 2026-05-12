@@ -1,4 +1,4 @@
-# VixStream
+# Streamo
 
 Personal web app to browse movies and TV shows (TMDB catalog) and stream
 them. Angular frontend, Express + SQLite backend, both packaged as Docker
@@ -31,7 +31,7 @@ is not exposed directly — nginx reverse-proxies `/api/auth`, `/api/user`,
 `/api/tmdb`, and `/player`.
 
 State (users, watchlist, progress, history, JWT secret, TMDB cache) lives
-in `./data/vixstream.db` (volume mounted on the backend container).
+in `./data/vixstream.db` (volume mounted on the backend container; legacy filename kept to preserve existing data).
 
 ## Features
 
@@ -58,7 +58,7 @@ in `./data/vixstream.db` (volume mounted on the backend container).
 
 ```
 .
-├── docker-compose.yml          # 2 services: backend + vixstream (nginx)
+├── docker-compose.yml          # 2 services: backend + streamo (nginx)
 ├── Dockerfile                  # multi-stage Angular + nginx build
 ├── nginx.conf.template         # reverse proxy + streaming iframe
 ├── frontend/                   # Angular app
