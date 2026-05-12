@@ -134,23 +134,25 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               </span>
             </button>
             @if (entry.expanded) {
-              @for (child of entry.group.items; track child.tmdb_id + '-' + child.media_type) {
-                <div class="folder-grid-shell">
-                  <app-card
-                    [item]="child"
-                    [showRemove]="true"
-                    [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
-                    [showProgress]="true"
-                    [showStatusToggle]="kind() === 'watchlist'"
-                    [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
-                    [showFolderAction]="folderFeatureEnabled()"
-                    (cardClick)="onCardClick($event)"
-                    (watchlistToggleClick)="onWatchlistToggle($event)"
-                    (statusToggleClick)="onStatusToggle($event)"
-                    (folderClick)="openFolderModal($event)"
-                    (removeClick)="onRemoveClick($event)" />
+              <div class="folder-card-panel">
+                <div class="folder-card-panel-grid">
+                  @for (child of entry.group.items; track child.tmdb_id + '-' + child.media_type) {
+                    <app-card
+                      [item]="child"
+                      [showRemove]="true"
+                      [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
+                      [showProgress]="true"
+                      [showStatusToggle]="kind() === 'watchlist'"
+                      [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
+                      [showFolderAction]="folderFeatureEnabled()"
+                      (cardClick)="onCardClick($event)"
+                      (watchlistToggleClick)="onWatchlistToggle($event)"
+                      (statusToggleClick)="onStatusToggle($event)"
+                      (folderClick)="openFolderModal($event)"
+                      (removeClick)="onRemoveClick($event)" />
+                  }
                 </div>
-              }
+              </div>
             }
           } @else if (entry.item) {
             <app-card
