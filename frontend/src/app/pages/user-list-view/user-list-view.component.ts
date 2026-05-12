@@ -33,6 +33,8 @@ interface FolderGroup {
   count: number;
   movieCount: number;
   tvCount: number;
+  todoCount: number;
+  doneCount: number;
 }
 
 interface DisplayEntry {
@@ -128,6 +130,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               <span class="folder-card-body">
                 <span class="folder-card-title">{{ entry.group.name }}</span>
                 <span class="folder-card-meta">{{ folderGridMeta(entry.group) }}</span>
+                <span class="folder-card-stats">{{ folderStatusMeta(entry.group) }}</span>
               </span>
               <span class="folder-card-chevron" [class.expanded]="entry.expanded">
                 <app-icon name="chevron-down"></app-icon>
@@ -187,6 +190,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   <span class="folder-row-copy">
                     <span class="folder-row-title">{{ entry.group.name }}</span>
                     <span class="folder-row-meta">{{ folderListMeta(entry.group) }}</span>
+                    <span class="folder-row-stats">{{ folderStatusMeta(entry.group) }}</span>
                   </span>
                 </span>
                 <span class="folder-row-arrow" [class.expanded]="entry.expanded">
@@ -555,6 +559,10 @@ export class UserListViewComponent {
     return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
   }
 
+  protected folderStatusMeta(group: FolderGroup): string {
+    return `${folderTodoLabel(group.todoCount)} • ${folderDoneLabel(group.doneCount)}`;
+  }
+
   protected onCardClick(item: CardItem): void {
     const queryParams: Record<string, number> = {};
     if (item.season) queryParams['s'] = item.season;
@@ -841,6 +849,8 @@ function buildDisplayEntries(
       existing.count += 1;
       if (item.media_type === 'movie') existing.movieCount += 1;
       if (item.media_type === 'tv') existing.tvCount += 1;
+      if (item.status === 'done') existing.doneCount += 1;
+      else existing.todoCount += 1;
       continue;
     }
 
@@ -850,7 +860,9 @@ function buildDisplayEntries(
       items: [item],
       count: 1,
       movieCount: item.media_type === 'movie' ? 1 : 0,
-      tvCount: item.media_type === 'tv' ? 1 : 0
+      tvCount: item.media_type === 'tv' ? 1 : 0,
+      todoCount: item.status === 'done' ? 0 : 1,
+      doneCount: item.status === 'done' ? 1 : 0
     });
   }
 
@@ -891,4 +903,12 @@ function folderMediaLabel(group: FolderGroup): string {
   if (group.movieCount > 0 && group.tvCount > 0) return 'film e serie';
   if (group.tvCount > 0) return group.tvCount === 1 ? '1 serie' : `${group.tvCount} serie`;
   return group.movieCount === 1 ? '1 film' : `${group.movieCount} film`;
+}
+
+function folderTodoLabel(count: number): string {
+  return count === 1 ? '1 da guardare' : `${count} da guardare`;
+}
+
+function folderDoneLabel(count: number): string {
+  return count === 1 ? '1 visto' : `${count} visti`;
 }

@@ -120,6 +120,13 @@
   white-space: nowrap;
 }
 
+.folder-card-stats {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 .folder-card-chevron,
 .folder-row-arrow {
   color: rgba(255, 255, 255, 0.8);
@@ -214,6 +221,11 @@
 .folder-row-meta {
   color: var(--text-muted);
   font-size: 0.82rem;
+}
+
+.folder-row-stats {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.78rem;
 }
 
 .folder-items {
