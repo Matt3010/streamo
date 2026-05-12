@@ -127,17 +127,11 @@
 
 .folder-card-panel {
   grid-column: 1 / -1;
-  margin-top: -0.08rem;
-  padding: 1rem 0.85rem 0.85rem;
+  margin-top: 0.2rem;
+  padding: 0.45rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: calc(var(--radius) + 4px);
-  background:
-    radial-gradient(circle at center top, var(--bg) 0 18px, transparent 19px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
-    rgba(255, 255, 255, 0.02);
-  background-repeat: no-repeat;
-  background-size: 42px 24px, 100% 100%, 100% 100%;
-  background-position: center top, 0 0, 0 0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -528,8 +522,7 @@
   }
 
   .folder-card-panel {
-    padding: 0.85rem 0.55rem 0.55rem;
-    background-size: 34px 20px, 100% 100%, 100% 100%;
+    padding: 0.35rem;
   }
 
   .folder-modal-actions {
