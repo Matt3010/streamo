@@ -55,15 +55,23 @@ export class AuthService {
   }
 
   async setAutoplay(enabled: 0 | 1): Promise<boolean> {
+    return this.updatePreferences({ autoplay_next: enabled });
+  }
+
+  async setFoldersEnabled(enabled: 0 | 1): Promise<boolean> {
+    return this.updatePreferences({ folders_enabled: enabled });
+  }
+
+  private async updatePreferences(preferences: Partial<Pick<User, 'autoplay_next' | 'folders_enabled'>>): Promise<boolean> {
     try {
       const res = await fetch('/api/user/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoplay_next: enabled })
+        body: JSON.stringify(preferences)
       });
       if (!res.ok) return false;
       const user = this.currentUser();
-      if (user) this.currentUser.set({ ...user, autoplay_next: enabled });
+      if (user) this.currentUser.set({ ...user, ...preferences });
       return true;
     } catch {
       return false;

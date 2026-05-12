@@ -1,7 +1,7 @@
 import type { MediaType } from './media.model';
 import type { WatchlistStatus } from './watchlist.model';
 
-export type CardPendingAction = 'watchlist' | 'status' | 'remove';
+export type CardPendingAction = 'watchlist' | 'status' | 'remove' | 'folder';
 
 /**
  * Unified card data — used by every row in the app
@@ -26,6 +26,7 @@ export interface CardItem {
   position?: number;
   duration?: number;
   status?: WatchlistStatus;
+  folderName?: string | null;
   inWatchlist?: boolean;
   isUpcoming?: boolean;
   upcomingBadge?: string;

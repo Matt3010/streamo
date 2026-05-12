@@ -8,6 +8,7 @@ export interface User {
   id: number;
   email: string;
   autoplay_next: 0 | 1;
+  folders_enabled: 0 | 1;
   is_admin?: boolean;
 }
 
@@ -45,6 +46,7 @@ export interface WatchlistItem {
   title: string | null;
   poster: string | null;
   status: WatchlistStatus;
+  folder_name?: string | null;
   added_at: number;
   /** For TV rows manually marked as done: number of aired episodes at the
    * moment the user marked the show "Visto". Lets new releases flip back to

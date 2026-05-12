@@ -48,5 +48,17 @@ export const routes: Routes = [
       }
     ]
   },
+  {
+    path: 'settings',
+    component: ListLayoutComponent,
+    children: [
+      {
+        path: '',
+        canActivate: [requireAuthGuard],
+        data: { requiresAuth: true },
+        loadComponent: () => import('./pages/settings/settings.component').then(m => m.SettingsComponent)
+      }
+    ]
+  },
   { path: '**', redirectTo: 'browse' }
 ];

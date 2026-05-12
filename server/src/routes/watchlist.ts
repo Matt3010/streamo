@@ -15,6 +15,7 @@ interface WatchlistRow {
   title: string | null;
   poster: string | null;
   status: 'todo' | 'done';
+  folder_name: string | null;
   done_aired_episodes: number;
   added_at: number;
 }
@@ -30,6 +31,17 @@ interface LatestTvProgressRow {
   episode: number;
   position: number;
   duration: number;
+}
+
+function normalizeFolderName(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') return undefined;
+
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return null;
+  if (trimmed.length > 60) return undefined;
+  return trimmed;
 }
 
 function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): number {
@@ -107,7 +119,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
   }
 
   const rows = db.prepare(`
-    SELECT tmdb_id, media_type, title, poster, status, done_aired_episodes, added_at
+    SELECT tmdb_id, media_type, title, poster, status, folder_name, done_aired_episodes, added_at
     FROM watchlist
     WHERE ${where.join(' AND ')}
     ORDER BY added_at DESC
@@ -247,9 +259,26 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
 router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
-  const status = (req.body || {}).status;
+  const body = req.body || {};
+  const status = body.status;
+  const folderName = normalizeFolderName(body.folder_name);
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
-  if (!['todo', 'done'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+  if (status !== undefined && !['todo', 'done'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+  if (body.folder_name !== undefined && folderName === undefined) {
+    return res.status(400).json({ error: 'invalid_folder_name' });
+  }
+  if (status === undefined && body.folder_name === undefined) {
+    return res.status(400).json({ error: 'missing_fields' });
+  }
+
+  if (status === undefined) {
+    const result = db.prepare(`
+      UPDATE watchlist SET folder_name = ?
+      WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
+    `).run(folderName ?? null, req.user!.id, tmdb_id, type);
+    if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
+    return res.json({ ok: true, folder_name: folderName ?? null });
+  }
 
   let doneAiredEpisodes = 0;
   if (type === 'tv' && status === 'done') {

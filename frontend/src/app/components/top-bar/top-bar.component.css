@@ -1,4 +1,7 @@
 .top-bar {
+  position: relative;
+  z-index: 20;
+  isolation: isolate;
   display: flex;
   justify-content: flex-end;
   margin-bottom: 0.75rem;
@@ -9,7 +12,7 @@
   align-items: center;
   gap: 0.5rem;
   position: relative;
-  z-index: 4;
+  z-index: 1;
 }
 
 @media (max-width: 768px) {

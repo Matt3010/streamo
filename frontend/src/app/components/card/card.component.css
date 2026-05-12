@@ -167,6 +167,11 @@
   background: rgba(229, 9, 20, 0.88);
 }
 
+.card-folder.active,
+.card-folder:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .card-remove:hover { background: var(--accent); }
 
 .card-status:hover { background: #2ea043; }

@@ -100,26 +100,6 @@
 .account-menu button:hover { background: var(--surface-hover); }
 .account-menu button.danger { color: #ef4444; }
 
-.account-menu .menu-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-  user-select: none;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-
-.account-menu .menu-toggle input {
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--accent, #3b82f6);
-}
-
-.account-menu .menu-toggle:hover { background: var(--surface-hover); }
-
 @media (max-width: 768px) {
   .account-trigger {
     padding: 0.42rem 0.8rem 0.42rem 0.66rem;

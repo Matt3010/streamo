@@ -3,6 +3,7 @@ import { faFileLines, faSatelliteDish, faTicket, faTowerBroadcast } from '@forta
 import { AdminService } from '../../services/admin.service';
 import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { ToastService } from '../../services/toast.service';
@@ -28,20 +29,10 @@ function timeAgo(timestamp: number): string {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [UiModalComponent, IconComponent, PendingButtonDirective, SectionHeaderComponent],
+  imports: [UiModalComponent, IconComponent, PageHeaderComponent, PendingButtonDirective, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="page-header">
-      <div class="page-header-back">
-        <button class="back-btn" (click)="back()">
-          <app-icon name="chevron-left"></app-icon>
-          <span>Indietro</span>
-        </button>
-      </div>
-      <div class="page-header-row">
-        <h2>Pannello Admin</h2>
-      </div>
-    </div>
+    <ui-page-header title="Pannello Admin" (backClick)="back()" />
 
     <div class="admin-content">
       <section class="admin-section">

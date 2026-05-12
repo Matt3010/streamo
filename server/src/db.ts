@@ -17,6 +17,7 @@ db.exec(`
     email TEXT UNIQUE NOT NULL COLLATE NOCASE,
     password_hash TEXT NOT NULL,
     autoplay_next INTEGER NOT NULL DEFAULT 1,
+    folders_enabled INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   );
 
@@ -70,6 +71,7 @@ db.exec(`
     title TEXT,
     poster TEXT,
     status TEXT NOT NULL DEFAULT 'todo',
+    folder_name TEXT,
     done_aired_episodes INTEGER NOT NULL DEFAULT 0,
     added_at INTEGER DEFAULT (strftime('%s','now')),
     PRIMARY KEY (user_id, tmdb_id, media_type),
@@ -109,11 +111,17 @@ if (userCols.includes('username') && !userCols.includes('email')) {
 if (!userCols.includes('autoplay_next')) {
   db.exec("ALTER TABLE users ADD COLUMN autoplay_next INTEGER NOT NULL DEFAULT 1");
 }
+if (!userCols.includes('folders_enabled')) {
+  db.exec("ALTER TABLE users ADD COLUMN folders_enabled INTEGER NOT NULL DEFAULT 1");
+}
 
 // Migration: add watchlist.status (todo/done) for existing rows
 const watchlistCols = (db.prepare("PRAGMA table_info(watchlist)").all() as Array<{ name: string }>).map(c => c.name);
 if (!watchlistCols.includes('status')) {
   db.exec("ALTER TABLE watchlist ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'");
+}
+if (!watchlistCols.includes('folder_name')) {
+  db.exec("ALTER TABLE watchlist ADD COLUMN folder_name TEXT");
 }
 if (!watchlistCols.includes('done_aired_episodes')) {
   db.exec("ALTER TABLE watchlist ADD COLUMN done_aired_episodes INTEGER NOT NULL DEFAULT 0");

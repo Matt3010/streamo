@@ -2,9 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
+import { UiModalComponent } from '../../ui/modal/modal.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -24,6 +26,22 @@ type PendingAction =
   | { type: 'mark-done'; item: CardItem }
   | { type: 'remove-watchlist'; item: CardItem };
 
+interface FolderGroup {
+  id: string;
+  name: string;
+  items: CardItem[];
+  count: number;
+  movieCount: number;
+  tvCount: number;
+}
+
+interface DisplayEntry {
+  key: string;
+  item: CardItem | null;
+  group: FolderGroup | null;
+  expanded: boolean;
+}
+
 const VIEW_MODE_KEY = 'vixstream.user-list.view-mode';
 const MEDIA_FILTER_KEY = 'vixstream.user-list.media-filter';
 const STATUS_FILTER_KEY = 'vixstream.user-list.status-filter';
@@ -42,19 +60,19 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
-  imports: [CardComponent, IconComponent, ConfirmModalComponent, PendingButtonDirective, UiTabsComponent],
+  imports: [
+    CardComponent,
+    IconComponent,
+    PageHeaderComponent,
+    ConfirmModalComponent,
+    PendingButtonDirective,
+    UiTabsComponent,
+    UiModalComponent
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="page-header">
-      <div class="page-header-back">
-        <button class="back-btn" (click)="back()">
-          <app-icon name="chevron-left"></app-icon>
-          <span>Indietro</span>
-        </button>
-      </div>
-      <div class="page-header-row">
-        <h2>{{ title() }}</h2>
-        <div class="page-actions">
+    <ui-page-header [title]="title()" (backClick)="back()">
+      <div headerActions class="page-actions">
           <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
             <button class="view-btn" [class.active]="viewMode() === 'grid'"
                     aria-label="Griglia" (click)="setViewMode('grid')">
@@ -65,9 +83,8 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               <app-icon name="list"></app-icon>
             </button>
           </div>
-        </div>
       </div>
-    </div>
+    </ui-page-header>
 
     <div class="filter-bar">
       @if (kind() === 'watchlist') {
@@ -78,7 +95,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 
     @if (loading()) {
       <div class="loading"><div class="spinner"></div></div>
-    } @else if (filteredItems().length === 0) {
+    } @else if (items().length === 0) {
       <div class="empty-state">
         <p class="empty-state-title">{{ emptyTitle() }}</p>
         <p class="empty-state-hint">{{ emptyHint() }}</p>
@@ -92,66 +109,193 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       </div>
     } @else if (viewMode() === 'grid') {
       <div class="content-grid">
-        @for (it of filteredItems(); track it.tmdb_id + '-' + it.media_type) {
-          <app-card
-            [item]="it"
-            [showRemove]="true"
-            [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
-            [showProgress]="true"
-            [showStatusToggle]="kind() === 'watchlist'"
-            [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
-            (cardClick)="onCardClick($event)"
-            (watchlistToggleClick)="onWatchlistToggle($event)"
-            (statusToggleClick)="onStatusToggle($event)"
-            (removeClick)="onRemoveClick($event)" />
+        @for (entry of displayEntries(); track entry.key) {
+          @if (entry.group) {
+            <button class="folder-card"
+                    [class.expanded]="entry.expanded"
+                    [attr.aria-expanded]="entry.expanded"
+                    (click)="toggleFolder(entry.group.id)">
+              <span class="folder-card-icon">
+                <app-icon name="folder"></app-icon>
+              </span>
+              <span class="folder-card-body">
+                <span class="folder-card-title">{{ entry.group.name }}</span>
+                <span class="folder-card-meta">{{ folderGridMeta(entry.group, entry.expanded) }}</span>
+              </span>
+              <span class="folder-card-chevron" [class.expanded]="entry.expanded">
+                <app-icon name="chevron-down"></app-icon>
+              </span>
+            </button>
+            @if (entry.expanded) {
+              @for (child of entry.group.items; track child.tmdb_id + '-' + child.media_type) {
+                <app-card
+                  [item]="child"
+                  [showRemove]="true"
+                  [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
+                  [showProgress]="true"
+                  [showStatusToggle]="kind() === 'watchlist'"
+                  [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
+                  [showFolderAction]="folderFeatureEnabled()"
+                  (cardClick)="onCardClick($event)"
+                  (watchlistToggleClick)="onWatchlistToggle($event)"
+                  (statusToggleClick)="onStatusToggle($event)"
+                  (folderClick)="openFolderModal($event)"
+                  (removeClick)="onRemoveClick($event)" />
+              }
+            }
+          } @else if (entry.item) {
+            <app-card
+              [item]="entry.item"
+              [showRemove]="true"
+              [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
+              [showProgress]="true"
+              [showStatusToggle]="kind() === 'watchlist'"
+              [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
+              [showFolderAction]="folderFeatureEnabled()"
+              (cardClick)="onCardClick($event)"
+              (watchlistToggleClick)="onWatchlistToggle($event)"
+              (statusToggleClick)="onStatusToggle($event)"
+              (folderClick)="openFolderModal($event)"
+              (removeClick)="onRemoveClick($event)" />
+          }
         }
       </div>
     } @else {
       <ul class="item-list">
-        @for (it of filteredItems(); track it.tmdb_id + '-' + it.media_type) {
-          <li class="item-row" (click)="onCardClick(it)">
-            <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
-            <div class="item-info">
-              <span class="item-title">{{ it.title }}</span>
-              @if (it.season && it.episode || it.watchStatus || it.nextReleaseText) {
-                <span class="item-sub">
-                  @if (it.season && it.episode) {
-                    <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
-                  }
-                  @if (it.watchStatus) {
-                    <span class="item-watch-status">{{ it.watchStatus }}</span>
-                  }
-                  @if (it.nextReleaseText) {
-                    <span class="item-release-status">{{ it.nextReleaseText }}</span>
-                  }
+        @for (entry of displayEntries(); track entry.key) {
+          @if (entry.group) {
+            <li class="folder-block">
+              <button class="folder-row"
+                      [class.expanded]="entry.expanded"
+                      [attr.aria-expanded]="entry.expanded"
+                      (click)="toggleFolder(entry.group.id)">
+                <span class="folder-row-main">
+                  <span class="folder-pill">
+                    <app-icon name="folder"></app-icon>
+                  </span>
+                  <span class="folder-row-copy">
+                    <span class="folder-row-title">{{ entry.group.name }}</span>
+                    <span class="folder-row-meta">{{ folderListMeta(entry.group) }}</span>
+                  </span>
                 </span>
+                <span class="folder-row-arrow" [class.expanded]="entry.expanded">
+                  <app-icon name="chevron-down"></app-icon>
+                </span>
+              </button>
+
+              @if (entry.expanded) {
+                <ul class="folder-items">
+                  @for (it of entry.group.items; track it.tmdb_id + '-' + it.media_type) {
+                    <li class="item-row folder-child-row" (click)="onCardClick(it)">
+                      <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
+                      <div class="item-info">
+                        <span class="item-title">{{ it.title }}</span>
+                        @if (it.season && it.episode || it.watchStatus || it.nextReleaseText) {
+                          <span class="item-sub">
+                            @if (it.season && it.episode) {
+                              <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
+                            }
+                            @if (it.watchStatus) {
+                              <span class="item-watch-status">{{ it.watchStatus }}</span>
+                            }
+                            @if (it.nextReleaseText) {
+                              <span class="item-release-status">{{ it.nextReleaseText }}</span>
+                            }
+                          </span>
+                        }
+                      </div>
+                      @if (kind() === 'watchlist' && !it.isUpcoming) {
+                        <button class="row-action row-status"
+                                [uiPending]="!!it.pendingAction"
+                                [class.done]="it.status === 'done'"
+                                [title]="it.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
+                                (click)="onStatusToggle(it); $event.stopPropagation()">
+                          <app-icon name="check"></app-icon>
+                        </button>
+                      }
+                      @if (kind() === 'watchlist' && folderFeatureEnabled()) {
+                        <button class="row-action row-folder"
+                                [uiPending]="!!it.pendingAction"
+                                [class.active]="!!it.folderName"
+                                [title]="it.folderName ? 'Modifica folder' : 'Assegna folder'"
+                                (click)="openFolderModal(it); $event.stopPropagation()">
+                          <app-icon name="folder"></app-icon>
+                        </button>
+                      }
+                      @if (kind() === 'history' && auth.isLoggedIn()) {
+                        <button class="row-action row-watchlist"
+                                [uiPending]="!!it.pendingAction"
+                                [class.active]="it.inWatchlist === true"
+                                [title]="it.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                                (click)="onWatchlistToggle(it); $event.stopPropagation()">
+                          <app-icon name="bookmark"></app-icon>
+                        </button>
+                      }
+                      <button class="row-action row-remove"
+                              [uiPending]="!!it.pendingAction"
+                              [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
+                              (click)="onRemoveClick(it); $event.stopPropagation()">
+                        <app-icon name="trash"></app-icon>
+                      </button>
+                    </li>
+                  }
+                </ul>
               }
-            </div>
-            @if (kind() === 'watchlist' && !it.isUpcoming) {
-              <button class="row-action row-status"
-                      [uiPending]="!!it.pendingAction"
-                      [class.done]="it.status === 'done'"
-                      [title]="it.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
-                      (click)="onStatusToggle(it); $event.stopPropagation()">
-                <app-icon name="check"></app-icon>
+            </li>
+          } @else if (entry.item) {
+            <li class="item-row" (click)="onCardClick(entry.item)">
+              <span class="item-type">{{ entry.item.media_type === 'tv' ? 'TV' : 'Film' }}</span>
+              <div class="item-info">
+                <span class="item-title">{{ entry.item.title }}</span>
+                @if (entry.item.season && entry.item.episode || entry.item.watchStatus || entry.item.nextReleaseText) {
+                  <span class="item-sub">
+                    @if (entry.item.season && entry.item.episode) {
+                      <span class="item-meta">S{{ entry.item.season }} E{{ entry.item.episode }}</span>
+                    }
+                    @if (entry.item.watchStatus) {
+                      <span class="item-watch-status">{{ entry.item.watchStatus }}</span>
+                    }
+                    @if (entry.item.nextReleaseText) {
+                      <span class="item-release-status">{{ entry.item.nextReleaseText }}</span>
+                    }
+                  </span>
+                }
+              </div>
+              @if (kind() === 'watchlist' && !entry.item.isUpcoming) {
+                <button class="row-action row-status"
+                        [uiPending]="!!entry.item.pendingAction"
+                        [class.done]="entry.item.status === 'done'"
+                        [title]="entry.item.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
+                        (click)="onStatusToggle(entry.item); $event.stopPropagation()">
+                  <app-icon name="check"></app-icon>
+                </button>
+              }
+              @if (kind() === 'watchlist' && folderFeatureEnabled()) {
+                <button class="row-action row-folder"
+                        [uiPending]="!!entry.item.pendingAction"
+                        [class.active]="!!entry.item.folderName"
+                        [title]="entry.item.folderName ? 'Modifica folder' : 'Assegna folder'"
+                        (click)="openFolderModal(entry.item); $event.stopPropagation()">
+                  <app-icon name="folder"></app-icon>
+                </button>
+              }
+              @if (kind() === 'history' && auth.isLoggedIn()) {
+                <button class="row-action row-watchlist"
+                        [uiPending]="!!entry.item.pendingAction"
+                        [class.active]="entry.item.inWatchlist === true"
+                        [title]="entry.item.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                        (click)="onWatchlistToggle(entry.item); $event.stopPropagation()">
+                  <app-icon name="bookmark"></app-icon>
+                </button>
+              }
+              <button class="row-action row-remove"
+                      [uiPending]="!!entry.item.pendingAction"
+                      [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
+                      (click)="onRemoveClick(entry.item); $event.stopPropagation()">
+                <app-icon name="trash"></app-icon>
               </button>
-            }
-            @if (kind() === 'history' && auth.isLoggedIn()) {
-              <button class="row-action row-watchlist"
-                      [uiPending]="!!it.pendingAction"
-                      [class.active]="it.inWatchlist === true"
-                      [title]="it.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
-                      (click)="onWatchlistToggle(it); $event.stopPropagation()">
-                <app-icon name="bookmark"></app-icon>
-              </button>
-            }
-            <button class="row-action row-remove"
-                    [uiPending]="!!it.pendingAction"
-                    [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
-                    (click)="onRemoveClick(it); $event.stopPropagation()">
-              <app-icon name="trash"></app-icon>
-            </button>
-          </li>
+            </li>
+          }
         }
       </ul>
     }
@@ -164,6 +308,50 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       [actionLabel]="confirmModalActionLabel()"
       (cancelled)="cancelPendingAction()"
       (confirmed)="confirmPendingAction()" />
+
+    <ui-modal [(open)]="folderModalOpen" title="Folder" size="sm" (closed)="closeFolderModal()">
+      <div class="folder-modal-content">
+        <p class="folder-modal-copy">
+          Raggruppa <strong>{{ folderTargetItem()?.title }}</strong> in un contesto comune.
+        </p>
+
+        @if (existingFolders().length > 0) {
+          <div class="folder-chip-list">
+            @for (folder of existingFolders(); track folder) {
+              <button class="folder-chip"
+                      [class.active]="folderDraft() === folder"
+                      (click)="selectFolder(folder)">
+                {{ folder }}
+              </button>
+            }
+          </div>
+        }
+
+        <label class="folder-field">
+          <span>Nome folder</span>
+          <input type="text"
+                 maxlength="60"
+                 [value]="folderDraft()"
+                 placeholder="Es. Marvel, Da vedere insieme"
+                 (input)="onFolderDraftInput($event)">
+        </label>
+
+        <div class="folder-modal-actions">
+          <button class="secondary-btn" (click)="closeFolderModal()">Annulla</button>
+          <button class="secondary-btn"
+                  [disabled]="!folderTargetHasFolder() || savingFolder()"
+                  (click)="removeFolder()">
+            Rimuovi folder
+          </button>
+          <button class="primary-btn"
+                  [uiPending]="savingFolder()"
+                  [disabled]="!canSaveFolder()"
+                  (click)="saveFolder()">
+            Salva
+          </button>
+        </div>
+      </div>
+    </ui-modal>
   `,
   styleUrl: './user-list-view.component.css'
 })
@@ -188,9 +376,31 @@ export class UserListViewComponent {
   protected readonly loading = signal(false);
   protected readonly confirmModalOpen = signal(false);
   protected readonly pendingAction = signal<PendingAction | null>(null);
+  protected readonly folderModalOpen = signal(false);
+  protected readonly folderTargetItem = signal<CardItem | null>(null);
+  protected readonly folderDraft = signal('');
+  protected readonly savingFolder = signal(false);
+  protected readonly expandedFolders = signal<Record<string, boolean>>({});
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
-
-  protected readonly filteredItems = computed(() => this.items());
+  protected readonly folderFeatureEnabled = computed(
+    () => this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
+  );
+  protected readonly displayEntries = computed(() => (
+    buildDisplayEntries(this.items(), this.folderFeatureEnabled(), this.expandedFolders())
+  ));
+  protected readonly existingFolders = computed(() => (
+    this.displayEntries()
+      .flatMap((entry) => entry.group ? [entry.group.name] : [])
+  ));
+  protected readonly canSaveFolder = computed(() => {
+    const target = this.folderTargetItem();
+    if (!target) return false;
+    const nextFolder = normalizeFolderName(this.folderDraft());
+    return nextFolder !== null && nextFolder !== normalizeFolderName(target.folderName ?? null);
+  });
+  protected readonly folderTargetHasFolder = computed(() => (
+    normalizeFolderName(this.folderTargetItem()?.folderName ?? null) !== null
+  ));
 
   protected readonly emptyTitle = computed(() => {
     const media = this.mediaFilter();
@@ -278,6 +488,12 @@ export class UserListViewComponent {
     effect(() => {
       try { localStorage.setItem(STATUS_FILTER_KEY, this.statusFilter()); } catch { /* storage unavailable */ }
     });
+
+    effect(() => {
+      if (!this.folderFeatureEnabled() && this.folderModalOpen()) {
+        this.closeFolderModal();
+      }
+    });
   }
 
   protected setViewMode(mode: ViewMode): void {
@@ -295,6 +511,19 @@ export class UserListViewComponent {
 
   protected goToBrowse(): void {
     void this.router.navigate(['/browse']);
+  }
+
+  protected toggleFolder(folderId: string): void {
+    this.expandedFolders.update((state) => ({ ...state, [folderId]: !state[folderId] }));
+  }
+
+  protected folderGridMeta(group: FolderGroup, expanded: boolean): string {
+    const action = expanded ? 'Nascondi titoli' : 'Apri titoli';
+    return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)} • ${action}`;
+  }
+
+  protected folderListMeta(group: FolderGroup): string {
+    return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
   }
 
   protected onCardClick(item: CardItem): void {
@@ -341,6 +570,74 @@ export class UserListViewComponent {
       this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
       this.toast.show(result.message);
     });
+  }
+
+  protected openFolderModal(item: CardItem): void {
+    if (!this.folderFeatureEnabled()) return;
+    this.folderTargetItem.set(item);
+    this.folderDraft.set(item.folderName ?? '');
+    this.folderModalOpen.set(true);
+  }
+
+  protected closeFolderModal(): void {
+    this.folderModalOpen.set(false);
+    this.folderTargetItem.set(null);
+    this.folderDraft.set('');
+    this.savingFolder.set(false);
+  }
+
+  protected onFolderDraftInput(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    this.folderDraft.set(target.value);
+  }
+
+  protected selectFolder(folderName: string): void {
+    this.folderDraft.set(folderName);
+  }
+
+  protected async saveFolder(): Promise<void> {
+    const item = this.folderTargetItem();
+    const folderName = normalizeFolderName(this.folderDraft());
+    if (!item || folderName === null) return;
+
+    this.savingFolder.set(true);
+    try {
+      await runCardMutation(this.items, item, 'folder', async () => {
+        await this.watchlist.setFolder(item.tmdb_id, item.media_type, folderName);
+        this.items.update((items) => items.map((candidate) => (
+          candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
+            ? { ...candidate, folderName }
+            : candidate
+        )));
+        this.expandedFolders.update((state) => ({ ...state, [folderIdFromName(folderName)]: true }));
+        this.toast.show(`${item.title}: spostato in ${folderName}`);
+        this.closeFolderModal();
+      });
+    } finally {
+      if (this.folderModalOpen()) this.savingFolder.set(false);
+    }
+  }
+
+  protected async removeFolder(): Promise<void> {
+    const item = this.folderTargetItem();
+    if (!item || !item.folderName) return;
+
+    this.savingFolder.set(true);
+    try {
+      await runCardMutation(this.items, item, 'folder', async () => {
+        await this.watchlist.setFolder(item.tmdb_id, item.media_type, null);
+        this.items.update((items) => items.map((candidate) => (
+          candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
+            ? { ...candidate, folderName: null }
+            : candidate
+        )));
+        this.toast.show(`${item.title}: folder rimosso`);
+        this.closeFolderModal();
+      });
+    } finally {
+      if (this.folderModalOpen()) this.savingFolder.set(false);
+    }
   }
 
   protected async confirmPendingAction(): Promise<void> {
@@ -397,6 +694,7 @@ export class UserListViewComponent {
         title: w.title ?? 'Senza titolo',
         poster: w.poster,
         status: w.status ?? 'todo',
+        folderName: w.folder_name ?? null,
         watchStatus: w.watch_status_text,
         season: w.resume_season,
         episode: w.resume_episode,
@@ -461,4 +759,92 @@ function mediaHintTarget(filter: MediaFilter): string {
   if (filter === 'tv') return 'una serie TV';
   if (filter === 'movie') return 'un film';
   return 'un film o una serie';
+}
+
+function normalizeFolderName(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  return trimmed ? trimmed : null;
+}
+
+function folderIdFromName(name: string): string {
+  return normalizeFolderName(name)?.toLocaleLowerCase() ?? '';
+}
+
+function buildDisplayEntries(
+  items: CardItem[],
+  foldersEnabled: boolean,
+  expandedFolders: Record<string, boolean>
+): DisplayEntry[] {
+  if (!foldersEnabled) {
+    return items.map((item) => ({
+      key: cardKey(item),
+      item,
+      group: null,
+      expanded: false
+    }));
+  }
+
+  const groups = new Map<string, FolderGroup>();
+  for (const item of items) {
+    const folderName = normalizeFolderName(item.folderName);
+    if (!folderName) continue;
+
+    const id = folderIdFromName(folderName);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.items.push(item);
+      existing.count += 1;
+      if (item.media_type === 'movie') existing.movieCount += 1;
+      if (item.media_type === 'tv') existing.tvCount += 1;
+      continue;
+    }
+
+    groups.set(id, {
+      id,
+      name: folderName,
+      items: [item],
+      count: 1,
+      movieCount: item.media_type === 'movie' ? 1 : 0,
+      tvCount: item.media_type === 'tv' ? 1 : 0
+    });
+  }
+
+  const emitted = new Set<string>();
+  const entries: DisplayEntry[] = [];
+  for (const item of items) {
+    const folderName = normalizeFolderName(item.folderName);
+    if (!folderName) {
+      entries.push({ key: cardKey(item), item, group: null, expanded: false });
+      continue;
+    }
+
+    const id = folderIdFromName(folderName);
+    if (emitted.has(id)) continue;
+    emitted.add(id);
+    const group = groups.get(id);
+    if (!group) continue;
+    entries.push({
+      key: `folder:${id}`,
+      item: null,
+      group,
+      expanded: expandedFolders[id] === true
+    });
+  }
+
+  return entries;
+}
+
+function cardKey(item: CardItem): string {
+  return `${item.media_type}:${item.tmdb_id}`;
+}
+
+function folderCountLabel(count: number): string {
+  return count === 1 ? '1 titolo' : `${count} titoli`;
+}
+
+function folderMediaLabel(group: FolderGroup): string {
+  if (group.movieCount > 0 && group.tvCount > 0) return 'film e serie';
+  if (group.tvCount > 0) return group.tvCount === 1 ? '1 serie' : `${group.tvCount} serie`;
+  return group.movieCount === 1 ? '1 film' : `${group.movieCount} film`;
 }

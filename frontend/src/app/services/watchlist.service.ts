@@ -54,4 +54,13 @@ export class WatchlistService {
     });
     this.tick.update(n => n + 1);
   }
+
+  async setFolder(tmdbId: number | string, type: MediaType, folderName: string | null): Promise<void> {
+    await fetch(`/api/user/watchlist/${type}/${tmdbId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_name: folderName })
+    });
+    this.tick.update(n => n + 1);
+  }
 }

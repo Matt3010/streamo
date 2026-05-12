@@ -21,10 +21,7 @@ import { ToastService } from '../../services/toast.service';
         }
         <button (click)="goTo('watchlist')">La mia lista</button>
         <button (click)="goTo('history')">Cronologia</button>
-        <label class="menu-toggle">
-          <input type="checkbox" [checked]="autoplayChecked()" (change)="onAutoplayChange($event)">
-          <span>Autoplay episodio successivo</span>
-        </label>
+        <button (click)="goToSettings()">Impostazioni</button>
         <button class="danger" (click)="logout()">Esci</button>
       </div>
     }
@@ -42,7 +39,6 @@ export class AccountMenuComponent {
     const email = this.auth.currentUser()?.email ?? '';
     return email.split('@')[0] || email;
   });
-  protected readonly autoplayChecked = computed(() => this.auth.currentUser()?.autoplay_next === 1);
 
   @HostListener('document:click', ['$event'])
   onDocClick(ev: MouseEvent): void {
@@ -68,12 +64,9 @@ export class AccountMenuComponent {
     void this.router.navigate(['/admin']);
   }
 
-  protected async onAutoplayChange(ev: Event): Promise<void> {
-    const target = ev.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    const enabled: 0 | 1 = target.checked ? 1 : 0;
-    const ok = await this.auth.setAutoplay(enabled);
-    if (!ok) target.checked = !target.checked;
+  protected goToSettings(): void {
+    this.open.set(false);
+    void this.router.navigate(['/settings']);
   }
 
   protected async logout(): Promise<void> {

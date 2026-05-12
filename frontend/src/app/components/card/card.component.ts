@@ -35,6 +35,15 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
               <app-icon name="bookmark"></app-icon>
             </button>
           }
+          @if (showFolderAction()) {
+            <button class="card-action card-folder"
+                    [uiPending]="hasPendingAction()"
+                    [class.active]="!!item().folderName"
+                    [title]="item().folderName ? 'Modifica folder' : 'Assegna folder'"
+                    (click)="onFolderClick($event)">
+              <app-icon name="folder"></app-icon>
+            </button>
+          }
           @if (canShowStatusToggle()) {
             <button class="card-action card-status"
                     [uiPending]="hasPendingAction()"
@@ -82,11 +91,13 @@ export class CardComponent {
   readonly removeTitle = input('Rimuovi');
   readonly showStatusToggle = input(false);
   readonly showWatchlistToggle = input(false);
+  readonly showFolderAction = input(false);
 
   readonly cardClick = output<CardItem>();
   readonly removeClick = output<CardItem>();
   readonly statusToggleClick = output<CardItem>();
   readonly watchlistToggleClick = output<CardItem>();
+  readonly folderClick = output<CardItem>();
 
   protected readonly posterUrl = computed(() => {
     const p = this.item().poster;
@@ -107,7 +118,7 @@ export class CardComponent {
   protected readonly canShowStatusToggle = computed(() => this.showStatusToggle() && this.item().isUpcoming !== true);
   protected readonly hasPendingAction = computed(() => !!this.item().pendingAction);
   protected readonly hasActions = computed(
-    () => this.canShowStatusToggle() || this.showWatchlistToggle() || this.showRemove()
+    () => this.canShowStatusToggle() || this.showWatchlistToggle() || this.showRemove() || this.showFolderAction()
   );
 
   protected onRemove(e: MouseEvent): void {
@@ -123,5 +134,10 @@ export class CardComponent {
   protected onWatchlistToggle(e: MouseEvent): void {
     e.stopPropagation();
     this.watchlistToggleClick.emit(this.item());
+  }
+
+  protected onFolderClick(e: MouseEvent): void {
+    e.stopPropagation();
+    this.folderClick.emit(this.item());
   }
 }

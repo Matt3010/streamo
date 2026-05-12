@@ -25,6 +25,7 @@ interface UserRow {
   email: string;
   password_hash: string;
   autoplay_next: 0 | 1;
+  folders_enabled: 0 | 1;
 }
 
 interface InviteTokenRow {
@@ -92,7 +93,13 @@ router.post('/auth/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: result.error });
     }
 
-    const user: User = { id: result.userId, email: normalized, autoplay_next: 1, is_admin: isSuperAdmin };
+    const user: User = {
+      id: result.userId,
+      email: normalized,
+      autoplay_next: 1,
+      folders_enabled: 1,
+      is_admin: isSuperAdmin
+    };
     setAuthCookie(res, user);
     res.json({ user });
   } catch (e) {
@@ -106,12 +113,20 @@ router.post('/auth/login', authLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
 
   const normalized = (email as string).trim().toLowerCase();
-  const row = db.prepare('SELECT id, email, password_hash, autoplay_next FROM users WHERE email = ?').get(normalized) as UserRow | undefined;
+  const row = db.prepare(
+    'SELECT id, email, password_hash, autoplay_next, folders_enabled FROM users WHERE email = ?'
+  ).get(normalized) as UserRow | undefined;
   if (!row || !(await bcryptCompare(password, row.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
   const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && row.email.toLowerCase() === SUPER_ADMIN_EMAIL;
-  const user: User = { id: row.id, email: row.email, autoplay_next: row.autoplay_next, is_admin: isAdmin };
+  const user: User = {
+    id: row.id,
+    email: row.email,
+    autoplay_next: row.autoplay_next,
+    folders_enabled: row.folders_enabled,
+    is_admin: isAdmin
+  };
   setAuthCookie(res, user);
   res.json({ user });
 });
@@ -122,9 +137,17 @@ router.post('/auth/logout', (_req, res) => {
 });
 
 router.get('/auth/me', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT autoplay_next FROM users WHERE id = ?').get(req.user!.id) as { autoplay_next: 0 | 1 } | undefined;
+  const row = db.prepare('SELECT autoplay_next, folders_enabled FROM users WHERE id = ?').get(req.user!.id) as
+    | { autoplay_next: 0 | 1; folders_enabled: 0 | 1 }
+    | undefined;
   const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && req.user!.email.toLowerCase() === SUPER_ADMIN_EMAIL;
-  const user: User = { id: req.user!.id, email: req.user!.email, autoplay_next: row ? row.autoplay_next : 1, is_admin: isAdmin };
+  const user: User = {
+    id: req.user!.id,
+    email: req.user!.email,
+    autoplay_next: row?.autoplay_next ?? 1,
+    folders_enabled: row?.folders_enabled ?? 1,
+    is_admin: isAdmin
+  };
   res.json({ user });
 });
 
