@@ -126,7 +126,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               </span>
               <span class="folder-card-body">
                 <span class="folder-card-title">{{ entry.group.name }}</span>
-                <span class="folder-card-meta">{{ folderGridMeta(entry.group, entry.expanded) }}</span>
+                <span class="folder-card-meta">{{ folderGridMeta(entry.group) }}</span>
               </span>
               <span class="folder-card-chevron" [class.expanded]="entry.expanded">
                 <app-icon name="chevron-down"></app-icon>
@@ -317,19 +317,31 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 
     <ui-modal [(open)]="folderModalOpen" title="Folder" size="sm" (closed)="closeFolderModal()">
       <div class="folder-modal-content">
-        <p class="folder-modal-copy">
-          Raggruppa <strong>{{ folderTargetItem()?.title }}</strong> in un contesto comune.
-        </p>
+        <div class="folder-modal-header">
+          <span class="folder-modal-icon">
+            <app-icon name="folder"></app-icon>
+          </span>
+          <div class="folder-modal-copy">
+            <strong>{{ folderTargetItem()?.title }}</strong>
+            <span class="folder-modal-sub">Assegna un folder esistente oppure creane uno nuovo.</span>
+            @if (folderTargetHasFolder()) {
+              <span class="folder-current">Attuale: {{ folderTargetItem()?.folderName }}</span>
+            }
+          </div>
+        </div>
 
         @if (existingFolders().length > 0) {
-          <div class="folder-chip-list">
-            @for (folder of existingFolders(); track folder) {
-              <button class="folder-chip"
-                      [class.active]="folderDraft() === folder"
-                      (click)="selectFolder(folder)">
-                {{ folder }}
-              </button>
-            }
+          <div class="folder-section">
+            <span class="folder-section-label">Folder esistenti</span>
+            <div class="folder-chip-list">
+              @for (folder of existingFolders(); track folder) {
+                <button class="folder-chip"
+                        [class.active]="folderDraft() === folder"
+                        (click)="selectFolder(folder)">
+                  {{ folder }}
+                </button>
+              }
+            </div>
           </div>
         }
 
@@ -340,21 +352,24 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                  [value]="folderDraft()"
                  placeholder="Es. Marvel, Da vedere insieme"
                  (input)="onFolderDraftInput($event)">
+          <small>Il nome viene condiviso con gli altri titoli che assegni allo stesso folder.</small>
         </label>
 
         <div class="folder-modal-actions">
-          <button class="secondary-btn" (click)="closeFolderModal()">Annulla</button>
-          <button class="secondary-btn"
+          <button class="secondary-btn danger-outline"
                   [disabled]="!folderTargetHasFolder() || savingFolder()"
                   (click)="removeFolder()">
             Rimuovi folder
           </button>
-          <button class="primary-btn"
-                  [uiPending]="savingFolder()"
-                  [disabled]="!canSaveFolder()"
-                  (click)="saveFolder()">
-            Salva
-          </button>
+          <div class="folder-modal-actions-main">
+            <button class="secondary-btn" (click)="closeFolderModal()">Annulla</button>
+            <button class="primary-btn"
+                    [uiPending]="savingFolder()"
+                    [disabled]="!canSaveFolder()"
+                    (click)="saveFolder()">
+              Salva
+            </button>
+          </div>
         </div>
       </div>
     </ui-modal>
@@ -523,9 +538,8 @@ export class UserListViewComponent {
     this.expandedFolders.update((state) => ({ ...state, [folderId]: !state[folderId] }));
   }
 
-  protected folderGridMeta(group: FolderGroup, expanded: boolean): string {
-    const action = expanded ? 'Nascondi titoli' : 'Apri titoli';
-    return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)} • ${action}`;
+  protected folderGridMeta(group: FolderGroup): string {
+    return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
   }
 
   protected folderListMeta(group: FolderGroup): string {
