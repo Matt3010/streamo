@@ -1,5 +1,11 @@
 import { Injectable, inject, signal } from '@angular/core';
-import type { AdminTokenRow, AdminSession, PlaybackLogEntry, TransportLogEntry } from '../models';
+import type {
+  AdminTokenRow,
+  AdminSession,
+  PlaybackLogEntry,
+  TransportLogEntry,
+  AdminQueueStatus
+} from '../models';
 import { LiveSocketService, type LiveSocketController } from './live-socket.service';
 
 interface TokenCreateResponse {
@@ -53,10 +59,12 @@ export class AdminService {
   readonly transportLogs = signal<TransportLogEntry[]>([]);
   readonly transportLogCapacity = signal(500);
   readonly transportLogPath = signal('');
+  readonly queueStatus = signal<AdminQueueStatus | null>(null);
   readonly sessionsLiveConnected = signal(false);
   readonly playbackLogsLiveConnected = signal(false);
   readonly transportLogsLiveConnected = signal(false);
   readonly loading = signal(false);
+  readonly queueStatusLoading = signal(false);
 
   private readonly sessionsSocket: LiveSocketController;
   private readonly playbackLogsSocket: LiveSocketController;
@@ -215,6 +223,19 @@ export class AdminService {
         this.transportLogPath.set(data.path);
       }
     } catch {}
+  }
+
+  async fetchQueueStatus(): Promise<void> {
+    this.queueStatusLoading.set(true);
+    try {
+      const res = await fetch('/api/admin/queue-status');
+      if (res.ok) {
+        const data = await res.json() as AdminQueueStatus;
+        this.queueStatus.set(data);
+      }
+    } catch {} finally {
+      this.queueStatusLoading.set(false);
+    }
   }
 
   connectSessionsLive(): void {
