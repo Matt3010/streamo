@@ -40,6 +40,32 @@
   gap: 0.6rem;
 }
 
+.drag-drop-bar {
+  max-width: 1400px;
+  margin: 0 auto 0.85rem;
+}
+
+.drag-remove-zone {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 48px;
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  border: 1px dashed rgba(229, 9, 20, 0.38);
+  background: rgba(229, 9, 20, 0.08);
+  color: #f3b2b7;
+  font-weight: 600;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.18s;
+}
+
+.drag-remove-zone.active {
+  background: rgba(229, 9, 20, 0.16);
+  border-color: rgba(229, 9, 20, 0.72);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
 .empty-state-actions {
   display: flex;
   justify-content: center;
