@@ -38,26 +38,20 @@ function timeAgo(timestamp: number): string {
       </div>
       <div class="page-header-row">
         <h2>Pannello Admin</h2>
+        <div class="page-header-actions">
+          <a class="admin-icon-btn"
+             href="/api/admin/queues"
+             target="_blank"
+             rel="noopener noreferrer"
+             aria-label="Apri dashboard code"
+             title="Dashboard code">
+            <app-icon name="list"></app-icon>
+          </a>
+        </div>
       </div>
     </div>
 
     <div class="admin-content">
-      <section class="admin-section">
-        <div class="section-header">
-          <div class="section-heading">
-            <app-section-header title="Queue Dashboard" [icon]="queuesIcon" />
-            <span class="section-caption">
-              Monitora job BullMQ, stati della coda e retry dalla dashboard admin.
-            </span>
-          </div>
-          <div class="section-actions">
-            <a class="action-link-btn" href="/api/admin/queues" target="_blank" rel="noopener noreferrer">
-              Apri Dashboard
-            </a>
-          </div>
-        </div>
-      </section>
-
       <section class="admin-section">
         <div class="section-header">
           <app-section-header title="Token e Utenti" [icon]="tokensIcon" />
@@ -266,7 +260,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   protected readonly admin = inject(AdminService);
   private readonly toast = inject(ToastService);
   private readonly navSource = inject(NavigationSourceService);
-  protected readonly queuesIcon = faTowerBroadcast;
   protected readonly tokensIcon = faTicket;
   protected readonly sessionsIcon = faSatelliteDish;
   protected readonly playbackLogsIcon = faFileLines;
