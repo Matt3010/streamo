@@ -4,8 +4,9 @@ import {
   TMDB_JOB_RATE_LIMIT_MAX,
   WORKER_CONCURRENCY
 } from '../config';
-import { getBullMqConnection, hasRedisConfig } from './redis';
+import { assertRedisReady, getBullMqConnection, hasRedisConfig } from './redis';
 import {
+  cleanupLegacyWatchlistJobs,
   enqueueTrackedWatchlistRefreshes,
   ensureWatchlistJobScheduler,
   WATCHLIST_QUEUE_NAME,
@@ -13,15 +14,20 @@ import {
   WATCHLIST_SCAN_JOB,
   type WatchlistJobData
 } from './watchlist-jobs';
+import { startWorkerHeartbeat } from './worker-heartbeat';
 import { listTrackedWatchlistTvIds, refreshWatchlistTitle } from './watchlist-sync';
 
 export async function startWatchlistWorker(): Promise<void> {
   if (!hasRedisConfig()) {
-    console.log('[watchlist-worker] REDIS_URL not configured, worker disabled');
-    return;
+    throw new Error('REDIS_URL is required for the watchlist worker');
   }
 
+  await assertRedisReady();
   await ensureWatchlistJobScheduler();
+  const removedLegacyJobs = await cleanupLegacyWatchlistJobs();
+  if (removedLegacyJobs > 0) {
+    console.log(`[watchlist-worker] removed ${removedLegacyJobs} legacy failed jobs`);
+  }
 
   const worker = new Worker<WatchlistJobData, void, string>(
     WATCHLIST_QUEUE_NAME,
@@ -37,6 +43,7 @@ export async function startWatchlistWorker(): Promise<void> {
       }
     }
   );
+  const stopHeartbeat = startWorkerHeartbeat();
 
   worker.on('completed', (job) => {
     console.log(`[watchlist-worker] completed ${job.name}#${job.id}`);
@@ -51,6 +58,13 @@ export async function startWatchlistWorker(): Promise<void> {
   console.log(
     `[watchlist-worker] started concurrency=${WORKER_CONCURRENCY} rate=${TMDB_JOB_RATE_LIMIT_MAX}/${TMDB_JOB_RATE_LIMIT_DURATION_MS}ms`
   );
+
+  const shutdown = async (): Promise<void> => {
+    stopHeartbeat?.();
+    await worker.close();
+  };
+  process.once('SIGTERM', () => { void shutdown(); });
+  process.once('SIGINT', () => { void shutdown(); });
 }
 
 async function processWatchlistJob(job: Job<WatchlistJobData, void, string>): Promise<void> {

@@ -51,6 +51,25 @@ export async function ensureWatchlistJobScheduler(): Promise<void> {
   );
 }
 
+export async function cleanupLegacyWatchlistJobs(): Promise<number> {
+  const watchlistQueue = getWatchlistQueue();
+  if (!watchlistQueue) return 0;
+
+  const failedJobs = await watchlistQueue.getFailed(0, 200);
+  let removed = 0;
+  for (const job of failedJobs) {
+    const failedReason = typeof job.failedReason === 'string' ? job.failedReason : '';
+    const hasLegacyCustomIdError = failedReason.includes('Custom Id cannot contain :');
+    const hasLegacyJobId = typeof job.id === 'string' && job.id.includes('watchlist-title:');
+    if (!hasLegacyCustomIdError && !hasLegacyJobId) continue;
+
+    await job.remove();
+    removed += 1;
+  }
+
+  return removed;
+}
+
 export async function enqueueWatchlistTitleRefresh(
   tmdbId: number,
   source: RefreshWatchlistTitleJobData['source'] = 'manual'

@@ -135,3 +135,28 @@ export interface TransportLogEntry {
   request_time: number;
   upstream_response_time: string;
 }
+
+export interface AdminQueueWorkerHeartbeat {
+  key: string;
+  worker_id: string;
+  pid: number;
+  hostname: string;
+  started_at: number;
+  last_seen_at: number;
+  ttl_seconds: number;
+}
+
+export interface AdminQueueStatus {
+  redis_configured: boolean;
+  queue_available: boolean;
+  scheduler_enabled: boolean;
+  counts: {
+    waiting: number;
+    active: number;
+    delayed: number;
+    completed: number;
+    failed: number;
+    paused: number;
+  };
+  workers: AdminQueueWorkerHeartbeat[];
+}

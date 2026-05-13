@@ -3,6 +3,7 @@ import IORedis from 'ioredis';
 import { REDIS_URL } from '../config';
 
 let publisher: IORedis | null = null;
+const REDIS_PING_TIMEOUT_MS = 5000;
 
 export function hasRedisConfig(): boolean {
   return REDIS_URL.length > 0;
@@ -44,4 +45,21 @@ export function getRedisPublisher(): IORedis {
     });
   }
   return publisher;
+}
+
+export async function assertRedisReady(): Promise<void> {
+  if (!hasRedisConfig()) {
+    throw new Error('REDIS_URL is not configured');
+  }
+
+  const client = createRedisClient();
+  try {
+    const ping = client.ping();
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Redis ping timed out after ${REDIS_PING_TIMEOUT_MS}ms`)), REDIS_PING_TIMEOUT_MS);
+    });
+    await Promise.race([ping, timeout]);
+  } finally {
+    client.disconnect();
+  }
 }

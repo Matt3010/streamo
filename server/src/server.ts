@@ -12,6 +12,7 @@ import playbackRoutes from './routes/playback';
 import { attachAdminLiveSessions } from './services/admin-live';
 import { requireSuperAdmin } from './middleware/auth';
 import { getAdminQueuesBoardRouter } from './services/admin-queues-board';
+import { assertRedisReady } from './services/redis';
 import { attachUserLiveSessions } from './services/user-live';
 import { startUserWatchlistEventsSubscription } from './services/user-live';
 
@@ -29,11 +30,20 @@ app.use(watchlistRoutes);
 app.use(adminRoutes);
 app.use(playbackRoutes);
 
-const server = http.createServer(app);
-attachAdminLiveSessions(server);
-attachUserLiveSessions(server);
-startUserWatchlistEventsSubscription();
+async function start(): Promise<void> {
+  await assertRedisReady();
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend listening on ${PORT}`);
+  const server = http.createServer(app);
+  attachAdminLiveSessions(server);
+  attachUserLiveSessions(server);
+  startUserWatchlistEventsSubscription();
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Backend listening on ${PORT}`);
+  });
+}
+
+void start().catch((error) => {
+  console.error('[server] fatal startup error', error);
+  process.exit(1);
 });

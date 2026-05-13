@@ -5,8 +5,9 @@ import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
 import { listLiveAdminSessions } from '../services/admin-sessions';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs } from '../services/playback-logs';
+import { getAdminQueueStatus } from '../services/queue-status';
 import { getTransportLogCapacity, getTransportLogPath, listTransportLogs } from '../services/transport-logs';
-import type { AdminUserRow, AdminTokenRow } from '../../../shared/types';
+import type { AdminQueueStatus, AdminUserRow, AdminTokenRow } from '../../../shared/types';
 
 const router = Router();
 
@@ -155,6 +156,16 @@ router.get('/admin/transport-logs', requireSuperAdmin, (_req, res) => {
     path: getTransportLogPath(),
     logs
   });
+});
+
+router.get('/admin/queue-status', requireSuperAdmin, async (_req, res) => {
+  try {
+    const status = await getAdminQueueStatus() as AdminQueueStatus;
+    res.json(status);
+  } catch (error) {
+    console.error('[admin/queue-status]', error);
+    res.status(503).json({ error: 'queue_status_unavailable' });
+  }
 });
 
 export default router;
