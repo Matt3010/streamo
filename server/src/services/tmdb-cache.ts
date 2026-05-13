@@ -67,12 +67,31 @@ export function readCachedTmdbTvSummary(tmdbId: number | string): TmdbTvSummary 
 
 export function getAiredEpisodesCount(summary: TmdbTvSummary | null): number {
   if (!summary) return 0;
-  const lea = summary.last_episode_to_air;
-  return lea
-    ? summary.seasons
-        .filter((season) => season.season_number < lea.season_number)
-        .reduce((sum, season) => sum + (season.episode_count || 0), 0) + lea.episode_number
-    : (summary.number_of_episodes ?? 0);
+
+  // Check if next_episode_to_air has already aired (air_date is today or past)
+  const nea = summary.next_episode_to_air;
+  const neaHasAired = nea?.air_date ? !isFutureDate(nea.air_date) : false;
+
+  // Use next_episode_to_air if it has aired, otherwise use last_episode_to_air
+  const refEpisode = neaHasAired && nea
+    ? { season_number: nea.season_number, episode_number: nea.episode_number }
+    : summary.last_episode_to_air;
+
+  if (!refEpisode) return summary.number_of_episodes ?? 0;
+
+  return summary.seasons
+    .filter((season) => season.season_number < refEpisode.season_number)
+    .reduce((sum, season) => sum + (season.episode_count || 0), 0) + refEpisode.episode_number;
+}
+
+function isFutureDate(dateStr: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return false;
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return date.getTime() > today.getTime();
 }
 
 // Fetches a TV show's headline counts from TMDB, with a SQLite cache.

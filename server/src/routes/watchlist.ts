@@ -286,17 +286,22 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
     return res.json({ ok: true, folder_name: folderName ?? null });
   }
 
-  let doneAiredEpisodes = 0;
   if (type === 'tv' && status === 'done') {
     const summary = await getTmdbTvSummary(tmdb_id);
-    doneAiredEpisodes = getAiredEpisodesCount(summary);
+    const doneAiredEpisodes = getAiredEpisodesCount(summary);
+    const result = db.prepare(`
+      UPDATE watchlist SET status = ?, done_aired_episodes = ?
+      WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
+    `).run(status, doneAiredEpisodes, req.user!.id, tmdb_id, type);
+    if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
+  } else {
+    // Don't touch done_aired_episodes when changing to other states
+    const result = db.prepare(`
+      UPDATE watchlist SET status = ?
+      WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
+    `).run(status, req.user!.id, tmdb_id, type);
+    if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
   }
-
-  const result = db.prepare(`
-    UPDATE watchlist SET status = ?, done_aired_episodes = ?
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
-  `).run(status, doneAiredEpisodes, req.user!.id, tmdb_id, type);
-  if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
 
   publishUserWatchlistChanged(req.user!.id, {
     reason: 'watchlist-changed',
