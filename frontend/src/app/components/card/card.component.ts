@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { IconComponent } from '../../ui/icon/icon.component';
+import { IconComponent, IconName } from '../../ui/icon/icon.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import type { CardItem } from '../../models';
 
@@ -55,9 +55,10 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
             <button class="card-action card-status"
                     [uiPending]="hasPendingAction()"
                     [class.done]="item().status === 'done'"
-                    [title]="item().status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
+                    [class.in-progress]="item().status === 'in_progress'"
+                    [title]="statusButtonTitle()"
                     (click)="onStatusToggle($event)">
-              <app-icon name="check"></app-icon>
+              <app-icon [name]="statusButtonIcon()"></app-icon>
             </button>
           }
           @if (showRemove()) {
@@ -131,6 +132,18 @@ export class CardComponent {
   protected readonly hasActions = computed(
     () => this.canShowStatusToggle() || this.showWatchlistToggle() || this.showRemove() || this.showFolderAction()
   );
+  protected readonly statusButtonTitle = computed(() => {
+    const status = this.item().status;
+    if (status === 'done') return 'Segna da guardare';
+    if (status === 'in_progress') return 'Segna come visto';
+    return 'Segna come in corso';
+  });
+  protected readonly statusButtonIcon = computed((): IconName => {
+    const status = this.item().status;
+    if (status === 'done') return 'rotate-left';
+    if (status === 'in_progress') return 'check';
+    return 'play';
+  });
 
   protected onRemove(e: MouseEvent): void {
     e.stopPropagation();

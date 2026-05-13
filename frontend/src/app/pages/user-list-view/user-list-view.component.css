@@ -350,6 +350,12 @@
   border-color: #2ea043;
 }
 
+.row-status.in-progress {
+  background: rgba(46, 160, 67, 0.5);
+  border-color: rgba(46, 160, 67, 0.5);
+  color: #fff;
+}
+
 .row-status.done {
   background: #2ea043;
   border-color: #2ea043;

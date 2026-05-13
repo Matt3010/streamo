@@ -185,6 +185,10 @@
 .card-remove:hover { background: var(--accent); }
 
 .card-status:hover { background: #2ea043; }
+.card-status.in-progress {
+  background: rgba(46, 160, 67, 0.5);
+  color: #fff;
+}
 .card-status.done {
   background: #2ea043;
   color: #fff;

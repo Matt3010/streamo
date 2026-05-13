@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { BackButtonComponent } from '../../ui/back-button/back-button.component';
-import { IconComponent } from '../../ui/icon/icon.component';
+import { IconComponent, IconName } from '../../ui/icon/icon.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
@@ -242,9 +242,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         <button class="row-action row-status"
                                 [uiPending]="!!it.pendingAction"
                                 [class.done]="it.status === 'done'"
-                                [title]="it.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
+                                [class.in-progress]="it.status === 'in_progress'"
+                                [title]="statusButtonTitle(it.status)"
                                 (click)="onStatusToggle(it); $event.stopPropagation()">
-                          <app-icon name="check"></app-icon>
+                          <app-icon [name]="statusButtonIcon(it.status)"></app-icon>
                         </button>
                       }
                       @if (kind() === 'watchlist' && folderFeatureEnabled()) {
@@ -305,9 +306,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 <button class="row-action row-status"
                         [uiPending]="!!entry.item.pendingAction"
                         [class.done]="entry.item.status === 'done'"
-                        [title]="entry.item.status === 'done' ? 'Segna da guardare' : 'Segna come visto'"
+                        [class.in-progress]="entry.item.status === 'in_progress'"
+                        [title]="statusButtonTitle(entry.item.status)"
                         (click)="onStatusToggle(entry.item); $event.stopPropagation()">
-                  <app-icon name="check"></app-icon>
+                  <app-icon [name]="statusButtonIcon(entry.item.status)"></app-icon>
                 </button>
               }
               @if (kind() === 'watchlist' && folderFeatureEnabled()) {
@@ -590,6 +592,18 @@ export class UserListViewComponent {
     this.expandedFolders.update((state) => ({ ...state, [folderId]: !state[folderId] }));
   }
 
+  protected statusButtonTitle(status: WatchlistStatus | undefined): string {
+    if (status === 'done') return 'Segna da guardare';
+    if (status === 'in_progress') return 'Segna come visto';
+    return 'Segna come in corso';
+  }
+
+  protected statusButtonIcon(status: WatchlistStatus | undefined): IconName {
+    if (status === 'done') return 'rotate-left';
+    if (status === 'in_progress') return 'check';
+    return 'play';
+  }
+
   protected folderGridMeta(group: FolderGroup): string {
     return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
   }
@@ -612,20 +626,39 @@ export class UserListViewComponent {
 
   protected async onStatusToggle(item: CardItem): Promise<void> {
     if (this.kind() !== 'watchlist') return;
-    const next: WatchlistStatus = (item.status ?? 'todo') === 'done' ? 'todo' : 'done';
-    if (next === 'done') {
+    const current = item.status ?? 'todo';
+
+    // done → todo (direct)
+    if (current === 'done') {
+      await runCardMutation(this.items, item, 'status', async () => {
+        await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'todo');
+        this.items.update(items => items.map(candidate => (
+          candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
+            ? { ...candidate, status: 'todo' }
+            : candidate
+        )));
+        this.toast.show(`${item.title}: rimesso in "Da guardare"`);
+        void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
+      });
+      return;
+    }
+
+    // in_progress → done (with confirmation)
+    if (current === 'in_progress') {
       this.pendingAction.set({ type: 'mark-done', item });
       this.confirmModalOpen.set(true);
       return;
     }
+
+    // todo → in_progress (direct)
     await runCardMutation(this.items, item, 'status', async () => {
-      await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
+      await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'in_progress');
       this.items.update(items => items.map(candidate => (
         candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
-          ? { ...candidate, status: next }
+          ? { ...candidate, status: 'in_progress' }
           : candidate
       )));
-      this.toast.show(`${item.title}: rimesso in "Da guardare"`);
+      this.toast.show(`${item.title}: spostato in "In corso"`);
       void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
     });
   }
