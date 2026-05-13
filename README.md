@@ -28,7 +28,7 @@ chmod +x ./scripts/up.sh
 ./scripts/up.sh --build
 ```
 
-With `--build`, the script runs `git pull --rebase` before rebuilding the
+With `--build`, the script runs `git pull --rebase --autostash` before rebuilding the
 backend and frontend images.
 
 The worker replica count is read from `WORKER_REPLICAS`. You can also override
@@ -37,6 +37,9 @@ it explicitly:
 ```bash
 ./scripts/up.sh --workers 3 --build
 ```
+
+The script reads `.env` from the project root before starting, so
+`WORKER_REPLICAS` and the other variables can stay there.
 
 The app is available at `http://localhost:7549`. The backend (port 3000)
 is not exposed directly — nginx reverse-proxies `/api/auth`, `/api/user`,

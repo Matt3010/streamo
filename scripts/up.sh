@@ -4,6 +4,14 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+ENV_FILE="$PROJECT_ROOT/.env"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
 
 WORKER_REPLICAS_ARG=""
 BUILD_FLAG=0
@@ -55,7 +63,7 @@ set -- compose up -d --scale "backend-worker=$WORKER_REPLICAS"
 echo "Starting stack with backend-worker replicas=$WORKER_REPLICAS"
 cd "$PROJECT_ROOT"
 if [ "$BUILD_FLAG" -eq 1 ]; then
-  git pull --rebase
+  git pull --rebase --autostash
   docker compose build backend streamo
 fi
 docker "$@"
