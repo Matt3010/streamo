@@ -292,7 +292,7 @@ export class PlayerService {
 
     this.selectedSeason.set(season);
     const seasonData = await this.tmdb.getSeasonDetails(item.id, season);
-    const aired = airedEpisodes(seasonData?.episodes);
+    const aired = airedEpisodes(seasonData?.episodes, season, getEffectiveLastEpisode(item));
     const fallbackCount = (item.seasons ?? []).find(s => s.season_number === season)?.episode_count ?? 10;
     this.episodes.set(aired.length ? aired : episodeStubs(fallbackCount));
     this.selectedEpisode.set(1);
@@ -429,7 +429,7 @@ export class PlayerService {
     this.selectedSeason.set(targetSeason);
 
     const seasonData = await this.tmdb.getSeasonDetails(Number(tmdbId), targetSeason);
-    const aired = airedEpisodes(seasonData?.episodes);
+    const aired = airedEpisodes(seasonData?.episodes, targetSeason, getEffectiveLastEpisode(item));
     const fallback = seasonsList.find(s => s.season_number === targetSeason)?.episode_count ?? 10;
     this.episodes.set(aired.length ? aired : episodeStubs(fallback));
 
@@ -551,7 +551,7 @@ export class PlayerService {
 
     if (seasonChanged) {
       const seasonData = await this.tmdb.getSeasonDetails(item.id, next.season);
-      const aired = airedEpisodes(seasonData?.episodes);
+      const aired = airedEpisodes(seasonData?.episodes, next.season, getEffectiveLastEpisode(item));
       const fallback = (item.seasons ?? []).find(s => s.season_number === next.season)?.episode_count ?? 10;
       this.episodes.set(aired.length ? aired : episodeStubs(fallback));
     }
@@ -729,26 +729,42 @@ function formatTime(seconds: number): string {
 }
 
 // Returns the episodes from a TMDB season-details payload that have already
-// aired. End-of-day cutoff so today's episodes show immediately.
+// aired.
 //
-// DECISION: episodes WITHOUT a confirmed air_date are excluded. The previous
-// behaviour ("no air_date → treat as aired") was causing phantom episodes for
-// shows in progress (TMDB lists future episodes with air_date: null and they
-// were showing up in the carousel). The trade-off: very old shows with broken
-// TMDB metadata may lose a few episodes — accepted because it's a rare case
-// and easy to revisit if it actually shows up.
-function airedEpisodes(eps: TmdbEpisodeDetail[] | undefined): TmdbEpisodeDetail[] {
+// DECISION: prefer the show-level `last_episode_to_air` / `next_episode_to_air`
+// as the boundary (via getEffectiveLastEpisode upstream). Those fields are
+// curated by TMDB and consistently correct, whereas per-episode `air_date`
+// values are sometimes wrong (placeholders, premiere date copied across
+// episodes, …) — trusting them alone leaked future episodes into the grid for
+// in-progress shows (e.g. S1E7/E8 showing up while only E6 had aired).
+//
+// Falls back to a per-episode `air_date` filter only when the show-level
+// reference is unavailable (e.g. shows that haven't started yet).
+function airedEpisodes(
+  eps: TmdbEpisodeDetail[] | undefined,
+  season: number,
+  effectiveLast: { season_number?: number; episode_number?: number } | null
+): TmdbEpisodeDetail[] {
   if (!eps?.length) return [];
+  const sorted = eps.slice().sort((a, b) => a.episode_number - b.episode_number);
+
+  const lastS = effectiveLast?.season_number;
+  const lastE = effectiveLast?.episode_number;
+  if (lastS !== undefined && lastE !== undefined) {
+    if (season < lastS) return sorted;          // past season → all aired
+    if (season > lastS) return [];              // future season → none
+    return sorted.filter(e => e.episode_number <= lastE); // current season → cap
+  }
+
+  // Fallback: no show-level boundary. End-of-day cutoff so today's episodes
+  // show immediately. Episodes WITHOUT a confirmed air_date are excluded.
   const cutoff = new Date();
   cutoff.setHours(23, 59, 59, 999);
-  return eps
-    .filter(e => {
-      if (!e.air_date) return false;
-      const d = new Date(e.air_date);
-      return !Number.isNaN(d.getTime()) && d <= cutoff;
-    })
-    .slice()
-    .sort((a, b) => a.episode_number - b.episode_number);
+  return sorted.filter(e => {
+    if (!e.air_date) return false;
+    const d = new Date(e.air_date);
+    return !Number.isNaN(d.getTime()) && d <= cutoff;
+  });
 }
 
 function availableSeasons(item: TmdbItem): Array<NonNullable<TmdbItem['seasons']>[number]> {
