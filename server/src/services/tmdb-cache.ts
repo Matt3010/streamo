@@ -84,7 +84,7 @@ export function getAiredEpisodesCount(summary: TmdbTvSummary | null): number {
     .reduce((sum, season) => sum + (season.episode_count || 0), 0) + refEpisode.episode_number;
 }
 
-function isFutureDate(dateStr: string): boolean {
+export function isFutureDate(dateStr: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!match) return false;
   const [, y, m, d] = match;

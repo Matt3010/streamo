@@ -6,6 +6,7 @@ import { HistoryService } from './history.service';
 import { AuthService } from './auth.service';
 import { ToastService } from './toast.service';
 import { isTitleUpcoming } from '../utils/media-release.util';
+import { getEffectiveLastEpisode } from '../utils/aired-episodes.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
 const VIXSRC_BASE = '/player';
@@ -88,7 +89,7 @@ export class PlayerService {
     if (eps.some(e => e.episode_number === ce + 1)) {
       return { season: cs, episode: ce + 1 };
     }
-    const last = item?.last_episode_to_air;
+    const last = item ? getEffectiveLastEpisode(item) : null;
     const future = seasons
       .filter(s => s.season_number > cs && (s.episode_count ?? 0) > 0)
       // If we know the latest aired episode, only consider seasons up to it.
@@ -746,7 +747,7 @@ function airedEpisodes(eps: TmdbEpisodeDetail[] | undefined): TmdbEpisodeDetail[
 
 function availableSeasons(item: TmdbItem): Array<NonNullable<TmdbItem['seasons']>[number]> {
   const seasons = (item.seasons ?? []).filter((season) => season.season_number > 0);
-  const lastAiredSeason = item.last_episode_to_air?.season_number;
+  const lastAiredSeason = getEffectiveLastEpisode(item)?.season_number;
   if (lastAiredSeason !== undefined) {
     return seasons.filter((season) => season.season_number <= lastAiredSeason);
   }

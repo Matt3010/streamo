@@ -1,4 +1,5 @@
 import type { MediaType, TmdbItem } from '../models';
+import { getEffectiveLastEpisode } from './aired-episodes.util';
 
 export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): string {
   if (type === 'tv') {
@@ -82,7 +83,7 @@ export function getUpcomingBadgeText(item: TmdbItem, type: MediaType): string {
 }
 
 function findNextSeason(item: TmdbItem): { season: number; date: Date } | null {
-  const lastSeason = item.last_episode_to_air?.season_number ?? 0;
+  const lastSeason = getEffectiveLastEpisode(item)?.season_number ?? 0;
   return (item.seasons ?? [])
     .filter((season) => season.season_number > 0)
     .map((season) => ({

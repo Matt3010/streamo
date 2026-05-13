@@ -1,12 +1,22 @@
 import { db } from '../db';
-import { getTmdbTvSummary } from './tmdb-cache';
+import { getTmdbTvSummary, isFutureDate } from './tmdb-cache';
+
+function getEffectiveLastEpisode(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): { season_number: number; episode_number: number } | null {
+  if (!summary) return null;
+  const nea = summary.next_episode_to_air;
+  const neaHasAired = nea?.air_date ? !isFutureDate(nea.air_date) : false;
+  if (neaHasAired && nea) {
+    return { season_number: nea.season_number, episode_number: nea.episode_number };
+  }
+  return summary.last_episode_to_air ?? null;
+}
 
 function airedEpisodesInSeason(
   summary: Awaited<ReturnType<typeof getTmdbTvSummary>>,
   season: number
 ): number {
   if (!summary) return 0;
-  const lea = summary.last_episode_to_air;
+  const lea = getEffectiveLastEpisode(summary);
   const seasonInfo = summary.seasons.find(s => s.season_number === season);
   if (!seasonInfo) return 0;
   if (!lea) return seasonInfo.episode_count;

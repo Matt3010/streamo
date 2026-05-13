@@ -14,6 +14,7 @@ import { NavigationSourceService } from '../../services/navigation-source.servic
 import { BackgroundService } from '../../services/background.service';
 import { tmdbToCardItem } from '../../utils/card-item.util';
 import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-release.util';
+import { getAiredEpisodesCount } from '../../utils/aired-episodes.util';
 import { runWithPending } from '../../utils/pending.util';
 import type { CardItem, MediaType, TmdbReview } from '../../models';
 
@@ -510,22 +511,9 @@ export class WatchComponent {
     const eps = episodes === 1 ? 'episodio' : 'episodi';
     if (!episodes) return `${seasons} ${ses}`;
 
-    // Compute how many episodes have already aired by walking the seasons
-    // list up to last_episode_to_air. If TMDB doesn't expose either field
-    // we just fall back to the total count.
-    const last = it?.last_episode_to_air;
-    let aired = 0;
-    if (last && it?.seasons?.length) {
-      for (const s of it.seasons) {
-        if (s.season_number === 0) continue;
-        if (last.season_number === undefined) continue;
-        if (s.season_number < last.season_number) {
-          aired += s.episode_count ?? 0;
-        } else if (s.season_number === last.season_number) {
-          aired += last.episode_number ?? 0;
-        }
-      }
-    }
+    // Compute how many episodes have already aired, considering next_episode_to_air
+    // if its air_date is today or past.
+    const aired = it ? getAiredEpisodesCount(it) : 0;
 
     if (aired > 0 && aired < episodes) {
       return `${seasons} ${ses} · ${aired}/${episodes} ${eps} usciti`;
