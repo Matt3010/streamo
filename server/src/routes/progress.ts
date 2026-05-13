@@ -74,7 +74,18 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
     SELECT status FROM watchlist
     WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
   `).get(userId, tmdbId, mediaType) as { status: string } | undefined;
-  if (!wl || wl.status === 'done') return false;
+  if (!wl) return false;
+
+  // If status is 'todo' and user starts watching, move to 'in_progress'
+  if (wl.status === 'todo') {
+    const result = db.prepare(`
+      UPDATE watchlist SET status = 'in_progress'
+      WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
+    `).run(userId, tmdbId, mediaType);
+    return result.changes > 0;
+  }
+
+  if (wl.status === 'done') return false;
 
   if (mediaType === 'movie') {
     const row = db.prepare(`

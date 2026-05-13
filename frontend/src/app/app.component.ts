@@ -21,12 +21,12 @@ import { WatchlistLiveService } from './services/watchlist-live.service';
 export class AppComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly watchlistLive = inject(WatchlistLiveService);
+  /** Injected to eagerly initialize the WebSocket connection for live watchlist updates. */
+  private readonly _watchlistLive = inject(WatchlistLiveService);
   private sawAuthenticated = false;
 
   constructor() {
     void this.auth.checkAuth();
-    void this.watchlistLive;
 
     effect(() => {
       const user = this.auth.currentUser();

@@ -49,6 +49,7 @@ const EXPANDED_FOLDERS_KEY = 'streamo.user-list.expanded-folders';
 
 const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
   { value: 'todo', label: 'Da guardare' },
+  { value: 'in_progress', label: 'In corso' },
   { value: 'done', label: 'Visto' }
 ];
 
@@ -460,15 +461,21 @@ export class UserListViewComponent {
 
   protected readonly emptyTitle = computed(() => {
     const media = this.mediaFilter();
+    const status = this.statusFilter();
     if (this.kind() !== 'watchlist') {
       return media === 'all'
         ? 'La cronologia è vuota'
         : `Nessun ${mediaLabel(media)} nella cronologia`;
     }
-    if (this.statusFilter() === 'done') {
+    if (status === 'done') {
       return media === 'all'
         ? 'Nessun titolo segnato come visto'
         : `Nessun ${mediaLabel(media)} segnato come visto`;
+    }
+    if (status === 'in_progress') {
+      return media === 'all'
+        ? 'Nessun titolo in corso'
+        : `Nessun ${mediaLabel(media)} in corso`;
     }
     return media === 'all'
       ? 'La tua lista è vuota'
@@ -477,13 +484,17 @@ export class UserListViewComponent {
 
   protected readonly emptyHint = computed(() => {
     const media = this.mediaFilter();
+    const status = this.statusFilter();
     if (this.kind() !== 'watchlist') {
       return media === 'all'
         ? 'I titoli che inizi a guardare verranno tracciati qui.'
         : `Prova a cambiare filtro o inizia a guardare ${mediaHintTarget(media)}.`;
     }
-    if (this.statusFilter() === 'done') {
+    if (status === 'done') {
       return 'I titoli che marchi come visti dal pulsante check appariranno qui.';
+    }
+    if (status === 'in_progress') {
+      return 'I titoli che inizi a guardare appariranno qui.';
     }
     return `Apri ${mediaHintTarget(media)} e clicca il segnalibro per aggiungerl${media === 'tv' ? 'a' : 'o'} alla tua lista.`;
   });
@@ -877,7 +888,9 @@ function loadMediaFilter(): MediaFilter {
 function loadStatusFilter(): WatchlistStatus {
   try {
     const value = localStorage.getItem(STATUS_FILTER_KEY);
-    return value === 'done' ? 'done' : 'todo';
+    if (value === 'in_progress') return 'in_progress';
+    if (value === 'done') return 'done';
+    return 'todo';
   } catch {
     return 'todo';
   }

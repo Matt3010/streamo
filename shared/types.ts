@@ -2,7 +2,7 @@
 // Wire-format only — no UI-specific shapes (those stay in frontend/src/app/models).
 
 export type MediaType = 'movie' | 'tv';
-export type WatchlistStatus = 'todo' | 'done';
+export type WatchlistStatus = 'todo' | 'in_progress' | 'done';
 
 export interface User {
   id: number;

@@ -16,7 +16,7 @@ interface WatchlistRow {
   media_type: 'movie' | 'tv';
   title: string | null;
   poster: string | null;
-  status: 'todo' | 'done';
+  status: 'todo' | 'in_progress' | 'done';
   folder_name: string | null;
   done_aired_episodes: number;
   added_at: number;
@@ -104,7 +104,7 @@ router.post('/user/watchlist', requireAuth, (req, res) => {
 router.get('/user/watchlist', requireAuth, async (req, res) => {
   const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
   const mediaFilter = typeof req.query.media_type === 'string' ? req.query.media_type : '';
-  if (statusFilter && !['todo', 'done'].includes(statusFilter)) {
+  if (statusFilter && !['todo', 'in_progress', 'done'].includes(statusFilter)) {
     return res.status(400).json({ error: 'invalid_status' });
   }
   if (mediaFilter && !['movie', 'tv'].includes(mediaFilter)) {
@@ -226,9 +226,9 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       && noLaterAiredEpisode;
 
     if (status === 'done' && doneAiredEpisodes > 0 && airedEpisodes > doneAiredEpisodes) {
-      status = 'todo';
+      status = 'in_progress';
       db.prepare(`
-        UPDATE watchlist SET status = 'todo'
+        UPDATE watchlist SET status = 'in_progress'
         WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
       `).run(req.user!.id, r.tmdb_id);
     }
@@ -263,7 +263,7 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   const status = body.status;
   const folderName = normalizeFolderName(body.folder_name);
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
-  if (status !== undefined && !['todo', 'done'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+  if (status !== undefined && !['todo', 'in_progress', 'done'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
   if (body.folder_name !== undefined && folderName === undefined) {
     return res.status(400).json({ error: 'invalid_folder_name' });
   }

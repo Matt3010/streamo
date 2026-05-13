@@ -32,7 +32,7 @@ export async function refreshWatchlistTitle(tmdbId: number): Promise<void> {
 
     db.prepare(`
       UPDATE watchlist
-      SET status = 'todo'
+      SET status = 'in_progress'
       WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND status = 'done'
     `).run(watcher.user_id, tmdbId);
   }
