@@ -729,15 +729,21 @@ function formatTime(seconds: number): string {
 }
 
 // Returns the episodes from a TMDB season-details payload that have already
-// aired (no air_date treated as aired so episodes without a confirmed date
-// still surface). End-of-day cutoff so today's episodes show immediately.
+// aired. End-of-day cutoff so today's episodes show immediately.
+//
+// DECISION: episodes WITHOUT a confirmed air_date are excluded. The previous
+// behaviour ("no air_date → treat as aired") was causing phantom episodes for
+// shows in progress (TMDB lists future episodes with air_date: null and they
+// were showing up in the carousel). The trade-off: very old shows with broken
+// TMDB metadata may lose a few episodes — accepted because it's a rare case
+// and easy to revisit if it actually shows up.
 function airedEpisodes(eps: TmdbEpisodeDetail[] | undefined): TmdbEpisodeDetail[] {
   if (!eps?.length) return [];
   const cutoff = new Date();
   cutoff.setHours(23, 59, 59, 999);
   return eps
     .filter(e => {
-      if (!e.air_date) return true;
+      if (!e.air_date) return false;
       const d = new Date(e.air_date);
       return !Number.isNaN(d.getTime()) && d <= cutoff;
     })
@@ -752,10 +758,13 @@ function availableSeasons(item: TmdbItem): Array<NonNullable<TmdbItem['seasons']
     return seasons.filter((season) => season.season_number <= lastAiredSeason);
   }
 
+  // Fallback: no last/next_episode_to_air available. Mirrors the airedEpisodes()
+  // decision — seasons WITHOUT a confirmed air_date are excluded so future
+  // seasons that TMDB lists with air_date: null don't leak into the selector.
   const cutoff = new Date();
   cutoff.setHours(23, 59, 59, 999);
   return seasons.filter((season) => {
-    if (!season.air_date) return true;
+    if (!season.air_date) return false;
     const date = new Date(season.air_date);
     return !Number.isNaN(date.getTime()) && date <= cutoff;
   });
