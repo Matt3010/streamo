@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { BackButtonComponent } from '../../ui/back-button/back-button.component';
-import { IconComponent, IconName } from '../../ui/icon/icon.component';
+import { IconComponent } from '../../ui/icon/icon.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
@@ -15,6 +15,7 @@ import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { enrichCardsWithTmdb } from '../../utils/card-item.util';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
+import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
@@ -592,17 +593,8 @@ export class UserListViewComponent {
     this.expandedFolders.update((state) => ({ ...state, [folderId]: !state[folderId] }));
   }
 
-  protected statusButtonTitle(status: WatchlistStatus | undefined): string {
-    if (status === 'done') return 'Segna da guardare';
-    if (status === 'in_progress') return 'Segna come visto';
-    return 'Segna come in corso';
-  }
-
-  protected statusButtonIcon(status: WatchlistStatus | undefined): IconName {
-    if (status === 'done') return 'rotate-left';
-    if (status === 'in_progress') return 'check';
-    return 'play';
-  }
+  protected statusButtonTitle = getStatusButtonTitle;
+  protected statusButtonIcon = getStatusButtonIcon;
 
   protected folderGridMeta(group: FolderGroup): string {
     return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
@@ -626,39 +618,22 @@ export class UserListViewComponent {
 
   protected async onStatusToggle(item: CardItem): Promise<void> {
     if (this.kind() !== 'watchlist') return;
-    const current = item.status ?? 'todo';
+    const { next, requiresConfirmation } = getStatusTransition(item.status);
 
-    // done → todo (direct)
-    if (current === 'done') {
-      await runCardMutation(this.items, item, 'status', async () => {
-        await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'todo');
-        this.items.update(items => items.map(candidate => (
-          candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
-            ? { ...candidate, status: 'todo' }
-            : candidate
-        )));
-        this.toast.show(`${item.title}: rimesso in "Da guardare"`);
-        void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
-      });
-      return;
-    }
-
-    // in_progress → done (with confirmation)
-    if (current === 'in_progress') {
+    if (requiresConfirmation) {
       this.pendingAction.set({ type: 'mark-done', item });
       this.confirmModalOpen.set(true);
       return;
     }
 
-    // todo → in_progress (direct)
     await runCardMutation(this.items, item, 'status', async () => {
-      await this.watchlist.setStatus(item.tmdb_id, item.media_type, 'in_progress');
+      await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
       this.items.update(items => items.map(candidate => (
         candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
-          ? { ...candidate, status: 'in_progress' }
+          ? { ...candidate, status: next }
           : candidate
       )));
-      this.toast.show(`${item.title}: spostato in "In corso"`);
+      this.toast.show(getStatusToastMessage(item.title, next));
       void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
     });
   }

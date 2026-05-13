@@ -12,6 +12,7 @@ import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import { enrichCardsWithTmdb, tmdbToCardItem } from '../../utils/card-item.util';
+import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage } from '../../utils/watchlist-status.util';
 import { SECTIONS } from './sections.config';
 import type { WatchlistStatus, CardItem, SectionConfig } from '../../models';
 
@@ -184,16 +185,19 @@ export class HomeComponent {
   }
 
   protected async toggleWatchlistStatus(item: CardItem): Promise<void> {
-    const next: WatchlistStatus = (item.status ?? 'todo') === 'done' ? 'todo' : 'done';
-    if (next === 'done') {
+    const { next, requiresConfirmation } = getStatusTransition(item.status);
+
+    if (requiresConfirmation) {
+      const modal = getStatusConfirmModal(item.title);
       this.pendingAction.set({ type: 'mark-watchlist-done', item });
-      this.confirmModalTitle.set('Segna Come Visto');
-      this.confirmModalMessage.set(`Vuoi segnare ${item.title} come visto?`);
-      this.confirmModalWarning.set('Il titolo verrà spostato fuori da questa sezione.');
-      this.confirmModalActionLabel.set('Segna come visto');
+      this.confirmModalTitle.set(modal.title);
+      this.confirmModalMessage.set(modal.message);
+      this.confirmModalWarning.set(modal.warning);
+      this.confirmModalActionLabel.set(modal.actionLabel);
       this.confirmModalOpen.set(true);
       return;
     }
+
     await runCardMutation(this.watchlistItems, item, 'status', async () => {
       await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
       this.watchlistItems.update(items => items.map(candidate => (
@@ -201,7 +205,7 @@ export class HomeComponent {
           ? { ...candidate, status: next }
           : candidate
       )));
-      this.toast.show(`${item.title}: rimesso in "Da guardare"`);
+      this.toast.show(getStatusToastMessage(item.title, next));
     });
   }
 
