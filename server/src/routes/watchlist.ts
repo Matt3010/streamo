@@ -75,16 +75,22 @@ function formatTvStatusText(
 
   if (airedEpisodes <= 0) return undefined;
 
-  // Check for new episodes (next_episode_to_air has aired today)
+  const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
+  const remaining = Math.max(0, airedEpisodes - watchedBaseline);
+
+  // "È uscito un nuovo episodio!" is only meaningful when the user hasn't
+  // already watched it. Without this gate the message kept appearing on the
+  // card even after the user caught up — the gap between aired and base
+  // counts is a TMDB-side lag, not a per-user signal.
   const newEpisodes = Math.max(0, airedEpisodes - baseAiredEpisodes);
-  if (newEpisodes > 0) return formatNewEpisodesMessage(newEpisodes);
+  if (newEpisodes > 0 && remaining > 0) {
+    return formatNewEpisodesMessage(Math.min(newEpisodes, remaining));
+  }
 
   if (caughtUp) return 'Sei al passo';
 
-  const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
   if (watchedBaseline <= 0) return undefined;
 
-  const remaining = Math.max(0, airedEpisodes - watchedBaseline);
   if (remaining === 0) return 'Sei al passo';
   return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }

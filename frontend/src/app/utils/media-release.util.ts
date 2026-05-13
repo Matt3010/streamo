@@ -3,7 +3,17 @@ import { getEffectiveLastEpisode, getAiredEpisodesCount, getBaseAiredEpisodesCou
 import { parseDateOnly, isFutureDate, formatDateLong, formatDateShort } from './date.util';
 import { formatNewEpisodesMessage, formatNextEpisodeDate } from '../../../../shared/release-format';
 
-export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): string {
+export interface ReleaseStatusOptions {
+  /**
+   * When true, the "È uscito un nuovo episodio!" branch is skipped — the
+   * helper falls through to next-season / ended / empty. Callers set this
+   * when they know the user has already watched the freshly-aired episode
+   * (so the "new" badge would be misleading).
+   */
+  suppressNewEpisode?: boolean;
+}
+
+export function getFullReleaseStatusText(item: TmdbItem, type: MediaType, options?: ReleaseStatusOptions): string {
   if (type === 'tv') {
     const firstAirDate = parseDateOnly(item.first_air_date);
     if (firstAirDate && isFutureDate(firstAirDate)) {
@@ -27,10 +37,13 @@ export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): strin
     if (isFutureDate(nextEpisodeDate)) {
       return `Prossimo episodio: S${season} E${episode} in uscita il ${formatDateLong(nextEpisodeDate)}.`;
     }
-    // Today or past - show as new with correct plural
-    const newCount = countNewEpisodes(item);
-    const base = formatNewEpisodesMessage(newCount);
-    return newCount <= 1 ? `${base} S${season} E${episode}` : base;
+    // Today or past — only show "new episode" when the caller hasn't told
+    // us the user already watched it.
+    if (!options?.suppressNewEpisode) {
+      const newCount = countNewEpisodes(item);
+      const base = formatNewEpisodesMessage(newCount);
+      return newCount <= 1 ? `${base} S${season} E${episode}` : base;
+    }
   }
 
   const nextSeason = findNextSeason(item);
