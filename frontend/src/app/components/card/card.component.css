@@ -186,7 +186,7 @@
 
 .card-status:hover { background: #2ea043; }
 .card-status.in-progress {
-  background: rgba(46, 160, 67, 0.5);
+  background: #2563eb;
   color: #fff;
 }
 .card-status.done {

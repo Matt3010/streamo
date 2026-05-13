@@ -351,8 +351,8 @@
 }
 
 .row-status.in-progress {
-  background: rgba(46, 160, 67, 0.5);
-  border-color: rgba(46, 160, 67, 0.5);
+  background: #2563eb;
+  border-color: #2563eb;
   color: #fff;
 }
 
