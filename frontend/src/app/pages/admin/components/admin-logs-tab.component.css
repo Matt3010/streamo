@@ -1,0 +1,83 @@
+@import './admin-tab.shared.css';
+
+.logs-shell {
+  display: grid;
+  grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.logs-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.logs-source-btn {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.8rem 0;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s, transform 0.18s;
+}
+
+.logs-source-btn:hover {
+  color: #fff;
+}
+
+.logs-source-btn.active {
+  border-color: rgba(74, 144, 226, 0.42);
+  transform: translateX(2px);
+}
+
+.logs-source-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.logs-source-sub {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.logs-view {
+  min-width: 0;
+}
+
+.logs-view-header {
+  margin-bottom: 0.75rem;
+}
+
+.logs-view-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+@media (max-width: 880px) {
+  .logs-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .logs-sidebar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logs-source-btn.active {
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .logs-sidebar {
+    grid-template-columns: 1fr;
+  }
+}

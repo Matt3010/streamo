@@ -4,19 +4,17 @@ import { UiTabsComponent, type UiTab } from '../../ui/tabs/tabs.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { AdminTokensTabComponent } from './components/admin-tokens-tab.component';
 import { AdminSessionsTabComponent } from './components/admin-sessions-tab.component';
-import { AdminPlaybackLogsTabComponent } from './components/admin-playback-logs-tab.component';
-import { AdminTransportLogsTabComponent } from './components/admin-transport-logs-tab.component';
 import { AdminQueueTabComponent } from './components/admin-queue-tab.component';
+import { AdminLogsTabComponent } from './components/admin-logs-tab.component';
 
-type AdminTab = 'queue' | 'tokens' | 'sessions' | 'playback' | 'transport';
+type AdminTab = 'queue' | 'tokens' | 'sessions' | 'logs';
 
 const ADMIN_TAB_STORAGE_KEY = 'streamo.admin.active-tab';
 const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
   { value: 'queue', label: 'Queue' },
   { value: 'tokens', label: 'Token' },
   { value: 'sessions', label: 'Sessioni' },
-  { value: 'playback', label: 'Playback' },
-  { value: 'transport', label: 'Transport' }
+  { value: 'logs', label: 'Log' }
 ];
 
 @Component({
@@ -28,8 +26,7 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
     AdminQueueTabComponent,
     AdminTokensTabComponent,
     AdminSessionsTabComponent,
-    AdminPlaybackLogsTabComponent,
-    AdminTransportLogsTabComponent
+    AdminLogsTabComponent
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -43,7 +40,7 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
     </div>
 
     <div class="admin-content">
-      <div class="admin-tabs-shell">
+      <div class="filter-bar">
         <ui-tabs [tabs]="tabs" [(value)]="activeTab" />
       </div>
 
@@ -57,11 +54,8 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
         @case ('sessions') {
           <app-admin-sessions-tab />
         }
-        @case ('playback') {
-          <app-admin-playback-logs-tab />
-        }
-        @case ('transport') {
-          <app-admin-transport-logs-tab />
+        @case ('logs') {
+          <app-admin-logs-tab />
         }
       }
     </div>
@@ -89,7 +83,7 @@ export class AdminComponent {
 function loadAdminTab(): AdminTab {
   try {
     const value = localStorage.getItem(ADMIN_TAB_STORAGE_KEY);
-    if (value === 'queue' || value === 'tokens' || value === 'sessions' || value === 'playback' || value === 'transport') {
+    if (value === 'queue' || value === 'tokens' || value === 'sessions' || value === 'logs') {
       return value;
     }
   } catch {}

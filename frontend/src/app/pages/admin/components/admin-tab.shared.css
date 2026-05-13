@@ -1,8 +1,5 @@
 .admin-section {
-  background: rgba(20, 20, 20, 0.96);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1rem;
+  padding: 0.15rem 0 0;
 }
 
 .section-header {
@@ -23,6 +20,7 @@
 .section-caption {
   color: var(--text-muted);
   font-size: 0.78rem;
+  word-break: break-word;
 }
 
 .section-actions {
@@ -32,11 +30,11 @@
 }
 
 .label-input {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text);
   padding: 0.62rem 0.8rem;
-  border-radius: 12px;
+  border-radius: 10px;
   font-size: 0.88rem;
   width: 180px;
 }
@@ -47,19 +45,20 @@
 }
 
 .action-btn {
-  background: var(--accent);
+  background: transparent;
   color: #fff;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 0.62rem 1rem;
-  border-radius: 12px;
+  border-radius: 10px;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .action-btn:hover {
-  background: var(--accent-hover);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent);
 }
 
 .admin-icon-btn {
@@ -68,16 +67,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
   color: var(--text);
   text-decoration: none;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .admin-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -86,14 +85,16 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  max-width: 100%;
   min-height: 34px;
-  padding: 0.38rem 0.72rem;
+  padding: 0.2rem 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border: none;
   color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 600;
+  white-space: normal;
 }
 
 .live-pill-dot {
@@ -107,8 +108,6 @@
 
 .live-pill.connected {
   color: #9be7ae;
-  border-color: rgba(46, 160, 67, 0.26);
-  background: rgba(46, 160, 67, 0.08);
 }
 
 .live-pill.connected .live-pill-dot {
@@ -135,17 +134,15 @@
 .item-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 0.72rem 0.9rem;
-  transition: background 0.15s, border-color 0.15s;
+  padding: 0.72rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  transition: color 0.15s;
 }
 
 .item-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text);
 }
 
 .item-row.revoked {
@@ -224,9 +221,9 @@
 .row-action {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text);
   cursor: pointer;
   display: flex;
@@ -236,7 +233,7 @@
 }
 
 .row-action:hover {
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, 0.05);
   border-color: var(--accent);
 }
 
@@ -253,9 +250,7 @@
 .logs-panel {
   max-height: min(60vh, 36rem);
   overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .log-list {
@@ -268,7 +263,7 @@
   display: grid;
   grid-template-columns: 10.5rem 1fr;
   gap: 0.9rem;
-  padding: 0.72rem 0.9rem;
+  padding: 0.72rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -393,7 +388,7 @@
 
 .cancel-btn, .danger-btn {
   padding: 0.5rem 1rem;
-  border-radius: var(--radius);
+  border-radius: 10px;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -401,31 +396,31 @@
 }
 
 .cancel-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text);
 }
 
 .cancel-btn:hover {
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .danger-btn {
-  background: #ef4444;
-  border: none;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.42);
   color: #fff;
 }
 
 .danger-btn:hover {
-  background: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .danger-btn.neutral-btn {
-  background: var(--accent);
+  border-color: rgba(74, 144, 226, 0.42);
 }
 
 .danger-btn.neutral-btn:hover {
-  background: var(--accent-hover);
+  background: rgba(74, 144, 226, 0.12);
 }
 
 @media (max-width: 640px) {
@@ -444,10 +439,15 @@
 
   .section-actions {
     width: 100%;
+    flex-wrap: wrap;
   }
 
   .label-input {
     flex: 1;
+    width: 100%;
+  }
+
+  .action-btn {
     width: 100%;
   }
 
@@ -457,6 +457,24 @@
 
   .item-row {
     align-items: flex-start;
+  }
+
+  .item-info {
+    width: 100%;
+  }
+
+  .item-title {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .item-sub {
+    align-items: flex-start;
+  }
+
+  .row-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .row-action {
