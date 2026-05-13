@@ -28,6 +28,9 @@ chmod +x ./scripts/up.sh
 ./scripts/up.sh --build
 ```
 
+With `--build`, the script runs `git pull --rebase` before rebuilding the
+backend and frontend images.
+
 The worker replica count is read from `WORKER_REPLICAS`. You can also override
 it explicitly:
 

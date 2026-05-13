@@ -55,6 +55,7 @@ set -- compose up -d --scale "backend-worker=$WORKER_REPLICAS"
 echo "Starting stack with backend-worker replicas=$WORKER_REPLICAS"
 cd "$PROJECT_ROOT"
 if [ "$BUILD_FLAG" -eq 1 ]; then
+  git pull --rebase
   docker compose build backend streamo
 fi
 docker "$@"
