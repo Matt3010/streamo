@@ -1,6 +1,7 @@
 import type { MediaType, TmdbItem } from '../models';
 import { getEffectiveLastEpisode, getAiredEpisodesCount, getBaseAiredEpisodesCount } from './aired-episodes.util';
 import { parseDateOnly, isFutureDate, formatDateLong, formatDateShort } from './date.util';
+import { formatNewEpisodesMessage, formatNextEpisodeDate } from '../../../../shared/release-format';
 
 export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): string {
   if (type === 'tv') {
@@ -28,10 +29,8 @@ export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): strin
     }
     // Today or past - show as new with correct plural
     const newCount = countNewEpisodes(item);
-    if (newCount <= 1) {
-      return `È uscito un nuovo episodio! S${season} E${episode}`;
-    }
-    return `Sono usciti ${newCount} nuovi episodi!`;
+    const base = formatNewEpisodesMessage(newCount);
+    return newCount <= 1 ? `${base} S${season} E${episode}` : base;
   }
 
   const nextSeason = findNextSeason(item);
@@ -65,12 +64,10 @@ export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): st
   const nextEpisode = item.next_episode_to_air;
   const nextEpisodeDate = parseDateOnly(nextEpisode?.air_date);
   if (nextEpisode && nextEpisodeDate) {
-    if (isFutureDate(nextEpisodeDate)) {
-      return `Nuovo episodio ${formatDateShort(nextEpisodeDate)}`;
-    }
+    const futureMsg = formatNextEpisodeDate(nextEpisode?.air_date);
+    if (futureMsg) return futureMsg;
     // Today or past - show as new with correct plural
-    const newCount = countNewEpisodes(item);
-    return formatNewEpisodesMessage(newCount);
+    return formatNewEpisodesMessage(countNewEpisodes(item));
   }
 
   const nextSeason = findNextSeason(item);
@@ -98,11 +95,6 @@ export function getUpcomingBadgeText(item: TmdbItem, type: MediaType): string {
 
 function countNewEpisodes(item: TmdbItem): number {
   return Math.max(0, getAiredEpisodesCount(item) - getBaseAiredEpisodesCount(item));
-}
-
-function formatNewEpisodesMessage(count: number): string {
-  if (count <= 1) return 'È uscito un nuovo episodio!';
-  return `Sono usciti ${count} nuovi episodi!`;
 }
 
 function findNextSeason(item: TmdbItem): { season: number; date: Date } | null {

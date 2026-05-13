@@ -65,6 +65,7 @@ export interface WatchlistItem {
   aired_episodes?: number;
   seasons?: WatchlistSeasonInfo[];
   watch_status_text?: string;
+  next_release_text?: string;
   caught_up?: boolean;
   // Where the watch page should resume — already pivoted past finished
   // episodes by the backend. Lets the card click navigate straight to the

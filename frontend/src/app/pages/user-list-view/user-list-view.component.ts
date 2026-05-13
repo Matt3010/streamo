@@ -847,11 +847,12 @@ export class UserListViewComponent {
         status: w.status ?? 'todo',
         folderName: w.folder_name ?? null,
         watchStatus: w.watch_status_text,
+        nextReleaseText: w.next_release_text,
         season: w.resume_season,
         episode: w.resume_episode,
         position: w.position,
         duration: w.duration
-      })), this.tmdb);
+      })), this.tmdb, { useBackendStatus: true });
       if (mySeq !== this.seq) return;
       this.items.set(items);
     } else {

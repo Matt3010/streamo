@@ -314,8 +314,9 @@ export class HomeComponent {
       episode: w.resume_episode,
       position: w.position,
       duration: w.duration,
-      watchStatus: w.watch_status_text
-    })), this.tmdb);
+      watchStatus: w.watch_status_text,
+      nextReleaseText: w.next_release_text
+    })), this.tmdb, { useBackendStatus: true });
     if (seq !== this.userSeq) return;
 
     this.userLoading.set(false);

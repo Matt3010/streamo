@@ -22,15 +22,13 @@ export function tmdbToCardItem(item: TmdbItem, type: MediaType, showReleaseText 
 
 export async function enrichCardsWithTmdb(
   items: CardItem[],
-  tmdb: TmdbService
+  tmdb: TmdbService,
+  options: { useBackendStatus?: boolean } = {}
 ): Promise<CardItem[]> {
   return Promise.all(items.map(async (item) => {
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
     if (!details) return item;
     const upcoming = isTitleUpcoming(details, item.media_type);
-    const releaseText = getCompactReleaseStatusText(details, item.media_type);
-    // Skip "È uscito/Sono usciti" when watchStatus exists (backend handles that)
-    const skipReleaseText = item.watchStatus && (releaseText?.startsWith('È uscito') || releaseText?.startsWith('Sono usciti'));
     return {
       ...item,
       popularity: details.popularity,
@@ -39,7 +37,9 @@ export async function enrichCardsWithTmdb(
       year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
       isUpcoming: upcoming,
       upcomingBadge: getUpcomingBadgeText(details, item.media_type),
-      nextReleaseText: skipReleaseText ? undefined : releaseText || undefined
+      nextReleaseText: options.useBackendStatus
+        ? item.nextReleaseText
+        : getCompactReleaseStatusText(details, item.media_type) || undefined
     };
   }));
 }
