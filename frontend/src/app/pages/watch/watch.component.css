@@ -392,6 +392,11 @@
 
 .episode-card {
   flex: 0 0 220px;
+  /* min-width: 0 overrides the flex default of min-width: auto. Without it,
+   * a long single-line title (white-space: nowrap) forces the card's
+   * min-content size above 220px and the whole card grows — making some
+   * cards visually larger than their neighbours and breaking the ellipsis. */
+  min-width: 0;
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
