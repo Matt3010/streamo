@@ -3,7 +3,7 @@ import { db } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
-import { getAiredEpisodesCount, getBaseAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
+import { getAiredEpisodesCount, getBaseAiredEpisodesCount, getTmdbTvSummary, isFutureDate, type TmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { publishUserWatchlistChanged } from '../services/user-live';
 import { enqueueWatchlistTitleRefresh } from '../services/watchlist-jobs';
@@ -63,15 +63,24 @@ function formatMovieRemaining(position: number | undefined, duration: number | u
   return hours === 1 && minutes === 0 ? `Manca ${timeLeft}` : `Mancano ${timeLeft}`;
 }
 
+function formatDateShort(dateStr: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return dateStr;
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short' }).format(date);
+}
+
 function formatTvStatusText(
-  airedEpisodes: number,
-  baseAiredEpisodes: number,
+  tmdb: TmdbTvSummary | null,
   watchedCount: number,
   doneAiredEpisodes: number,
   caughtUp: boolean
 ): string | undefined {
+  const airedEpisodes = getAiredEpisodesCount(tmdb);
+  const baseAiredEpisodes = getBaseAiredEpisodesCount(tmdb);
+
   if (airedEpisodes <= 0) return undefined;
-  if (caughtUp) return 'Sei al passo';
 
   // Check for new episodes (next_episode_to_air has aired today)
   const newEpisodes = Math.max(0, airedEpisodes - baseAiredEpisodes);
@@ -81,11 +90,27 @@ function formatTvStatusText(
       : `Sono usciti ${newEpisodes} nuovi episodi!`;
   }
 
+  // If caught up, check for future episode
+  if (caughtUp) {
+    const nextEp = tmdb?.next_episode_to_air;
+    if (nextEp?.air_date && isFutureDate(nextEp.air_date)) {
+      return `Sei al passo · Nuovo ep. ${formatDateShort(nextEp.air_date)}`;
+    }
+    return 'Sei al passo';
+  }
+
   const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
   if (watchedBaseline <= 0) return undefined;
 
   const remaining = Math.max(0, airedEpisodes - watchedBaseline);
-  if (remaining === 0) return 'Sei al passo';
+  if (remaining === 0) {
+    // User is caught up but caughtUp flag is false (maybe just finished watching)
+    const nextEp = tmdb?.next_episode_to_air;
+    if (nextEp?.air_date && isFutureDate(nextEp.air_date)) {
+      return `Sei al passo · Nuovo ep. ${formatDateShort(nextEp.air_date)}`;
+    }
+    return 'Sei al passo';
+  }
   return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }
 
@@ -213,7 +238,6 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     const tmdb = await getTmdbTvSummary(r.tmdb_id);
     const totalEpisodes = tmdb?.number_of_episodes ?? 0;
     const airedEpisodes = getAiredEpisodesCount(tmdb);
-    const baseAiredEpisodes = getBaseAiredEpisodesCount(tmdb);
     const resume = await resolveNextPlayable(req.user!.id, r.tmdb_id);
 
     let status = r.status;
@@ -255,7 +279,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       aired_episodes: airedEpisodes,
       seasons: tmdb?.seasons ?? [],
       caught_up: caughtUp,
-      watch_status_text: formatTvStatusText(airedEpisodes, baseAiredEpisodes, prog.watched_count, doneAiredEpisodes, caughtUp),
+      watch_status_text: formatTvStatusText(tmdb, prog.watched_count, doneAiredEpisodes, caughtUp),
       resume_season: resume?.season,
       resume_episode: resume?.episode,
       ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})

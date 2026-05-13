@@ -28,6 +28,9 @@ export async function enrichCardsWithTmdb(
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
     if (!details) return item;
     const upcoming = isTitleUpcoming(details, item.media_type);
+    const releaseText = getCompactReleaseStatusText(details, item.media_type);
+    // Skip "È uscito/Sono usciti" when watchStatus exists (backend handles that)
+    const skipReleaseText = item.watchStatus && (releaseText?.startsWith('È uscito') || releaseText?.startsWith('Sono usciti'));
     return {
       ...item,
       popularity: details.popularity,
@@ -36,7 +39,7 @@ export async function enrichCardsWithTmdb(
       year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
       isUpcoming: upcoming,
       upcomingBadge: getUpcomingBadgeText(details, item.media_type),
-      nextReleaseText: item.watchStatus ? undefined : getCompactReleaseStatusText(details, item.media_type) || undefined
+      nextReleaseText: skipReleaseText ? undefined : releaseText || undefined
     };
   }));
 }
