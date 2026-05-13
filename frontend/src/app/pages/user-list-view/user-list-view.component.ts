@@ -15,7 +15,7 @@ import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { enrichCardsWithTmdb } from '../../utils/card-item.util';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
-import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
+import { getStatusTransition, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
 import type { CardItem, WatchlistStatus } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';

@@ -14,7 +14,7 @@ import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardW
 import { enrichCardsWithTmdb, tmdbToCardItem } from '../../utils/card-item.util';
 import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage } from '../../utils/watchlist-status.util';
 import { SECTIONS } from './sections.config';
-import type { WatchlistStatus, CardItem, SectionConfig } from '../../models';
+import type { CardItem, SectionConfig } from '../../models';
 
 interface SectionState {
   config: SectionConfig;
