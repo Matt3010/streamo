@@ -1,14 +1,22 @@
 import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, readCookie } from '../middleware/auth';
+import { createRedisClient, getRedisPublisher, hasRedisConfig } from './redis';
 import type { MediaType, WatchlistUpdatedEvent } from '../../../shared/types';
 
 const USER_WATCHLIST_WS_PATH = '/user/watchlist/ws';
+const USER_WATCHLIST_CHANNEL = 'streamo:user-watchlist-updates';
 const HEARTBEAT_INTERVAL_MS = 30000;
+
+interface WatchlistBroadcastEnvelope {
+  userIds: number[];
+  payload: WatchlistUpdatedEvent;
+}
 
 const userClients = new Map<number, Set<WebSocket>>();
 const heartbeatState = new WeakMap<WebSocket, boolean>();
 let heartbeatInterval: NodeJS.Timeout | null = null;
+let subscriberStarted = false;
 
 export function attachUserLiveSessions(server: HttpServer): void {
   const watchlistWss = new WebSocketServer({ noServer: true });
@@ -52,20 +60,57 @@ export function attachUserLiveSessions(server: HttpServer): void {
   });
 }
 
-export function notifyUserWatchlistChanged(
+export function startUserWatchlistEventsSubscription(): void {
+  if (!hasRedisConfig() || subscriberStarted) return;
+  subscriberStarted = true;
+
+  const subscriber = createRedisClient();
+  subscriber.on('error', (error) => {
+    console.error('[user-live-subscriber]', error);
+  });
+  subscriber.on('message', (_channel, message) => {
+    try {
+      const parsed = JSON.parse(message) as WatchlistBroadcastEnvelope;
+      broadcastUserWatchlistChanged(parsed.userIds, parsed.payload);
+    } catch (error) {
+      console.error('[user-live-subscriber] invalid payload', error);
+    }
+  });
+
+  void subscriber.subscribe(USER_WATCHLIST_CHANNEL).catch((error) => {
+    console.error('[user-live-subscriber] subscribe failed', error);
+    subscriberStarted = false;
+  });
+}
+
+export function publishUserWatchlistChanged(
   userIds: number | number[],
   payload: { reason: WatchlistUpdatedEvent['reason']; tmdb_id?: number; media_type?: MediaType }
 ): void {
-  const ids = Array.isArray(userIds) ? userIds : [userIds];
-  const message = JSON.stringify({
-    type: 'watchlist-updated',
-    ...payload
-  } satisfies WatchlistUpdatedEvent);
+  const envelope: WatchlistBroadcastEnvelope = {
+    userIds: Array.isArray(userIds) ? userIds : [userIds],
+    payload: {
+      type: 'watchlist-updated',
+      ...payload
+    }
+  };
 
-  for (const userId of ids) {
+  if (!hasRedisConfig()) {
+    broadcastUserWatchlistChanged(envelope.userIds, envelope.payload);
+    return;
+  }
+
+  void getRedisPublisher().publish(USER_WATCHLIST_CHANNEL, JSON.stringify(envelope)).catch((error) => {
+    console.error('[user-live-publisher]', error);
+  });
+}
+
+function broadcastUserWatchlistChanged(userIds: number[], payload: WatchlistUpdatedEvent): void {
+  for (const userId of userIds) {
     const clients = userClients.get(userId);
     if (!clients?.size) continue;
 
+    const message = JSON.stringify(payload);
     for (const client of clients) {
       if (client.readyState !== WebSocket.OPEN) continue;
       client.send(message);

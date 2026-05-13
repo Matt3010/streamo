@@ -5,7 +5,8 @@ import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
-import { notifyUserWatchlistChanged } from '../services/user-live';
+import { publishUserWatchlistChanged } from '../services/user-live';
+import { enqueueWatchlistTitleRefresh } from '../services/watchlist-jobs';
 import type { WatchlistItem } from '../../../shared/types';
 
 const router = Router();
@@ -89,11 +90,14 @@ router.post('/user/watchlist', requireAuth, (req, res) => {
     INSERT OR IGNORE INTO watchlist (user_id, tmdb_id, media_type, title, poster)
     VALUES (?, ?, ?, ?, ?)
   `).run(req.user!.id, tmdb_id, media_type, body.title || null, body.poster || null);
-  notifyUserWatchlistChanged(req.user!.id, {
+  publishUserWatchlistChanged(req.user!.id, {
     reason: 'watchlist-changed',
     tmdb_id,
     media_type
   });
+  if (media_type === 'tv') {
+    void enqueueWatchlistTitleRefresh(tmdb_id, 'watchlist-add');
+  }
   res.json({ ok: true });
 });
 
@@ -274,7 +278,7 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
       WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
     `).run(folderName ?? null, req.user!.id, tmdb_id, type);
     if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
-    notifyUserWatchlistChanged(req.user!.id, {
+    publishUserWatchlistChanged(req.user!.id, {
       reason: 'watchlist-changed',
       tmdb_id,
       media_type: mediaType
@@ -294,7 +298,7 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   `).run(status, doneAiredEpisodes, req.user!.id, tmdb_id, type);
   if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
 
-  notifyUserWatchlistChanged(req.user!.id, {
+  publishUserWatchlistChanged(req.user!.id, {
     reason: 'watchlist-changed',
     tmdb_id,
     media_type: type as 'movie' | 'tv'
@@ -307,7 +311,7 @@ router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, (req, res) => {
   const type = req.params.type;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
   db.prepare(`DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?`).run(req.user!.id, tmdb_id, type);
-  notifyUserWatchlistChanged(req.user!.id, {
+  publishUserWatchlistChanged(req.user!.id, {
     reason: 'watchlist-changed',
     tmdb_id,
     media_type: type as 'movie' | 'tv'

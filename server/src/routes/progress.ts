@@ -6,7 +6,7 @@ import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
 import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { notifyAdminSessionsChanged } from '../services/admin-live';
-import { notifyUserWatchlistChanged } from '../services/user-live';
+import { publishUserWatchlistChanged } from '../services/user-live';
 import type { MediaType } from '../../../shared/types';
 
 const router = Router();
@@ -58,7 +58,7 @@ router.post('/user/progress', requireAuth, async (req, res) => {
 
   const watchlistChanged = await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
   if (watchlistChanged) {
-    notifyUserWatchlistChanged(req.user!.id, {
+    publishUserWatchlistChanged(req.user!.id, {
       reason: 'watchlist-changed',
       tmdb_id,
       media_type

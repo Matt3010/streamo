@@ -7,6 +7,10 @@ export const COOKIE_SECURE =
 export const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 export const TMDB_CACHE_TTL = 6 * 60 * 60; // 6 hours
 export const TMDB_REFRESH_INTERVAL_SECONDS = Number(process.env.TMDB_REFRESH_INTERVAL_SECONDS) || (30 * 60);
+export const REDIS_URL = (process.env.REDIS_URL || '').trim();
+export const WORKER_CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY) || 4);
+export const TMDB_JOB_RATE_LIMIT_MAX = Math.max(1, Number(process.env.TMDB_JOB_RATE_LIMIT_MAX) || 6);
+export const TMDB_JOB_RATE_LIMIT_DURATION_MS = Math.max(100, Number(process.env.TMDB_JOB_RATE_LIMIT_DURATION_MS) || 1000);
 
 // Episodes/movies count as "watched" once you've seen at least this fraction.
 export const WATCHED_THRESHOLD = 0.8;

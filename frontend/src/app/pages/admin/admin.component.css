@@ -69,6 +69,25 @@
   background: var(--accent-hover);
 }
 
+.action-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0.62rem 1rem;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.action-link-btn:hover {
+  background: var(--accent-hover);
+}
+
 .refresh-info {
   font-size: 0.8rem;
   color: var(--text-muted);

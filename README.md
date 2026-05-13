@@ -18,17 +18,29 @@ Create a `.env` file at the project root with your TMDB API key:
 
 ```
 TMDB_API_KEY=your_key_here
+WORKER_REPLICAS=1
 ```
 
 Then:
 
 ```bash
-docker compose up -d --build
+chmod +x ./scripts/up.sh
+./scripts/up.sh --build
+```
+
+The worker replica count is read from `WORKER_REPLICAS`. You can also override
+it explicitly:
+
+```bash
+./scripts/up.sh --workers 3 --build
 ```
 
 The app is available at `http://localhost:7549`. The backend (port 3000)
 is not exposed directly — nginx reverse-proxies `/api/auth`, `/api/user`,
 `/api/tmdb`, and `/player`.
+
+If you are logged in as the super admin, the BullMQ dashboard is available at
+`/api/admin/queues`.
 
 State (users, watchlist, progress, history, JWT secret, TMDB cache) lives
 in `./data/vixstream.db` (volume mounted on the backend container; legacy filename kept to preserve existing data).

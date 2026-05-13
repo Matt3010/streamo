@@ -1,8 +1,13 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
   backend:
     build:
       context: .
       dockerfile: server/Dockerfile
+    image: streamingimmunity-backend:local
     restart: unless-stopped
     volumes:
       - ./data:/data
@@ -14,8 +19,31 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
       # Email that becomes admin automatically (no invite token needed).
       - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:-}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TMDB_REFRESH_INTERVAL_SECONDS=${TMDB_REFRESH_INTERVAL_SECONDS:-1800}
     expose:
       - "3000"
+    depends_on:
+      - redis
+
+  backend-worker:
+    image: streamingimmunity-backend:local
+    command: ["node", "dist/server/src/worker.js"]
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
+      - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:-}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TMDB_REFRESH_INTERVAL_SECONDS=${TMDB_REFRESH_INTERVAL_SECONDS:-1800}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
+      - TMDB_JOB_RATE_LIMIT_MAX=${TMDB_JOB_RATE_LIMIT_MAX:-6}
+      - TMDB_JOB_RATE_LIMIT_DURATION_MS=${TMDB_JOB_RATE_LIMIT_DURATION_MS:-1000}
+    depends_on:
+      - redis
 
   streamo:
     build: .

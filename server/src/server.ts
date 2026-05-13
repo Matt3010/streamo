@@ -10,8 +10,10 @@ import watchlistRoutes from './routes/watchlist';
 import adminRoutes from './routes/admin';
 import playbackRoutes from './routes/playback';
 import { attachAdminLiveSessions } from './services/admin-live';
+import { requireSuperAdmin } from './middleware/auth';
+import { getAdminQueuesBoardRouter } from './services/admin-queues-board';
 import { attachUserLiveSessions } from './services/user-live';
-import { startWatchlistRefreshLoop } from './services/watchlist-refresh';
+import { startUserWatchlistEventsSubscription } from './services/user-live';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -22,6 +24,7 @@ app.use(authRoutes);
 app.use(preferencesRoutes);
 app.use(progressRoutes);
 app.use(historyRoutes);
+app.use('/admin/queues', requireSuperAdmin, getAdminQueuesBoardRouter());
 app.use(watchlistRoutes);
 app.use(adminRoutes);
 app.use(playbackRoutes);
@@ -29,7 +32,7 @@ app.use(playbackRoutes);
 const server = http.createServer(app);
 attachAdminLiveSessions(server);
 attachUserLiveSessions(server);
-startWatchlistRefreshLoop();
+startUserWatchlistEventsSubscription();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend listening on ${PORT}`);
