@@ -51,10 +51,10 @@ if [ "$WORKER_REPLICAS" -le 0 ]; then
 fi
 
 set -- compose up -d --scale "backend-worker=$WORKER_REPLICAS"
-if [ "$BUILD_FLAG" -eq 1 ]; then
-  set -- "$@" --build
-fi
 
 echo "Starting stack with backend-worker replicas=$WORKER_REPLICAS"
 cd "$PROJECT_ROOT"
+if [ "$BUILD_FLAG" -eq 1 ]; then
+  docker compose build backend streamo
+fi
 docker "$@"
