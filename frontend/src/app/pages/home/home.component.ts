@@ -272,7 +272,7 @@ export class HomeComponent {
     const results = await Promise.all(SECTIONS.map(c => this.tmdb.list(c.endpoint)));
     this.sectionStates.set(SECTIONS.map((c, i) => ({
       config: c,
-      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCardItem(it, c.mediaType, { releaseTextMode: 'upcoming-only' })),
+      items: (results[i] ?? []).slice(0, 20).map(it => tmdbToCardItem(it, c.mediaType, true)),
       loading: false
     })));
   }
@@ -315,7 +315,7 @@ export class HomeComponent {
       position: w.position,
       duration: w.duration,
       watchStatus: w.watch_status_text
-    })), this.tmdb, { releaseTextMode: 'all' });
+    })), this.tmdb);
     if (seq !== this.userSeq) return;
 
     this.userLoading.set(false);

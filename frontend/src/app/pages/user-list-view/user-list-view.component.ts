@@ -851,7 +851,7 @@ export class UserListViewComponent {
         episode: w.resume_episode,
         position: w.position,
         duration: w.duration
-      })), this.tmdb, { releaseTextMode: 'all' });
+      })), this.tmdb);
       if (mySeq !== this.seq) return;
       this.items.set(items);
     } else {
@@ -867,7 +867,7 @@ export class UserListViewComponent {
         poster: h.poster,
         season: h.season,
         episode: h.episode
-      })), watchlist), this.tmdb, { releaseTextMode: 'all' });
+      })), watchlist), this.tmdb);
       if (mySeq !== this.seq) return;
       this.items.set(items);
     }

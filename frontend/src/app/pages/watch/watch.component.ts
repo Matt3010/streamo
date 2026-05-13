@@ -577,7 +577,7 @@ export class WatchComponent {
     this.recommendations.set([]);
     const results = await this.tmdb.getRecommendations(id, type);
     if (seq !== this.recommendationsSeq) return;
-    this.recommendations.set(results.slice(0, 20).map(it => tmdbToCardItem(it, type, { releaseTextMode: 'upcoming-only' })));
+    this.recommendations.set(results.slice(0, 20).map(it => tmdbToCardItem(it, type, true)));
     this.recommendationsLoading.set(false);
   }
 

@@ -3,7 +3,7 @@ import { db } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
-import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
+import { getAiredEpisodesCount, getBaseAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { publishUserWatchlistChanged } from '../services/user-live';
 import { enqueueWatchlistTitleRefresh } from '../services/watchlist-jobs';
@@ -65,12 +65,21 @@ function formatMovieRemaining(position: number | undefined, duration: number | u
 
 function formatTvStatusText(
   airedEpisodes: number,
+  baseAiredEpisodes: number,
   watchedCount: number,
   doneAiredEpisodes: number,
   caughtUp: boolean
 ): string | undefined {
   if (airedEpisodes <= 0) return undefined;
   if (caughtUp) return 'Sei al passo';
+
+  // Check for new episodes (next_episode_to_air has aired today)
+  const newEpisodes = Math.max(0, airedEpisodes - baseAiredEpisodes);
+  if (newEpisodes > 0) {
+    return newEpisodes === 1
+      ? 'È uscito un nuovo episodio!'
+      : `Sono usciti ${newEpisodes} nuovi episodi!`;
+  }
 
   const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
   if (watchedBaseline <= 0) return undefined;
@@ -204,6 +213,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     const tmdb = await getTmdbTvSummary(r.tmdb_id);
     const totalEpisodes = tmdb?.number_of_episodes ?? 0;
     const airedEpisodes = getAiredEpisodesCount(tmdb);
+    const baseAiredEpisodes = getBaseAiredEpisodesCount(tmdb);
     const resume = await resolveNextPlayable(req.user!.id, r.tmdb_id);
 
     let status = r.status;
@@ -245,7 +255,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       aired_episodes: airedEpisodes,
       seasons: tmdb?.seasons ?? [],
       caught_up: caughtUp,
-      watch_status_text: formatTvStatusText(airedEpisodes, prog.watched_count, doneAiredEpisodes, caughtUp),
+      watch_status_text: formatTvStatusText(airedEpisodes, baseAiredEpisodes, prog.watched_count, doneAiredEpisodes, caughtUp),
       resume_season: resume?.season,
       resume_episode: resume?.episode,
       ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})

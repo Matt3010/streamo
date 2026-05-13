@@ -143,7 +143,7 @@ export class SearchResultsComponent {
     this.items.set([]);
     const results = await this.tmdb.searchAll(q);
     if (mySeq !== this.seq) return; // newer search superseded this one
-    let items = results.map(r => tmdbToCardItem(r, r.media_type === 'tv' ? 'tv' : 'movie', { releaseTextMode: 'upcoming-only' }));
+    let items = results.map(r => tmdbToCardItem(r, r.media_type === 'tv' ? 'tv' : 'movie', true));
     if (this.auth.isLoggedIn()) {
       items = await this.withWatchlistFlags(items);
       if (mySeq !== this.seq) return;

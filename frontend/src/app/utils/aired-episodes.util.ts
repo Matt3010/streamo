@@ -16,7 +16,7 @@ export function getEffectiveLastEpisode(item: TmdbItem): TmdbEpisodeRef | null {
 /**
  * Counts episodes up to (and including) a given episode reference.
  */
-export function countEpisodesUpTo(item: TmdbItem, ref: TmdbEpisodeRef | null): number {
+function countEpisodesUpTo(item: TmdbItem, ref: TmdbEpisodeRef | null): number {
   if (!ref || ref.season_number === undefined || ref.episode_number === undefined) {
     return item.number_of_episodes ?? 0;
   }
