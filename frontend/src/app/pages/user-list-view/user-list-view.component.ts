@@ -120,8 +120,12 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
           @if (entry.group) {
             <button class="folder-card"
                     [class.expanded]="entry.expanded"
+                    [class.folder-drop-active]="isFolderDropActive(entry.group.id)"
                     [attr.aria-expanded]="entry.expanded"
-                    (click)="toggleFolder(entry.group.id)">
+                    (click)="toggleFolder(entry.group.id)"
+                    (dragover)="onFolderDragOver($event, entry.group)"
+                    (dragleave)="onFolderDragLeave(entry.group.id)"
+                    (drop)="onFolderDrop($event, entry.group)">
               <span class="folder-card-icon">
                 <app-icon name="folder"></app-icon>
               </span>
@@ -145,7 +149,11 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                       [showStatusToggle]="kind() === 'watchlist'"
                       [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
                       [showFolderAction]="folderFeatureEnabled()"
+                      [draggable]="canDragItem(child)"
+                      [dragging]="isDraggingItem(child)"
                       (cardClick)="onCardClick($event)"
+                      (dragStarted)="onItemDragStart($event, child)"
+                      (dragEnded)="onItemDragEnd()"
                       (watchlistToggleClick)="onWatchlistToggle($event)"
                       (statusToggleClick)="onStatusToggle($event)"
                       (folderClick)="openFolderModal($event)"
@@ -163,7 +171,11 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               [showStatusToggle]="kind() === 'watchlist'"
               [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
               [showFolderAction]="folderFeatureEnabled()"
+              [draggable]="canDragItem(entry.item)"
+              [dragging]="isDraggingItem(entry.item)"
               (cardClick)="onCardClick($event)"
+              (dragStarted)="onItemDragStart($event, entry.item)"
+              (dragEnded)="onItemDragEnd()"
               (watchlistToggleClick)="onWatchlistToggle($event)"
               (statusToggleClick)="onStatusToggle($event)"
               (folderClick)="openFolderModal($event)"
@@ -178,8 +190,12 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             <li class="folder-block">
               <button class="folder-row"
                       [class.expanded]="entry.expanded"
+                      [class.folder-drop-active]="isFolderDropActive(entry.group.id)"
                       [attr.aria-expanded]="entry.expanded"
-                      (click)="toggleFolder(entry.group.id)">
+                      (click)="toggleFolder(entry.group.id)"
+                      (dragover)="onFolderDragOver($event, entry.group)"
+                      (dragleave)="onFolderDragLeave(entry.group.id)"
+                      (drop)="onFolderDrop($event, entry.group)">
                 <span class="folder-row-main">
                   <span class="folder-pill">
                     <app-icon name="folder"></app-icon>
@@ -197,7 +213,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               @if (entry.expanded) {
                 <ul class="folder-items">
                   @for (it of entry.group.items; track it.tmdb_id + '-' + it.media_type) {
-                    <li class="item-row folder-child-row" (click)="onCardClick(it)">
+                    <li class="item-row folder-child-row"
+                        [class.item-row-draggable]="canDragItem(it)"
+                        [class.item-row-dragging]="isDraggingItem(it)"
+                        [attr.draggable]="canDragItem(it) ? 'true' : null"
+                        (click)="onCardClick(it)"
+                        (dragstart)="onItemDragStart($event, it)"
+                        (dragend)="onItemDragEnd()">
                       <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
                       <div class="item-info">
                         <span class="item-title">{{ it.title }}</span>
@@ -254,7 +276,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               }
             </li>
           } @else if (entry.item) {
-            <li class="item-row" (click)="onCardClick(entry.item)">
+            <li class="item-row"
+                [class.item-row-draggable]="canDragItem(entry.item)"
+                [class.item-row-dragging]="isDraggingItem(entry.item)"
+                [attr.draggable]="canDragItem(entry.item) ? 'true' : null"
+                (click)="onCardClick(entry.item)"
+                (dragstart)="onItemDragStart($event, entry.item)"
+                (dragend)="onItemDragEnd()">
               <span class="item-type">{{ entry.item.media_type === 'tv' ? 'TV' : 'Film' }}</span>
               <div class="item-info">
                 <span class="item-title">{{ entry.item.title }}</span>
@@ -407,6 +435,8 @@ export class UserListViewComponent {
   protected readonly folderDraft = signal('');
   protected readonly savingFolder = signal(false);
   protected readonly expandedFolders = signal<Record<string, boolean>>(loadExpandedFolders());
+  protected readonly draggedItem = signal<CardItem | null>(null);
+  protected readonly dropFolderId = signal<string | null>(null);
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
   protected readonly folderFeatureEnabled = computed(
     () => this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
@@ -496,6 +526,7 @@ export class UserListViewComponent {
   });
 
   private seq = 0;
+  private lastFolderDropAt = 0;
 
   constructor() {
     effect(() => {
@@ -544,6 +575,7 @@ export class UserListViewComponent {
   }
 
   protected toggleFolder(folderId: string): void {
+    if (Date.now() - this.lastFolderDropAt < 180) return;
     this.expandedFolders.update((state) => ({ ...state, [folderId]: !state[folderId] }));
   }
 
@@ -632,17 +664,7 @@ export class UserListViewComponent {
 
     this.savingFolder.set(true);
     try {
-      await runCardMutation(this.items, item, 'folder', async () => {
-        await this.watchlist.setFolder(item.tmdb_id, item.media_type, folderName);
-        this.items.update((items) => items.map((candidate) => (
-          candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
-            ? { ...candidate, folderName }
-            : candidate
-        )));
-        this.expandedFolders.update((state) => ({ ...state, [folderIdFromName(folderName)]: true }));
-        this.toast.show(`${item.title}: spostato in ${folderName}`);
-        this.closeFolderModal();
-      });
+      await this.applyFolderChange(item, folderName, `${item.title}: spostato in ${folderName}`, true);
     } finally {
       if (this.folderModalOpen()) this.savingFolder.set(false);
     }
@@ -654,19 +676,68 @@ export class UserListViewComponent {
 
     this.savingFolder.set(true);
     try {
-      await runCardMutation(this.items, item, 'folder', async () => {
-        await this.watchlist.setFolder(item.tmdb_id, item.media_type, null);
-        this.items.update((items) => items.map((candidate) => (
-          candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
-            ? { ...candidate, folderName: null }
-            : candidate
-        )));
-        this.toast.show(`${item.title}: folder rimosso`);
-        this.closeFolderModal();
-      });
+      await this.applyFolderChange(item, null, `${item.title}: folder rimosso`, true);
     } finally {
       if (this.folderModalOpen()) this.savingFolder.set(false);
     }
+  }
+
+  protected canDragItem(item: CardItem | null): boolean {
+    return !!item && this.kind() === 'watchlist' && this.folderFeatureEnabled() && !item.pendingAction;
+  }
+
+  protected isDraggingItem(item: CardItem | null): boolean {
+    const dragged = this.draggedItem();
+    return !!item && !!dragged && item.tmdb_id === dragged.tmdb_id && item.media_type === dragged.media_type;
+  }
+
+  protected isFolderDropActive(folderId: string): boolean {
+    return this.dropFolderId() === folderId;
+  }
+
+  protected onItemDragStart(event: DragEvent, item: CardItem): void {
+    if (!this.canDragItem(item)) {
+      event.preventDefault();
+      return;
+    }
+    this.draggedItem.set(item);
+    this.dropFolderId.set(null);
+    event.dataTransfer?.setData('text/plain', cardKey(item));
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  protected onItemDragEnd(): void {
+    this.draggedItem.set(null);
+    this.dropFolderId.set(null);
+  }
+
+  protected onFolderDragOver(event: DragEvent, group: FolderGroup): void {
+    if (!this.canDropIntoFolder(group)) return;
+    event.preventDefault();
+    this.dropFolderId.set(group.id);
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  protected onFolderDragLeave(folderId: string): void {
+    if (this.dropFolderId() === folderId) {
+      this.dropFolderId.set(null);
+    }
+  }
+
+  protected onFolderDrop(event: DragEvent, group: FolderGroup): void {
+    if (!this.canDropIntoFolder(group)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const item = this.draggedItem();
+    this.lastFolderDropAt = Date.now();
+    this.dropFolderId.set(null);
+    if (!item) return;
+    void this.applyFolderChange(item, group.name, `${item.title}: spostato in ${group.name}`);
+    this.onItemDragEnd();
   }
 
   protected async confirmPendingAction(): Promise<void> {
@@ -707,6 +778,38 @@ export class UserListViewComponent {
 
   protected cancelPendingAction(): void {
     this.pendingAction.set(null);
+  }
+
+  private canDropIntoFolder(group: FolderGroup): boolean {
+    const item = this.draggedItem();
+    return !!item
+      && this.kind() === 'watchlist'
+      && this.folderFeatureEnabled()
+      && !item.pendingAction
+      && normalizeFolderName(item.folderName) !== group.name;
+  }
+
+  private async applyFolderChange(
+    item: CardItem,
+    folderName: string | null,
+    successMessage: string,
+    closeModal = false
+  ): Promise<void> {
+    await runCardMutation(this.items, item, 'folder', async () => {
+      await this.watchlist.setFolder(item.tmdb_id, item.media_type, folderName);
+      this.items.update((items) => items.map((candidate) => (
+        candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
+          ? { ...candidate, folderName }
+          : candidate
+      )));
+      if (folderName) {
+        this.expandedFolders.update((state) => ({ ...state, [folderIdFromName(folderName)]: true }));
+      }
+      this.toast.show(successMessage);
+      if (closeModal) {
+        this.closeFolderModal();
+      }
+    });
   }
 
   private async load(kind: UserListType, media: MediaFilter, status?: WatchlistStatus): Promise<void> {

@@ -86,6 +86,11 @@
     var(--surface);
 }
 
+.folder-card.folder-drop-active {
+  border-color: rgba(46, 160, 67, 0.62);
+  box-shadow: 0 0 0 1px rgba(46, 160, 67, 0.3), 0 10px 22px rgba(0, 0, 0, 0.3);
+}
+
 .folder-card-icon {
   width: 40px;
   height: 40px;
@@ -179,6 +184,11 @@
   border-color: rgba(229, 9, 20, 0.42);
 }
 
+.folder-row.folder-drop-active {
+  border-color: rgba(46, 160, 67, 0.62);
+  background: linear-gradient(90deg, rgba(46, 160, 67, 0.18), rgba(255, 255, 255, 0.03));
+}
+
 .folder-row-main {
   min-width: 0;
   display: flex;
@@ -245,6 +255,15 @@
 .item-row:hover {
   background: var(--surface-hover);
   border-color: var(--accent);
+}
+
+.item-row.item-row-draggable {
+  cursor: grab;
+}
+
+.item-row.item-row-dragging {
+  opacity: 0.45;
+  transform: scale(0.992);
 }
 
 .item-type {

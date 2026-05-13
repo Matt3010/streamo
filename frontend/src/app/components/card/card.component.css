@@ -20,6 +20,16 @@
   position: relative;
 }
 
+.card.card-draggable {
+  cursor: grab;
+}
+
+.card.card-dragging {
+  opacity: 0.45;
+  transform: scale(0.985);
+  box-shadow: none;
+}
+
 .card:hover {
   transform: translateY(-3px);
   border-color: var(--accent);

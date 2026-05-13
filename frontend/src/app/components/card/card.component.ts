@@ -11,7 +11,14 @@ const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
   imports: [IconComponent, PendingButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <article class="card" [class.card-upcoming]="item().isUpcoming === true" (click)="cardClick.emit(item())">
+    <article class="card"
+             [class.card-upcoming]="item().isUpcoming === true"
+             [class.card-draggable]="draggable()"
+             [class.card-dragging]="dragging()"
+             [attr.draggable]="draggable() ? 'true' : null"
+             (click)="cardClick.emit(item())"
+             (dragstart)="onDragStart($event)"
+             (dragend)="onDragEnd()">
       @if (item().poster) {
         <img class="card-poster" [src]="posterUrl()" [alt]="item().title" loading="lazy">
       } @else {
@@ -92,12 +99,16 @@ export class CardComponent {
   readonly showStatusToggle = input(false);
   readonly showWatchlistToggle = input(false);
   readonly showFolderAction = input(false);
+  readonly draggable = input(false);
+  readonly dragging = input(false);
 
   readonly cardClick = output<CardItem>();
   readonly removeClick = output<CardItem>();
   readonly statusToggleClick = output<CardItem>();
   readonly watchlistToggleClick = output<CardItem>();
   readonly folderClick = output<CardItem>();
+  readonly dragStarted = output<DragEvent>();
+  readonly dragEnded = output<void>();
 
   protected readonly posterUrl = computed(() => {
     const p = this.item().poster;
@@ -139,5 +150,18 @@ export class CardComponent {
   protected onFolderClick(e: MouseEvent): void {
     e.stopPropagation();
     this.folderClick.emit(this.item());
+  }
+
+  protected onDragStart(event: DragEvent): void {
+    if (!this.draggable()) {
+      event.preventDefault();
+      return;
+    }
+    this.dragStarted.emit(event);
+  }
+
+  protected onDragEnd(): void {
+    if (!this.draggable()) return;
+    this.dragEnded.emit();
   }
 }
