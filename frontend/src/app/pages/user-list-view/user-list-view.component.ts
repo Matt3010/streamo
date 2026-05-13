@@ -100,19 +100,6 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       <ui-tabs [tabs]="mediaTabs" [(value)]="mediaFilter" />
     </div>
 
-    @if (draggedItem()) {
-      <div class="drag-drop-bar">
-        <div class="drag-remove-zone"
-             [class.active]="dropRemoveActive()"
-             (dragover)="onRemoveDragOver($event)"
-             (dragleave)="onRemoveDragLeave()"
-             (drop)="onRemoveDrop($event)">
-          <app-icon name="trash"></app-icon>
-          <span>Rimuovi {{ draggedItem()!.title }}</span>
-        </div>
-      </div>
-    }
-
     @if (loading()) {
       <div class="loading"><div class="spinner"></div></div>
     } @else if (items().length === 0) {
@@ -450,7 +437,6 @@ export class UserListViewComponent {
   protected readonly expandedFolders = signal<Record<string, boolean>>(loadExpandedFolders());
   protected readonly draggedItem = signal<CardItem | null>(null);
   protected readonly dropFolderId = signal<string | null>(null);
-  protected readonly dropRemoveActive = signal(false);
   protected readonly title = computed(() => this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia');
   protected readonly folderFeatureEnabled = computed(
     () => this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
@@ -697,7 +683,7 @@ export class UserListViewComponent {
   }
 
   protected canDragItem(item: CardItem | null): boolean {
-    return !!item && (this.kind() === 'watchlist' || this.kind() === 'history') && !item.pendingAction;
+    return !!item && this.kind() === 'watchlist' && this.folderFeatureEnabled() && !item.pendingAction;
   }
 
   protected isDraggingItem(item: CardItem | null): boolean {
@@ -716,7 +702,6 @@ export class UserListViewComponent {
     }
     this.draggedItem.set(item);
     this.dropFolderId.set(null);
-    this.dropRemoveActive.set(false);
     event.dataTransfer?.setData('text/plain', cardKey(item));
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
@@ -726,14 +711,12 @@ export class UserListViewComponent {
   protected onItemDragEnd(): void {
     this.draggedItem.set(null);
     this.dropFolderId.set(null);
-    this.dropRemoveActive.set(false);
   }
 
   protected onFolderDragOver(event: DragEvent, group: FolderGroup): void {
     if (!this.canDropIntoFolder(group)) return;
     event.preventDefault();
     this.dropFolderId.set(group.id);
-    this.dropRemoveActive.set(false);
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
     }
@@ -754,30 +737,6 @@ export class UserListViewComponent {
     this.dropFolderId.set(null);
     if (!item) return;
     void this.applyFolderChange(item, group.name, `${item.title}: spostato in ${group.name}`);
-    this.onItemDragEnd();
-  }
-
-  protected onRemoveDragOver(event: DragEvent): void {
-    if (!this.draggedItem()) return;
-    event.preventDefault();
-    this.dropFolderId.set(null);
-    this.dropRemoveActive.set(true);
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
-  }
-
-  protected onRemoveDragLeave(): void {
-    this.dropRemoveActive.set(false);
-  }
-
-  protected onRemoveDrop(event: DragEvent): void {
-    const item = this.draggedItem();
-    if (!item) return;
-    event.preventDefault();
-    event.stopPropagation();
-    this.dropRemoveActive.set(false);
-    void this.removeItemImmediately(item);
     this.onItemDragEnd();
   }
 
@@ -850,19 +809,6 @@ export class UserListViewComponent {
       if (closeModal) {
         this.closeFolderModal();
       }
-    });
-  }
-
-  private async removeItemImmediately(item: CardItem): Promise<void> {
-    await runCardMutation(this.items, item, 'remove', async () => {
-      if (this.kind() === 'watchlist') {
-        await this.watchlist.remove(item.tmdb_id, item.media_type);
-        this.toast.show(`${item.title}: rimosso dalla lista`);
-      } else {
-        await this.history.remove(item.tmdb_id, item.media_type);
-        this.toast.show(`${item.title}: rimosso dalla cronologia`);
-      }
-      this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
     });
   }
 
