@@ -65,6 +65,5 @@ export class WatchlistService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folder_name: folderName })
     });
-    this.notifyExternalUpdate();
   }
 }

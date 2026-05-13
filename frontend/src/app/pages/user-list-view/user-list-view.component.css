@@ -288,8 +288,8 @@
 }
 
 .item-row.item-row-dragging {
-  opacity: 0.45;
-  transform: scale(0.992);
+  opacity: 1;
+  transform: none;
 }
 
 .item-type {

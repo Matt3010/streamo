@@ -78,7 +78,7 @@ export interface WatchlistItem {
 
 export interface WatchlistUpdatedEvent {
   type: 'watchlist-updated';
-  reason: 'watchlist-changed' | 'new-episode';
+  reason: 'watchlist-changed' | 'folder-changed' | 'new-episode';
   tmdb_id?: number;
   media_type?: MediaType;
 }

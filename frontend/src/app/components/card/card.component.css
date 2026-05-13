@@ -25,8 +25,8 @@
 }
 
 .card.card-dragging {
-  opacity: 0.45;
-  transform: scale(0.985);
+  opacity: 1;
+  transform: none;
   box-shadow: none;
 }
 

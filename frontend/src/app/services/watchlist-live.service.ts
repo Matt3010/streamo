@@ -16,6 +16,7 @@ export class WatchlistLiveService {
       try {
         const payload = JSON.parse(event.data as string) as WatchlistUpdatedEvent;
         if (payload.type !== 'watchlist-updated') return;
+        if (payload.reason === 'folder-changed') return;
         this.watchlist.notifyExternalUpdate();
       } catch {
         // Ignore malformed messages and keep the socket alive.

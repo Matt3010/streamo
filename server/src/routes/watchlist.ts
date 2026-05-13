@@ -279,7 +279,7 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
     `).run(folderName ?? null, req.user!.id, tmdb_id, type);
     if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
     publishUserWatchlistChanged(req.user!.id, {
-      reason: 'watchlist-changed',
+      reason: 'folder-changed',
       tmdb_id,
       media_type: mediaType
     });
