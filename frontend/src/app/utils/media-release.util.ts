@@ -1,5 +1,6 @@
 import type { MediaType, TmdbItem } from '../models';
-import { getEffectiveLastEpisode } from './aired-episodes.util';
+import { getEffectiveLastEpisode, getAiredEpisodesCount, getBaseAiredEpisodesCount } from './aired-episodes.util';
+import { parseDateOnly, isFutureDate, formatDateLong, formatDateShort } from './date.util';
 
 export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): string {
   if (type === 'tv') {
@@ -22,7 +23,15 @@ export function getFullReleaseStatusText(item: TmdbItem, type: MediaType): strin
   if (nextEpisode && nextEpisodeDate) {
     const season = nextEpisode.season_number ?? '?';
     const episode = nextEpisode.episode_number ?? '?';
-    return `Prossimo episodio: S${season} E${episode} in uscita il ${formatDateLong(nextEpisodeDate)}.`;
+    if (isFutureDate(nextEpisodeDate)) {
+      return `Prossimo episodio: S${season} E${episode} in uscita il ${formatDateLong(nextEpisodeDate)}.`;
+    }
+    // Today or past - show as new with correct plural
+    const newCount = countNewEpisodes(item);
+    if (newCount <= 1) {
+      return `È uscito un nuovo episodio! S${season} E${episode}`;
+    }
+    return `Sono usciti ${newCount} nuovi episodi!`;
   }
 
   const nextSeason = findNextSeason(item);
@@ -56,7 +65,12 @@ export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): st
   const nextEpisode = item.next_episode_to_air;
   const nextEpisodeDate = parseDateOnly(nextEpisode?.air_date);
   if (nextEpisode && nextEpisodeDate) {
-    return `Nuovo episodio ${formatDateShort(nextEpisodeDate)}`;
+    if (isFutureDate(nextEpisodeDate)) {
+      return `Nuovo episodio ${formatDateShort(nextEpisodeDate)}`;
+    }
+    // Today or past - show as new with correct plural
+    const newCount = countNewEpisodes(item);
+    return formatNewEpisodesMessage(newCount);
   }
 
   const nextSeason = findNextSeason(item);
@@ -82,6 +96,15 @@ export function getUpcomingBadgeText(item: TmdbItem, type: MediaType): string {
   return type === 'movie' ? 'Prossimamente' : 'Nuova serie';
 }
 
+function countNewEpisodes(item: TmdbItem): number {
+  return Math.max(0, getAiredEpisodesCount(item) - getBaseAiredEpisodesCount(item));
+}
+
+function formatNewEpisodesMessage(count: number): string {
+  if (count <= 1) return 'È uscito un nuovo episodio!';
+  return `Sono usciti ${count} nuovi episodi!`;
+}
+
 function findNextSeason(item: TmdbItem): { season: number; date: Date } | null {
   const lastSeason = getEffectiveLastEpisode(item)?.season_number ?? 0;
   return (item.seasons ?? [])
@@ -93,34 +116,4 @@ function findNextSeason(item: TmdbItem): { season: number; date: Date } | null {
     .filter((entry): entry is { season: number; date: Date } => entry.date !== null && entry.season > lastSeason)
     .sort((a, b) => a.date.getTime() - b.date.getTime())
     .find((entry) => isFutureDate(entry.date)) ?? null;
-}
-
-function parseDateOnly(raw?: string | null): Date | null {
-  if (!raw) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  if (!match) return null;
-  const [, y, m, d] = match;
-  const date = new Date(Number(y), Number(m) - 1, Number(d));
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function isFutureDate(date: Date): boolean {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return date.getTime() > today.getTime();
-}
-
-function formatDateLong(date: Date): string {
-  return new Intl.DateTimeFormat('it-IT', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  }).format(date);
-}
-
-function formatDateShort(date: Date): string {
-  return new Intl.DateTimeFormat('it-IT', {
-    day: 'numeric',
-    month: 'short'
-  }).format(date);
 }
