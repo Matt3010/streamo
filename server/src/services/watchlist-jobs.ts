@@ -62,7 +62,7 @@ export async function enqueueWatchlistTitleRefresh(
     WATCHLIST_REFRESH_JOB,
     { tmdbId, source },
     {
-      jobId: `watchlist-title:${tmdbId}`,
+      jobId: `watchlist-title-${tmdbId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 }
     }
@@ -78,7 +78,7 @@ export async function enqueueTrackedWatchlistRefreshes(tmdbIds: number[]): Promi
     name: WATCHLIST_REFRESH_JOB,
     data: { tmdbId, source: 'scheduler' } satisfies RefreshWatchlistTitleJobData,
     opts: {
-      jobId: `watchlist-title:${tmdbId}`,
+      jobId: `watchlist-title-${tmdbId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 }
     }
