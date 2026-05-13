@@ -6,6 +6,10 @@ export class WatchlistService {
   /** Bumped after any add/remove so dependent UIs (Home "La mia lista") refresh. */
   readonly tick = signal(0);
 
+  notifyExternalUpdate(): void {
+    this.tick.update(n => n + 1);
+  }
+
   async list(filters?: { status?: WatchlistStatus; media_type?: MediaType }): Promise<WatchlistItem[]> {
     try {
       const qs = new URLSearchParams();
@@ -38,12 +42,12 @@ export class WatchlistService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tmdb_id: tmdbId, media_type: type, title, poster })
     });
-    this.tick.update(n => n + 1);
+    this.notifyExternalUpdate();
   }
 
   async remove(tmdbId: number | string, type: MediaType): Promise<void> {
     await fetch(`/api/user/watchlist/${type}/${tmdbId}`, { method: 'DELETE' });
-    this.tick.update(n => n + 1);
+    this.notifyExternalUpdate();
   }
 
   async setStatus(tmdbId: number | string, type: MediaType, status: WatchlistStatus): Promise<void> {
@@ -52,7 +56,7 @@ export class WatchlistService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
     });
-    this.tick.update(n => n + 1);
+    this.notifyExternalUpdate();
   }
 
   async setFolder(tmdbId: number | string, type: MediaType, folderName: string | null): Promise<void> {
@@ -61,6 +65,6 @@ export class WatchlistService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folder_name: folderName })
     });
-    this.tick.update(n => n + 1);
+    this.notifyExternalUpdate();
   }
 }

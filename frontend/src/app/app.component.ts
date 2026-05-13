@@ -4,6 +4,7 @@ import { AuthModalComponent } from './components/auth-modal/auth-modal.component
 import { OfflineBannerComponent } from './components/offline-banner/offline-banner.component';
 import { ToastComponent } from './ui/toast/toast.component';
 import { AuthService } from './services/auth.service';
+import { WatchlistLiveService } from './services/watchlist-live.service';
 
 @Component({
   selector: 'app-root',
@@ -20,10 +21,12 @@ import { AuthService } from './services/auth.service';
 export class AppComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly watchlistLive = inject(WatchlistLiveService);
   private sawAuthenticated = false;
 
   constructor() {
     void this.auth.checkAuth();
+    void this.watchlistLive;
 
     effect(() => {
       const user = this.auth.currentUser();

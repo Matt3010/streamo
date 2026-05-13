@@ -503,7 +503,7 @@ export class UserListViewComponent {
       const media = this.mediaFilter();
       const status = kind === 'watchlist' ? this.statusFilter() : undefined;
       this.auth.currentUser();
-      if (kind === 'history') this.watchlist.tick();
+      this.watchlist.tick();
       void this.load(kind, media, status);
     });
 

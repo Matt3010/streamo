@@ -10,6 +10,8 @@ import watchlistRoutes from './routes/watchlist';
 import adminRoutes from './routes/admin';
 import playbackRoutes from './routes/playback';
 import { attachAdminLiveSessions } from './services/admin-live';
+import { attachUserLiveSessions } from './services/user-live';
+import { startWatchlistRefreshLoop } from './services/watchlist-refresh';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -26,6 +28,8 @@ app.use(playbackRoutes);
 
 const server = http.createServer(app);
 attachAdminLiveSessions(server);
+attachUserLiveSessions(server);
+startWatchlistRefreshLoop();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend listening on ${PORT}`);

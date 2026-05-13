@@ -3,8 +3,9 @@ import { db } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
-import { getTmdbTvSummary } from '../services/tmdb-cache';
+import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
+import { notifyUserWatchlistChanged } from '../services/user-live';
 import type { WatchlistItem } from '../../../shared/types';
 
 const router = Router();
@@ -42,16 +43,6 @@ function normalizeFolderName(value: unknown): string | null | undefined {
   if (!trimmed) return null;
   if (trimmed.length > 60) return undefined;
   return trimmed;
-}
-
-function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): number {
-  if (!summary) return 0;
-  const lea = summary.last_episode_to_air;
-  return lea
-    ? summary.seasons
-        .filter(s => s.season_number < lea.season_number)
-        .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
-    : (summary.number_of_episodes ?? 0);
 }
 
 function formatMovieRemaining(position: number | undefined, duration: number | undefined): string | undefined {
@@ -98,6 +89,11 @@ router.post('/user/watchlist', requireAuth, (req, res) => {
     INSERT OR IGNORE INTO watchlist (user_id, tmdb_id, media_type, title, poster)
     VALUES (?, ?, ?, ?, ?)
   `).run(req.user!.id, tmdb_id, media_type, body.title || null, body.poster || null);
+  notifyUserWatchlistChanged(req.user!.id, {
+    reason: 'watchlist-changed',
+    tmdb_id,
+    media_type
+  });
   res.json({ ok: true });
 });
 
@@ -272,11 +268,17 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   }
 
   if (status === undefined) {
+    const mediaType = type as 'movie' | 'tv';
     const result = db.prepare(`
       UPDATE watchlist SET folder_name = ?
       WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
     `).run(folderName ?? null, req.user!.id, tmdb_id, type);
     if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
+    notifyUserWatchlistChanged(req.user!.id, {
+      reason: 'watchlist-changed',
+      tmdb_id,
+      media_type: mediaType
+    });
     return res.json({ ok: true, folder_name: folderName ?? null });
   }
 
@@ -292,6 +294,11 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   `).run(status, doneAiredEpisodes, req.user!.id, tmdb_id, type);
   if (result.changes === 0) return res.status(404).json({ error: 'not_found' });
 
+  notifyUserWatchlistChanged(req.user!.id, {
+    reason: 'watchlist-changed',
+    tmdb_id,
+    media_type: type as 'movie' | 'tv'
+  });
   res.json({ ok: true });
 });
 
@@ -300,6 +307,11 @@ router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, (req, res) => {
   const type = req.params.type;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
   db.prepare(`DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?`).run(req.user!.id, tmdb_id, type);
+  notifyUserWatchlistChanged(req.user!.id, {
+    reason: 'watchlist-changed',
+    tmdb_id,
+    media_type: type as 'movie' | 'tv'
+  });
   res.json({ ok: true });
 });
 

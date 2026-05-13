@@ -3,9 +3,10 @@ import { db } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
-import { getTmdbTvSummary } from '../services/tmdb-cache';
+import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { notifyAdminSessionsChanged } from '../services/admin-live';
+import { notifyUserWatchlistChanged } from '../services/user-live';
 import type { MediaType } from '../../../shared/types';
 
 const router = Router();
@@ -21,16 +22,6 @@ interface ProgressRow {
   poster: string | null;
   backdrop: string | null;
   updated_at: number;
-}
-
-function getAiredEpisodesCount(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): number {
-  if (!summary) return 0;
-  const lea = summary.last_episode_to_air;
-  return lea
-    ? summary.seasons
-        .filter(s => s.season_number < lea.season_number)
-        .reduce((sum, s) => sum + (s.episode_count || 0), 0) + lea.episode_number
-    : (summary.number_of_episodes ?? 0);
 }
 
 router.post('/user/progress', requireAuth, async (req, res) => {
@@ -65,18 +56,25 @@ router.post('/user/progress', requireAuth, async (req, res) => {
     WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
   `).run(req.user!.id, tmdb_id, media_type);
 
-  await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
+  const watchlistChanged = await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
+  if (watchlistChanged) {
+    notifyUserWatchlistChanged(req.user!.id, {
+      reason: 'watchlist-changed',
+      tmdb_id,
+      media_type
+    });
+  }
   notifyAdminSessionsChanged();
 
   res.json({ ok: true });
 });
 
-async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaType: string): Promise<void> {
+async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaType: string): Promise<boolean> {
   const wl = db.prepare(`
     SELECT status FROM watchlist
     WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
   `).get(userId, tmdbId, mediaType) as { status: string } | undefined;
-  if (!wl || wl.status === 'done') return;
+  if (!wl || wl.status === 'done') return false;
 
   if (mediaType === 'movie') {
     const row = db.prepare(`
@@ -84,17 +82,18 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
       WHERE user_id = ? AND tmdb_id = ? AND media_type = 'movie' AND season = 0 AND episode = 0 AND synthetic = 0
     `).get(userId, tmdbId) as { position: number; duration: number } | undefined;
     if (row && row.duration > 0 && row.position >= row.duration * WATCHED_THRESHOLD) {
-      db.prepare(`
+      const result = db.prepare(`
         UPDATE watchlist SET status = 'done', done_aired_episodes = 0
         WHERE user_id = ? AND tmdb_id = ? AND media_type = 'movie'
       `).run(userId, tmdbId);
+      return result.changes > 0;
     }
-    return;
+    return false;
   }
 
   const summary = await getTmdbTvSummary(tmdbId);
   const airedEp = getAiredEpisodesCount(summary);
-  if (!airedEp) return;
+  if (!airedEp) return false;
 
   const cnt = db.prepare(`
     SELECT SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END) AS watched
@@ -117,11 +116,13 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
     && noLaterAiredEpisode;
 
   if ((cnt?.watched ?? 0) >= airedEp || caughtUp) {
-    db.prepare(`
+    const result = db.prepare(`
       UPDATE watchlist SET status = 'done', done_aired_episodes = ?
       WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv'
     `).run(airedEp, userId, tmdbId);
+    return result.changes > 0;
   }
+  return false;
 }
 
 router.get('/user/progress', requireAuth, async (req, res) => {

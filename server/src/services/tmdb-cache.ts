@@ -6,10 +6,8 @@ export interface TmdbTvSummary {
   number_of_seasons: number;
   number_of_episodes: number;
   seasons: WatchlistSeasonInfo[];
-  /** Latest episode that has already aired — used to count released-only
-   * episodes for the "Mancano N episodi" badge. Null if the show hasn't
-   * started airing yet. */
   last_episode_to_air?: { season_number: number; episode_number: number } | null;
+  next_episode_to_air?: { season_number: number; episode_number: number; air_date?: string | null } | null;
 }
 
 interface RawTmdbSeason {
@@ -20,6 +18,7 @@ interface RawTmdbSeason {
 interface RawTmdbEpisodeRef {
   season_number?: number;
   episode_number?: number;
+  air_date?: string | null;
 }
 
 interface RawTmdbTv {
@@ -27,6 +26,7 @@ interface RawTmdbTv {
   number_of_episodes?: number;
   seasons?: RawTmdbSeason[];
   last_episode_to_air?: RawTmdbEpisodeRef | null;
+  next_episode_to_air?: RawTmdbEpisodeRef | null;
 }
 
 interface CacheRow {
@@ -34,42 +34,89 @@ interface CacheRow {
   fetched_at: number;
 }
 
-// Fetches a TV show's headline counts from TMDB, with a 6h SQLite cache.
-// Returns null on failure. Old cache entries that lack required fields
-// (`seasons`, `last_episode_to_air`) are transparently refreshed so a
-// schema bump doesn't require manual cache eviction.
-export async function getTmdbTvSummary(tmdbId: number | string): Promise<TmdbTvSummary | null> {
+function toEpisodeRef(ref: RawTmdbEpisodeRef | null | undefined): TmdbTvSummary['next_episode_to_air'] {
+  if (!ref || typeof ref.season_number !== 'number' || typeof ref.episode_number !== 'number') {
+    return null;
+  }
+
+  return {
+    season_number: ref.season_number,
+    episode_number: ref.episode_number,
+    air_date: ref.air_date ?? null
+  };
+}
+
+function parseCachedSummary(data: string): TmdbTvSummary | null {
+  try {
+    const parsed = JSON.parse(data) as Partial<TmdbTvSummary>;
+    if (!Array.isArray(parsed.seasons) || !('last_episode_to_air' in parsed) || !('next_episode_to_air' in parsed)) {
+      return null;
+    }
+    return parsed as TmdbTvSummary;
+  } catch {
+    return null;
+  }
+}
+
+export function readCachedTmdbTvSummary(tmdbId: number | string): TmdbTvSummary | null {
+  const key = `tv:${tmdbId}`;
+  const cached = db.prepare('SELECT data FROM tmdb_cache WHERE cache_key = ?').get(key) as Pick<CacheRow, 'data'> | undefined;
+  if (!cached) return null;
+  return parseCachedSummary(cached.data);
+}
+
+export function getAiredEpisodesCount(summary: TmdbTvSummary | null): number {
+  if (!summary) return 0;
+  const lea = summary.last_episode_to_air;
+  return lea
+    ? summary.seasons
+        .filter((season) => season.season_number < lea.season_number)
+        .reduce((sum, season) => sum + (season.episode_count || 0), 0) + lea.episode_number
+    : (summary.number_of_episodes ?? 0);
+}
+
+// Fetches a TV show's headline counts from TMDB, with a SQLite cache.
+// Old cache entries that lack required fields are transparently refreshed
+// so schema bumps do not require manual cache eviction.
+export async function getTmdbTvSummary(
+  tmdbId: number | string,
+  options?: { forceRefresh?: boolean }
+): Promise<TmdbTvSummary | null> {
   const key = `tv:${tmdbId}`;
   const now = Math.floor(Date.now() / 1000);
   const cached = db.prepare('SELECT data, fetched_at FROM tmdb_cache WHERE cache_key = ?').get(key) as CacheRow | undefined;
-  if (cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
-    try {
-      const parsed = JSON.parse(cached.data) as Partial<TmdbTvSummary>;
-      // last_episode_to_air may legitimately be null (show not yet aired);
-      // we only refresh when the key is *missing entirely* — i.e. the entry
-      // was written before this field existed.
-      if (Array.isArray(parsed.seasons) && 'last_episode_to_air' in parsed) {
-        return parsed as TmdbTvSummary;
-      }
-    } catch { /* fall through */ }
+  if (!options?.forceRefresh && cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
+    const parsed = parseCachedSummary(cached.data);
+    if (parsed) return parsed;
   }
+
   if (!TMDB_API_KEY) return null;
+
   try {
     const res = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
     if (!res.ok) return null;
+
     const data = await res.json() as RawTmdbTv;
     const lea = data.last_episode_to_air;
     const stored: TmdbTvSummary = {
       number_of_seasons: data.number_of_seasons ?? 0,
       number_of_episodes: data.number_of_episodes ?? 0,
       seasons: (data.seasons ?? [])
-        .filter((s): s is Required<Pick<RawTmdbSeason, 'season_number'>> & RawTmdbSeason => typeof s.season_number === 'number' && s.season_number > 0)
-        .map(s => ({ season_number: s.season_number!, episode_count: s.episode_count ?? 0 })),
+        .filter((season): season is Required<Pick<RawTmdbSeason, 'season_number'>> & RawTmdbSeason => (
+          typeof season.season_number === 'number' && season.season_number > 0
+        ))
+        .map((season) => ({ season_number: season.season_number!, episode_count: season.episode_count ?? 0 })),
       last_episode_to_air: (lea && typeof lea.season_number === 'number' && typeof lea.episode_number === 'number')
         ? { season_number: lea.season_number, episode_number: lea.episode_number }
-        : null
+        : null,
+      next_episode_to_air: toEpisodeRef(data.next_episode_to_air)
     };
-    db.prepare('INSERT OR REPLACE INTO tmdb_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)').run(key, JSON.stringify(stored), now);
+
+    db.prepare('INSERT OR REPLACE INTO tmdb_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)').run(
+      key,
+      JSON.stringify(stored),
+      now
+    );
     return stored;
   } catch {
     return null;

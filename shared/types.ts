@@ -76,6 +76,13 @@ export interface WatchlistItem {
   duration?: number;
 }
 
+export interface WatchlistUpdatedEvent {
+  type: 'watchlist-updated';
+  reason: 'watchlist-changed' | 'new-episode';
+  tmdb_id?: number;
+  media_type?: MediaType;
+}
+
 // Admin types
 
 export interface AdminUserRow {
