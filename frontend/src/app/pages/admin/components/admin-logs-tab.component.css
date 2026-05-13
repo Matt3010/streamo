@@ -18,20 +18,22 @@
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  padding: 0.8rem 0;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: transparent;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   cursor: pointer;
-  transition: color 0.18s, border-color 0.18s, transform 0.18s;
+  transition: background 0.18s, border-color 0.18s, transform 0.18s;
 }
 
 .logs-source-btn:hover {
-  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .logs-source-btn.active {
+  background: rgba(74, 144, 226, 0.12);
   border-color: rgba(74, 144, 226, 0.42);
   transform: translateX(2px);
 }

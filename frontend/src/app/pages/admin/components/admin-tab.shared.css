@@ -30,11 +30,11 @@
 }
 
 .label-input {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface);
+  border: 1px solid var(--border);
   color: var(--text);
   padding: 0.62rem 0.8rem;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 0.88rem;
   width: 180px;
 }
@@ -45,20 +45,19 @@
 }
 
 .action-btn {
-  background: transparent;
+  background: var(--accent);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   padding: 0.62rem 1rem;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background 0.2s;
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--accent);
+  background: var(--accent-hover);
 }
 
 .admin-icon-btn {
@@ -67,16 +66,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: transparent;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   text-decoration: none;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .admin-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -87,10 +86,10 @@
   gap: 0.45rem;
   max-width: 100%;
   min-height: 34px;
-  padding: 0.2rem 0;
+  padding: 0.38rem 0.72rem;
   border-radius: 999px;
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 600;
@@ -108,6 +107,8 @@
 
 .live-pill.connected {
   color: #9be7ae;
+  border-color: rgba(46, 160, 67, 0.26);
+  background: rgba(46, 160, 67, 0.08);
 }
 
 .live-pill.connected .live-pill-dot {
@@ -136,13 +137,16 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 0.75rem;
-  padding: 0.72rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  transition: color 0.15s;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.72rem 0.9rem;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .item-row:hover {
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .item-row.revoked {
@@ -221,9 +225,9 @@
 .row-action {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
   display: flex;
@@ -233,7 +237,7 @@
 }
 
 .row-action:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
   border-color: var(--accent);
 }
 
@@ -250,7 +254,9 @@
 .logs-panel {
   max-height: min(60vh, 36rem);
   overflow: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .log-list {
@@ -263,7 +269,7 @@
   display: grid;
   grid-template-columns: 10.5rem 1fr;
   gap: 0.9rem;
-  padding: 0.72rem 0;
+  padding: 0.72rem 0.9rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -388,7 +394,7 @@
 
 .cancel-btn, .danger-btn {
   padding: 0.5rem 1rem;
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -396,36 +402,36 @@
 }
 
 .cancel-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface);
+  border: 1px solid var(--border);
   color: var(--text);
 }
 
 .cancel-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
 }
 
 .danger-btn {
-  background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.42);
+  background: #ef4444;
+  border: none;
   color: #fff;
 }
 
 .danger-btn:hover {
-  background: rgba(239, 68, 68, 0.12);
+  background: #dc2626;
 }
 
 .danger-btn.neutral-btn {
-  border-color: rgba(74, 144, 226, 0.42);
+  background: var(--accent);
 }
 
 .danger-btn.neutral-btn:hover {
-  background: rgba(74, 144, 226, 0.12);
+  background: var(--accent-hover);
 }
 
 @media (max-width: 640px) {
   .admin-section {
-    padding: 0.85rem;
+    padding: 0.15rem 0 0;
   }
 
   .section-header {
