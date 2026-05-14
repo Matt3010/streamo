@@ -34,6 +34,7 @@ export class UiPopoverComponent {
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
   readonly width = input(248);
+  readonly preferredHeight = input(96);
   readonly closed = output<void>();
   protected readonly panelWidth = computed(() => Math.min(this.width(), window.innerWidth - 24));
 
@@ -52,7 +53,12 @@ export class UiPopoverComponent {
     const anchor = this.anchor();
     if (!anchor) return 'above';
     const rect = anchor.getBoundingClientRect();
-    return rect.top < 170 ? 'below' : 'above';
+    const spaceAbove = rect.top - 12;
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const needed = this.preferredHeight();
+    if (spaceBelow >= needed) return 'below';
+    if (spaceAbove >= needed) return 'above';
+    return spaceBelow > spaceAbove ? 'below' : 'above';
   });
 
   protected readonly panelTop = computed(() => {
