@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { UiModalComponent } from '../../ui/modal/modal.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
+import { UiInputDirective } from '../../ui/ui-input.directive';
 import { AuthService } from '../../services/auth.service';
 import { AuthModalService } from '../../services/auth-modal.service';
 import { ToastService } from '../../services/toast.service';
@@ -23,7 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 @Component({
   selector: 'app-auth-modal',
   standalone: true,
-  imports: [UiModalComponent],
+  imports: [UiModalComponent, UiButtonDirective, UiInputDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ui-modal [(open)]="modalState.visible"
@@ -33,23 +35,23 @@ const ERROR_MESSAGES: Record<string, string> = {
       <form class="auth-form" (submit)="submit($event)">
         <label>
           <span>Email</span>
-          <input type="email" autocomplete="email" maxlength="254" required
+          <input uiInput type="email" autocomplete="email" maxlength="254" required
                  [value]="email()" (input)="updateEmail($event)">
         </label>
         <label>
           <span>Password</span>
-          <input type="password" autocomplete="current-password" minlength="6" required
+          <input uiInput type="password" autocomplete="current-password" minlength="6" required
                  [value]="password()" (input)="updatePassword($event)">
         </label>
         @if (!isLogin()) {
           <label>
             <span>Token di invito</span>
-            <input type="text" autocomplete="off" required
+            <input uiInput type="text" autocomplete="off" required
                    [value]="token()" (input)="updateToken($event)">
           </label>
         }
         @if (errorMsg()) { <p class="auth-error">{{ errorMsg() }}</p> }
-        <button type="submit" class="primary-btn" [disabled]="submitting()">
+        <button uiButton="primary" type="submit" [disabled]="submitting()">
           {{ isLogin() ? 'Accedi' : 'Registrati' }}
         </button>
         <p class="auth-toggle">

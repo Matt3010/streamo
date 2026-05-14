@@ -7,6 +7,8 @@ import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.comp
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiPopoverComponent } from '../../ui/popover/popover.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
+import { UiInputDirective } from '../../ui/ui-input.directive';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -79,6 +81,8 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     PendingButtonDirective,
     UiPopoverComponent,
     UiTabsComponent,
+    UiButtonDirective,
+    UiInputDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -118,9 +122,9 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         <p class="empty-state-hint">{{ emptyHint() }}</p>
         <div class="empty-state-actions">
           @if (kind() === 'watchlist') {
-            <button class="primary-btn" (click)="goToSearch()">Vai a cercare</button>
+            <button uiButton="primary" (click)="goToSearch()">Vai a cercare</button>
           } @else {
-            <button class="primary-btn" (click)="goToBrowse()">Scopri film popolari</button>
+            <button uiButton="primary" (click)="goToBrowse()">Scopri film popolari</button>
           }
         </div>
       </div>
@@ -441,14 +445,14 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   : 'Aggiungi o aggiorna il folder del titolo'"
                 (closed)="closeFolderPopover()">
       <div class="folder-popover-bar">
-        <input class="folder-popover-input"
+        <input uiInput="compact" class="folder-popover-input"
                type="text"
                maxlength="60"
                [value]="folderDraft()"
                placeholder="Titolo folder"
                (input)="onFolderDraftInput($event)">
 
-        <button class="primary-btn folder-popover-btn"
+        <button uiButton="primary"
                 [uiPending]="savingFolder()"
                 [disabled]="!canSaveFolder()"
                 (click)="saveFolder()">
@@ -456,13 +460,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </button>
 
         @if (folderTargetHasFolder()) {
-          <button class="secondary-btn folder-popover-btn danger-outline"
+          <button uiButton="danger-outline"
                   [uiPending]="savingFolder()"
                   (click)="removeFolder()">
             Rimuovi
           </button>
         } @else {
-          <button class="secondary-btn folder-popover-btn"
+          <button uiButton="ghost"
                   [disabled]="savingFolder()"
                   (click)="closeFolderPopover()">
             Chiudi

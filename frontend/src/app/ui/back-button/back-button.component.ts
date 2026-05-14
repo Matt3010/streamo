@@ -1,13 +1,14 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { IconComponent } from '../icon/icon.component';
+import { UiButtonDirective } from '../ui-button.directive';
 
 @Component({
   selector: 'ui-back-button',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <button class="back-btn" [attr.aria-label]="label()" (click)="pressed.emit()">
+    <button uiButton="back" [attr.aria-label]="label()" (click)="pressed.emit()">
       <app-icon name="chevron-left"></app-icon>
       <span>{{ label() }}</span>
     </button>

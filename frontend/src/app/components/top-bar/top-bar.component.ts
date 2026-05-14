@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { AccountMenuComponent } from '../account-menu/account-menu.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { AuthService } from '../../services/auth.service';
 import { AuthModalService } from '../../services/auth-modal.service';
 
 @Component({
   selector: 'app-top-bar',
   standalone: true,
-  imports: [AccountMenuComponent],
+  imports: [AccountMenuComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="top-bar">
@@ -14,7 +15,7 @@ import { AuthModalService } from '../../services/auth-modal.service';
         @if (auth.isLoggedIn()) {
           <app-account-menu />
         } @else {
-          <button class="account-btn" (click)="authModal.open()">Accedi</button>
+          <button uiButton="panel" (click)="authModal.open()">Accedi</button>
         }
       </div>
     </div>

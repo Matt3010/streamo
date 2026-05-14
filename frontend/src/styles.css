@@ -1,3 +1,6 @@
+@import './styles/ui-buttons.css';
+@import './styles/ui-inputs.css';
+
 * {
   margin: 0;
   padding: 0;
@@ -147,24 +150,6 @@ main {
   }
 }
 
-/* Account button — shared between top-bar (login button) and account-menu (trigger) */
-.account-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 0.5rem 1rem;
-  border-radius: 25px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.account-btn:hover {
-  border-color: var(--accent);
-  background: var(--surface-hover);
-}
-
 /* Round icon buttons — shared by ui-modal header and watch page header */
 .icon-btn,
 .close-btn {
@@ -186,22 +171,6 @@ main {
 .icon-btn.active { color: var(--accent); }
 .icon-btn.active svg { fill: var(--accent); }
 .close-btn:hover { background: var(--accent); }
-
-/* Solid red primary button — shared by auth modal, mark-progress modal, error states */
-.primary-btn {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius);
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.primary-btn:hover { background: var(--accent-hover); }
-.primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 button.ui-pending {
   opacity: 0.65;
@@ -227,34 +196,4 @@ button.ui-pending {
 .icon-btn-lg:hover {
   background: var(--accent);
   border-color: var(--accent);
-}
-
-/* Page-level "Indietro" button — text + chevron, used by watch / search /
- * user-list pages. Navigates to the page the user came from (tracked by
- * NavigationSourceService), never uses browser history.back(). */
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 0.5rem 0.9rem;
-  border-radius: var(--radius);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
-
-.back-btn:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.back-btn svg {
-  width: 14px;
-  height: 14px;
 }

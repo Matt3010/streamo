@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, input, model, output } from '@angular/core';
 import { UiModalComponent } from '../modal/modal.component';
+import { UiButtonDirective } from '../ui-button.directive';
 
 @Component({
   selector: 'ui-confirm-modal',
   standalone: true,
-  imports: [UiModalComponent],
+  imports: [UiModalComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ui-modal [(open)]="open" [title]="title()" size="sm" (closed)="cancel()">
@@ -14,8 +15,8 @@ import { UiModalComponent } from '../modal/modal.component';
           <p class="warning">{{ warning() }}</p>
         }
         <div class="modal-actions">
-          <button class="cancel-btn" (click)="cancel()">{{ cancelLabel() }}</button>
-          <button class="danger-btn" (click)="confirm()">{{ actionLabel() }}</button>
+          <button uiButton="ghost" (click)="cancel()">{{ cancelLabel() }}</button>
+          <button uiButton="danger" (click)="confirm()">{{ actionLabel() }}</button>
         </div>
       </div>
     </ui-modal>

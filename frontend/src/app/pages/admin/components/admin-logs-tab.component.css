@@ -12,27 +12,16 @@
   gap: 0.65rem;
 }
 
-.logs-source-btn {
+.logs-sidebar > .ui-button {
   width: 100%;
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.9rem 1rem;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
-  cursor: pointer;
-  transition: background 0.18s, border-color 0.18s, transform 0.18s;
 }
 
-.logs-source-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
-.logs-source-btn.active {
+.logs-sidebar > .ui-button.active {
   background: rgba(74, 144, 226, 0.12);
   border-color: rgba(74, 144, 226, 0.42);
   transform: translateX(2px);
@@ -73,7 +62,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .logs-source-btn.active {
+  .logs-sidebar > .ui-button.active {
     transform: none;
   }
 }

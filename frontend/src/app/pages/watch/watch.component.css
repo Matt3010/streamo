@@ -91,35 +91,8 @@
   color: var(--text-muted);
 }
 
-.episode-controls select {
-  appearance: none;
-  -webkit-appearance: none;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 0.65rem 2.25rem 0.65rem 0.95rem;
-  border-radius: var(--radius);
-  font-size: 0.95rem;
+.episode-controls .ui-input {
   font-weight: 500;
-  cursor: pointer;
-  width: 100%;
-  /* Inline chevron-down — keeps the look consistent across browsers since
-   * native select arrows differ wildly between Chromium/Firefox/Safari. */
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0a0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 0.85rem center;
-  background-size: 0.7rem;
-  transition: border-color 0.15s, background-color 0.15s;
-}
-
-.episode-controls select:hover {
-  border-color: var(--accent);
-  background-color: var(--surface-hover);
-}
-
-.episode-controls select:focus {
-  outline: none;
-  border-color: var(--accent);
 }
 
 .player-wrapper {
@@ -146,35 +119,24 @@
   align-items: stretch;
 }
 
-.action-btn {
+.player-actions > .ui-button:not(.ui-button-icon) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
   padding: 0.8rem 1.25rem;
-  border-radius: var(--radius);
   font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.05s;
   white-space: nowrap;
   overflow: hidden;
 }
 
-.action-btn span {
+.player-actions > .ui-button:not(.ui-button-icon) span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.action-btn:hover {
-  background: var(--surface-hover, var(--border));
-}
-
-.action-btn:active {
+.player-actions > .ui-button:not(.ui-button-icon):active {
   transform: scale(0.98);
 }
 
@@ -183,37 +145,29 @@
  * watchlist icon sits flush to the right edge. min-width keeps the label
  * readable; no max-width — the user explicitly wants the button to fill
  * the entire row. */
-.player-actions > .action-btn:not(.icon-only) {
+.player-actions > .ui-button:not(.ui-button-icon) {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.action-btn.primary {
+.player-actions > .ui-button-primary {
   min-width: 12rem;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 
-.action-btn.primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
-
-.action-btn svg {
+.player-actions > .ui-button:not(.ui-button-icon) svg {
   width: 18px;
   height: 18px;
 }
 
 /* Square-ish icon buttons (watchlist toggle). Same height as the primary
  * CTA so they line up cleanly on the same row. */
-.action-btn.icon-only {
+.player-actions > .ui-button-icon {
   flex: 0 0 auto;
   padding: 0.8rem 1rem;
   min-width: 3rem;
 }
 
-.action-btn.icon-only.active {
+.player-actions > .ui-button-icon.active {
   color: var(--accent);
   border-color: var(--accent);
 }
@@ -243,27 +197,10 @@
   gap: 0.38rem;
 }
 
-.inline-reset-btn {
+.ui-button-inline {
   align-self: flex-start;
   margin-top: 0.15rem;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.84rem;
-  font-weight: 700;
-  cursor: pointer;
   transition: color 0.15s ease;
-}
-
-.inline-reset-btn:hover {
-  color: #ff9b9b;
-}
-
-.inline-reset-btn:focus-visible {
-  outline: 2px solid rgba(239, 68, 68, 0.45);
-  outline-offset: 4px;
-  border-radius: 4px;
 }
 
 .movie-progress-meta {
@@ -699,14 +636,14 @@
   .watch-header h2 { font-size: 1.5rem; }
   /* Drop the desktop min-width on the primary CTA so it can shrink with
    * the viewport and never push the bookmark icon off the row. */
-  .action-btn.primary { min-width: 0; }
+  .player-actions > .ui-button-primary { min-width: 0; }
   .player-actions { gap: 0.45rem; }
-  .action-btn {
+  .player-actions > .ui-button:not(.ui-button-icon) {
     padding: 0.72rem 0.9rem;
     font-size: 0.92rem;
   }
-  .action-btn svg { width: 16px; height: 16px; }
-  .action-btn.icon-only {
+  .player-actions > .ui-button:not(.ui-button-icon) svg { width: 16px; height: 16px; }
+  .player-actions > .ui-button-icon {
     padding-inline: 0.85rem;
     min-width: 2.8rem;
   }
@@ -714,11 +651,11 @@
     padding: 0.72rem 0.85rem;
     font-size: 0.84rem;
   }
-  .player-actions > .action-btn:not(.icon-only),
+  .player-actions > .ui-button:not(.ui-button-icon),
   .release-inline-note {
     flex-basis: 100%;
   }
-  .player-actions > .action-btn.icon-only {
+  .player-actions > .ui-button-icon {
     flex: 1 1 100%;
     min-width: 0;
   }

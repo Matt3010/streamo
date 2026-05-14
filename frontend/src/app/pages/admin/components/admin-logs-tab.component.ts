@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { faFileLines } from '@fortawesome/free-solid-svg-icons';
 import { SectionHeaderComponent } from '../../../ui/section-header/section-header.component';
+import { UiButtonDirective } from '../../../ui/ui-button.directive';
 import { AdminService } from '../../../services/admin.service';
 import type { PlaybackLogEntry, TransportLogEntry } from '../../../models';
 
@@ -10,7 +11,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 @Component({
   selector: 'app-admin-logs-tab',
   standalone: true,
-  imports: [SectionHeaderComponent],
+  imports: [SectionHeaderComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="admin-section">
@@ -24,7 +25,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
       <div class="logs-shell">
         <aside class="logs-sidebar" aria-label="Selezione log">
-          <button class="logs-source-btn"
+          <button uiButton="panel"
                   type="button"
                   [class.active]="selectedSource() === 'playback'"
                   (click)="selectSource('playback')">
@@ -32,7 +33,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
             <span class="logs-source-sub">{{ admin.playbackLogPath() || '/data/playback.log' }}</span>
           </button>
 
-          <button class="logs-source-btn"
+          <button uiButton="panel"
                   type="button"
                   [class.active]="selectedSource() === 'transport'"
                   (click)="selectSource('transport')">

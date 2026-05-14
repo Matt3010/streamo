@@ -468,7 +468,7 @@
   border-color: rgba(229, 9, 20, 0.5);
 }
 
-.folder-popover-btn {
+.folder-popover-bar > .ui-button {
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -478,26 +478,6 @@
   line-height: 1;
   flex-shrink: 0;
   white-space: nowrap;
-}
-
-.secondary-btn {
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.secondary-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.danger-outline {
-  border-color: rgba(229, 9, 20, 0.28);
-  color: #f1a4a9;
 }
 
 @media (max-width: 640px) {
@@ -537,7 +517,7 @@
   }
 
   .folder-popover-input,
-  .folder-popover-btn {
+  .folder-popover-bar > .ui-button {
     width: 100%;
   }
 }

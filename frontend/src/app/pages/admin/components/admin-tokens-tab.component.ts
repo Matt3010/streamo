@@ -4,6 +4,8 @@ import { UiModalComponent } from '../../../ui/modal/modal.component';
 import { IconComponent } from '../../../ui/icon/icon.component';
 import { PendingButtonDirective } from '../../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../../ui/section-header/section-header.component';
+import { UiButtonDirective } from '../../../ui/ui-button.directive';
+import { UiInputDirective } from '../../../ui/ui-input.directive';
 import { AdminService } from '../../../services/admin.service';
 import { ToastService } from '../../../services/toast.service';
 import { runWithPending } from '../../../utils/pending.util';
@@ -14,16 +16,16 @@ type TokenAction = 'revoke' | 'reactivate' | 'delete';
 @Component({
   selector: 'app-admin-tokens-tab',
   standalone: true,
-  imports: [UiModalComponent, IconComponent, PendingButtonDirective, SectionHeaderComponent],
+  imports: [UiModalComponent, IconComponent, PendingButtonDirective, SectionHeaderComponent, UiButtonDirective, UiInputDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="admin-section">
       <div class="section-header">
         <app-section-header title="Token e Utenti" [icon]="tokensIcon" />
         <div class="section-actions">
-          <input type="text" placeholder="Label (opzionale)" class="label-input"
+          <input uiInput="compact" type="text" placeholder="Label (opzionale)"
                  [value]="newTokenLabel()" (input)="updateLabel($event)">
-          <button class="action-btn" [uiPending]="generateTokenPending()" (click)="generateToken()">
+          <button uiButton="primary" [uiPending]="generateTokenPending()" (click)="generateToken()">
             Genera Token
           </button>
         </div>
@@ -103,8 +105,8 @@ type TokenAction = 'revoke' | 'reactivate' | 'delete';
         </p>
         <p class="warning">{{ confirmModalWarning() }}</p>
         <div class="modal-actions">
-          <button class="cancel-btn" (click)="cancelRevoke()">Annulla</button>
-          <button class="danger-btn" [class.neutral-btn]="confirmAction() === 'reactivate'" [uiPending]="tokenActionPending()" (click)="executeTokenAction()">
+          <button uiButton="ghost" (click)="cancelRevoke()">Annulla</button>
+          <button [uiButton]="confirmAction() === 'reactivate' ? 'primary' : 'danger'" [uiPending]="tokenActionPending()" (click)="executeTokenAction()">
             {{ confirmModalActionLabel() }}
           </button>
         </div>

@@ -3,11 +3,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
 
 @Component({
   selector: 'app-floating-search',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (showSearch()) {
@@ -47,11 +48,11 @@ import { IconComponent } from '../../ui/icon/icon.component';
             </label>
 
             <div class="search-actions">
-              <button class="search-btn" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
+              <button uiButton="primary" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
                 <app-icon name="search"></app-icon>
                 <span>Cerca</span>
               </button>
-              <button class="ghost-btn" type="button" (click)="closeSearch()">Chiudi</button>
+              <button uiButton="ghost" type="button" (click)="closeSearch()">Chiudi</button>
             </div>
           </div>
         }

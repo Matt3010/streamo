@@ -2,19 +2,20 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit } from '@a
 import { faTowerBroadcast } from '@fortawesome/free-solid-svg-icons';
 import { SectionHeaderComponent } from '../../../ui/section-header/section-header.component';
 import { IconComponent } from '../../../ui/icon/icon.component';
+import { UiButtonDirective } from '../../../ui/ui-button.directive';
 import { AdminService } from '../../../services/admin.service';
 
 @Component({
   selector: 'app-admin-queue-tab',
   standalone: true,
-  imports: [SectionHeaderComponent, IconComponent],
+  imports: [SectionHeaderComponent, IconComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="admin-section">
       <div class="section-header">
         <app-section-header title="Queue e Worker" [icon]="queueIcon" />
         <div class="section-actions">
-          <button class="action-btn" [disabled]="admin.queueStatusLoading()" (click)="refresh()">Aggiorna</button>
+          <button uiButton="primary" [disabled]="admin.queueStatusLoading()" (click)="refresh()">Aggiorna</button>
           <a class="admin-icon-btn"
              href="/api/admin/queues"
              target="_blank"

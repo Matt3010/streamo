@@ -4,6 +4,7 @@ import { faCirclePlay, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { TmdbService } from '../../services/tmdb.service';
 import { ProgressService } from '../../services/progress.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -30,7 +31,7 @@ type HomeConfirmAction =
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [SectionRowComponent, SectionHeaderComponent, ConfirmModalComponent],
+  imports: [SectionRowComponent, SectionHeaderComponent, ConfirmModalComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
@@ -53,7 +54,7 @@ type HomeConfirmAction =
           <p class="home-empty-title">Niente da riprendere</p>
           <p class="home-empty-hint">I titoli che inizi a guardare compariranno qui.</p>
           <div class="home-empty-actions">
-            <button class="primary-btn" (click)="goToBrowse()">Scopri film popolari</button>
+            <button uiButton="primary" (click)="goToBrowse()">Scopri film popolari</button>
           </div>
         </div>
       </section>
@@ -79,7 +80,7 @@ type HomeConfirmAction =
           <p class="home-empty-title">La tua lista è vuota</p>
           <p class="home-empty-hint">Aggiungi un film o una serie con il segnalibro per ritrovarli qui.</p>
           <div class="home-empty-actions">
-            <button class="primary-btn" (click)="goToSearch()">Vai a cercare</button>
+            <button uiButton="primary" (click)="goToSearch()">Vai a cercare</button>
           </div>
         </div>
       </section>

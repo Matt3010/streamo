@@ -7,6 +7,8 @@ import { IconComponent } from '../../ui/icon/icon.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
+import { UiInputDirective } from '../../ui/ui-input.directive';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -25,13 +27,13 @@ type ConfirmAction =
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent],
+  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiInputDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
       <div class="watch-main">
         <div class="watch-top-row">
-          <button class="back-btn" (click)="back()">
+          <button uiButton="back" (click)="back()">
             <app-icon name="chevron-left"></app-icon>
             <span>Indietro</span>
           </button>
@@ -65,7 +67,7 @@ type ConfirmAction =
           <div class="episode-controls active">
             <label class="select-group">
               <span class="select-label">Stagione</span>
-              <select (change)="onSeasonChange($event)">
+              <select uiInput (change)="onSeasonChange($event)">
                 @for (s of player.seasons(); track s) {
                   <option [value]="s" [selected]="s === player.selectedSeason()">Stagione {{ s }}</option>
                 }
@@ -93,7 +95,7 @@ type ConfirmAction =
         } @else if (isUpcomingTitle()) {
           <div class="player-actions">
             <div class="release-inline-note">{{ upcomingAvailabilityStr() }}</div>
-            <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+            <button uiButton="icon" [class.active]="player.isInWatchlist()"
                     [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -103,16 +105,16 @@ type ConfirmAction =
           </div>
         } @else if (!player.iframeSrc()) {
           <div class="player-actions">
-            <button class="action-btn primary" (click)="play()">
+            <button uiButton="primary" (click)="play()">
               <app-icon name="play"></app-icon>
               <span>{{ playLabel() }}</span>
             </button>
             @if (showNextButton()) {
-              <button class="action-btn" (click)="playNext()">
+              <button uiButton (click)="playNext()">
                 <span>Vai al prossimo</span>
               </button>
             }
-            <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+            <button uiButton="icon" [class.active]="player.isInWatchlist()"
                     [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -122,11 +124,11 @@ type ConfirmAction =
           </div>
         } @else {
           <div class="player-actions">
-            <button class="action-btn" (click)="closePlayer()">
+            <button uiButton (click)="closePlayer()">
               <app-icon name="close"></app-icon>
               <span>Chiudi player</span>
             </button>
-            <button class="action-btn icon-only" [class.active]="player.isInWatchlist()"
+            <button uiButton="icon" [class.active]="player.isInWatchlist()"
                     [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -145,7 +147,7 @@ type ConfirmAction =
             <div class="movie-progress-bar" aria-hidden="true">
               <span [style.width.%]="movieProgressPct()"></span>
             </div>
-            <button type="button" class="inline-reset-btn" [uiPending]="clearProgressPendingKey() === 'movie'" (click)="openClearProgressModal()">
+            <button uiButton="inline" type="button" [uiPending]="clearProgressPendingKey() === 'movie'" (click)="openClearProgressModal()">
               {{ clearProgressButtonLabel() }}
             </button>
           </div>

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import { UiButtonDirective } from '../ui-button.directive';
 
 export interface UiTab<T extends string = string> {
   readonly value: T;
@@ -8,14 +9,15 @@ export interface UiTab<T extends string = string> {
 @Component({
   selector: 'ui-tabs',
   standalone: true,
+  imports: [UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { 'role': 'tablist' },
   template: `
     @for (tab of tabs(); track tab.value) {
       <button
+        uiButton="tab"
         type="button"
         role="tab"
-        class="nav-btn"
         [class.active]="tab.value === value()"
         [attr.aria-selected]="tab.value === value()"
         (click)="select(tab.value)">
