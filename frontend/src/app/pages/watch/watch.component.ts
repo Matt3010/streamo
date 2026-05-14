@@ -392,7 +392,7 @@ export class WatchComponent {
     const type = this.player.currentItemType();
     if (!item || !type) return '';
     // When the user has caught up with all aired episodes (next-unwatched is
-    // null for TV), suppress the "È uscito un nuovo episodio!" branch — the
+    // null for TV), suppress the "Nuovo episodio!" branch — the
     // message is meant for users who still have to watch the new release.
     const caughtUp = type === 'tv' && this.player.nextUnwatchedRef() === null;
     return getFullReleaseStatusText(item, type, { suppressNewEpisode: caughtUp });

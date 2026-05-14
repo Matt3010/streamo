@@ -105,13 +105,13 @@ export function getBaseAiredEpisodesCount(tv: TvLike | null | undefined): number
 // --- Italian message formatters ---
 
 /**
- * "È uscito un nuovo episodio!" / "Sono usciti N nuovi episodi!"
+ * "Nuovo episodio!" / "N nuovi episodi!"
  * Count <= 1 returns the singular form.
  */
 export function formatNewEpisodesMessage(count: number): string {
   return count <= 1
-    ? 'È uscito un nuovo episodio!'
-    : `Sono usciti ${count} nuovi episodi!`;
+    ? 'Nuovo episodio!'
+    : `${count} nuovi episodi!`;
 }
 
 /**

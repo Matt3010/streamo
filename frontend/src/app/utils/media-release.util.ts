@@ -5,7 +5,7 @@ import { formatNewEpisodesMessage, formatNextEpisodeDate, getWatchlistReleaseMet
 
 export interface ReleaseStatusOptions {
   /**
-   * When true, the "È uscito un nuovo episodio!" branch is skipped — the
+   * When true, the "Nuovo episodio!" branch is skipped — the
    * helper falls through to next-season / ended / empty. Callers set this
    * when they know the user has already watched the freshly-aired episode
    * (so the "new" badge would be misleading).

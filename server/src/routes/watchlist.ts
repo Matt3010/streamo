@@ -84,7 +84,7 @@ function formatTvStatusText(
   const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
   const remaining = Math.max(0, airedEpisodes - watchedBaseline);
 
-  // "È uscito un nuovo episodio!" is only meaningful when the user hasn't
+  // "Nuovo episodio!" is only meaningful when the user hasn't
   // already watched it. Without this gate the message kept appearing on the
   // card even after the user caught up — the gap between aired and base
   // counts is a TMDB-side lag, not a per-user signal.
