@@ -157,24 +157,39 @@ export class HomeComponent {
     void this.router.navigate(['/browse']);
   }
 
+  private openConfirmModal(config: {
+    title: string;
+    message: string;
+    warning: string;
+    actionLabel: string;
+  }): void {
+    this.confirmModalTitle.set(config.title);
+    this.confirmModalMessage.set(config.message);
+    this.confirmModalWarning.set(config.warning);
+    this.confirmModalActionLabel.set(config.actionLabel);
+    this.confirmModalOpen.set(true);
+  }
+
   protected async removeContinue(item: CardItem): Promise<void> {
     this.pendingAction.set({ type: 'hide-continue', item });
-    this.confirmModalTitle.set('Nascondi Da Continua a Guardare');
-    this.confirmModalMessage.set(`Vuoi nascondere ${item.title} da Continua a guardare?`);
-    this.confirmModalWarning.set('Il titolo sparirà da questa sezione finché non lo riprenderai.');
-    this.confirmModalActionLabel.set('Nascondi');
-    this.confirmModalOpen.set(true);
+    this.openConfirmModal({
+      title: 'Nascondi Da Continua a Guardare',
+      message: `Vuoi nascondere ${item.title} da Continua a guardare?`,
+      warning: 'Il titolo sparirà da questa sezione finché non lo riprenderai.',
+      actionLabel: 'Nascondi'
+    });
   }
 
   protected async toggleContinueWatchlist(item: CardItem): Promise<void> {
     if (!this.auth.isLoggedIn()) return;
     if (item.inWatchlist) {
       this.pendingAction.set({ type: 'remove-watchlist', item, source: 'continue' });
-      this.confirmModalTitle.set('Rimuovi Dalla Lista');
-      this.confirmModalMessage.set(`Vuoi rimuovere ${item.title} dalla tua lista?`);
-      this.confirmModalWarning.set('Potrai sempre riaggiungerlo più tardi.');
-      this.confirmModalActionLabel.set('Rimuovi');
-      this.confirmModalOpen.set(true);
+      this.openConfirmModal({
+        title: 'Rimuovi Dalla Lista',
+        message: `Vuoi rimuovere ${item.title} dalla tua lista?`,
+        warning: 'Potrai sempre riaggiungerlo più tardi.',
+        actionLabel: 'Rimuovi'
+      });
       return;
     }
     await runCardMutation(this.continueItems, item, 'watchlist', async () => {
@@ -190,11 +205,7 @@ export class HomeComponent {
     if (requiresConfirmation) {
       const modal = getStatusConfirmModal(item.title);
       this.pendingAction.set({ type: 'mark-watchlist-done', item });
-      this.confirmModalTitle.set(modal.title);
-      this.confirmModalMessage.set(modal.message);
-      this.confirmModalWarning.set(modal.warning);
-      this.confirmModalActionLabel.set(modal.actionLabel);
-      this.confirmModalOpen.set(true);
+      this.openConfirmModal(modal);
       return;
     }
 
@@ -211,11 +222,12 @@ export class HomeComponent {
 
   protected async removeFromHomeWatchlist(item: CardItem): Promise<void> {
     this.pendingAction.set({ type: 'remove-watchlist', item, source: 'watchlist' });
-    this.confirmModalTitle.set('Rimuovi Dalla Lista');
-    this.confirmModalMessage.set(`Vuoi rimuovere ${item.title} dalla tua lista?`);
-    this.confirmModalWarning.set('Potrai sempre riaggiungerlo più tardi.');
-    this.confirmModalActionLabel.set('Rimuovi');
-    this.confirmModalOpen.set(true);
+    this.openConfirmModal({
+      title: 'Rimuovi Dalla Lista',
+      message: `Vuoi rimuovere ${item.title} dalla tua lista?`,
+      warning: 'Potrai sempre riaggiungerlo più tardi.',
+      actionLabel: 'Rimuovi'
+    });
   }
 
   protected cancelHomeAction(): void {

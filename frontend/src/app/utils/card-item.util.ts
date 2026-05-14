@@ -2,6 +2,17 @@ import type { CardItem, HistoryItem, MediaType, TmdbItem, WatchlistItem } from '
 import type { TmdbService } from '../services/tmdb.service';
 import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from './media-release.util';
 
+function enrichCardBase(item: CardItem, details: TmdbItem): CardItem {
+  return {
+    ...item,
+    popularity: details.popularity,
+    voteCount: details.vote_count,
+    rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
+    year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
+    upcomingBadge: getUpcomingBadgeText(details, item.media_type)
+  };
+}
+
 export function tmdbToCardItem(item: TmdbItem, type: MediaType, showReleaseText = false): CardItem {
   const dateStr = item.release_date ?? item.first_air_date ?? '';
   const upcoming = isTitleUpcoming(item, type);
@@ -66,13 +77,8 @@ export async function enrichTmdbCards(
     if (!details) return item;
     const upcoming = isTitleUpcoming(details, item.media_type);
     return {
-      ...item,
-      popularity: details.popularity,
-      voteCount: details.vote_count,
-      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
-      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
+      ...enrichCardBase(item, details),
       isUpcoming: upcoming,
-      upcomingBadge: getUpcomingBadgeText(details, item.media_type),
       nextReleaseText: getCompactReleaseStatusText(details, item.media_type) || undefined
     };
   }));
@@ -85,13 +91,6 @@ export async function enrichLibraryCardsWithTmdb(
   return Promise.all(items.map(async (item) => {
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
     if (!details) return item;
-    return {
-      ...item,
-      popularity: details.popularity,
-      voteCount: details.vote_count,
-      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
-      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
-      upcomingBadge: getUpcomingBadgeText(details, item.media_type)
-    };
+    return enrichCardBase(item, details);
   }));
 }

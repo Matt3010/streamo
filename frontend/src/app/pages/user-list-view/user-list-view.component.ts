@@ -688,11 +688,11 @@ export class UserListViewComponent {
   protected readonly cardKey = cardKey;
 
   protected folderGridMeta(group: FolderGroup): string {
-    return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
+    return folderMeta(group);
   }
 
   protected folderListMeta(group: FolderGroup): string {
-    return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
+    return folderMeta(group);
   }
 
   protected onCardClick(item: CardItem): void {
@@ -1165,6 +1165,10 @@ function historySectionSummary(items: CardItem[]): string {
 
 function folderCountLabel(count: number): string {
   return count === 1 ? '1 titolo' : `${count} titoli`;
+}
+
+function folderMeta(group: FolderGroup): string {
+  return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
 }
 
 function folderMediaLabel(group: FolderGroup): string {
