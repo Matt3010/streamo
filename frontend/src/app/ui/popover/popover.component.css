@@ -45,7 +45,7 @@
   z-index: -1;
   width: 12px;
   height: 12px;
-  bottom: -9px;
+  bottom: -5px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 2px;
   background: inherit;
@@ -58,6 +58,6 @@
 }
 
 .ui-popover.ui-popover-below .ui-popover-arrow {
-  top: -9px;
+  top: -5px;
   bottom: auto;
 }
