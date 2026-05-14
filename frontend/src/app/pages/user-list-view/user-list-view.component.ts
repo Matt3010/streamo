@@ -431,24 +431,38 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       (cancelled)="cancelPendingAction()"
       (confirmed)="confirmPendingAction()" />
 
-    <ui-modal [(open)]="folderModalOpen" title="Folder" size="sm" (closed)="closeFolderModal()">
+    <ui-modal [(open)]="folderModalOpen"
+              [title]="folderTargetHasFolder() ? 'Modifica folder' : 'Aggiungi a un folder'"
+              size="sm"
+              (closed)="closeFolderModal()">
       <div class="folder-modal-content">
-        <div class="folder-modal-header">
+        <div class="folder-modal-hero">
           <span class="folder-modal-icon">
             <app-icon name="folder"></app-icon>
           </span>
           <div class="folder-modal-copy">
+            <span class="folder-kicker">Titolo selezionato</span>
             <strong>{{ folderTargetItem()?.title }}</strong>
-            <span class="folder-modal-sub">Assegna un folder esistente oppure creane uno nuovo.</span>
-            @if (folderTargetHasFolder()) {
-              <span class="folder-current">Attuale: {{ folderTargetItem()?.folderName }}</span>
-            }
+            <span class="folder-modal-sub">
+              Scegli un folder esistente oppure scrivine uno nuovo. Se il nome esiste gia, il titolo verra aggiunto a quel gruppo.
+            </span>
           </div>
+        </div>
+
+        <div class="folder-current-card" [class.empty]="!folderTargetHasFolder()">
+          <span class="folder-current-label">Stato attuale</span>
+          @if (folderTargetHasFolder()) {
+            <strong>{{ folderTargetItem()?.folderName }}</strong>
+            <span class="folder-current-help">Questo titolo e gia assegnato a un folder.</span>
+          } @else {
+            <strong>Nessun folder assegnato</strong>
+            <span class="folder-current-help">Puoi lasciarlo cosi oppure assegnarlo da qui.</span>
+          }
         </div>
 
         @if (existingFolders().length > 0) {
           <div class="folder-section">
-            <span class="folder-section-label">Folder esistenti</span>
+            <span class="folder-section-label">Scegli un folder esistente</span>
             <div class="folder-chip-list">
               @for (folder of existingFolders(); track folder) {
                 <button class="folder-chip"
@@ -458,32 +472,35 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 </button>
               }
             </div>
+            <small class="folder-section-help">Selezionandone uno, il nome viene riportato nel campo qui sotto.</small>
           </div>
         }
 
         <label class="folder-field">
-          <span>Nome folder</span>
+          <span>{{ existingFolders().length > 0 ? 'Oppure scrivi il nome del folder' : 'Nome del folder' }}</span>
           <input type="text"
                  maxlength="60"
                  [value]="folderDraft()"
-                 placeholder="Es. Marvel, Da vedere insieme"
+                 placeholder="Es. Da vedere insieme, Marvel"
                  (input)="onFolderDraftInput($event)">
-          <small>Il nome viene condiviso con gli altri titoli che assegni allo stesso folder.</small>
+          <small>Usa questo campo per creare un nuovo folder oppure per cambiare la selezione attuale.</small>
         </label>
 
         <div class="folder-modal-actions">
-          <button class="secondary-btn danger-outline"
-                  [disabled]="!folderTargetHasFolder() || savingFolder()"
-                  (click)="removeFolder()">
-            Rimuovi folder
-          </button>
+          @if (folderTargetHasFolder()) {
+            <button class="secondary-btn danger-outline"
+                    [disabled]="savingFolder()"
+                    (click)="removeFolder()">
+              Rimuovi dal folder
+            </button>
+          }
           <div class="folder-modal-actions-main">
-            <button class="secondary-btn" (click)="closeFolderModal()">Annulla</button>
+            <button class="secondary-btn" (click)="closeFolderModal()">Chiudi</button>
             <button class="primary-btn"
                     [uiPending]="savingFolder()"
                     [disabled]="!canSaveFolder()"
                     (click)="saveFolder()">
-              Salva
+              {{ folderTargetHasFolder() ? 'Aggiorna folder' : 'Salva folder' }}
             </button>
           </div>
         </div>
