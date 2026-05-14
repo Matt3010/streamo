@@ -8,6 +8,8 @@ export interface WatchlistToggleResult {
   message: string;
 }
 
+export type CardMatcher = (a: CardItem, b: CardItem) => boolean;
+
 export function isSameCard(a: CardItem, b: CardItem): boolean {
   return a.tmdb_id === b.tmdb_id && a.media_type === b.media_type;
 }
@@ -32,10 +34,11 @@ export function setCardWatchlistFlag(items: CardItem[], target: CardItem, next: 
 export function setCardPendingAction(
   items: CardItem[],
   target: CardItem,
-  next: CardPendingAction | null
+  next: CardPendingAction | null,
+  matcher: CardMatcher = isSameCard
 ): CardItem[] {
   return items.map((candidate) => (
-    isSameCard(candidate, target)
+    matcher(candidate, target)
       ? { ...candidate, pendingAction: next ?? undefined }
       : candidate
   ));
@@ -45,17 +48,18 @@ export async function runCardMutation<T>(
   items: WritableSignal<CardItem[]>,
   target: CardItem,
   action: CardPendingAction,
-  task: () => Promise<T>
+  task: () => Promise<T>,
+  matcher: CardMatcher = isSameCard
 ): Promise<T | undefined> {
   const snapshot = items();
-  const current = snapshot.find((candidate) => isSameCard(candidate, target));
+  const current = snapshot.find((candidate) => matcher(candidate, target));
   if (current?.pendingAction) return undefined;
 
-  items.update((entries) => setCardPendingAction(entries, target, action));
+  items.update((entries) => setCardPendingAction(entries, target, action, matcher));
   try {
     return await task();
   } finally {
-    items.update((entries) => setCardPendingAction(entries, target, null));
+    items.update((entries) => setCardPendingAction(entries, target, null, matcher));
   }
 }
 

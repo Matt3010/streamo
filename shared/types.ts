@@ -34,6 +34,13 @@ export interface HistoryItem {
   title: string | null;
   poster: string | null;
   watched_at: number;
+  position?: number;
+  duration?: number;
+  completed?: boolean;
+  watch_status_text?: string;
+  resume_text?: string;
+  resume_season?: number;
+  resume_episode?: number;
 }
 
 export interface WatchlistSeasonInfo {

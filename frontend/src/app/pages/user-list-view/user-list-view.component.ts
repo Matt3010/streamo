@@ -13,7 +13,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import { enrichTmdbCards, enrichWatchlistCardsWithTmdb, watchlistToCardItem } from '../../utils/card-item.util';
+import { enrichLibraryCardsWithTmdb, historyToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import { getStatusTransition, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
 import type { CardItem, WatchlistListStatusFilter } from '../../models';
@@ -41,6 +41,13 @@ interface DisplayEntry {
   item: CardItem | null;
   group: FolderGroup | null;
   expanded: boolean;
+}
+
+interface HistorySection {
+  key: string;
+  title: string;
+  summary: string;
+  items: CardItem[];
 }
 
 const VIEW_MODE_KEY = 'streamo.user-list.view-mode';
@@ -116,6 +123,77 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             <button class="primary-btn" (click)="goToBrowse()">Scopri film popolari</button>
           }
         </div>
+      </div>
+    } @else if (kind() === 'history') {
+      <div class="history-sections">
+        @for (section of historySections(); track section.key) {
+          <section class="history-section">
+            <div class="history-section-header">
+              <div class="history-section-copy">
+                <h3>{{ section.title }}</h3>
+                @if (section.summary) {
+                  <p>{{ section.summary }}</p>
+                }
+              </div>
+            </div>
+
+            @if (viewMode() === 'grid') {
+              <div class="content-grid">
+                @for (item of section.items; track cardKey(item)) {
+                  <app-card
+                    [item]="item"
+                    [showRemove]="true"
+                    removeTitle="Rimuovi dalla cronologia"
+                    [showProgress]="true"
+                    [showWatchlistToggle]="auth.isLoggedIn()"
+                    (cardClick)="onCardClick($event)"
+                    (watchlistToggleClick)="onWatchlistToggle($event)"
+                    (removeClick)="onRemoveClick($event)" />
+                }
+              </div>
+            } @else {
+              <ul class="item-list history-item-list">
+                @for (item of section.items; track cardKey(item)) {
+                  <li class="item-row"
+                      (click)="onCardClick(item)">
+                    <span class="item-type">{{ item.media_type === 'tv' ? 'TV' : 'Film' }}</span>
+                    <div class="item-info">
+                      <span class="item-title">{{ item.title }}</span>
+                      @if (item.season && item.episode || item.watchStatus || item.nextReleaseText) {
+                        <span class="item-sub">
+                          @if (item.season && item.episode) {
+                            <span class="item-meta">S{{ item.season }} E{{ item.episode }}</span>
+                          }
+                          @if (item.watchStatus) {
+                            <span class="item-watch-status">{{ item.watchStatus }}</span>
+                          }
+                          @if (item.nextReleaseText) {
+                            <span class="item-release-status">{{ item.nextReleaseText }}</span>
+                          }
+                        </span>
+                      }
+                    </div>
+                    @if (auth.isLoggedIn()) {
+                      <button class="row-action row-watchlist"
+                              [uiPending]="!!item.pendingAction"
+                              [class.active]="item.inWatchlist === true"
+                              [title]="item.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
+                              (click)="onWatchlistToggle(item); $event.stopPropagation()">
+                        <app-icon name="bookmark"></app-icon>
+                      </button>
+                    }
+                    <button class="row-action row-remove"
+                            [uiPending]="!!item.pendingAction"
+                            title="Rimuovi dalla cronologia"
+                            (click)="onRemoveClick(item); $event.stopPropagation()">
+                      <app-icon name="trash"></app-icon>
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        }
       </div>
     } @else if (viewMode() === 'grid') {
       <div class="content-grid">
@@ -449,6 +527,9 @@ export class UserListViewComponent {
   protected readonly displayEntries = computed(() => (
     buildDisplayEntries(this.items(), this.folderFeatureEnabled(), this.expandedFolders())
   ));
+  protected readonly historySections = computed(() => (
+    this.kind() === 'history' ? buildHistorySections(this.items()) : []
+  ));
   protected readonly existingFolders = computed(() => (
     this.displayEntries()
       .flatMap((entry) => entry.group ? [entry.group.name] : [])
@@ -496,7 +577,7 @@ export class UserListViewComponent {
     const status = this.statusFilter();
     if (this.kind() !== 'watchlist') {
       return media === 'all'
-        ? 'I titoli che inizi a guardare verranno tracciati qui.'
+        ? 'Qui troverai episodi e film che hai iniziato o completato.'
         : `Prova a cambiare filtro o inizia a guardare ${mediaHintTarget(media)}.`;
     }
     if (status === 'unreleased') {
@@ -604,6 +685,7 @@ export class UserListViewComponent {
 
   protected statusButtonTitle = getStatusButtonTitle;
   protected statusButtonIcon = getStatusButtonIcon;
+  protected readonly cardKey = cardKey;
 
   protected folderGridMeta(group: FolderGroup): string {
     return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
@@ -615,8 +697,10 @@ export class UserListViewComponent {
 
   protected onCardClick(item: CardItem): void {
     const queryParams: Record<string, number> = {};
-    if (item.season) queryParams['s'] = item.season;
-    if (item.episode) queryParams['e'] = item.episode;
+    const season = item.resumeSeason ?? item.season;
+    const episode = item.resumeEpisode ?? item.episode;
+    if (season) queryParams['s'] = season;
+    if (episode) queryParams['e'] = episode;
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { queryParams });
   }
 
@@ -792,16 +876,21 @@ export class UserListViewComponent {
     }
 
     const item = action.item;
+    const matcher = this.kind() === 'history' ? isSameHistoryEntry : undefined;
     await runCardMutation(this.items, item, 'remove', async () => {
       if (this.kind() === 'watchlist') {
         await this.watchlist.remove(item.tmdb_id, item.media_type);
         this.toast.show(`${item.title}: rimosso dalla lista`);
       } else {
-        await this.history.remove(item.tmdb_id, item.media_type);
+        await this.history.remove(item.tmdb_id, item.media_type, item.season, item.episode);
         this.toast.show(`${item.title}: rimosso dalla cronologia`);
       }
-      this.items.update(arr => arr.filter(i => !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)));
-    });
+      this.items.update(arr => arr.filter(i => (
+        this.kind() === 'watchlist'
+          ? !(i.tmdb_id === item.tmdb_id && i.media_type === item.media_type)
+          : !isSameHistoryEntry(i, item)
+      )));
+    }, matcher ?? ((a, b) => a.tmdb_id === b.tmdb_id && a.media_type === b.media_type));
   }
 
   protected cancelPendingAction(): void {
@@ -848,7 +937,7 @@ export class UserListViewComponent {
     if (kind === 'watchlist') {
       const list = await this.watchlist.list({ status, ...(mediaType ? { media_type: mediaType } : {}) });
       if (mySeq !== this.seq) return;
-      const items = await enrichWatchlistCardsWithTmdb(list.map(watchlistToCardItem), this.tmdb);
+      const items = await enrichLibraryCardsWithTmdb(list.map(watchlistToCardItem), this.tmdb);
       if (mySeq !== this.seq) return;
       this.items.set(items);
     } else {
@@ -857,14 +946,10 @@ export class UserListViewComponent {
         this.watchlist.list()
       ]);
       if (mySeq !== this.seq) return;
-      const items = await enrichTmdbCards(applyWatchlistFlags(list.map(h => ({
-        tmdb_id: h.tmdb_id,
-        media_type: h.media_type,
-        title: h.title ?? 'Senza titolo',
-        poster: h.poster,
-        season: h.season,
-        episode: h.episode
-      })), watchlist), this.tmdb);
+      const items = await enrichLibraryCardsWithTmdb(
+        applyWatchlistFlags(list.map(historyToCardItem), watchlist),
+        this.tmdb
+      );
       if (mySeq !== this.seq) return;
       this.items.set(items);
     }
@@ -1002,7 +1087,75 @@ function buildDisplayEntries(
 }
 
 function cardKey(item: CardItem): string {
-  return `${item.media_type}:${item.tmdb_id}`;
+  return `${item.media_type}:${item.tmdb_id}:${item.season ?? 0}:${item.episode ?? 0}`;
+}
+
+function isSameHistoryEntry(a: CardItem, b: CardItem): boolean {
+  return a.tmdb_id === b.tmdb_id
+    && a.media_type === b.media_type
+    && (a.season ?? 0) === (b.season ?? 0)
+    && (a.episode ?? 0) === (b.episode ?? 0);
+}
+
+function buildHistorySections(items: CardItem[]): HistorySection[] {
+  const groups = new Map<string, HistorySection>();
+  for (const item of items) {
+    const watchedAt = item.watchedAt ?? 0;
+    const key = historySectionKey(watchedAt);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      title: historySectionTitle(watchedAt),
+      summary: '',
+      items: [item]
+    });
+  }
+
+  return Array.from(groups.values()).map((section) => ({
+    ...section,
+    summary: historySectionSummary(section.items)
+  }));
+}
+
+function historySectionKey(tsSeconds: number): string {
+  const now = new Date();
+  const target = new Date(tsSeconds * 1000);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const date = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const diffDays = Math.floor((today.getTime() - date.getTime()) / 86400000);
+
+  if (diffDays <= 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return 'week';
+  if (now.getFullYear() === target.getFullYear() && now.getMonth() === target.getMonth()) return 'month';
+  return `older:${target.getFullYear()}-${target.getMonth()}`;
+}
+
+function historySectionTitle(tsSeconds: number): string {
+  const key = historySectionKey(tsSeconds);
+  if (key === 'today') return 'Oggi';
+  if (key === 'yesterday') return 'Ieri';
+  if (key === 'week') return 'Questa settimana';
+  if (key === 'month') return 'Questo mese';
+  return 'Prima';
+}
+
+function historySectionSummary(items: CardItem[]): string {
+  const episodeCount = items.filter((item) => item.media_type === 'tv').length;
+  const completedMovieCount = items.filter((item) => item.media_type === 'movie' && item.completed === true).length;
+  const parts: string[] = [];
+  if (episodeCount > 0) {
+    parts.push(episodeCount === 1 ? '1 episodio visto' : `${episodeCount} episodi visti`);
+  }
+  if (completedMovieCount > 0) {
+    parts.push(completedMovieCount === 1 ? '1 film completato' : `${completedMovieCount} film completati`);
+  }
+  return parts.join(' • ');
 }
 
 function folderCountLabel(count: number): string {

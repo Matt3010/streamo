@@ -25,6 +25,8 @@ export interface CardItem {
   episode?: number;
   position?: number;
   duration?: number;
+  watchedAt?: number;
+  completed?: boolean;
   status?: WatchlistStatus;
   folderName?: string | null;
   inWatchlist?: boolean;
@@ -32,8 +34,10 @@ export interface CardItem {
   upcomingBadge?: string;
   /** Optional secondary line (e.g. "Mancano 3 episodi" on the watchlist). */
   watchStatus?: string;
-  /** Compact upcoming-release hint for watchlist/continue-monitoring cards. */
+  /** Optional tertiary line (release note, resume hint, etc.). */
   nextReleaseText?: string;
+  resumeSeason?: number;
+  resumeEpisode?: number;
   /** Pending mutation currently affecting this card's actions. */
   pendingAction?: CardPendingAction;
 }

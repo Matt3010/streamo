@@ -1,4 +1,4 @@
-import type { CardItem, MediaType, TmdbItem, WatchlistItem } from '../models';
+import type { CardItem, HistoryItem, MediaType, TmdbItem, WatchlistItem } from '../models';
 import type { TmdbService } from '../services/tmdb.service';
 import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from './media-release.util';
 
@@ -38,6 +38,25 @@ export function watchlistToCardItem(item: WatchlistItem): CardItem {
   };
 }
 
+export function historyToCardItem(item: HistoryItem): CardItem {
+  return {
+    tmdb_id: item.tmdb_id,
+    media_type: item.media_type,
+    title: item.title ?? 'Senza titolo',
+    poster: item.poster,
+    season: item.season || undefined,
+    episode: item.episode || undefined,
+    position: item.position,
+    duration: item.duration,
+    watchedAt: item.watched_at,
+    completed: item.completed,
+    watchStatus: item.watch_status_text,
+    nextReleaseText: item.resume_text,
+    resumeSeason: item.resume_season,
+    resumeEpisode: item.resume_episode
+  };
+}
+
 export async function enrichTmdbCards(
   items: CardItem[],
   tmdb: TmdbService
@@ -59,7 +78,7 @@ export async function enrichTmdbCards(
   }));
 }
 
-export async function enrichWatchlistCardsWithTmdb(
+export async function enrichLibraryCardsWithTmdb(
   items: CardItem[],
   tmdb: TmdbService
 ): Promise<CardItem[]> {

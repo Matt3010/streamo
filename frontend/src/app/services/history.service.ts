@@ -31,7 +31,11 @@ export class HistoryService {
     await fetch('/api/user/history', { method: 'DELETE' });
   }
 
-  async remove(tmdbId: number | string, type: MediaType): Promise<void> {
-    await fetch(`/api/user/history/${type}/${tmdbId}`, { method: 'DELETE' });
+  async remove(tmdbId: number | string, type: MediaType, season?: number, episode?: number): Promise<void> {
+    const qs = new URLSearchParams();
+    if (typeof season === 'number') qs.set('season', String(season));
+    if (typeof episode === 'number') qs.set('episode', String(episode));
+    const suffix = qs.size ? `?${qs.toString()}` : '';
+    await fetch(`/api/user/history/${type}/${tmdbId}${suffix}`, { method: 'DELETE' });
   }
 }

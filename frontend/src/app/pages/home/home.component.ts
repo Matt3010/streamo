@@ -11,7 +11,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
-import { enrichTmdbCards, enrichWatchlistCardsWithTmdb, tmdbToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
+import { enrichLibraryCardsWithTmdb, enrichTmdbCards, tmdbToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
 import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage } from '../../utils/watchlist-status.util';
 import { SECTIONS } from './sections.config';
 import type { CardItem, SectionConfig } from '../../models';
@@ -304,7 +304,7 @@ export class HomeComponent {
 
     const progressCards = applyWatchlistFlags(progressCardsRaw, wl);
 
-    const watchlistCards = await enrichWatchlistCardsWithTmdb(
+    const watchlistCards = await enrichLibraryCardsWithTmdb(
       wl.filter(w => (w.status ?? 'todo') !== 'done').map(watchlistToCardItem),
       this.tmdb
     );
