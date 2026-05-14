@@ -47,6 +47,7 @@ export class UiPopoverComponent {
   private readonly arrowSize = 14;
   private readonly edgePadding = 12;
   private readonly anchorGap = 8;
+  private readonly arrowCornerClearance = 10;
   private readonly viewportTick = signal(0);
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
@@ -106,9 +107,9 @@ export class UiPopoverComponent {
     const center = rect.left + (rect.width / 2);
     const relative = center - this.panelLeft();
     const halfArrow = this.arrowSize / 2;
-    const min = 18;
-    const max = this.panelWidth() - 18;
-    return Math.max(min, Math.min(relative - halfArrow, max - this.arrowSize));
+    const min = this.arrowCornerClearance;
+    const max = this.panelWidth() - this.arrowCornerClearance - this.arrowSize;
+    return Math.max(min, Math.min(relative - halfArrow, max));
   });
 
   @HostListener('document:keydown.escape')
