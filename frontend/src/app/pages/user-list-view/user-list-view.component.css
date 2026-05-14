@@ -438,151 +438,17 @@
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-.folder-modal-content {
-  padding: 1rem 1.1rem 1.15rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.folder-modal-hero {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
-  padding: 0.9rem 0.95rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025)),
-    rgba(12, 12, 12, 0.92);
-}
-
-.folder-modal-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: rgba(229, 9, 20, 0.14);
-  color: var(--text);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 1rem;
-}
-
-.folder-kicker {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.folder-modal-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.folder-modal-copy strong {
-  color: var(--text);
-  font-size: 1.08rem;
-  line-height: 1.35;
-}
-
-.folder-modal-sub {
-  color: var(--text-muted);
-  line-height: 1.45;
-  font-size: 0.92rem;
-}
-
-.folder-current-card,
-.folder-section,
-.folder-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.8rem 0.95rem;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.folder-current-card {
+.folder-popover-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem;
 }
 
-.folder-current-card.empty {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.folder-current-label,
-.folder-section-label,
-.folder-field span {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.folder-current-card strong {
-  color: var(--text);
-  font-size: 1rem;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.folder-current-help,
-.folder-section-help,
-.folder-field small {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  line-height: 1.4;
-}
-
-.folder-section {
-  gap: 0.6rem;
-}
-
-.folder-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.folder-chip {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 0.38rem 0.7rem;
-  font-size: 0.85rem;
-  line-height: 1.15;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
-}
-
-.folder-chip:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.18);
-  transform: translateY(-1px);
-}
-
-.folder-chip.active {
-  background: rgba(229, 9, 20, 0.16);
-  border-color: rgba(229, 9, 20, 0.42);
-}
-
-.folder-field {
-  gap: 0.5rem;
-}
-
-.folder-field input {
+.folder-popover-input {
   width: 100%;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.03);
@@ -591,49 +457,18 @@
   font: inherit;
 }
 
-.folder-field input:focus {
+.folder-popover-input::placeholder {
+  color: var(--text-muted);
+}
+
+.folder-popover-input:focus {
   outline: none;
   border-color: rgba(229, 9, 20, 0.5);
 }
 
-.folder-modal-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: nowrap;
-  padding-top: 0.35rem;
-}
-
-.folder-remove-modal {
-  padding: 1rem 1.2rem 1.2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.folder-remove-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.folder-remove-copy p {
-  margin: 0;
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.folder-remove-warning {
-  color: var(--text-muted) !important;
-  font-size: 0.88rem;
-}
-
-.folder-modal-actions-main {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.65rem;
-  flex-wrap: nowrap;
+.folder-popover-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .secondary-btn {
@@ -687,17 +522,13 @@
     padding: 0.25rem;
   }
 
-  .folder-modal-actions {
-    flex-wrap: wrap;
-    justify-content: stretch;
-    align-items: stretch;
+  .folder-popover-bar {
+    grid-template-columns: 1fr;
+    padding: 0.55rem;
   }
 
-  .folder-modal-actions-main {
-    display: contents;
-  }
-
-  .folder-modal-actions button {
+  .folder-popover-input,
+  .folder-popover-btn {
     width: 100%;
   }
 }

@@ -5,6 +5,10 @@ import { getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist
 import type { CardItem } from '../../models';
 
 const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
+export interface CardFolderClickEvent {
+  item: CardItem;
+  anchor: HTMLElement | null;
+}
 
 @Component({
   selector: 'app-card',
@@ -108,7 +112,7 @@ export class CardComponent {
   readonly removeClick = output<CardItem>();
   readonly statusToggleClick = output<CardItem>();
   readonly watchlistToggleClick = output<CardItem>();
-  readonly folderClick = output<CardItem>();
+  readonly folderClick = output<CardFolderClickEvent>();
   readonly dragStarted = output<DragEvent>();
   readonly dragEnded = output<void>();
 
@@ -153,7 +157,10 @@ export class CardComponent {
 
   protected onFolderClick(e: MouseEvent): void {
     e.stopPropagation();
-    this.folderClick.emit(this.item());
+    this.folderClick.emit({
+      item: this.item(),
+      anchor: e.currentTarget instanceof HTMLElement ? e.currentTarget : null
+    });
   }
 
   protected onDragStart(event: DragEvent): void {

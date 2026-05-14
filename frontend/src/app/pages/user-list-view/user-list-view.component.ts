@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { CardComponent } from '../../components/card/card.component';
+import { CardComponent, CardFolderClickEvent } from '../../components/card/card.component';
 import { BackButtonComponent } from '../../ui/back-button/back-button.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
+import { UiPopoverComponent } from '../../ui/popover/popover.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
-import { UiModalComponent } from '../../ui/modal/modal.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -77,8 +77,8 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     IconComponent,
     ConfirmModalComponent,
     PendingButtonDirective,
+    UiPopoverComponent,
     UiTabsComponent,
-    UiModalComponent
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -237,7 +237,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                       (dragEnded)="onItemDragEnd()"
                       (watchlistToggleClick)="onWatchlistToggle($event)"
                       (statusToggleClick)="onStatusToggle($event)"
-                      (folderClick)="openFolderModal($event)"
+                      (folderClick)="openFolderPopover($event)"
                       (removeClick)="onRemoveClick($event)" />
                   }
                 </div>
@@ -259,7 +259,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               (dragEnded)="onItemDragEnd()"
               (watchlistToggleClick)="onWatchlistToggle($event)"
               (statusToggleClick)="onStatusToggle($event)"
-              (folderClick)="openFolderModal($event)"
+              (folderClick)="openFolderPopover($event)"
               (removeClick)="onRemoveClick($event)" />
           }
         }
@@ -333,7 +333,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                                 [uiPending]="!!it.pendingAction"
                                 [class.active]="!!it.folderName"
                                 [title]="it.folderName ? 'Modifica folder' : 'Assegna folder'"
-                                (click)="openFolderModal(it); $event.stopPropagation()">
+                                (click)="openFolderPopoverFromButton(it, $event); $event.stopPropagation()">
                           <app-icon name="folder"></app-icon>
                         </button>
                       }
@@ -397,7 +397,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         [uiPending]="!!entry.item.pendingAction"
                         [class.active]="!!entry.item.folderName"
                         [title]="entry.item.folderName ? 'Modifica folder' : 'Assegna folder'"
-                        (click)="openFolderModal(entry.item); $event.stopPropagation()">
+                        (click)="openFolderPopoverFromButton(entry.item, $event); $event.stopPropagation()">
                   <app-icon name="folder"></app-icon>
                 </button>
               }
@@ -431,113 +431,40 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       (cancelled)="cancelPendingAction()"
       (confirmed)="confirmPendingAction()" />
 
-    <ui-modal [(open)]="folderModalOpen"
-              [title]="folderTargetHasFolder() ? 'Modifica folder' : 'Aggiungi a un folder'"
-              size="sm"
-              (closed)="onFolderModalClosed()">
-      <div class="folder-modal-content">
-        <div class="folder-modal-hero">
-          <span class="folder-modal-icon">
-            <app-icon name="folder"></app-icon>
-          </span>
-          <div class="folder-modal-copy">
-            <span class="folder-kicker">Titolo selezionato</span>
-            <strong>{{ folderTargetItem()?.title }}</strong>
-            <span class="folder-modal-sub">
-              Scegli un folder esistente oppure scrivine uno nuovo. Se il nome esiste gia, il titolo verra aggiunto a quel gruppo.
-            </span>
-          </div>
-        </div>
+    <ui-popover [(open)]="folderPopoverOpen"
+                [anchor]="folderPopoverAnchor()"
+                [width]="folderTargetHasFolder() ? 520 : 440"
+                (closed)="closeFolderPopover()">
+      <div class="folder-popover-bar">
+        <input class="folder-popover-input"
+               type="text"
+               maxlength="60"
+               [value]="folderDraft()"
+               placeholder="Titolo folder"
+               (input)="onFolderDraftInput($event)">
 
-        <div class="folder-current-card" [class.empty]="!folderTargetHasFolder()">
-          <span class="folder-current-label">Stato attuale</span>
-          @if (folderTargetHasFolder()) {
-            <strong>{{ folderTargetItem()?.folderName }}</strong>
-            <span class="folder-current-help">Questo titolo e gia assegnato a un folder.</span>
-          } @else {
-            <strong>Nessun folder assegnato</strong>
-            <span class="folder-current-help">Puoi lasciarlo cosi oppure assegnarlo da qui.</span>
-          }
-        </div>
+        <button class="primary-btn folder-popover-btn"
+                [uiPending]="savingFolder()"
+                [disabled]="!canSaveFolder()"
+                (click)="saveFolder()">
+          {{ folderTargetHasFolder() ? 'Aggiorna' : 'Aggiungi' }}
+        </button>
 
-        @if (existingFolders().length > 0) {
-          <div class="folder-section">
-            <span class="folder-section-label">Scegli un folder esistente</span>
-            <div class="folder-chip-list">
-              @for (folder of existingFolders(); track folder) {
-                <button class="folder-chip"
-                        [class.active]="folderDraft() === folder"
-                        (click)="selectFolder(folder)">
-                  {{ folder }}
-                </button>
-              }
-            </div>
-            <small class="folder-section-help">Selezionandone uno, il nome viene riportato nel campo qui sotto.</small>
-          </div>
-        }
-
-        <label class="folder-field">
-          <span>{{ existingFolders().length > 0 ? 'Oppure scrivi il nome del folder' : 'Nome del folder' }}</span>
-          <input type="text"
-                 maxlength="60"
-                 [value]="folderDraft()"
-                 placeholder="Es. Da vedere insieme, Marvel"
-                 (input)="onFolderDraftInput($event)">
-          <small>Usa questo campo per creare un nuovo folder oppure per cambiare la selezione attuale.</small>
-        </label>
-
-        <div class="folder-modal-actions">
-          @if (folderTargetHasFolder()) {
-            <button class="secondary-btn danger-outline"
-                    [disabled]="savingFolder()"
-                    (click)="openRemoveFolderModal()">
-              Rimuovi dal folder
-            </button>
-          }
-          <div class="folder-modal-actions-main">
-            <button class="secondary-btn" (click)="closeFolderModal()">Annulla</button>
-            <button class="primary-btn"
-                    [uiPending]="savingFolder()"
-                    [disabled]="!canSaveFolder()"
-                    (click)="saveFolder()">
-              {{ folderTargetHasFolder() ? 'Aggiorna folder' : 'Salva folder' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </ui-modal>
-
-    <ui-modal [(open)]="folderRemoveModalOpen"
-              title="Rimuovi dal folder"
-              size="sm"
-              (closed)="cancelRemoveFolderModal()">
-      <div class="folder-remove-modal">
-        <div class="folder-remove-copy">
-          <p>
-            Vuoi rimuovere <strong>{{ folderTargetItem()?.title }}</strong>
-            dal folder <strong>{{ folderTargetItem()?.folderName }}</strong>?
-          </p>
-          <p class="folder-remove-warning">
-            Il titolo restera nella tua lista, ma non verra piu raggruppato in questo folder.
-          </p>
-        </div>
-
-        <div class="folder-modal-actions">
-          <button class="secondary-btn"
-                  [disabled]="savingFolder()"
-                  (click)="cancelRemoveFolderModal()">
-            Indietro
+        @if (folderTargetHasFolder()) {
+          <button class="secondary-btn folder-popover-btn danger-outline"
+                  [uiPending]="savingFolder()"
+                  (click)="removeFolder()">
+            Rimuovi
           </button>
-          <div class="folder-modal-actions-main">
-            <button class="secondary-btn danger-outline"
-                    [uiPending]="savingFolder()"
-                    (click)="confirmRemoveFolder()">
-              Rimuovi dal folder
-            </button>
-          </div>
-        </div>
+        } @else {
+          <button class="secondary-btn folder-popover-btn"
+                  [disabled]="savingFolder()"
+                  (click)="closeFolderPopover()">
+            Chiudi
+          </button>
+        }
       </div>
-    </ui-modal>
+    </ui-popover>
   `,
   styleUrl: './user-list-view.component.css'
 })
@@ -562,8 +489,8 @@ export class UserListViewComponent {
   protected readonly loading = signal(false);
   protected readonly confirmModalOpen = signal(false);
   protected readonly pendingAction = signal<PendingAction | null>(null);
-  protected readonly folderModalOpen = signal(false);
-  protected readonly folderRemoveModalOpen = signal(false);
+  protected readonly folderPopoverOpen = signal(false);
+  protected readonly folderPopoverAnchor = signal<HTMLElement | null>(null);
   protected readonly folderTargetItem = signal<CardItem | null>(null);
   protected readonly folderDraft = signal('');
   protected readonly savingFolder = signal(false);
@@ -579,10 +506,6 @@ export class UserListViewComponent {
   ));
   protected readonly historySections = computed(() => (
     this.kind() === 'history' ? buildHistorySections(this.items()) : []
-  ));
-  protected readonly existingFolders = computed(() => (
-    this.displayEntries()
-      .flatMap((entry) => entry.group ? [entry.group.name] : [])
   ));
   protected readonly canSaveFolder = computed(() => {
     const target = this.folderTargetItem();
@@ -681,8 +604,6 @@ export class UserListViewComponent {
 
   private seq = 0;
   private lastFolderDropAt = 0;
-  private openingFolderRemoveModal = false;
-  private reopenFolderEditorAfterRemove = false;
 
   constructor() {
     effect(() => {
@@ -707,8 +628,8 @@ export class UserListViewComponent {
     });
 
     effect(() => {
-      if (!this.folderFeatureEnabled() && this.folderModalOpen()) {
-        this.closeFolderModal();
+      if (!this.folderFeatureEnabled() && this.folderPopoverOpen()) {
+        this.closeFolderPopover();
       }
     });
   }
@@ -801,35 +722,29 @@ export class UserListViewComponent {
     });
   }
 
-  protected openFolderModal(item: CardItem): void {
-    if (!this.folderFeatureEnabled()) return;
-    this.folderTargetItem.set(item);
-    this.folderDraft.set(item.folderName ?? '');
-    this.reopenFolderEditorAfterRemove = false;
-    this.openingFolderRemoveModal = false;
-    this.folderModalOpen.set(true);
+  protected openFolderPopover(event: CardFolderClickEvent): void {
+    this.openFolderPopoverWithAnchor(event.item, event.anchor);
   }
 
-  protected closeFolderModal(): void {
-    this.folderModalOpen.set(false);
+  protected openFolderPopoverFromButton(item: CardItem, event: MouseEvent): void {
+    this.openFolderPopoverWithAnchor(
+      item,
+      event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+    );
   }
 
-  protected onFolderModalClosed(): void {
-    if (this.openingFolderRemoveModal) {
-      this.openingFolderRemoveModal = false;
-      return;
-    }
-    this.resetFolderModalState();
+  protected closeFolderPopover(): void {
+    this.folderPopoverOpen.set(false);
+    this.folderPopoverAnchor.set(null);
+    this.folderTargetItem.set(null);
+    this.folderDraft.set('');
+    this.savingFolder.set(false);
   }
 
   protected onFolderDraftInput(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     this.folderDraft.set(target.value);
-  }
-
-  protected selectFolder(folderName: string): void {
-    this.folderDraft.set(folderName);
   }
 
   protected async saveFolder(): Promise<void> {
@@ -841,41 +756,19 @@ export class UserListViewComponent {
     try {
       await this.applyFolderChange(item, folderName, `${item.title}: spostato in ${folderName}`, true);
     } finally {
-      if (this.folderModalOpen() || this.folderRemoveModalOpen()) this.savingFolder.set(false);
+      if (this.folderPopoverOpen()) this.savingFolder.set(false);
     }
   }
 
-  protected openRemoveFolderModal(): void {
-    const item = this.folderTargetItem();
-    if (!item?.folderName) return;
-    this.openingFolderRemoveModal = true;
-    this.reopenFolderEditorAfterRemove = true;
-    this.folderModalOpen.set(false);
-    this.folderRemoveModalOpen.set(true);
-  }
-
-  protected cancelRemoveFolderModal(): void {
-    this.folderRemoveModalOpen.set(false);
-    this.savingFolder.set(false);
-    const shouldReopen = this.reopenFolderEditorAfterRemove;
-    this.reopenFolderEditorAfterRemove = false;
-    if (shouldReopen && this.folderTargetItem() && this.folderFeatureEnabled()) {
-      this.folderModalOpen.set(true);
-      return;
-    }
-    this.resetFolderModalState();
-  }
-
-  protected async confirmRemoveFolder(): Promise<void> {
+  protected async removeFolder(): Promise<void> {
     const item = this.folderTargetItem();
     if (!item || !item.folderName) return;
 
-    this.reopenFolderEditorAfterRemove = false;
     this.savingFolder.set(true);
     try {
       await this.applyFolderChange(item, null, `${item.title}: folder rimosso`, true);
     } finally {
-      if (this.folderModalOpen() || this.folderRemoveModalOpen()) this.savingFolder.set(false);
+      if (this.folderPopoverOpen()) this.savingFolder.set(false);
     }
   }
 
@@ -1009,19 +902,26 @@ export class UserListViewComponent {
       }
       this.toast.show(successMessage);
       if (closeModal) {
-        this.resetFolderModalState();
+        this.closeFolderPopover();
       }
     });
   }
 
-  private resetFolderModalState(): void {
-    this.folderModalOpen.set(false);
-    this.folderRemoveModalOpen.set(false);
-    this.folderTargetItem.set(null);
-    this.folderDraft.set('');
-    this.savingFolder.set(false);
-    this.openingFolderRemoveModal = false;
-    this.reopenFolderEditorAfterRemove = false;
+  private openFolderPopoverWithAnchor(item: CardItem, anchor: HTMLElement | null): void {
+    if (!this.folderFeatureEnabled() || !anchor) return;
+    const current = this.folderTargetItem();
+    if (this.folderPopoverOpen()
+      && current
+      && current.tmdb_id === item.tmdb_id
+      && current.media_type === item.media_type
+      && this.folderPopoverAnchor() === anchor) {
+      this.closeFolderPopover();
+      return;
+    }
+    this.folderTargetItem.set(item);
+    this.folderDraft.set(item.folderName ?? '');
+    this.folderPopoverAnchor.set(anchor);
+    this.folderPopoverOpen.set(true);
   }
 
   private async load(kind: UserListType, media: MediaFilter, status?: WatchlistListStatusFilter): Promise<void> {
