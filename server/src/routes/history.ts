@@ -88,9 +88,20 @@ router.get('/user/history', requireAuth, async (req, res) => {
     LIMIT 100
   `).all(...params) as HistoryRow[];
 
+  const latestEntryByTitle = new Set<string>();
+  const seenTitles = new Set<string>();
+  for (const row of rows) {
+    const key = `${row.media_type}:${row.tmdb_id}`;
+    if (!seenTitles.has(key)) {
+      seenTitles.add(key);
+      latestEntryByTitle.add(`${key}:${row.season}:${row.episode}`);
+    }
+  }
+
   const items: HistoryItem[] = await Promise.all(rows.map(async (row) => {
     const completed = isCompleted(row.position, row.duration);
-    const resume = row.media_type === 'tv' && completed
+    const isLatestEntryForTitle = latestEntryByTitle.has(`${row.media_type}:${row.tmdb_id}:${row.season}:${row.episode}`);
+    const resume = row.media_type === 'tv' && completed && isLatestEntryForTitle
       ? await resolveNextPlayable(req.user!.id, row.tmdb_id)
       : null;
     const hasNextResume = !!resume

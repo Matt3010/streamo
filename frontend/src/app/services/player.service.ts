@@ -273,8 +273,6 @@ export class PlayerService {
       this.playingEpisode = 0;
     }
 
-    void this.saveCurrentHistory();
-
     if (this.progressSaveInterval !== null) clearInterval(this.progressSaveInterval);
     this.progressSaveInterval = window.setInterval(() => {
       if (this.currentVideoTime > 0 && Math.abs(this.currentVideoTime - this.lastSavedTime) >= 10) {
@@ -631,6 +629,9 @@ export class PlayerService {
       poster: item.poster_path ?? null,
       backdrop: item.backdrop_path ?? null
     });
+    if (position > 10) {
+      await this.saveCurrentHistory(type === 'tv' ? season : 0, type === 'tv' ? episode : 0);
+    }
     this.progressTick.update(n => n + 1);
   }
 
@@ -645,14 +646,14 @@ export class PlayerService {
     this.nextUnwatchedRef.set(next);
   }
 
-  private async saveCurrentHistory(): Promise<void> {
+  private async saveCurrentHistory(season: number, episode: number): Promise<void> {
     const item = this.currentItem();
     const type = this.currentItemType();
     if (!this.auth.currentUser() || !item || !type) return;
     await this.history.save(
       item.id, type,
-      type === 'tv' ? this.playingSeason : 0,
-      type === 'tv' ? this.playingEpisode : 0,
+      type === 'tv' ? season : 0,
+      type === 'tv' ? episode : 0,
       item.title ?? item.name ?? '',
       item.poster_path ?? null
     );

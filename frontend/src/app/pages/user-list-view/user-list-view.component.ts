@@ -697,8 +697,12 @@ export class UserListViewComponent {
 
   protected onCardClick(item: CardItem): void {
     const queryParams: Record<string, number> = {};
-    const season = item.resumeSeason ?? item.season;
-    const episode = item.resumeEpisode ?? item.episode;
+    const season = this.kind() === 'history'
+      ? item.season
+      : (item.resumeSeason ?? item.season);
+    const episode = this.kind() === 'history'
+      ? item.episode
+      : (item.resumeEpisode ?? item.episode);
     if (season) queryParams['s'] = season;
     if (episode) queryParams['e'] = episode;
     void this.router.navigate(['/watch', item.media_type, item.tmdb_id], { queryParams });
@@ -1146,8 +1150,9 @@ function historySectionTitle(tsSeconds: number): string {
 }
 
 function historySectionSummary(items: CardItem[]): string {
-  const episodeCount = items.filter((item) => item.media_type === 'tv').length;
-  const completedMovieCount = items.filter((item) => item.media_type === 'movie' && item.completed === true).length;
+  const meaningfulItems = items.filter((item) => item.completed === true || (item.position ?? 0) > 10);
+  const episodeCount = meaningfulItems.filter((item) => item.media_type === 'tv').length;
+  const completedMovieCount = meaningfulItems.filter((item) => item.media_type === 'movie' && item.completed === true).length;
   const parts: string[] = [];
   if (episodeCount > 0) {
     parts.push(episodeCount === 1 ? '1 episodio visto' : `${episodeCount} episodi visti`);
