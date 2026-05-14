@@ -3,12 +3,18 @@ import { db } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
-import { getAiredEpisodesCount, getBaseAiredEpisodesCount, getTmdbTvSummary, type TmdbTvSummary } from '../services/tmdb-cache';
-import { formatNewEpisodesMessage, formatNextEpisodeDate } from '../../../shared/release-format';
+import {
+  getAiredEpisodesCount,
+  getBaseAiredEpisodesCount,
+  getTmdbMovieSummary,
+  getTmdbTvSummary,
+  type TmdbTvSummary
+} from '../services/tmdb-cache';
+import { formatNewEpisodesMessage, getWatchlistReleaseMeta } from '../../../shared/release-format';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { publishUserWatchlistChanged } from '../services/user-live';
 import { enqueueWatchlistTitleRefresh } from '../services/watchlist-jobs';
-import type { WatchlistItem } from '../../../shared/types';
+import type { WatchlistItem, WatchlistListStatusFilter } from '../../../shared/types';
 
 const router = Router();
 
@@ -95,10 +101,6 @@ function formatTvStatusText(
   return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }
 
-function formatNextReleaseText(tmdb: TmdbTvSummary | null): string | undefined {
-  return formatNextEpisodeDate(tmdb?.next_episode_to_air?.air_date);
-}
-
 router.post('/user/watchlist', requireAuth, (req, res) => {
   const body = req.body || {};
   const tmdb_id = toInt(body.tmdb_id, { min: 1 });
@@ -121,9 +123,11 @@ router.post('/user/watchlist', requireAuth, (req, res) => {
 });
 
 router.get('/user/watchlist', requireAuth, async (req, res) => {
-  const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
+  const statusFilter = typeof req.query.status === 'string'
+    ? req.query.status as WatchlistListStatusFilter
+    : '';
   const mediaFilter = typeof req.query.media_type === 'string' ? req.query.media_type : '';
-  if (statusFilter && !['todo', 'in_progress', 'done'].includes(statusFilter)) {
+  if (statusFilter && !['todo', 'in_progress', 'done', 'unreleased'].includes(statusFilter)) {
     return res.status(400).json({ error: 'invalid_status' });
   }
   if (mediaFilter && !['movie', 'tv'].includes(mediaFilter)) {
@@ -211,8 +215,12 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
   const allItems: WatchlistItem[] = await Promise.all(rows.map(async (r) => {
     const inFlight = latestProgress.get(`${r.media_type}:${r.tmdb_id}`);
     if (r.media_type !== 'tv') {
+      const tmdb = await getTmdbMovieSummary(r.tmdb_id);
+      const releaseMeta = getWatchlistReleaseMeta(tmdb, 'movie');
       return {
         ...r,
+        is_upcoming: releaseMeta.isUpcoming,
+        next_release_text: releaseMeta.text,
         watch_status_text: formatMovieRemaining(inFlight?.position, inFlight?.duration),
         ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})
       };
@@ -221,6 +229,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     const prog = progressByTmdb.get(r.tmdb_id) ?? { last_season: 0, last_episode: 0, watched_count: 0 };
     const latestTv = latestTvProgressByTmdb.get(r.tmdb_id);
     const tmdb = await getTmdbTvSummary(r.tmdb_id);
+    const releaseMeta = getWatchlistReleaseMeta(tmdb, 'tv');
     const totalEpisodes = tmdb?.number_of_episodes ?? 0;
     const airedEpisodes = getAiredEpisodesCount(tmdb);
     const resume = await resolveNextPlayable(req.user!.id, r.tmdb_id);
@@ -263,16 +272,21 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       total_episodes: totalEpisodes,
       aired_episodes: airedEpisodes,
       seasons: tmdb?.seasons ?? [],
+      is_upcoming: releaseMeta.isUpcoming,
       caught_up: caughtUp,
       watch_status_text: formatTvStatusText(tmdb, prog.watched_count, doneAiredEpisodes, caughtUp),
-      next_release_text: formatNextReleaseText(tmdb),
+      next_release_text: releaseMeta.text,
       resume_season: resume?.season,
       resume_episode: resume?.episode,
       ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})
     };
   }));
 
-  const items = statusFilter ? allItems.filter(item => item.status === statusFilter) : allItems;
+  const items = statusFilter === 'unreleased'
+    ? allItems.filter(item => item.is_upcoming === true)
+    : statusFilter
+      ? allItems.filter(item => item.status === statusFilter)
+      : allItems;
   res.json({ items });
 });
 

@@ -1,7 +1,7 @@
 import type { MediaType, TmdbItem } from '../models';
 import { getEffectiveLastEpisode, getAiredEpisodesCount, getBaseAiredEpisodesCount } from './aired-episodes.util';
 import { parseDateOnly, isFutureDate, formatDateLong, formatDateShort } from './date.util';
-import { formatNewEpisodesMessage, formatNextEpisodeDate } from '../../../../shared/release-format';
+import { formatNewEpisodesMessage, formatNextEpisodeDate, getWatchlistReleaseMeta } from '../../../../shared/release-format';
 
 export interface ReleaseStatusOptions {
   /**
@@ -59,18 +59,12 @@ export function getFullReleaseStatusText(item: TmdbItem, type: MediaType, option
 }
 
 export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): string {
-  if (type === 'tv') {
-    const firstAirDate = parseDateOnly(item.first_air_date);
-    if (firstAirDate && isFutureDate(firstAirDate)) {
-      return `Dal ${formatDateLong(firstAirDate)}`;
-    }
+  const watchlistRelease = getWatchlistReleaseMeta(item, type);
+  if (watchlistRelease.text) {
+    return watchlistRelease.text;
   }
 
   if (type === 'movie') {
-    const date = parseDateOnly(item.release_date);
-    if (date && isFutureDate(date)) {
-      return `Esce il ${formatDateLong(date)}`;
-    }
     return '';
   }
 
@@ -92,13 +86,7 @@ export function getCompactReleaseStatusText(item: TmdbItem, type: MediaType): st
 }
 
 export function isTitleUpcoming(item: TmdbItem, type: MediaType): boolean {
-  if (type === 'movie') {
-    const date = parseDateOnly(item.release_date);
-    return date !== null && isFutureDate(date);
-  }
-
-  const firstAirDate = parseDateOnly(item.first_air_date);
-  return firstAirDate !== null && isFutureDate(firstAirDate);
+  return getWatchlistReleaseMeta(item, type).isUpcoming;
 }
 
 export function getUpcomingBadgeText(item: TmdbItem, type: MediaType): string {

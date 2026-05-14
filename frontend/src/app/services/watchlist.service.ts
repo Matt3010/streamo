@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import type { MediaType, WatchlistItem, WatchlistStatus } from '../models';
+import type { MediaType, WatchlistItem, WatchlistListStatusFilter, WatchlistStatus } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class WatchlistService {
@@ -10,7 +10,7 @@ export class WatchlistService {
     this.tick.update(n => n + 1);
   }
 
-  async list(filters?: { status?: WatchlistStatus; media_type?: MediaType }): Promise<WatchlistItem[]> {
+  async list(filters?: { status?: WatchlistListStatusFilter; media_type?: MediaType }): Promise<WatchlistItem[]> {
     try {
       const qs = new URLSearchParams();
       if (filters?.status) qs.set('status', filters.status);

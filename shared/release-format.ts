@@ -23,6 +23,12 @@ export interface TvLike {
   next_episode_to_air?: TvLikeEpisodeRef | null;
 }
 
+export interface ReleaseStatusLike {
+  release_date?: string | null;
+  first_air_date?: string | null;
+  next_episode_to_air?: TvLikeEpisodeRef | null;
+}
+
 // --- Date helpers (string-based, since TMDB returns YYYY-MM-DD strings) ---
 
 /** Checks if a YYYY-MM-DD date string is strictly after today (local time). */
@@ -44,6 +50,19 @@ export function formatDateShortIt(dateStr: string): string {
   const [, y, m, d] = match;
   const date = new Date(Number(y), Number(m) - 1, Number(d));
   return new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short' }).format(date);
+}
+
+/** Formats a YYYY-MM-DD date string as Italian long (e.g., "25 giugno 2026"). */
+export function formatDateLongIt(dateStr: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return dateStr;
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return new Intl.DateTimeFormat('it-IT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(date);
 }
 
 // --- Episode counting ---
@@ -101,4 +120,35 @@ export function formatNewEpisodesMessage(count: number): string {
 export function formatNextEpisodeDate(dateStr: string | null | undefined): string | undefined {
   if (!dateStr || !isFutureDateStr(dateStr)) return undefined;
   return `Nuovo ep. ${formatDateShortIt(dateStr)}`;
+}
+
+/**
+ * Shared watchlist release entrypoint.
+ * - Marks unreleased movies/series from their title release date
+ * - Emits the same compact future-episode copy used on cards
+ */
+export function getWatchlistReleaseMeta(
+  item: ReleaseStatusLike | null | undefined,
+  mediaType: 'movie' | 'tv'
+): { isUpcoming: boolean; text?: string } {
+  if (!item) return { isUpcoming: false };
+
+  const titleDate = mediaType === 'movie' ? item.release_date : item.first_air_date;
+  if (titleDate && isFutureDateStr(titleDate)) {
+    return {
+      isUpcoming: true,
+      text: mediaType === 'movie'
+        ? `Esce il ${formatDateLongIt(titleDate)}`
+        : `Dal ${formatDateLongIt(titleDate)}`
+    };
+  }
+
+  if (mediaType === 'tv') {
+    const nextEpisodeText = formatNextEpisodeDate(item.next_episode_to_air?.air_date);
+    if (nextEpisodeText) {
+      return { isUpcoming: false, text: nextEpisodeText };
+    }
+  }
+
+  return { isUpcoming: false };
 }

@@ -35,7 +35,7 @@ export async function enrichCardsWithTmdb(
       voteCount: details.vote_count,
       rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
       year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
-      isUpcoming: upcoming,
+      isUpcoming: options.useBackendStatus ? (item.isUpcoming ?? upcoming) : upcoming,
       upcomingBadge: getUpcomingBadgeText(details, item.media_type),
       nextReleaseText: options.useBackendStatus
         ? item.nextReleaseText

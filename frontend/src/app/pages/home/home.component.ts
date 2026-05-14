@@ -310,6 +310,7 @@ export class HomeComponent {
       title: w.title ?? 'Senza titolo',
       poster: w.poster,
       status: w.status ?? 'todo',
+      isUpcoming: w.is_upcoming,
       season: w.resume_season,
       episode: w.resume_episode,
       position: w.position,

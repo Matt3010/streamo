@@ -16,7 +16,7 @@ import { NavigationSourceService } from '../../services/navigation-source.servic
 import { enrichCardsWithTmdb } from '../../utils/card-item.util';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import { getStatusTransition, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
-import type { CardItem, WatchlistStatus } from '../../models';
+import type { CardItem, WatchlistListStatusFilter } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
 export type ViewMode = 'grid' | 'list';
@@ -48,10 +48,11 @@ const MEDIA_FILTER_KEY = 'streamo.user-list.media-filter';
 const STATUS_FILTER_KEY = 'streamo.user-list.status-filter';
 const EXPANDED_FOLDERS_KEY = 'streamo.user-list.expanded-folders';
 
-const STATUS_TABS: ReadonlyArray<UiTab<WatchlistStatus>> = [
+const STATUS_TABS: ReadonlyArray<UiTab<WatchlistListStatusFilter>> = [
   { value: 'todo', label: 'Da guardare' },
   { value: 'in_progress', label: 'In corso' },
-  { value: 'done', label: 'Visto' }
+  { value: 'done', label: 'Visto' },
+  { value: 'unreleased', label: 'Non usciti' }
 ];
 
 const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
@@ -426,7 +427,7 @@ export class UserListViewComponent {
 
   protected readonly statusTabs = STATUS_TABS;
   protected readonly mediaTabs = MEDIA_TABS;
-  protected readonly statusFilter = signal<WatchlistStatus>(loadStatusFilter());
+  protected readonly statusFilter = signal<WatchlistListStatusFilter>(loadStatusFilter());
   protected readonly mediaFilter = signal<MediaFilter>(loadMediaFilter());
   protected readonly viewMode = signal<ViewMode>(loadViewMode());
 
@@ -470,6 +471,11 @@ export class UserListViewComponent {
         ? 'La cronologia è vuota'
         : `Nessun ${mediaLabel(media)} nella cronologia`;
     }
+    if (status === 'unreleased') {
+      if (media === 'tv') return 'Nessuna serie TV non ancora uscita';
+      if (media === 'movie') return 'Nessun film non ancora uscito';
+      return 'Nessun contenuto non ancora uscito';
+    }
     if (status === 'done') {
       return media === 'all'
         ? 'Nessun titolo segnato come visto'
@@ -492,6 +498,9 @@ export class UserListViewComponent {
       return media === 'all'
         ? 'I titoli che inizi a guardare verranno tracciati qui.'
         : `Prova a cambiare filtro o inizia a guardare ${mediaHintTarget(media)}.`;
+    }
+    if (status === 'unreleased') {
+      return 'I titoli in arrivo che aggiungi alla lista appariranno qui automaticamente.';
     }
     if (status === 'done') {
       return 'I titoli che marchi come visti dal pulsante check appariranno qui.';
@@ -831,7 +840,7 @@ export class UserListViewComponent {
     });
   }
 
-  private async load(kind: UserListType, media: MediaFilter, status?: WatchlistStatus): Promise<void> {
+  private async load(kind: UserListType, media: MediaFilter, status?: WatchlistListStatusFilter): Promise<void> {
     const mySeq = ++this.seq;
     this.loading.set(true);
     this.items.set([]);
@@ -846,6 +855,7 @@ export class UserListViewComponent {
         poster: w.poster,
         status: w.status ?? 'todo',
         folderName: w.folder_name ?? null,
+        isUpcoming: w.is_upcoming,
         watchStatus: w.watch_status_text,
         nextReleaseText: w.next_release_text,
         season: w.resume_season,
@@ -894,9 +904,10 @@ function loadMediaFilter(): MediaFilter {
   }
 }
 
-function loadStatusFilter(): WatchlistStatus {
+function loadStatusFilter(): WatchlistListStatusFilter {
   try {
     const value = localStorage.getItem(STATUS_FILTER_KEY);
+    if (value === 'unreleased') return 'unreleased';
     if (value === 'in_progress') return 'in_progress';
     if (value === 'done') return 'done';
     return 'todo';

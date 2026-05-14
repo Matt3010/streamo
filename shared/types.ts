@@ -3,6 +3,7 @@
 
 export type MediaType = 'movie' | 'tv';
 export type WatchlistStatus = 'todo' | 'in_progress' | 'done';
+export type WatchlistListStatusFilter = WatchlistStatus | 'unreleased';
 
 export interface User {
   id: number;
@@ -66,6 +67,7 @@ export interface WatchlistItem {
   seasons?: WatchlistSeasonInfo[];
   watch_status_text?: string;
   next_release_text?: string;
+  is_upcoming?: boolean;
   caught_up?: boolean;
   // Where the watch page should resume — already pivoted past finished
   // episodes by the backend. Lets the card click navigate straight to the

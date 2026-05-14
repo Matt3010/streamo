@@ -9,11 +9,16 @@ import {
 export { isFutureDateStr as isFutureDate } from '../../../shared/release-format';
 
 export interface TmdbTvSummary {
+  first_air_date?: string | null;
   number_of_seasons: number;
   number_of_episodes: number;
   seasons: WatchlistSeasonInfo[];
   last_episode_to_air?: { season_number: number; episode_number: number } | null;
   next_episode_to_air?: { season_number: number; episode_number: number; air_date?: string | null } | null;
+}
+
+export interface TmdbMovieSummary {
+  release_date?: string | null;
 }
 
 interface RawTmdbSeason {
@@ -28,11 +33,16 @@ interface RawTmdbEpisodeRef {
 }
 
 interface RawTmdbTv {
+  first_air_date?: string | null;
   number_of_seasons?: number;
   number_of_episodes?: number;
   seasons?: RawTmdbSeason[];
   last_episode_to_air?: RawTmdbEpisodeRef | null;
   next_episode_to_air?: RawTmdbEpisodeRef | null;
+}
+
+interface RawTmdbMovie {
+  release_date?: string | null;
 }
 
 interface CacheRow {
@@ -55,10 +65,25 @@ function toEpisodeRef(ref: RawTmdbEpisodeRef | null | undefined): TmdbTvSummary[
 function parseCachedSummary(data: string): TmdbTvSummary | null {
   try {
     const parsed = JSON.parse(data) as Partial<TmdbTvSummary>;
-    if (!Array.isArray(parsed.seasons) || !('last_episode_to_air' in parsed) || !('next_episode_to_air' in parsed)) {
+    if (
+      !Array.isArray(parsed.seasons)
+      || !('first_air_date' in parsed)
+      || !('last_episode_to_air' in parsed)
+      || !('next_episode_to_air' in parsed)
+    ) {
       return null;
     }
     return parsed as TmdbTvSummary;
+  } catch {
+    return null;
+  }
+}
+
+function parseCachedMovieSummary(data: string): TmdbMovieSummary | null {
+  try {
+    const parsed = JSON.parse(data) as Partial<TmdbMovieSummary>;
+    if (!('release_date' in parsed)) return null;
+    return parsed as TmdbMovieSummary;
   } catch {
     return null;
   }
@@ -77,6 +102,40 @@ export function getAiredEpisodesCount(summary: TmdbTvSummary | null): number {
 
 export function getBaseAiredEpisodesCount(summary: TmdbTvSummary | null): number {
   return sharedGetBaseAiredEpisodesCount(summary);
+}
+
+export async function getTmdbMovieSummary(
+  tmdbId: number | string,
+  options?: { forceRefresh?: boolean }
+): Promise<TmdbMovieSummary | null> {
+  const key = `movie:${tmdbId}`;
+  const now = Math.floor(Date.now() / 1000);
+  const cached = db.prepare('SELECT data, fetched_at FROM tmdb_cache WHERE cache_key = ?').get(key) as CacheRow | undefined;
+  if (!options?.forceRefresh && cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
+    const parsed = parseCachedMovieSummary(cached.data);
+    if (parsed) return parsed;
+  }
+
+  if (!TMDB_API_KEY) return null;
+
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/movie/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
+    if (!res.ok) return null;
+
+    const data = await res.json() as RawTmdbMovie;
+    const stored: TmdbMovieSummary = {
+      release_date: data.release_date ?? null
+    };
+
+    db.prepare('INSERT OR REPLACE INTO tmdb_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)').run(
+      key,
+      JSON.stringify(stored),
+      now
+    );
+    return stored;
+  } catch {
+    return null;
+  }
 }
 
 // Fetches a TV show's headline counts from TMDB, with a SQLite cache.
@@ -103,6 +162,7 @@ export async function getTmdbTvSummary(
     const data = await res.json() as RawTmdbTv;
     const lea = data.last_episode_to_air;
     const stored: TmdbTvSummary = {
+      first_air_date: data.first_air_date ?? null,
       number_of_seasons: data.number_of_seasons ?? 0,
       number_of_episodes: data.number_of_episodes ?? 0,
       seasons: (data.seasons ?? [])
