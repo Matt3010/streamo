@@ -52,6 +52,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  width: 100%;
 }
 
 .history-section-header {
@@ -81,6 +82,12 @@
 
 .history-item-list {
   margin: 0;
+  max-width: none;
+  width: 100%;
+}
+
+.history-item-list .item-row {
+  width: 100%;
 }
 
 .empty-state-actions {
