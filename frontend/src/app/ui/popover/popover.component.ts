@@ -23,6 +23,16 @@ import {
         <span class="ui-popover-arrow"
               [style.left.px]="arrowLeft()"
               aria-hidden="true"></span>
+        @if (title() || secondary()) {
+          <div class="ui-popover-header">
+            @if (title()) {
+              <strong class="ui-popover-title">{{ title() }}</strong>
+            }
+            @if (secondary()) {
+              <span class="ui-popover-secondary">{{ secondary() }}</span>
+            }
+          </div>
+        }
         <ng-content></ng-content>
       </div>
     }
@@ -33,7 +43,9 @@ export class UiPopoverComponent {
   private readonly arrowSize = 14;
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
-  readonly width = input(248);
+  readonly width = input(228);
+  readonly title = input('');
+  readonly secondary = input('');
   readonly preferredHeight = input(96);
   readonly closed = output<void>();
   protected readonly panelWidth = computed(() => Math.min(this.width(), window.innerWidth - 24));

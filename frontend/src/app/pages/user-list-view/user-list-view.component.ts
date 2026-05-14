@@ -433,7 +433,12 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 
     <ui-popover [(open)]="folderPopoverOpen"
                 [anchor]="folderPopoverAnchor()"
-                [width]="folderTargetHasFolder() ? 520 : 440"
+                [width]="folderTargetHasFolder() ? 430 : 350"
+                [preferredHeight]="130"
+                [title]="folderTargetItem()?.title ?? 'Folder'"
+                [secondary]="folderTargetHasFolder()
+                  ? 'Folder attuale: ' + (folderTargetItem()?.folderName ?? '')
+                  : 'Aggiungi o aggiorna il folder del titolo'"
                 (closed)="closeFolderPopover()">
       <div class="folder-popover-bar">
         <input class="folder-popover-input"

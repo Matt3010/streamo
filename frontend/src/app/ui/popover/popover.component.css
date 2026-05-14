@@ -7,17 +7,37 @@
 .ui-popover {
   position: fixed;
   z-index: 210;
-  width: 248px;
+  width: 228px;
   max-width: calc(100vw - 24px);
   overflow: visible;
   isolation: isolate;
-  border-radius: 16px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
     rgba(12, 12, 12, 0.98);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
   transform: translateY(calc(-100% - 8px));
+}
+
+.ui-popover-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.7rem 0.8rem 0;
+}
+
+.ui-popover-title {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.ui-popover-secondary {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .ui-popover-arrow {
