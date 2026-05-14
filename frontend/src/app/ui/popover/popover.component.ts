@@ -1,11 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   HostListener,
   computed,
   input,
   model,
-  output
+  output,
+  signal,
+  viewChild
 } from '@angular/core';
 
 @Component({
@@ -16,6 +19,7 @@ import {
     @if (open() && anchor()) {
       <div class="ui-popover-backdrop" aria-hidden="true"></div>
       <div class="ui-popover"
+           #panel
            [style.top.px]="panelTop()"
            [style.left.px]="panelLeft()"
            [style.width.px]="panelWidth()"
@@ -41,6 +45,9 @@ import {
 })
 export class UiPopoverComponent {
   private readonly arrowSize = 14;
+  private readonly edgePadding = 12;
+  private readonly anchorGap = 8;
+  private readonly viewportTick = signal(0);
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
   readonly width = input(228);
@@ -48,41 +55,51 @@ export class UiPopoverComponent {
   readonly secondary = input('');
   readonly preferredHeight = input(96);
   readonly closed = output<void>();
+  private readonly panel = viewChild<ElementRef<HTMLDivElement>>('panel');
   protected readonly panelWidth = computed(() => Math.min(this.width(), window.innerWidth - 24));
+  protected readonly panelHeight = computed(() => {
+    this.viewportTick();
+    const panel = this.panel();
+    return panel?.nativeElement.offsetHeight ?? this.preferredHeight();
+  });
 
   protected readonly panelLeft = computed(() => {
+    this.viewportTick();
     const anchor = this.anchor();
     if (!anchor) return 0;
     const rect = anchor.getBoundingClientRect();
     const width = this.panelWidth();
     const desired = rect.left + (rect.width / 2) - (width / 2);
-    const min = 12;
-    const max = window.innerWidth - width - 12;
+    const min = this.edgePadding;
+    const max = window.innerWidth - width - this.edgePadding;
     return Math.max(min, Math.min(desired, max));
   });
 
   protected readonly placement = computed<'above' | 'below'>(() => {
+    this.viewportTick();
     const anchor = this.anchor();
     if (!anchor) return 'above';
     const rect = anchor.getBoundingClientRect();
-    const spaceAbove = rect.top - 12;
-    const spaceBelow = window.innerHeight - rect.bottom - 12;
-    const needed = this.preferredHeight();
+    const spaceAbove = rect.top - this.edgePadding - this.anchorGap;
+    const spaceBelow = window.innerHeight - rect.bottom - this.edgePadding - this.anchorGap;
+    const needed = this.panelHeight();
     if (spaceBelow >= needed) return 'below';
     if (spaceAbove >= needed) return 'above';
     return spaceBelow > spaceAbove ? 'below' : 'above';
   });
 
   protected readonly panelTop = computed(() => {
+    this.viewportTick();
     const anchor = this.anchor();
     if (!anchor) return 0;
     const rect = anchor.getBoundingClientRect();
     return this.placement() === 'above'
-      ? Math.max(12, rect.top - 12)
-      : Math.min(window.innerHeight - 12, rect.bottom + 12);
+      ? Math.max(this.edgePadding, rect.top - this.panelHeight() - this.anchorGap)
+      : Math.min(window.innerHeight - this.panelHeight() - this.edgePadding, rect.bottom + this.anchorGap);
   });
 
   protected readonly arrowLeft = computed(() => {
+    this.viewportTick();
     const anchor = this.anchor();
     if (!anchor) return 24;
     const rect = anchor.getBoundingClientRect();
@@ -105,6 +122,11 @@ export class UiPopoverComponent {
     const active = document.activeElement;
     if (active instanceof Element && active.closest('.ui-popover')) return;
     this.dismiss();
+  }
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.viewportTick.update((value) => value + 1);
   }
 
   @HostListener('document:pointerdown', ['$event'])
