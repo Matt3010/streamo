@@ -18,6 +18,26 @@
   transform: translateY(calc(-100% - 8px));
 }
 
+.ui-popover-arrow {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  bottom: -7px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 12, 12, 0.98);
+  transform: rotate(45deg);
+}
+
 .ui-popover.ui-popover-below {
   transform: translateY(8px);
+}
+
+.ui-popover.ui-popover-below .ui-popover-arrow {
+  top: -7px;
+  bottom: auto;
+  border-right: none;
+  border-bottom: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }

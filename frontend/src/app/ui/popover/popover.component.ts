@@ -20,6 +20,9 @@ import {
            [style.left.px]="panelLeft()"
            [style.width.px]="panelWidth()"
            [class.ui-popover-below]="placement() === 'below'">
+        <span class="ui-popover-arrow"
+              [style.left.px]="arrowLeft()"
+              aria-hidden="true"></span>
         <ng-content></ng-content>
       </div>
     }
@@ -27,6 +30,7 @@ import {
   styleUrl: './popover.component.css'
 })
 export class UiPopoverComponent {
+  private readonly arrowSize = 14;
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
   readonly width = input(248);
@@ -60,6 +64,18 @@ export class UiPopoverComponent {
       : Math.min(window.innerHeight - 12, rect.bottom + 12);
   });
 
+  protected readonly arrowLeft = computed(() => {
+    const anchor = this.anchor();
+    if (!anchor) return 24;
+    const rect = anchor.getBoundingClientRect();
+    const center = rect.left + (rect.width / 2);
+    const relative = center - this.panelLeft();
+    const halfArrow = this.arrowSize / 2;
+    const min = 18;
+    const max = this.panelWidth() - 18;
+    return Math.max(min, Math.min(relative - halfArrow, max - this.arrowSize));
+  });
+
   @HostListener('document:keydown.escape')
   onEscape(): void {
     if (this.open()) this.dismiss();
@@ -67,7 +83,10 @@ export class UiPopoverComponent {
 
   @HostListener('window:scroll')
   onWindowScroll(): void {
-    if (this.open()) this.dismiss();
+    if (!this.open()) return;
+    const active = document.activeElement;
+    if (active instanceof Element && active.closest('.ui-popover')) return;
+    this.dismiss();
   }
 
   @HostListener('document:pointerdown', ['$event'])
