@@ -13,7 +13,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import { enrichCardsWithTmdb } from '../../utils/card-item.util';
+import { enrichTmdbCards, enrichWatchlistCardsWithTmdb, watchlistToCardItem } from '../../utils/card-item.util';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
 import { getStatusTransition, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
 import type { CardItem, WatchlistListStatusFilter } from '../../models';
@@ -848,21 +848,7 @@ export class UserListViewComponent {
     if (kind === 'watchlist') {
       const list = await this.watchlist.list({ status, ...(mediaType ? { media_type: mediaType } : {}) });
       if (mySeq !== this.seq) return;
-      const items = await enrichCardsWithTmdb(list.map(w => ({
-        tmdb_id: w.tmdb_id,
-        media_type: w.media_type,
-        title: w.title ?? 'Senza titolo',
-        poster: w.poster,
-        status: w.status ?? 'todo',
-        folderName: w.folder_name ?? null,
-        isUpcoming: w.is_upcoming,
-        watchStatus: w.watch_status_text,
-        nextReleaseText: w.next_release_text,
-        season: w.resume_season,
-        episode: w.resume_episode,
-        position: w.position,
-        duration: w.duration
-      })), this.tmdb, { useBackendStatus: true });
+      const items = await enrichWatchlistCardsWithTmdb(list.map(watchlistToCardItem), this.tmdb);
       if (mySeq !== this.seq) return;
       this.items.set(items);
     } else {
@@ -871,7 +857,7 @@ export class UserListViewComponent {
         this.watchlist.list()
       ]);
       if (mySeq !== this.seq) return;
-      const items = await enrichCardsWithTmdb(applyWatchlistFlags(list.map(h => ({
+      const items = await enrichTmdbCards(applyWatchlistFlags(list.map(h => ({
         tmdb_id: h.tmdb_id,
         media_type: h.media_type,
         title: h.title ?? 'Senza titolo',

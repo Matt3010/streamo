@@ -1,4 +1,4 @@
-import type { CardItem, MediaType, TmdbItem } from '../models';
+import type { CardItem, MediaType, TmdbItem, WatchlistItem } from '../models';
 import type { TmdbService } from '../services/tmdb.service';
 import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from './media-release.util';
 
@@ -20,10 +20,27 @@ export function tmdbToCardItem(item: TmdbItem, type: MediaType, showReleaseText 
   };
 }
 
-export async function enrichCardsWithTmdb(
+export function watchlistToCardItem(item: WatchlistItem): CardItem {
+  return {
+    tmdb_id: item.tmdb_id,
+    media_type: item.media_type,
+    title: item.title ?? 'Senza titolo',
+    poster: item.poster,
+    status: item.status ?? 'todo',
+    folderName: item.folder_name ?? null,
+    isUpcoming: item.is_upcoming,
+    watchStatus: item.watch_status_text,
+    nextReleaseText: item.next_release_text,
+    season: item.resume_season,
+    episode: item.resume_episode,
+    position: item.position,
+    duration: item.duration
+  };
+}
+
+export async function enrichTmdbCards(
   items: CardItem[],
-  tmdb: TmdbService,
-  options: { useBackendStatus?: boolean } = {}
+  tmdb: TmdbService
 ): Promise<CardItem[]> {
   return Promise.all(items.map(async (item) => {
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
@@ -35,11 +52,27 @@ export async function enrichCardsWithTmdb(
       voteCount: details.vote_count,
       rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
       year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
-      isUpcoming: options.useBackendStatus ? (item.isUpcoming ?? upcoming) : upcoming,
+      isUpcoming: upcoming,
       upcomingBadge: getUpcomingBadgeText(details, item.media_type),
-      nextReleaseText: options.useBackendStatus
-        ? item.nextReleaseText
-        : getCompactReleaseStatusText(details, item.media_type) || undefined
+      nextReleaseText: getCompactReleaseStatusText(details, item.media_type) || undefined
+    };
+  }));
+}
+
+export async function enrichWatchlistCardsWithTmdb(
+  items: CardItem[],
+  tmdb: TmdbService
+): Promise<CardItem[]> {
+  return Promise.all(items.map(async (item) => {
+    const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
+    if (!details) return item;
+    return {
+      ...item,
+      popularity: details.popularity,
+      voteCount: details.vote_count,
+      rating: item.rating ?? (details.vote_average ? details.vote_average.toFixed(1) : ''),
+      year: item.year ?? (details.release_date ?? details.first_air_date ?? '').split('-')[0] ?? '',
+      upcomingBadge: getUpcomingBadgeText(details, item.media_type)
     };
   }));
 }

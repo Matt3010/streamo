@@ -11,7 +11,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
-import { enrichCardsWithTmdb, tmdbToCardItem } from '../../utils/card-item.util';
+import { enrichTmdbCards, enrichWatchlistCardsWithTmdb, tmdbToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
 import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage } from '../../utils/watchlist-status.util';
 import { SECTIONS } from './sections.config';
 import type { CardItem, SectionConfig } from '../../models';
@@ -290,7 +290,7 @@ export class HomeComponent {
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
 
-    const progressCardsRaw = await enrichCardsWithTmdb(progress.map(p => ({
+    const progressCardsRaw = await enrichTmdbCards(progress.map(p => ({
       tmdb_id: p.tmdb_id,
       media_type: p.media_type,
       title: p.title ?? 'Senza titolo',
@@ -304,20 +304,10 @@ export class HomeComponent {
 
     const progressCards = applyWatchlistFlags(progressCardsRaw, wl);
 
-    const watchlistCards = await enrichCardsWithTmdb(wl.filter(w => (w.status ?? 'todo') !== 'done').map(w => ({
-      tmdb_id: w.tmdb_id,
-      media_type: w.media_type,
-      title: w.title ?? 'Senza titolo',
-      poster: w.poster,
-      status: w.status ?? 'todo',
-      isUpcoming: w.is_upcoming,
-      season: w.resume_season,
-      episode: w.resume_episode,
-      position: w.position,
-      duration: w.duration,
-      watchStatus: w.watch_status_text,
-      nextReleaseText: w.next_release_text
-    })), this.tmdb, { useBackendStatus: true });
+    const watchlistCards = await enrichWatchlistCardsWithTmdb(
+      wl.filter(w => (w.status ?? 'todo') !== 'done').map(watchlistToCardItem),
+      this.tmdb
+    );
     if (seq !== this.userSeq) return;
 
     this.userLoading.set(false);
