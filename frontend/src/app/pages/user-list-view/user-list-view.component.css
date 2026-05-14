@@ -594,6 +594,30 @@
   padding-top: 0.35rem;
 }
 
+.folder-remove-modal {
+  padding: 1rem 1.2rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.folder-remove-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.folder-remove-copy p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.folder-remove-warning {
+  color: var(--text-muted) !important;
+  font-size: 0.88rem;
+}
+
 .folder-modal-actions-main {
   display: flex;
   justify-content: flex-end;

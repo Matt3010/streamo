@@ -434,7 +434,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     <ui-modal [(open)]="folderModalOpen"
               [title]="folderTargetHasFolder() ? 'Modifica folder' : 'Aggiungi a un folder'"
               size="sm"
-              (closed)="closeFolderModal()">
+              (closed)="onFolderModalClosed()">
       <div class="folder-modal-content">
         <div class="folder-modal-hero">
           <span class="folder-modal-icon">
@@ -490,17 +490,49 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
           @if (folderTargetHasFolder()) {
             <button class="secondary-btn danger-outline"
                     [disabled]="savingFolder()"
-                    (click)="removeFolder()">
+                    (click)="openRemoveFolderModal()">
               Rimuovi dal folder
             </button>
           }
           <div class="folder-modal-actions-main">
-            <button class="secondary-btn" (click)="closeFolderModal()">Chiudi</button>
+            <button class="secondary-btn" (click)="closeFolderModal()">Annulla</button>
             <button class="primary-btn"
                     [uiPending]="savingFolder()"
                     [disabled]="!canSaveFolder()"
                     (click)="saveFolder()">
               {{ folderTargetHasFolder() ? 'Aggiorna folder' : 'Salva folder' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ui-modal>
+
+    <ui-modal [(open)]="folderRemoveModalOpen"
+              title="Rimuovi dal folder"
+              size="sm"
+              (closed)="cancelRemoveFolderModal()">
+      <div class="folder-remove-modal">
+        <div class="folder-remove-copy">
+          <p>
+            Vuoi rimuovere <strong>{{ folderTargetItem()?.title }}</strong>
+            dal folder <strong>{{ folderTargetItem()?.folderName }}</strong>?
+          </p>
+          <p class="folder-remove-warning">
+            Il titolo restera nella tua lista, ma non verra piu raggruppato in questo folder.
+          </p>
+        </div>
+
+        <div class="folder-modal-actions">
+          <button class="secondary-btn"
+                  [disabled]="savingFolder()"
+                  (click)="cancelRemoveFolderModal()">
+            Indietro
+          </button>
+          <div class="folder-modal-actions-main">
+            <button class="secondary-btn danger-outline"
+                    [uiPending]="savingFolder()"
+                    (click)="confirmRemoveFolder()">
+              Rimuovi dal folder
             </button>
           </div>
         </div>
@@ -531,6 +563,7 @@ export class UserListViewComponent {
   protected readonly confirmModalOpen = signal(false);
   protected readonly pendingAction = signal<PendingAction | null>(null);
   protected readonly folderModalOpen = signal(false);
+  protected readonly folderRemoveModalOpen = signal(false);
   protected readonly folderTargetItem = signal<CardItem | null>(null);
   protected readonly folderDraft = signal('');
   protected readonly savingFolder = signal(false);
@@ -648,6 +681,8 @@ export class UserListViewComponent {
 
   private seq = 0;
   private lastFolderDropAt = 0;
+  private openingFolderRemoveModal = false;
+  private reopenFolderEditorAfterRemove = false;
 
   constructor() {
     effect(() => {
@@ -770,14 +805,21 @@ export class UserListViewComponent {
     if (!this.folderFeatureEnabled()) return;
     this.folderTargetItem.set(item);
     this.folderDraft.set(item.folderName ?? '');
+    this.reopenFolderEditorAfterRemove = false;
+    this.openingFolderRemoveModal = false;
     this.folderModalOpen.set(true);
   }
 
   protected closeFolderModal(): void {
     this.folderModalOpen.set(false);
-    this.folderTargetItem.set(null);
-    this.folderDraft.set('');
-    this.savingFolder.set(false);
+  }
+
+  protected onFolderModalClosed(): void {
+    if (this.openingFolderRemoveModal) {
+      this.openingFolderRemoveModal = false;
+      return;
+    }
+    this.resetFolderModalState();
   }
 
   protected onFolderDraftInput(event: Event): void {
@@ -799,19 +841,41 @@ export class UserListViewComponent {
     try {
       await this.applyFolderChange(item, folderName, `${item.title}: spostato in ${folderName}`, true);
     } finally {
-      if (this.folderModalOpen()) this.savingFolder.set(false);
+      if (this.folderModalOpen() || this.folderRemoveModalOpen()) this.savingFolder.set(false);
     }
   }
 
-  protected async removeFolder(): Promise<void> {
+  protected openRemoveFolderModal(): void {
+    const item = this.folderTargetItem();
+    if (!item?.folderName) return;
+    this.openingFolderRemoveModal = true;
+    this.reopenFolderEditorAfterRemove = true;
+    this.folderModalOpen.set(false);
+    this.folderRemoveModalOpen.set(true);
+  }
+
+  protected cancelRemoveFolderModal(): void {
+    this.folderRemoveModalOpen.set(false);
+    this.savingFolder.set(false);
+    const shouldReopen = this.reopenFolderEditorAfterRemove;
+    this.reopenFolderEditorAfterRemove = false;
+    if (shouldReopen && this.folderTargetItem() && this.folderFeatureEnabled()) {
+      this.folderModalOpen.set(true);
+      return;
+    }
+    this.resetFolderModalState();
+  }
+
+  protected async confirmRemoveFolder(): Promise<void> {
     const item = this.folderTargetItem();
     if (!item || !item.folderName) return;
 
+    this.reopenFolderEditorAfterRemove = false;
     this.savingFolder.set(true);
     try {
       await this.applyFolderChange(item, null, `${item.title}: folder rimosso`, true);
     } finally {
-      if (this.folderModalOpen()) this.savingFolder.set(false);
+      if (this.folderModalOpen() || this.folderRemoveModalOpen()) this.savingFolder.set(false);
     }
   }
 
@@ -945,9 +1009,19 @@ export class UserListViewComponent {
       }
       this.toast.show(successMessage);
       if (closeModal) {
-        this.closeFolderModal();
+        this.resetFolderModalState();
       }
     });
+  }
+
+  private resetFolderModalState(): void {
+    this.folderModalOpen.set(false);
+    this.folderRemoveModalOpen.set(false);
+    this.folderTargetItem.set(null);
+    this.folderDraft.set('');
+    this.savingFolder.set(false);
+    this.openingFolderRemoveModal = false;
+    this.reopenFolderEditorAfterRemove = false;
   }
 
   private async load(kind: UserListType, media: MediaFilter, status?: WatchlistListStatusFilter): Promise<void> {
