@@ -11,7 +11,7 @@
   max-width: calc(100vw - 24px);
   overflow: visible;
   isolation: isolate;
-  border-radius: 14px;
+  border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
@@ -46,12 +46,37 @@
   width: 18px;
   height: 10px;
   bottom: -10px;
+  overflow: visible;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
     rgba(12, 12, 12, 0.98);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.1));
   pointer-events: none;
+}
+
+.ui-popover-arrow::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px 0 -1px;
+  z-index: -1;
+  background: rgba(255, 255, 255, 0.1);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.ui-popover-arrow::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(12, 12, 12, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
 }
 
 .ui-popover.ui-popover-below {
@@ -62,4 +87,14 @@
   top: -10px;
   bottom: auto;
   clip-path: polygon(50% 0, 0 100%, 100% 100%);
+}
+
+.ui-popover.ui-popover-below .ui-popover-arrow::before {
+  inset: 0 -1px -1px -1px;
+  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+}
+
+.ui-popover.ui-popover-below .ui-popover-arrow::after {
+  top: -1px;
+  bottom: auto;
 }
