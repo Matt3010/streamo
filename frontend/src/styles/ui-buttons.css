@@ -304,9 +304,14 @@
 }
 
 .ui-button-toggle-icon:hover:not(:disabled):not(.ui-pending) {
-  background: transparent;
+  background: var(--surface-hover);
   border-color: transparent;
   color: var(--text);
+  transform: none;
+}
+
+.ui-button-toggle-icon[aria-pressed="true"]:hover:not(:disabled):not(.ui-pending) {
+  background: var(--accent);
 }
 
 .ui-button-toggle-icon[aria-pressed="true"] {
