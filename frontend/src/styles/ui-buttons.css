@@ -161,6 +161,7 @@
 .ui-button-icon {
   width: 40px;
   min-width: 40px;
+  height: 40px;
   min-height: 40px;
   padding: 0;
   border-radius: 14px;
@@ -169,6 +170,7 @@
 .ui-button-icon-circle {
   width: 40px;
   min-width: 40px;
+  height: 40px;
   min-height: 40px;
   padding: 0;
   border: none;
@@ -184,6 +186,7 @@
 .ui-button-icon-outline {
   width: 36px;
   min-width: 36px;
+  height: 36px;
   min-height: 36px;
   padding: 0;
   border-radius: 999px;
@@ -199,6 +202,7 @@
 .ui-button-icon-subtle {
   width: 32px;
   min-width: 32px;
+  height: 32px;
   min-height: 32px;
   padding: 0;
   border: none;
@@ -216,6 +220,7 @@
 .ui-button-icon-overlay {
   width: 28px;
   min-width: 28px;
+  height: 28px;
   min-height: 28px;
   padding: 0;
   border: none;
@@ -263,12 +268,25 @@
 .ui-button-toggle-icon {
   width: 38px;
   min-width: 38px;
+  height: 38px;
   min-height: 38px;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--text-muted);
   border-radius: 0;
+}
+
+.ui-button-icon,
+.ui-button-icon-circle,
+.ui-button-icon-outline,
+.ui-button-icon-subtle,
+.ui-button-icon-overlay,
+.ui-button-toggle-icon {
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .ui-button-toggle-icon:hover:not(:disabled):not(.ui-pending) {
@@ -375,18 +393,21 @@
   .ui-button-icon {
     width: 36px;
     min-width: 36px;
+    height: 36px;
     min-height: 36px;
   }
 
   .ui-button-icon-circle {
     width: 36px;
     min-width: 36px;
+    height: 36px;
     min-height: 36px;
   }
 
   .ui-button-icon-outline {
     width: 32px;
     min-width: 32px;
+    height: 32px;
     min-height: 32px;
   }
 }

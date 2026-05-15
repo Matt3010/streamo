@@ -143,6 +143,7 @@
   top: 6px;
   right: 6px;
   display: none;
+  align-items: flex-start;
   gap: 4px;
   z-index: 4;
 }
@@ -152,10 +153,4 @@
 /* Touch devices have no hover — always show the actions */
 @media (hover: none) {
   .card-actions { display: flex; }
-}
-
-.card-actions > .ui-button-icon-overlay {
-  width: 28px;
-  min-width: 28px;
-  min-height: 28px;
 }
