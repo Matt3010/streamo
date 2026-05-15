@@ -10,8 +10,7 @@ const MONTHS_IT = [
   'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'
 ];
 
-const COLOR_EPISODES = '#9be7ae';
-const COLOR_MOVIES = '#e50914';
+const COLOR_LINE = '#e50914';
 
 interface ChartState {
   labels: string[];
@@ -20,9 +19,9 @@ interface ChartState {
 }
 
 /* Self-fetches the user's full history so the dataset stays stable
- * across filter changes — the visible series is then narrowed down
- * via the mediaFilter input so the chart matches what the page
- * currently shows. */
+ * across filter changes — the visible total is then narrowed down
+ * via the mediaFilter input ('all' = movies + episodes, 'tv' = only
+ * episodes, 'movie' = only movies). */
 @Component({
   selector: 'app-history-activity-chart',
   standalone: true,
@@ -31,7 +30,7 @@ interface ChartState {
   styleUrl: './history-activity-chart.component.css',
   template: `
     @if (state(); as s) {
-      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" [height]="110" [smoothing]="2.6" />
+      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" [height]="110" />
     }
   `
 })
@@ -44,14 +43,12 @@ export class HistoryActivityChartComponent {
     const s = this.state();
     if (!s) return [];
     const filter = this.mediaFilter();
-    const out: LineChartSeries[] = [];
-    if (filter !== 'movie') {
-      out.push({ name: 'Episodi', color: COLOR_EPISODES, values: s.episodes });
-    }
-    if (filter !== 'tv') {
-      out.push({ name: 'Film', color: COLOR_MOVIES, values: s.movies });
-    }
-    return out;
+    const values = s.labels.map((_, i) => {
+      const ep = filter === 'movie' ? 0 : s.episodes[i];
+      const mv = filter === 'tv' ? 0 : s.movies[i];
+      return ep + mv;
+    });
+    return [{ name: seriesName(filter), color: COLOR_LINE, values }];
   });
 
   constructor() {
@@ -62,6 +59,12 @@ export class HistoryActivityChartComponent {
     const items = await this.history.list();
     this.state.set(aggregate(items));
   }
+}
+
+function seriesName(filter: ChartMediaFilter): string {
+  if (filter === 'tv') return 'Episodi';
+  if (filter === 'movie') return 'Film';
+  return 'Visualizzazioni';
 }
 
 function aggregate(items: { watched_at: number; media_type: string }[]): ChartState {
