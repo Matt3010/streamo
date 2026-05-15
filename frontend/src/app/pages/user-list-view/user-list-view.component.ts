@@ -13,6 +13,7 @@ import { ListItemInfoComponent } from './list-item-info.component';
 import { ListRowActionsComponent } from './list-row-actions.component';
 import { FolderCardComponent } from './folder-card.component';
 import { FolderRowComponent } from './folder-row.component';
+import { HistoryActivityChartComponent } from './history-activity-chart.component';
 import type { FolderGroup } from './folder.model';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -83,6 +84,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     ListRowActionsComponent,
     FolderCardComponent,
     FolderRowComponent,
+    HistoryActivityChartComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -121,6 +123,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </div>
       </div>
     } @else if (kind() === 'history') {
+      <app-history-activity-chart />
       <div class="history-sections">
         @for (section of historySections(); track section.key) {
           <section class="history-section">
