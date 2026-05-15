@@ -98,12 +98,13 @@
 .search-suggestions {
   list-style: none;
   margin: 0;
-  padding: 0.15rem 0;
+  padding: 0.55rem 0 0.15rem;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
   max-height: 22rem;
   overflow-y: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   scrollbar-width: thin;
   scrollbar-color: var(--surface-hover) transparent;
 }
@@ -120,7 +121,7 @@
 .search-suggestion {
   width: 100%;
   gap: 0.7rem;
-  padding: 0.42rem 0.5rem;
+  padding: 0.42rem 0.66rem;
   border-radius: 12px;
   transition: background 0.15s ease;
 }
@@ -182,21 +183,18 @@
   border-radius: 4px;
 }
 
-/* Recent searches block. Mirrors the suggestions visually but the
- * trailing × removes a single entry; the header "Cancella" wipes the
- * list. */
+/* Recent searches block. Mirrors the suggestions visually; the trailing
+ * × on each row removes a single entry. */
 .search-recents {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  padding-top: 0.1rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .search-recents-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0.55rem 0.15rem;
+  padding: 0 0.66rem 0.15rem;
 }
 
 .search-recents-title {
@@ -205,20 +203,6 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-
-.search-recents-clear {
-  border: none;
-  background: transparent;
-  padding: 0;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.search-recents-clear:hover {
-  color: var(--text);
 }
 
 .search-recents ul {
@@ -233,7 +217,7 @@
 .search-recent {
   width: 100%;
   gap: 0.6rem;
-  padding: 0.4rem 0.5rem;
+  padding: 0.4rem 0.66rem;
   border-radius: 12px;
   transition: background 0.15s ease;
   display: flex;

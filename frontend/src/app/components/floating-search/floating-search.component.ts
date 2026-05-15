@@ -104,7 +104,6 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
               <div class="search-recents">
                 <div class="search-recents-header">
                   <span class="search-recents-title">Recenti</span>
-                  <button type="button" class="search-recents-clear" (click)="clearRecents()">Cancella</button>
                 </div>
                 <ul role="listbox">
                   @for (term of recents(); track term) {
@@ -249,11 +248,6 @@ export class FloatingSearchComponent {
       persistRecents(next);
       return next;
     });
-  }
-
-  protected clearRecents(): void {
-    this.recents.set([]);
-    persistRecents([]);
   }
 
   protected suggestionTitle(item: TmdbItem): string {
