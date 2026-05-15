@@ -11,8 +11,8 @@ import { UserListViewComponent } from '../user-list-view/user-list-view.componen
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { ShareLinksService } from '../../services/share-links.service';
 import { LiveSocketService, type LiveSocketController } from '../../services/live-socket.service';
-import type { CardItem, MediaType } from '../../models';
-import type { SharedWatchlistItem } from '../../../../../shared/types';
+import { watchlistToCardItem } from '../../utils/card-item.util';
+import type { CardItem, WatchlistItem } from '../../models';
 
 /* Public /shared/:token page. Fetches the read-only payload and
  * defers to <app-user-list-view> in readonly mode for the actual
@@ -98,7 +98,11 @@ export class SharedListViewComponent {
     }
     this.notFound.set(false);
     this.ownerName.set(data.owner.name);
-    this.items.set(data.items.map(sharedToCardItem));
+    /* SharedWatchlistItem is a structural subset of WatchlistItem
+     * (the extra owner-only fields like resume hints just arrive as
+     * undefined here), so the existing mapper works without a
+     * dedicated shared variant. */
+    this.items.set(data.items.map((row) => watchlistToCardItem(row as WatchlistItem)));
   }
 
   private openSocket(token: string): void {
@@ -126,15 +130,4 @@ export class SharedListViewComponent {
     });
     this.socket.connect();
   }
-}
-
-function sharedToCardItem(row: SharedWatchlistItem): CardItem {
-  return {
-    tmdb_id: row.tmdb_id,
-    media_type: row.media_type as MediaType,
-    title: row.title ?? 'Senza titolo',
-    poster: row.poster,
-    folderName: row.folder_name ?? undefined,
-    status: row.status
-  };
 }
