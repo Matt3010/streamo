@@ -1,7 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
+  effect,
   inject,
   input,
   signal
@@ -57,11 +57,20 @@ export class SharedListViewComponent {
   protected readonly items = signal<CardItem[]>([]);
 
   constructor() {
-    void this.load();
+    /* effect() instead of a plain constructor call: the token input
+     * is bound from the :token route param by
+     * withComponentInputBinding(), which runs AFTER the constructor.
+     * Reading an input.required signal in the constructor throws
+     * NG0950 silently and leaves the page stuck on the loading
+     * spinner forever. */
+    effect(() => {
+      const token = this.token();
+      if (!token) return;
+      void this.load(token);
+    });
   }
 
-  private async load(): Promise<void> {
-    const token = this.token();
+  private async load(token: string): Promise<void> {
     this.loading.set(true);
     const data = await this.service.fetchShared(token);
     this.loading.set(false);
