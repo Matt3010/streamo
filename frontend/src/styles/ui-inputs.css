@@ -56,6 +56,16 @@ select.ui-input {
   background-repeat: no-repeat;
   background-position: right 0.9rem center;
   background-size: 0.72rem;
+  /* Tell the browser to render the native dropdown panel in dark
+   * mode (Chrome / Edge honour this; Firefox falls back to OS
+   * theme). The <option> rule below covers Chromium's own option
+   * row colours so the dropdown blends with the dark page chrome. */
+  color-scheme: dark;
+}
+
+select.ui-input option {
+  background-color: var(--surface);
+  color: var(--text);
 }
 
 textarea.ui-input {
