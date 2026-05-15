@@ -191,6 +191,19 @@
   gap: 0.2rem;
   padding-top: 0.55rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  max-height: 22rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-hover) transparent;
+}
+
+.search-recents::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-recents::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: 3px;
 }
 
 .search-recents-header {
@@ -377,6 +390,25 @@
     right: 0.7rem;
     width: auto;
     border-radius: 22px;
+    /* Cap the panel to the visible viewport so the suggestions /
+     * recents list scrolls inside the panel instead of pushing the
+     * top of the panel above the screen. dvh respects the on-screen
+     * keyboard; vh is the fallback for older browsers. */
+    max-height: calc(100vh - 1.4rem);
+    max-height: calc(100dvh - 1.4rem);
+  }
+
+  .search-panel.open .search-box {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .search-panel.open .search-suggestions,
+  .search-panel.open .search-recents {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
   }
 
   .search-actions {
