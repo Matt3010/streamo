@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { db } from '../db';
 import { requireAuth } from '../middleware/auth';
+import { publishShareLinkRevoked } from '../services/user-live';
 import type {
   ShareLink,
   ShareLinkStatus,
@@ -12,6 +14,19 @@ import type {
 const router = Router();
 
 const MAX_LABEL_LENGTH = 60;
+
+/* Per-IP throttle for the public /shared/:token endpoint. 60 req/min
+ * is generous for a human browsing their friend's list (page open,
+ * occasional refresh) but stops trivial enumeration of the token
+ * space. The auth-required CRUD endpoints don't need this — they're
+ * already gated by session. */
+const sharedLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'too_many_requests' }
+});
 
 function normalizeLabel(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -102,6 +117,10 @@ router.patch('/user/share-links/:id', requireAuth, (req, res) => {
     WHERE id = ? AND user_id = ?
   `).get(id, req.user!.id) as ShareLink;
 
+  if (row.status === 'suspended') {
+    publishShareLinkRevoked(row.token);
+  }
+
   res.json(row);
 });
 
@@ -114,6 +133,10 @@ router.delete('/user/share-links/:id', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'invalid_id' });
   }
 
+  const existing = db.prepare(`
+    SELECT token FROM share_links WHERE id = ? AND user_id = ?
+  `).get(id, req.user!.id) as { token: string } | undefined;
+
   const result = db.prepare(`
     DELETE FROM share_links WHERE id = ? AND user_id = ?
   `).run(id, req.user!.id);
@@ -122,6 +145,8 @@ router.delete('/user/share-links/:id', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'not_found' });
   }
 
+  if (existing) publishShareLinkRevoked(existing.token);
+
   res.json({ ok: true });
 });
 
@@ -129,7 +154,7 @@ router.delete('/user/share-links/:id', requireAuth, (req, res) => {
  * watchlist. Returns 404 if the token is unknown OR the link is
  * suspended — the recipient cannot tell the two apart, which is
  * exactly the requested UX. */
-router.get('/shared/:token', (req, res) => {
+router.get('/shared/:token', sharedLimiter, (req, res) => {
   const { token } = req.params;
   if (!token || typeof token !== 'string') {
     return res.status(404).json({ error: 'not_found' });

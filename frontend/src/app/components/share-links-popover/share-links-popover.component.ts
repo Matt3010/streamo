@@ -62,7 +62,7 @@ import type { ShareLink } from '../../../../../shared/types';
         </div>
 
         @if (loading()) {
-          <p class="share-status">Caricamento…</p>
+          <div class="share-loading"><div class="spinner"></div></div>
         } @else if (links().length === 0) {
           <p class="share-status">Nessun link condiviso. Creane uno per generare un URL pubblico.</p>
         } @else {

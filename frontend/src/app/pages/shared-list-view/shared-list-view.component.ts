@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
   inject,
   input,
@@ -9,6 +10,7 @@ import {
 import { UserListViewComponent } from '../user-list-view/user-list-view.component';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { ShareLinksService } from '../../services/share-links.service';
+import { LiveSocketService, type LiveSocketController } from '../../services/live-socket.service';
 import type { CardItem, MediaType } from '../../models';
 import type { SharedWatchlistItem } from '../../../../../shared/types';
 
@@ -48,6 +50,8 @@ import type { SharedWatchlistItem } from '../../../../../shared/types';
 })
 export class SharedListViewComponent {
   private readonly service = inject(ShareLinksService);
+  private readonly liveSocket = inject(LiveSocketService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly token = input.required<string>();
 
@@ -55,6 +59,8 @@ export class SharedListViewComponent {
   protected readonly notFound = signal(false);
   protected readonly ownerName = signal<string | null>(null);
   protected readonly items = signal<CardItem[]>([]);
+
+  private socket: LiveSocketController | null = null;
 
   constructor() {
     /* effect() instead of a plain constructor call: the token input
@@ -66,7 +72,14 @@ export class SharedListViewComponent {
     effect(() => {
       const token = this.token();
       if (!token) return;
+      this.socket?.disconnect();
       void this.load(token);
+      this.openSocket(token);
+    });
+
+    this.destroyRef.onDestroy(() => {
+      this.socket?.disconnect();
+      this.socket = null;
     });
   }
 
@@ -76,10 +89,42 @@ export class SharedListViewComponent {
     this.loading.set(false);
     if (!data) {
       this.notFound.set(true);
+      /* Token is gone — stop the reconnect loop. The socket would
+       * otherwise keep hitting the 404 upgrade and retrying with
+       * exponential backoff. */
+      this.socket?.disconnect();
+      this.socket = null;
       return;
     }
+    this.notFound.set(false);
     this.ownerName.set(data.owner.name);
     this.items.set(data.items.map(sharedToCardItem));
+  }
+
+  private openSocket(token: string): void {
+    /* The socket forwards watchlist-updated events from the owner's
+     * sessions (same userClients map as their own /user/watchlist/ws)
+     * and is actively closed by the backend on suspend/delete.
+     *   - onMessage → owner changed their watchlist → refetch
+     *   - onConnected(false) after a previous true → server-side
+     *     close (likely revoke) → refetch to confirm 404
+     * If load() returns null we tear the socket down to stop the
+     * reconnect loop. */
+    let hadOpenConnection = false;
+    this.socket = this.liveSocket.create({
+      path: `/api/shared/${encodeURIComponent(token)}/ws`,
+      onConnected: (connected) => {
+        if (connected) {
+          hadOpenConnection = true;
+        } else if (hadOpenConnection) {
+          void this.load(token);
+        }
+      },
+      onMessage: () => {
+        void this.load(token);
+      }
+    });
+    this.socket.connect();
   }
 }
 

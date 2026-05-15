@@ -173,15 +173,17 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   <li class="item-row"
                       (click)="onCardClick(item)">
                     <app-list-item-info [item]="item" />
-                    <app-list-row-actions
-                      [item]="item"
-                      [kind]="kind()"
-                      [folderEnabled]="folderFeatureEnabled()"
-                      [isLoggedIn]="auth.isLoggedIn()"
-                      (statusToggle)="onStatusToggle($event)"
-                      (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
-                      (watchlistToggle)="onWatchlistToggle($event)"
-                      (removeClick)="onRemoveClick($event)" />
+                    @if (!readonly()) {
+                      <app-list-row-actions
+                        [item]="item"
+                        [kind]="kind()"
+                        [folderEnabled]="folderFeatureEnabled()"
+                        [isLoggedIn]="auth.isLoggedIn()"
+                        (statusToggle)="onStatusToggle($event)"
+                        (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
+                        (watchlistToggle)="onWatchlistToggle($event)"
+                        (removeClick)="onRemoveClick($event)" />
+                    }
                   </li>
                 }
               </ul>
@@ -211,7 +213,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                     [showStatusToggle]="!readonly() && kind() === 'watchlist'"
                     [showWatchlistToggle]="!readonly() && kind() === 'history' && auth.isLoggedIn()"
                     [showFolderAction]="!readonly() && folderFeatureEnabled()"
-                    [draggable]="dragDrop.canDragItem(child)"
+                    [draggable]="!readonly() && dragDrop.canDragItem(child)"
                     [dragging]="dragDrop.isDraggingItem(child)"
                     (cardClick)="onCardClick($event)"
                     (dragStarted)="dragDrop.onItemDragStart($event, child)"
@@ -232,7 +234,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
               [showStatusToggle]="!readonly() && kind() === 'watchlist'"
               [showWatchlistToggle]="!readonly() && kind() === 'history' && auth.isLoggedIn()"
               [showFolderAction]="!readonly() && folderFeatureEnabled()"
-              [draggable]="dragDrop.canDragItem(entry.item)"
+              [draggable]="!readonly() && dragDrop.canDragItem(entry.item)"
               [dragging]="dragDrop.isDraggingItem(entry.item)"
               (cardClick)="onCardClick($event)"
               (dragStarted)="dragDrop.onItemDragStart($event, entry.item)"
@@ -260,22 +262,24 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 @if (entry.expanded) {
                   @for (it of entry.group.items; track it.tmdb_id + '-' + it.media_type) {
                     <li class="item-row folder-child-row"
-                        [class.item-row-draggable]="dragDrop.canDragItem(it)"
+                        [class.item-row-draggable]="!readonly() && dragDrop.canDragItem(it)"
                         [class.item-row-dragging]="dragDrop.isDraggingItem(it)"
-                        [attr.draggable]="dragDrop.canDragItem(it) ? 'true' : null"
+                        [attr.draggable]="!readonly() && dragDrop.canDragItem(it) ? 'true' : null"
                         (click)="onCardClick(it)"
                         (dragstart)="dragDrop.onItemDragStart($event, it)"
                         (dragend)="dragDrop.onItemDragEnd()">
                       <app-list-item-info [item]="it" />
-                      <app-list-row-actions
-                        [item]="it"
-                        [kind]="kind()"
-                        [folderEnabled]="folderFeatureEnabled()"
-                        [isLoggedIn]="auth.isLoggedIn()"
-                        (statusToggle)="onStatusToggle($event)"
-                        (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
-                        (watchlistToggle)="onWatchlistToggle($event)"
-                        (removeClick)="onRemoveClick($event)" />
+                      @if (!readonly()) {
+                        <app-list-row-actions
+                          [item]="it"
+                          [kind]="kind()"
+                          [folderEnabled]="folderFeatureEnabled()"
+                          [isLoggedIn]="auth.isLoggedIn()"
+                          (statusToggle)="onStatusToggle($event)"
+                          (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
+                          (watchlistToggle)="onWatchlistToggle($event)"
+                          (removeClick)="onRemoveClick($event)" />
+                      }
                     </li>
                   }
                 }
@@ -283,22 +287,24 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             </li>
           } @else if (entry.item) {
             <li class="item-row"
-                [class.item-row-draggable]="dragDrop.canDragItem(entry.item)"
+                [class.item-row-draggable]="!readonly() && dragDrop.canDragItem(entry.item)"
                 [class.item-row-dragging]="dragDrop.isDraggingItem(entry.item)"
-                [attr.draggable]="dragDrop.canDragItem(entry.item) ? 'true' : null"
+                [attr.draggable]="!readonly() && dragDrop.canDragItem(entry.item) ? 'true' : null"
                 (click)="onCardClick(entry.item)"
                 (dragstart)="dragDrop.onItemDragStart($event, entry.item)"
                 (dragend)="dragDrop.onItemDragEnd()">
               <app-list-item-info [item]="entry.item" />
-              <app-list-row-actions
-                [item]="entry.item"
-                [kind]="kind()"
-                [folderEnabled]="folderFeatureEnabled()"
-                [isLoggedIn]="auth.isLoggedIn()"
-                (statusToggle)="onStatusToggle($event)"
-                (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
-                (watchlistToggle)="onWatchlistToggle($event)"
-                (removeClick)="onRemoveClick($event)" />
+              @if (!readonly()) {
+                <app-list-row-actions
+                  [item]="entry.item"
+                  [kind]="kind()"
+                  [folderEnabled]="folderFeatureEnabled()"
+                  [isLoggedIn]="auth.isLoggedIn()"
+                  (statusToggle)="onStatusToggle($event)"
+                  (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
+                  (watchlistToggle)="onWatchlistToggle($event)"
+                  (removeClick)="onRemoveClick($event)" />
+              }
             </li>
           }
         }
@@ -314,6 +320,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       (cancelled)="confirmAction.cancel()"
       (confirmed)="confirmPendingAction()" />
 
+    @if (!readonly()) {
     <ui-popover [(open)]="folderPopover.open"
                 [anchor]="folderPopover.anchor()"
                 [width]="folderPopover.targetHasFolder() ? 430 : 350"
@@ -356,6 +363,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </div>
       </div>
     </ui-popover>
+    }
   `,
   styleUrl: './user-list-view.component.css'
 })
