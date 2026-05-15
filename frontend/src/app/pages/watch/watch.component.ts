@@ -178,9 +178,14 @@ type ConfirmAction =
             <h3 class="episode-grid-title">Episodi</h3>
             <div class="episode-grid">
               @for (ep of player.episodes(); track ep.episode_number) {
-                <button uiSurface="card" type="button"
-                        [class.selected]="ep.episode_number === activeInThisSeason()"
-                        (click)="selectEpisode(ep.episode_number)">
+                <article uiSurface="card"
+                         role="button"
+                         tabindex="0"
+                         [class.selected]="ep.episode_number === activeInThisSeason()"
+                         [attr.aria-pressed]="ep.episode_number === activeInThisSeason()"
+                         (click)="selectEpisode(ep.episode_number)"
+                         (keydown.enter)="selectEpisode(ep.episode_number)"
+                         (keydown.space)="selectEpisode(ep.episode_number); $event.preventDefault()">
                   <div class="episode-thumb"
                        [class.no-image]="!ep.still_path"
                        [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
@@ -208,7 +213,7 @@ type ConfirmAction =
                       <p class="episode-overview">{{ ep.overview }}</p>
                     }
                   </div>
-                </button>
+                </article>
               }
             </div>
           </div>

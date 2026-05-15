@@ -3,7 +3,7 @@ import { Directive, input } from '@angular/core';
 type UiSurfaceVariant = 'default' | 'row' | 'card';
 
 @Directive({
-  selector: 'button[uiSurface], a[uiSurface]',
+  selector: '[uiSurface]',
   standalone: true,
   host: {
     'class': 'ui-surface',
