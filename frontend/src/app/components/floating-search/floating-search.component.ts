@@ -49,11 +49,11 @@ import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
             </label>
 
             <div class="search-actions">
-              <button uiButton="primary" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
+              <button uiButton="primary" uiButtonSize="compact" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
                 <app-icon name="search"></app-icon>
                 <span>Cerca</span>
               </button>
-              <button uiButton="ghost" type="button" (click)="closeSearch()">Chiudi</button>
+              <button uiButton="ghost" uiButtonSize="compact" type="button" (click)="closeSearch()">Chiudi</button>
             </div>
           </div>
         }

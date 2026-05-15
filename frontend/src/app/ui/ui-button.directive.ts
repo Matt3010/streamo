@@ -21,6 +21,7 @@ type UiButtonVariant =
 
 type UiButtonTone = 'default' | 'accent' | 'neutral' | 'success' | 'info' | 'danger';
 type UiButtonHover = 'default' | 'accent' | 'danger' | 'success' | 'neutral';
+type UiButtonSize = 'default' | 'compact' | 'action';
 
 @Directive({
   selector: 'button[uiButton], a[uiButton]',
@@ -51,7 +52,9 @@ type UiButtonHover = 'default' | 'accent' | 'danger' | 'success' | 'neutral';
     '[class.ui-button-hover-accent]': 'hover() === "accent"',
     '[class.ui-button-hover-danger]': 'hover() === "danger"',
     '[class.ui-button-hover-success]': 'hover() === "success"',
-    '[class.ui-button-hover-neutral]': 'hover() === "neutral"'
+    '[class.ui-button-hover-neutral]': 'hover() === "neutral"',
+    '[class.ui-button-size-compact]': 'size() === "compact"',
+    '[class.ui-button-size-action]': 'size() === "action"'
   }
 })
 export class UiButtonDirective {
@@ -68,5 +71,10 @@ export class UiButtonDirective {
   readonly hover = input<UiButtonHover, UiButtonHover | '' | null | undefined>('default', {
     alias: 'uiButtonHover',
     transform: (value) => (value && value.length > 0 ? value : 'default') as UiButtonHover
+  });
+
+  readonly size = input<UiButtonSize, UiButtonSize | '' | null | undefined>('default', {
+    alias: 'uiButtonSize',
+    transform: (value) => (value && value.length > 0 ? value : 'default') as UiButtonSize
   });
 }
