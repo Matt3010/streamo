@@ -31,7 +31,7 @@ interface ChartState {
   styleUrl: './history-activity-chart.component.css',
   template: `
     @if (state(); as s) {
-      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" />
+      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" [height]="110" [smoothing]="2.6" />
     }
   `
 })

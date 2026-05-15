@@ -102,6 +102,10 @@ export class LineChartComponent {
   readonly series = input.required<LineChartSeries[]>();
   readonly xLabels = input.required<string[]>();
   readonly height = input(140);
+  /* Gaussian smoothing sigma applied to the values before path
+   * generation. 0 = no smoothing (sharp peaks). 2-3 = rolling-hills
+   * look. Tooltip always shows raw values regardless. */
+  readonly smoothing = input(0);
 
   private readonly instanceId = ++instanceCounter;
   protected readonly hover = signal<number | null>(null);
@@ -111,18 +115,20 @@ export class LineChartComponent {
   protected readonly viewBox = computed(() => `0 0 ${VIEW_W} ${this.viewH()}`);
 
   /* Compute the rendered geometry for each series. maxY is shared across
-   * series so the two lines stay on the same scale. */
+   * series (after smoothing) so the two lines stay on the same scale. */
   protected readonly rendered = computed<RenderedSeries[]>(() => {
     const series = this.series();
     const labelCount = this.xLabels().length;
     if (series.length === 0 || labelCount === 0) return [];
 
-    const all = series.flatMap((s) => s.values);
-    const maxY = Math.max(1, ...all);
+    const sigma = this.smoothing();
+    const smoothed = series.map((s) => sigma > 0 ? gaussianSmooth(s.values, sigma) : s.values);
+    const maxY = Math.max(1, ...smoothed.flat());
     const usableH = this.viewH() - PAD_TOP - PAD_BOTTOM;
 
     return series.map((s, idx) => {
-      const points = s.values.map((v, i) => ({
+      const plotValues = smoothed[idx];
+      const points = plotValues.map((v, i) => ({
         x: labelCount === 1 ? VIEW_W / 2 : (i / (labelCount - 1)) * VIEW_W,
         y: PAD_TOP + (1 - v / maxY) * usableH
       }));
@@ -164,6 +170,33 @@ export class LineChartComponent {
     const idx = Math.round(ratio * (labels.length - 1));
     this.hover.set(Math.max(0, Math.min(labels.length - 1, idx)));
   }
+}
+
+/* Symmetric Gaussian smoothing with edge clamping. Pre-builds the kernel
+ * once and reuses it for every input index. Output[i] is a weighted
+ * average of the values within ±2σ of i. */
+function gaussianSmooth(values: number[], sigma: number): number[] {
+  if (sigma <= 0 || values.length === 0) return values.slice();
+  const radius = Math.max(1, Math.ceil(sigma * 2));
+  const kernel: number[] = [];
+  let kernelSum = 0;
+  for (let i = -radius; i <= radius; i++) {
+    const w = Math.exp(-(i * i) / (2 * sigma * sigma));
+    kernel.push(w);
+    kernelSum += w;
+  }
+  for (let i = 0; i < kernel.length; i++) kernel[i] /= kernelSum;
+
+  const out = new Array<number>(values.length);
+  for (let i = 0; i < values.length; i++) {
+    let v = 0;
+    for (let j = -radius; j <= radius; j++) {
+      const idx = Math.max(0, Math.min(values.length - 1, i + j));
+      v += values[idx] * kernel[j + radius];
+    }
+    out[i] = v;
+  }
+  return out;
 }
 
 /* Catmull-Rom spline through the points, converted to cubic Bezier
