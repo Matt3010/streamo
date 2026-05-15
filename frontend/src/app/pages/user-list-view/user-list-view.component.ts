@@ -502,13 +502,18 @@ export class UserListViewComponent {
      * branches are mutually exclusive — only one drives `items`. */
     effect(() => {
       const external = this.externalItems();
+      const media = this.mediaFilter();
       if (external) {
-        this.items.set(external);
+        /* External payload (shared view) never round-trips to the
+         * backend, so media filtering happens client-side. */
+        const filtered = media === 'all'
+          ? external
+          : external.filter((item) => item.media_type === media);
+        this.items.set(filtered);
         this.loading.set(false);
         return;
       }
       const kind = this.kind();
-      const media = this.mediaFilter();
       const status = kind === 'watchlist' ? this.statusFilter() : undefined;
       this.auth.currentUser();
       this.watchlist.tick();
