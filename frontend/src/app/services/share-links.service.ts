@@ -52,10 +52,15 @@ export class ShareLinksService {
   }
 
   /* Public read endpoint — no auth header. Returns null on 404
-   * (unknown token OR suspended link, indistinguishable by design). */
-  async fetchShared(token: string): Promise<SharedWatchlistResponse | null> {
+   * (unknown token OR suspended link, indistinguishable by design).
+   * Pass `track: true` on the initial page open so the backend bumps
+   * the visit counter; subsequent refetches triggered by the live
+   * socket (data changed / connection blip) MUST omit it, otherwise
+   * a single session inflates the count once per owner edit. */
+  async fetchShared(token: string, opts?: { track?: boolean }): Promise<SharedWatchlistResponse | null> {
     try {
-      const res = await fetch(`/api/shared/${encodeURIComponent(token)}`);
+      const qs = opts?.track ? '?track=1' : '';
+      const res = await fetch(`/api/shared/${encodeURIComponent(token)}${qs}`);
       if (!res.ok) return null;
       return await res.json() as SharedWatchlistResponse;
     } catch {

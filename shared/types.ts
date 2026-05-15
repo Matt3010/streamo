@@ -102,6 +102,7 @@ export interface ShareLink {
   token: string;
   label: string | null;
   status: ShareLinkStatus;
+  view_count: number;
   created_at: number;
 }
 

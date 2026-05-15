@@ -107,12 +107,19 @@ db.exec(`
     user_id INTEGER NOT NULL,
     label TEXT,
     status TEXT NOT NULL DEFAULT 'active',
+    view_count INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
   CREATE INDEX IF NOT EXISTS idx_share_links_user ON share_links(user_id);
 `);
+
+// Migration: add view_count to share_links for pre-existing rows.
+const shareLinksCols = (db.prepare("PRAGMA table_info(share_links)").all() as Array<{ name: string }>).map(c => c.name);
+if (!shareLinksCols.includes('view_count')) {
+  db.exec("ALTER TABLE share_links ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0");
+}
 
 // Migration: rename legacy `username` column to `email` if needed
 const userCols = (db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>).map(c => c.name);

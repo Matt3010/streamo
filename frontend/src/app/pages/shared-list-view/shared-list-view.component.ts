@@ -62,6 +62,11 @@ export class SharedListViewComponent {
 
   private socket: LiveSocketController | null = null;
 
+  /* True only for the very first fetch of a given token — used to
+   * tell the backend to bump the visit counter exactly once per page
+   * open. Reset whenever the token route param changes. */
+  private firstLoad = true;
+
   constructor() {
     /* effect() instead of a plain constructor call: the token input
      * is bound from the :token route param by
@@ -73,6 +78,7 @@ export class SharedListViewComponent {
       const token = this.token();
       if (!token) return;
       this.socket?.disconnect();
+      this.firstLoad = true;
       void this.load(token);
       this.openSocket(token);
     });
@@ -85,7 +91,9 @@ export class SharedListViewComponent {
 
   private async load(token: string): Promise<void> {
     this.loading.set(true);
-    const data = await this.service.fetchShared(token);
+    const track = this.firstLoad;
+    this.firstLoad = false;
+    const data = await this.service.fetchShared(token, { track });
     this.loading.set(false);
     if (!data) {
       this.notFound.set(true);

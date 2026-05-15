@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db';
-import { requireAuth } from '../middleware/auth';
+import { authenticateToken, requireAuth } from '../middleware/auth';
 import { publishShareLinkRevoked } from '../services/user-live';
 import type {
   ShareLink,
@@ -38,7 +38,7 @@ function normalizeLabel(value: unknown): string | null {
 /* GET /user/share-links — list the share links the caller owns. */
 router.get('/user/share-links', requireAuth, (req, res) => {
   const rows = db.prepare(`
-    SELECT id, token, label, status, created_at
+    SELECT id, token, label, status, view_count, created_at
     FROM share_links
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -59,7 +59,7 @@ router.post('/user/share-links', requireAuth, (req, res) => {
   `).run(token, req.user!.id, label);
 
   const row = db.prepare(`
-    SELECT id, token, label, status, created_at
+    SELECT id, token, label, status, view_count, created_at
     FROM share_links
     WHERE token = ?
   `).get(token) as ShareLink;
@@ -112,7 +112,7 @@ router.patch('/user/share-links/:id', requireAuth, (req, res) => {
   }
 
   const row = db.prepare(`
-    SELECT id, token, label, status, created_at
+    SELECT id, token, label, status, view_count, created_at
     FROM share_links
     WHERE id = ? AND user_id = ?
   `).get(id, req.user!.id) as ShareLink;
@@ -169,6 +169,21 @@ router.get('/shared/:token', sharedLimiter, (req, res) => {
 
   if (!link || link.status !== 'active') {
     return res.status(404).json({ error: 'not_found' });
+  }
+
+  /* Count this open if:
+   *   - the caller explicitly asked to (?track=1 — the initial page
+   *     load, not the WS-triggered refetches that would inflate it);
+   *   - the caller is not the owner of the link (an owner opening
+   *     their own link should not pollute their own metric).
+   * Unauthenticated visitors always count when track=1; authenticated
+   * non-owner visitors also count. */
+  const shouldTrack = req.query.track === '1';
+  if (shouldTrack) {
+    const viewer = authenticateToken(req.cookies?.token).user;
+    if (!viewer || viewer.id !== link.user_id) {
+      db.prepare('UPDATE share_links SET view_count = view_count + 1 WHERE token = ?').run(token);
+    }
   }
 
   const items = db.prepare(`

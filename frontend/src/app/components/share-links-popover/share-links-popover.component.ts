@@ -76,6 +76,10 @@ import type { ShareLink } from '../../../../../shared/types';
                     <span class="share-row-badge">Sospeso</span>
                   }
                 </div>
+                <span class="share-row-views">
+                  <app-icon name="eye"></app-icon>
+                  {{ link.view_count }}
+                </span>
                 <div class="share-row-actions">
                   <button uiButton="icon-outline" uiButtonSize="action" type="button"
                           title="Copia link"

@@ -121,6 +121,15 @@
   align-self: flex-start;
 }
 
+.share-row-views {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .share-row-actions {
   display: flex;
   align-items: center;
