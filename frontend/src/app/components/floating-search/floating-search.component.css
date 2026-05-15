@@ -437,7 +437,6 @@
   .search-panel.open .search-box {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
   }
 
   .search-panel.open .search-suggestions,
