@@ -17,7 +17,10 @@
   position: fixed;
   right: 0.7rem;
   bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
-  z-index: 19;
+  /* Sit above the top-bar (z-index 20) so the account pill cannot
+   * bleed through the backdrop when the user scrolls the panel on
+   * mobile. */
+  z-index: 22;
 }
 
 .search-panel.open {
@@ -363,7 +366,8 @@
     background: rgba(0, 0, 0, 0.28);
     border: none;
     padding: 0;
-    z-index: 18;
+    /* Above the top-bar (z-index 20) but below the search panel. */
+    z-index: 21;
   }
 
   .search-panel {
