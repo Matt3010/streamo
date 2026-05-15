@@ -9,9 +9,11 @@ import { UiPopoverComponent } from '../../ui/popover/popover.component';
 import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { UiInputDirective } from '../../ui/ui-input.directive';
-import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
 import { ListItemInfoComponent } from './list-item-info.component';
 import { ListRowActionsComponent } from './list-row-actions.component';
+import { FolderCardComponent } from './folder-card.component';
+import { FolderRowComponent } from './folder-row.component';
+import type { FolderGroup } from './folder.model';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -31,15 +33,6 @@ type PendingAction =
   | { type: 'remove-item'; item: CardItem }
   | { type: 'mark-done'; item: CardItem }
   | { type: 'remove-watchlist'; item: CardItem };
-
-interface FolderGroup {
-  id: string;
-  name: string;
-  items: CardItem[];
-  count: number;
-  movieCount: number;
-  tvCount: number;
-}
 
 interface DisplayEntry {
   key: string;
@@ -86,9 +79,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     UiTabsComponent,
     UiButtonDirective,
     UiInputDirective,
-    UiSurfaceDirective,
     ListItemInfoComponent,
     ListRowActionsComponent,
+    FolderCardComponent,
+    FolderRowComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -179,50 +173,36 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       <div class="content-grid">
         @for (entry of displayEntries(); track entry.key) {
           @if (entry.group) {
-            <button uiSurface="card" type="button"
-                    [class.expanded]="entry.expanded"
-                    [class.folder-drop-active]="isFolderDropActive(entry.group.id)"
-                    [attr.aria-expanded]="entry.expanded"
-                    (click)="toggleFolder(entry.group.id)"
-                    (dragover)="onFolderDragOver($event, entry.group)"
-                    (dragleave)="onFolderDragLeave(entry.group.id)"
-                    (drop)="onFolderDrop($event, entry.group)">
-              <span class="folder-card-icon">
-                <app-icon name="folder"></app-icon>
-              </span>
-              <span class="folder-card-body">
-                <span class="folder-card-title">{{ entry.group.name }}</span>
-                <span class="folder-card-meta">{{ folderGridMeta(entry.group) }}</span>
-              </span>
-              <span class="folder-card-chevron" [class.expanded]="entry.expanded">
-                <app-icon name="chevron-down"></app-icon>
-              </span>
-            </button>
-            @if (entry.expanded) {
-              <div class="folder-card-panel">
-                <div class="folder-card-panel-grid">
-                  @for (child of entry.group.items; track child.tmdb_id + '-' + child.media_type) {
-                    <app-card
-                      [item]="child"
-                      [showRemove]="true"
-                      [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
-                      [showProgress]="true"
-                      [showStatusToggle]="kind() === 'watchlist'"
-                      [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
-                      [showFolderAction]="folderFeatureEnabled()"
-                      [draggable]="canDragItem(child)"
-                      [dragging]="isDraggingItem(child)"
-                      (cardClick)="onCardClick($event)"
-                      (dragStarted)="onItemDragStart($event, child)"
-                      (dragEnded)="onItemDragEnd()"
-                      (watchlistToggleClick)="onWatchlistToggle($event)"
-                      (statusToggleClick)="onStatusToggle($event)"
-                      (folderClick)="openFolderPopover($event)"
-                      (removeClick)="onRemoveClick($event)" />
-                  }
-                </div>
-              </div>
-            }
+            <app-folder-card
+              [group]="entry.group"
+              [expanded]="entry.expanded"
+              [dropActive]="isFolderDropActive(entry.group.id)"
+              (toggle)="toggleFolder($event)"
+              (dragOver)="onFolderDragOver($event.event, $event.group)"
+              (dragLeave)="onFolderDragLeave($event)"
+              (drop)="onFolderDrop($event.event, $event.group)">
+              @if (entry.expanded) {
+                @for (child of entry.group.items; track child.tmdb_id + '-' + child.media_type) {
+                  <app-card
+                    [item]="child"
+                    [showRemove]="true"
+                    [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
+                    [showProgress]="true"
+                    [showStatusToggle]="kind() === 'watchlist'"
+                    [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
+                    [showFolderAction]="folderFeatureEnabled()"
+                    [draggable]="canDragItem(child)"
+                    [dragging]="isDraggingItem(child)"
+                    (cardClick)="onCardClick($event)"
+                    (dragStarted)="onItemDragStart($event, child)"
+                    (dragEnded)="onItemDragEnd()"
+                    (watchlistToggleClick)="onWatchlistToggle($event)"
+                    (statusToggleClick)="onStatusToggle($event)"
+                    (folderClick)="openFolderPopover($event)"
+                    (removeClick)="onRemoveClick($event)" />
+                }
+              }
+            </app-folder-card>
           } @else if (entry.item) {
             <app-card
               [item]="entry.item"
@@ -249,30 +229,15 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         @for (entry of displayEntries(); track entry.key) {
           @if (entry.group) {
             <li class="folder-block">
-              <button uiSurface="row" type="button"
-                      [class.expanded]="entry.expanded"
-                      [class.folder-drop-active]="isFolderDropActive(entry.group.id)"
-                      [attr.aria-expanded]="entry.expanded"
-                      (click)="toggleFolder(entry.group.id)"
-                      (dragover)="onFolderDragOver($event, entry.group)"
-                      (dragleave)="onFolderDragLeave(entry.group.id)"
-                      (drop)="onFolderDrop($event, entry.group)">
-                <span class="folder-row-main">
-                  <span class="folder-pill">
-                    <app-icon name="folder"></app-icon>
-                  </span>
-                  <span class="folder-row-copy">
-                    <span class="folder-row-title">{{ entry.group.name }}</span>
-                    <span class="folder-row-meta">{{ folderListMeta(entry.group) }}</span>
-                  </span>
-                </span>
-                <span class="folder-row-arrow" [class.expanded]="entry.expanded">
-                  <app-icon name="chevron-down"></app-icon>
-                </span>
-              </button>
-
-              @if (entry.expanded) {
-                <ul class="folder-items">
+              <app-folder-row
+                [group]="entry.group"
+                [expanded]="entry.expanded"
+                [dropActive]="isFolderDropActive(entry.group.id)"
+                (toggle)="toggleFolder($event)"
+                (dragOver)="onFolderDragOver($event.event, $event.group)"
+                (dragLeave)="onFolderDragLeave($event)"
+                (drop)="onFolderDrop($event.event, $event.group)">
+                @if (entry.expanded) {
                   @for (it of entry.group.items; track it.tmdb_id + '-' + it.media_type) {
                     <li class="item-row folder-child-row"
                         [class.item-row-draggable]="canDragItem(it)"
@@ -293,8 +258,8 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         (removeClick)="onRemoveClick($event)" />
                     </li>
                   }
-                </ul>
-              }
+                }
+              </app-folder-row>
             </li>
           } @else if (entry.item) {
             <li class="item-row"
@@ -560,14 +525,6 @@ export class UserListViewComponent {
   }
 
   protected readonly cardKey = cardKey;
-
-  protected folderGridMeta(group: FolderGroup): string {
-    return folderMeta(group);
-  }
-
-  protected folderListMeta(group: FolderGroup): string {
-    return folderMeta(group);
-  }
 
   protected onCardClick(item: CardItem): void {
     const queryParams: Record<string, number> = {};
@@ -1055,16 +1012,3 @@ function historySectionSummary(items: CardItem[]): string {
   return parts.join(' • ');
 }
 
-function folderCountLabel(count: number): string {
-  return count === 1 ? '1 titolo' : `${count} titoli`;
-}
-
-function folderMeta(group: FolderGroup): string {
-  return `${folderCountLabel(group.count)} • ${folderMediaLabel(group)}`;
-}
-
-function folderMediaLabel(group: FolderGroup): string {
-  if (group.movieCount > 0 && group.tvCount > 0) return 'film e serie';
-  if (group.tvCount > 0) return group.tvCount === 1 ? '1 serie' : `${group.tvCount} serie`;
-  return group.movieCount === 1 ? '1 film' : `${group.movieCount} film`;
-}
