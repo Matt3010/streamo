@@ -80,6 +80,13 @@ textarea.ui-input {
   padding: 0.62rem 0.8rem;
 }
 
+.ui-input-dense {
+  min-height: 32px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.65rem;
+}
+
 @media (max-width: 640px) {
   .ui-input {
     min-height: 42px;
@@ -92,5 +99,11 @@ textarea.ui-input {
     min-height: 40px;
     padding: 0.58rem 0.74rem;
     font-size: 0.86rem;
+  }
+
+  .ui-input-dense {
+    min-height: 30px;
+    padding: 0.36rem 0.6rem;
+    font-size: 0.8rem;
   }
 }

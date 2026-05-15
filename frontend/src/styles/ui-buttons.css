@@ -356,6 +356,14 @@
   padding: 0.62rem 1rem;
 }
 
+.ui-button-size-dense {
+  min-height: 32px;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 10px;
+  gap: 0.35rem;
+}
+
 .ui-button-size-action.ui-button-icon-outline {
   width: 32px;
   min-width: 32px;

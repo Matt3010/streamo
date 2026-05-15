@@ -305,7 +305,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   : 'Aggiungi o aggiorna il folder del titolo'"
                 (closed)="closeFolderPopover()">
       <div class="folder-popover-bar">
-        <input uiInput class="folder-popover-input"
+        <input uiInput="dense" class="folder-popover-input"
                type="text"
                maxlength="60"
                [value]="folderDraft()"
@@ -313,7 +313,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                (input)="onFolderDraftInput($event)">
 
         <div class="folder-popover-actions">
-          <button uiButton="primary" uiButtonSize="compact" type="button"
+          <button uiButton="primary" uiButtonSize="dense" type="button"
                   [uiPending]="savingFolder()"
                   [disabled]="!canSaveFolder()"
                   (click)="saveFolder()">
@@ -321,13 +321,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
           </button>
 
           @if (folderTargetHasFolder()) {
-            <button uiButton="danger-outline" uiButtonSize="compact" type="button"
+            <button uiButton="danger-outline" uiButtonSize="dense" type="button"
                     [uiPending]="savingFolder()"
                     (click)="removeFolder()">
               Rimuovi
             </button>
           } @else {
-            <button uiButton="ghost" uiButtonSize="compact" type="button"
+            <button uiButton="ghost" uiButtonSize="dense" type="button"
                     [disabled]="savingFolder()"
                     (click)="closeFolderPopover()">
               Chiudi
