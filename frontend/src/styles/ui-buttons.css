@@ -289,6 +289,20 @@
   align-self: flex-start;
 }
 
+.ui-button-icon app-icon,
+.ui-button-toggle-icon app-icon {
+  font-size: 15px;
+}
+
+.ui-button-icon-outline app-icon,
+.ui-button-icon-subtle app-icon {
+  font-size: 14px;
+}
+
+.ui-button-icon-overlay app-icon {
+  font-size: 12px;
+}
+
 .ui-button-toggle-icon:hover:not(:disabled):not(.ui-pending) {
   background: transparent;
   border-color: transparent;
