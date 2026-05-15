@@ -409,6 +409,7 @@
     min-width: 36px;
     height: 36px;
     min-height: 36px;
+    padding: 0;
   }
 
   .ui-button-icon-circle {
@@ -416,6 +417,7 @@
     min-width: 36px;
     height: 36px;
     min-height: 36px;
+    padding: 0;
   }
 
   .ui-button-icon-outline {
@@ -423,5 +425,30 @@
     min-width: 32px;
     height: 32px;
     min-height: 32px;
+    padding: 0;
+  }
+
+  .ui-button-icon-subtle {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+  }
+
+  .ui-button-icon-overlay {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+  }
+
+  .ui-button-toggle-icon {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
   }
 }
