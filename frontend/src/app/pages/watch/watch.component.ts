@@ -8,8 +8,8 @@ import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-ba
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
-import { UiInputDirective } from '../../ui/ui-input.directive';
 import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
+import { UiSelectComponent, type UiSelectOption } from '../../ui/select/select.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -28,7 +28,7 @@ type ConfirmAction =
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiInputDirective, UiSurfaceDirective],
+  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiSurfaceDirective, UiSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -68,11 +68,10 @@ type ConfirmAction =
           <div class="episode-controls active">
             <label class="select-group">
               <span class="select-label">Stagione</span>
-              <select uiInput (change)="onSeasonChange($event)">
-                @for (s of player.seasons(); track s) {
-                  <option [value]="s" [selected]="s === player.selectedSeason()">Stagione {{ s }}</option>
-                }
-              </select>
+              <ui-select
+                [options]="seasonOptions()"
+                [value]="player.selectedSeason()"
+                (valueChange)="onSeasonChange($event)" />
             </label>
           </div>
         }
@@ -724,9 +723,13 @@ export class WatchComponent {
     }
   }
 
-  protected onSeasonChange(ev: Event): void {
-    const t = ev.target;
-    if (t instanceof HTMLSelectElement) void this.player.changeSeason(parseInt(t.value, 10));
+  protected readonly seasonOptions = computed<UiSelectOption<number>[]>(() =>
+    this.player.seasons().map((s) => ({ value: s, label: `Stagione ${s}` }))
+  );
+
+  protected onSeasonChange(season: number | null): void {
+    if (season === null) return;
+    void this.player.changeSeason(season);
   }
 
   protected selectEpisode(episodeNumber: number): void {

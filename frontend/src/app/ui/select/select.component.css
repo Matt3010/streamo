@@ -1,0 +1,155 @@
+:host {
+  display: block;
+  width: 100%;
+  position: relative;
+}
+
+.ui-select-trigger {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.94rem;
+  line-height: 1.2;
+  padding: 0.72rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.ui-select-trigger:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.ui-select-trigger:focus-visible,
+.ui-select-trigger-open {
+  outline: none;
+  border-color: rgba(229, 9, 20, 0.4);
+  background-color: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.08);
+  transform: translateY(-1px);
+}
+
+.ui-select-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-select-trigger-compact {
+  min-height: 42px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  padding: 0.62rem 0.8rem;
+}
+
+.ui-select-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-select-placeholder {
+  color: var(--text-muted);
+}
+
+.ui-select-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  transition: transform 0.18s ease;
+}
+
+.ui-select-trigger-open .ui-select-chevron {
+  transform: rotate(180deg);
+}
+
+/* Dropdown panel. position: fixed so the viewport-relative top/left
+ * computed in the component matches; max-height keeps the list
+ * within the screen even with many options. Sits at z-index 210 to
+ * match the popover layer (above modal at 200, below toasts at 500). */
+.ui-select-panel {
+  position: fixed;
+  z-index: 210;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-hover) transparent;
+}
+
+.ui-select-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ui-select-panel::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: 3px;
+}
+
+.ui-select-option {
+  width: 100%;
+  display: block;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.ui-select-option:hover,
+.ui-select-option.is-highlighted,
+.ui-select-option:focus-visible {
+  background-color: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
+.ui-select-option.is-selected {
+  background-color: rgba(229, 9, 20, 0.18);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ui-select-option.is-selected.is-highlighted,
+.ui-select-option.is-selected:hover {
+  background-color: rgba(229, 9, 20, 0.26);
+}
+
+@media (max-width: 640px) {
+  .ui-select-trigger {
+    min-height: 42px;
+    border-radius: 14px;
+    padding: 0.68rem 0.82rem;
+    font-size: 0.92rem;
+  }
+
+  .ui-select-trigger-compact {
+    min-height: 40px;
+    padding: 0.58rem 0.74rem;
+    font-size: 0.86rem;
+  }
+}
