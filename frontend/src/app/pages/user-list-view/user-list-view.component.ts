@@ -38,7 +38,8 @@ import {
 import {
   type DisplayEntry,
   buildDisplayEntries,
-  cardKey
+  cardKey,
+  folderIdFromName
 } from './folder-entries.util';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
