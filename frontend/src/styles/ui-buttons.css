@@ -164,7 +164,7 @@
   height: 40px;
   min-height: 40px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .ui-button-icon-circle {
@@ -174,7 +174,7 @@
   min-height: 40px;
   padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface-hover);
 }
 
@@ -189,7 +189,7 @@
   height: 36px;
   min-height: 36px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   border-color: var(--border);
 }
@@ -206,7 +206,7 @@
   min-height: 32px;
   padding: 0;
   border: none;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
 }
@@ -224,7 +224,7 @@
   min-height: 28px;
   padding: 0;
   border: none;
-  border-radius: 9px;
+  border-radius: 8px;
   background: rgba(0, 0, 0, 0.72);
   color: #fff;
 }
@@ -274,7 +274,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .ui-button-icon,
@@ -406,83 +406,4 @@
 .ui-button-hover-neutral:hover:not(:disabled):not(.ui-pending) {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.2);
-}
-
-@media (max-width: 640px) {
-  .ui-button {
-    min-height: 40px;
-    border-radius: 14px;
-    font-size: 0.89rem;
-    padding: 0.66rem 0.92rem;
-  }
-
-  .ui-button-tab {
-    padding: 0.48rem 0.95rem;
-    font-size: 0.85rem;
-  }
-
-  .ui-button-panel-pill {
-    padding: 0.42rem 0.8rem 0.42rem 0.66rem;
-  }
-
-  .ui-button-icon {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-    padding: 0;
-  }
-
-  .ui-button-icon-circle {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-    padding: 0;
-  }
-
-  .ui-button-icon-outline {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    min-height: 32px;
-    padding: 0;
-  }
-
-  .ui-button-icon-subtle {
-    width: 30px;
-    min-width: 30px;
-    height: 30px;
-    min-height: 30px;
-    padding: 0;
-  }
-
-  .ui-button-icon-overlay {
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    min-height: 28px;
-    padding: 0;
-  }
-
-  .ui-button-toggle-icon {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    min-height: 36px;
-    padding: 0;
-  }
-
-  .ui-button-size-compact {
-    min-height: 40px;
-    font-size: 0.86rem;
-    padding: 0.58rem 0.74rem;
-  }
-
-  .ui-button-size-action.ui-button-icon-outline {
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    min-height: 28px;
-  }
 }
