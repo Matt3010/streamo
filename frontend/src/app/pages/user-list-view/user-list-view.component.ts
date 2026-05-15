@@ -577,10 +577,11 @@ export class UserListViewComponent {
   protected readonly cardKey = cardKey;
 
   protected onCardClick(item: CardItem): void {
-    if (this.readonly()) {
-      /* /watch is auth-gated, so a click in shared mode would just
-       * bounce the visitor to the login screen. Surface a friendly
-       * toast instead. */
+    if (this.readonly() && !this.auth.isLoggedIn()) {
+      /* /watch is auth-gated, so a click from an unauthenticated
+       * visitor would just bounce them to the login screen. Surface
+       * a friendly toast instead. Authenticated visitors can navigate
+       * to /watch normally even from a shared list. */
       this.toast.show('Accedi per vedere il dettaglio del titolo');
       return;
     }
