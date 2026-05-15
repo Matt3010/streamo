@@ -268,6 +268,18 @@ export class FloatingSearchComponent {
       this.recents();
       this.highlighted.set(-1);
     });
+
+    /* Close the panel when navigating away from a route that hides
+     * the floating search. Without this, searchOpen stays true even
+     * after @if (showSearch()) unmounts the panel, so the next
+     * open-transition would skip the focus-save / scroll-lock
+     * pairing and any acquired body scroll lock would leak onto the
+     * destination route. */
+    effect(() => {
+      if (!this.showSearch() && this.searchOpen()) {
+        this.searchOpen.set(false);
+      }
+    });
   }
 
   @HostListener('window:storage', ['$event'])

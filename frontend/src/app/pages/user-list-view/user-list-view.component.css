@@ -132,26 +132,13 @@
   padding: 0.58rem 0.62rem 0.62rem;
 }
 
+/* Layout-only — visual styling (border, background, padding, focus
+ * ring) comes from uiInput="compact". min-width: 0 lets the input
+ * shrink inside the popover-bar grid track instead of forcing it
+ * past the available column width. */
 .folder-popover-input {
   width: 100%;
   min-width: 0;
-  min-height: 42px;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
-  padding: 0.58rem 0.78rem;
-  font: inherit;
-}
-
-.folder-popover-input::placeholder {
-  color: var(--text-muted);
-}
-
-.folder-popover-input:focus {
-  outline: none;
-  border-color: rgba(229, 9, 20, 0.5);
 }
 
 @media (max-width: 640px) {

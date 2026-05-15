@@ -150,11 +150,19 @@
   height: 18px;
 }
 
-/* Watchlist toggle sits flush to the right edge and is wider than the
- * default 40px square so its tap target matches the primary CTA height. */
+/* Watchlist toggle sits flush to the right edge. The global
+ * .ui-button-icon locks width/height to 40px (+ aspect-ratio: 1),
+ * which would override .player-actions' align-items: stretch and
+ * leave the bookmark visibly shorter than the text CTAs. Override
+ * those constraints here so the toggle stretches vertically to
+ * match the row's tallest sibling; min-width keeps the tap target
+ * comfortably wide. */
 .player-actions > .ui-button-icon {
   padding: 0.8rem 1rem;
   min-width: 3rem;
+  width: auto;
+  height: auto;
+  aspect-ratio: auto;
 }
 
 .release-inline-note {
