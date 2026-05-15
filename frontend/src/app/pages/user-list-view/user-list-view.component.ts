@@ -410,8 +410,13 @@ export class UserListViewComponent {
     if (override) return `Lista di ${override}`;
     return this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia';
   });
+  /* Folders are an owner-only organization tool. In readonly mode the
+   * visitor shouldn't have to navigate the owner's folder taxonomy,
+   * and (more importantly) the visitor's own folders_enabled
+   * preference must not control how a shared list is rendered — so
+   * shared views are always flat. */
   protected readonly folderFeatureEnabled = computed(
-    () => this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
+    () => !this.readonly() && this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
   );
   protected readonly displayEntries = computed(() => (
     buildDisplayEntries(this.items(), this.folderFeatureEnabled(), this.expandedFolders())
