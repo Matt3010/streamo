@@ -50,7 +50,7 @@ server {
         proxy_send_timeout 1h;
     }
 
-    location ~ ^/api/(auth|user|admin)(/.*)?$ {
+    location ~ ^/api/(auth|user|admin|shared)(/.*)?$ {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass http://backend;
         proxy_http_version 1.1;
