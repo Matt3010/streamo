@@ -54,9 +54,13 @@ import { IconComponent, type IconName } from '../icon/icon.component';
 })
 export class UiPopoverComponent {
   private readonly arrowSize = 14;
-  private readonly edgePadding = 12;
+  private readonly edgePadding = 16;
   private readonly anchorGap = 8;
-  private readonly arrowCornerClearance = 10;
+  /* Keep the arrow off the rounded corner curve, but not so far that
+   * an anchor near the viewport edge ends up with the arrow visibly
+   * offset from it. 6 lets the arrow approach the corner curve
+   * without overlapping while still allowing accurate alignment. */
+  private readonly arrowCornerClearance = 6;
   private readonly viewportTick = signal(0);
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
@@ -67,7 +71,9 @@ export class UiPopoverComponent {
   readonly preferredHeight = input(96);
   readonly closed = output<void>();
   private readonly panel = viewChild<ElementRef<HTMLDivElement>>('panel');
-  protected readonly panelWidth = computed(() => Math.min(this.width(), window.innerWidth - 24));
+  protected readonly panelWidth = computed(() =>
+    Math.min(this.width(), window.innerWidth - this.edgePadding * 2)
+  );
   protected readonly panelHeight = computed(() => {
     this.viewportTick();
     const panel = this.panel();
