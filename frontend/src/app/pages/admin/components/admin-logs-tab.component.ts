@@ -27,7 +27,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
         <aside class="logs-sidebar" aria-label="Selezione log">
           <button uiButton="panel"
                   type="button"
-                  [class.active]="selectedSource() === 'playback'"
+                  [attr.aria-pressed]="selectedSource() === 'playback'"
                   (click)="selectSource('playback')">
             <span class="logs-source-title">Playback</span>
             <span class="logs-source-sub">{{ admin.playbackLogPath() || '/data/playback.log' }}</span>
@@ -35,7 +35,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
           <button uiButton="panel"
                   type="button"
-                  [class.active]="selectedSource() === 'transport'"
+                  [attr.aria-pressed]="selectedSource() === 'transport'"
                   (click)="selectSource('transport')">
             <span class="logs-source-title">Transport</span>
             <span class="logs-source-sub">{{ admin.transportLogPath() || '/data/nginx-playback-access.log' }}</span>

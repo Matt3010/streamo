@@ -18,7 +18,6 @@ export interface UiTab<T extends string = string> {
         uiButton="tab"
         type="button"
         role="tab"
-        [class.active]="tab.value === value()"
         [attr.aria-selected]="tab.value === value()"
         (click)="select(tab.value)">
         {{ tab.label }}

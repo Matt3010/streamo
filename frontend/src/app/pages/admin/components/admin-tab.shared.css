@@ -38,24 +38,13 @@
   font-size: 0.88rem;
 }
 
-.admin-icon-btn {
+.section-actions > .ui-button-icon {
   width: 40px;
   height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
   text-decoration: none;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
-}
-
-.admin-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .live-pill {
@@ -200,29 +189,10 @@
   flex-shrink: 0;
 }
 
-.row-action {
+.row-actions > .ui-button-icon-outline {
   width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.row-action:hover {
-  background: var(--surface-hover);
-  border-color: var(--accent);
-}
-
-.row-action.danger:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: #ef4444;
-  color: #ef4444;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .session-row {
@@ -424,12 +394,12 @@
     justify-content: flex-end;
   }
 
-  .row-action {
+  .row-actions > .ui-button-icon-outline {
     width: 28px;
     height: 28px;
   }
 
-  .row-action svg {
+  .row-actions > .ui-button-icon-outline svg {
     width: 14px;
     height: 14px;
   }

@@ -1,5 +1,6 @@
 @import './styles/ui-buttons.css';
 @import './styles/ui-inputs.css';
+@import './styles/ui-surfaces.css';
 
 * {
   margin: 0;
@@ -150,50 +151,8 @@ main {
   }
 }
 
-/* Round icon buttons — shared by ui-modal header and watch page header */
-.icon-btn,
-.close-btn {
-  background: var(--surface-hover);
-  border: none;
-  color: var(--text);
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.icon-btn:hover { background: var(--accent); }
-.icon-btn.active { color: var(--accent); }
-.icon-btn.active svg { fill: var(--accent); }
-.close-btn:hover { background: var(--accent); }
-
 button.ui-pending {
   opacity: 0.65;
   cursor: progress;
   pointer-events: none;
-}
-
-/* Larger icon button — used by page-level icon actions */
-.icon-btn-lg {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.icon-btn-lg:hover {
-  background: var(--accent);
-  border-color: var(--accent);
 }

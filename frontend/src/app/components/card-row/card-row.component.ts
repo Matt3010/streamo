@@ -1,16 +1,17 @@
 import { ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { CardComponent } from '../card/card.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
 import type { CardItem } from '../../models';
 
 @Component({
   selector: 'app-card-row',
   standalone: true,
-  imports: [CardComponent, IconComponent],
+  imports: [CardComponent, IconComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="row-container">
-      <button class="scroll-arrow left" aria-label="Scorri sinistra" (click)="scroll(-1)">
+      <button uiButton="icon-circle" aria-label="Scorri sinistra" (click)="scroll(-1)">
         <app-icon name="chevron-left"></app-icon>
       </button>
       <div class="scroll-row" #row>
@@ -63,7 +64,7 @@ import type { CardItem } from '../../models';
           }
         }
       </div>
-      <button class="scroll-arrow right" aria-label="Scorri destra" (click)="scroll(1)">
+      <button uiButton="icon-circle" aria-label="Scorri destra" (click)="scroll(1)">
         <app-icon name="chevron-right"></app-icon>
       </button>
     </div>

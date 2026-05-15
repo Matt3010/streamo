@@ -21,9 +21,7 @@
   padding: 0.9rem 1rem;
 }
 
-.logs-sidebar > .ui-button.active {
-  background: rgba(74, 144, 226, 0.12);
-  border-color: rgba(74, 144, 226, 0.42);
+.logs-sidebar > .ui-button[aria-pressed="true"] {
   transform: translateX(2px);
 }
 
@@ -62,7 +60,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .logs-sidebar > .ui-button.active {
+  .logs-sidebar > .ui-button[aria-pressed="true"] {
     transform: none;
   }
 }

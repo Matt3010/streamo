@@ -9,6 +9,7 @@ import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { UiInputDirective } from '../../ui/ui-input.directive';
+import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -27,7 +28,7 @@ type ConfirmAction =
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiInputDirective],
+  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiInputDirective, UiSurfaceDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -95,7 +96,9 @@ type ConfirmAction =
         } @else if (isUpcomingTitle()) {
           <div class="player-actions">
             <div class="release-inline-note">{{ upcomingAvailabilityStr() }}</div>
-            <button uiButton="icon" [class.active]="player.isInWatchlist()"
+            <button uiButton="icon"
+                    uiButtonHover="accent"
+                    [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
                     [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -114,7 +117,9 @@ type ConfirmAction =
                 <span>Vai al prossimo</span>
               </button>
             }
-            <button uiButton="icon" [class.active]="player.isInWatchlist()"
+            <button uiButton="icon"
+                    uiButtonHover="accent"
+                    [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
                     [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -128,7 +133,9 @@ type ConfirmAction =
               <app-icon name="close"></app-icon>
               <span>Chiudi player</span>
             </button>
-            <button uiButton="icon" [class.active]="player.isInWatchlist()"
+            <button uiButton="icon"
+                    uiButtonHover="accent"
+                    [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
                     [uiPending]="watchlistPending()"
                     [attr.aria-label]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     [title]="player.isInWatchlist() ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -171,15 +178,15 @@ type ConfirmAction =
             <h3 class="episode-grid-title">Episodi</h3>
             <div class="episode-grid">
               @for (ep of player.episodes(); track ep.episode_number) {
-                <button type="button" class="episode-card"
+                <button uiSurface="card" type="button"
                         [class.selected]="ep.episode_number === activeInThisSeason()"
                         (click)="selectEpisode(ep.episode_number)">
                   <div class="episode-thumb"
                        [class.no-image]="!ep.still_path"
                        [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
                     @if (canClearEpisodeProgress(ep.episode_number)) {
-                      <button type="button"
-                              class="episode-reset-btn"
+                      <button uiButton="icon-overlay"
+                              type="button"
                               [uiPending]="clearProgressPendingKey() === episodeProgressKey(ep.episode_number)"
                               aria-label="Azzera progresso episodio"
                               title="Azzera progresso episodio"

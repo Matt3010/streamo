@@ -4,11 +4,12 @@ import { NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
+import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
 
 @Component({
   selector: 'app-floating-search',
   standalone: true,
-  imports: [IconComponent, UiButtonDirective],
+  imports: [IconComponent, UiButtonDirective, UiSurfaceDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (showSearch()) {
@@ -16,7 +17,7 @@ import { UiButtonDirective } from '../../ui/ui-button.directive';
         <button type="button" class="search-backdrop" aria-label="Chiudi ricerca" (click)="closeSearch()"></button>
       }
       <section class="search-panel" [class.open]="searchOpen()" aria-label="Ricerca catalogo">
-        <button type="button" class="search-intro" (click)="openSearch()">
+        <button uiSurface="row" type="button" (click)="openSearch()">
           <span class="search-badge">
             <app-icon name="search"></app-icon>
           </span>
@@ -41,7 +42,7 @@ import { UiButtonDirective } from '../../ui/ui-button.directive';
                 (keydown.enter)="submitSearch()"
                 (keydown.escape)="handleEscape()">
               @if (query().trim()) {
-                <button type="button" class="clear-btn" aria-label="Cancella ricerca" (click)="clearQuery()">
+                <button uiButton="icon-subtle" type="button" aria-label="Cancella ricerca" (click)="clearQuery()">
                   <app-icon name="close"></app-icon>
                 </button>
               }

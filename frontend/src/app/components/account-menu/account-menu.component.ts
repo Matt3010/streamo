@@ -1,14 +1,16 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal, HostListener } from '@angular/core';
 import { Router } from '@angular/router';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-account-menu',
   standalone: true,
+  imports: [UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <button class="account-trigger" [class.open]="open()" (click)="toggle($event)">
+    <button uiButton="panel-pill" [attr.aria-expanded]="open()" (click)="toggle($event)">
       <span class="account-dot" aria-hidden="true"></span>
       <span class="account-name">{{ displayName() }}</span>
       <span class="account-chevron" aria-hidden="true"></span>
@@ -17,12 +19,12 @@ import { ToastService } from '../../services/toast.service';
       <div class="account-menu open">
         <div class="username">{{ auth.currentUser()?.email }}</div>
         @if (auth.isAdmin()) {
-          <button (click)="goToAdmin()">Admin</button>
+          <button uiButton="menu-item" (click)="goToAdmin()">Admin</button>
         }
-        <button (click)="goTo('watchlist')">La mia lista</button>
-        <button (click)="goTo('history')">Cronologia</button>
-        <button (click)="goToSettings()">Impostazioni</button>
-        <button class="danger" (click)="logout()">Esci</button>
+        <button uiButton="menu-item" (click)="goTo('watchlist')">La mia lista</button>
+        <button uiButton="menu-item" (click)="goTo('history')">Cronologia</button>
+        <button uiButton="menu-item" (click)="goToSettings()">Impostazioni</button>
+        <button uiButton="menu-item" uiButtonTone="danger" (click)="logout()">Esci</button>
       </div>
     }
   `,

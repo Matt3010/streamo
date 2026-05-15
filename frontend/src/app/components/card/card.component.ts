@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
+import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
 import type { CardItem } from '../../models';
 
@@ -13,7 +14,7 @@ export interface CardFolderClickEvent {
 @Component({
   selector: 'app-card',
   standalone: true,
-  imports: [IconComponent, PendingButtonDirective],
+  imports: [IconComponent, PendingButtonDirective, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="card"
@@ -39,35 +40,38 @@ export interface CardFolderClickEvent {
       @if (hasActions()) {
         <div class="card-actions">
           @if (showWatchlistToggle()) {
-            <button class="card-action card-watchlist"
+            <button uiButton="icon-overlay"
+                    uiButtonHover="accent"
                     [uiPending]="hasPendingAction()"
-                    [class.active]="item().inWatchlist === true"
+                    [uiButtonTone]="item().inWatchlist === true ? 'accent' : 'default'"
                     [title]="item().inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
                     (click)="onWatchlistToggle($event)">
               <app-icon name="bookmark"></app-icon>
             </button>
           }
           @if (showFolderAction()) {
-            <button class="card-action card-folder"
+            <button uiButton="icon-overlay"
+                    uiButtonHover="neutral"
                     [uiPending]="hasPendingAction()"
-                    [class.active]="!!item().folderName"
+                    [uiButtonTone]="item().folderName ? 'neutral' : 'default'"
                     [title]="item().folderName ? 'Modifica folder' : 'Assegna folder'"
                     (click)="onFolderClick($event)">
               <app-icon name="folder"></app-icon>
             </button>
           }
           @if (canShowStatusToggle()) {
-            <button class="card-action card-status"
+            <button uiButton="icon-overlay"
+                    uiButtonHover="success"
                     [uiPending]="hasPendingAction()"
-                    [class.done]="item().status === 'done'"
-                    [class.in-progress]="item().status === 'in_progress'"
+                    [uiButtonTone]="item().status === 'done' ? 'success' : item().status === 'in_progress' ? 'info' : 'default'"
                     [title]="statusButtonTitle()"
                     (click)="onStatusToggle($event)">
               <app-icon [name]="statusButtonIcon()"></app-icon>
             </button>
           }
           @if (showRemove()) {
-            <button class="card-action card-remove"
+            <button uiButton="icon-overlay"
+                    uiButtonHover="accent"
                     [uiPending]="hasPendingAction()"
                     [title]="removeTitle()" [attr.aria-label]="removeTitle()"
                     (click)="onRemove($event)">

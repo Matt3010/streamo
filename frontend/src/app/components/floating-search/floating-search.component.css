@@ -35,16 +35,10 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.search-intro {
-  background: transparent;
-  border: none;
+.ui-surface-row {
   text-align: left;
   width: 100%;
-  display: flex;
-  align-items: center;
   gap: 0.65rem;
-  cursor: pointer;
-  padding: 0;
 }
 
 .search-badge {
@@ -140,24 +134,8 @@
   color: #8f8f8f;
 }
 
-.clear-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+.search-field > .ui-button-icon-subtle {
   flex-shrink: 0;
-  transition: background 0.18s ease, color 0.18s ease;
-}
-
-.clear-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
 }
 
 .search-actions > .ui-button-ghost {

@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, HostListener, effect, inject, input, model, output } from '@angular/core';
 import { IconComponent } from '../icon/icon.component';
+import { UiButtonDirective } from '../ui-button.directive';
 import { BodyScrollLockService } from '../../services/body-scroll-lock.service';
 
 @Component({
   selector: 'ui-modal',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (open()) {
@@ -15,7 +16,7 @@ import { BodyScrollLockService } from '../../services/body-scroll-lock.service';
             <h3>{{ title() }}</h3>
             <div class="modal-actions">
               <ng-content select="[modalActions]"></ng-content>
-              <button class="close-btn" aria-label="Chiudi" (click)="dismiss()">
+              <button uiButton="icon-circle" aria-label="Chiudi" (click)="dismiss()">
                 <app-icon name="close"></app-icon>
               </button>
             </div>

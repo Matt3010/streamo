@@ -16,7 +16,7 @@ import { AdminService } from '../../../services/admin.service';
         <app-section-header title="Queue e Worker" [icon]="queueIcon" />
         <div class="section-actions">
           <button uiButton="primary" [disabled]="admin.queueStatusLoading()" (click)="refresh()">Aggiorna</button>
-          <a class="admin-icon-btn"
+          <a uiButton="icon"
              href="/api/admin/queues"
              target="_blank"
              rel="noopener noreferrer"

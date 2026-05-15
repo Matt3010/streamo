@@ -167,11 +167,6 @@
   min-width: 3rem;
 }
 
-.player-actions > .ui-button-icon.active {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
 .release-inline-note {
   flex: 1 1 auto;
   min-width: 0;
@@ -327,7 +322,7 @@
   border-radius: 3px;
 }
 
-.episode-card {
+.episode-grid > .ui-surface-card {
   flex: 0 0 220px;
   /* min-width: 0 overrides the flex default of min-width: auto. Without it,
    * a long single-line title (white-space: nowrap) forces the card's
@@ -335,27 +330,13 @@
    * cards visually larger than their neighbours and breaking the ellipsis. */
   min-width: 0;
   scroll-snap-align: start;
-  display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding: 0;
-  background: transparent;
-  border: none;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
   border-radius: var(--radius);
-  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
-.episode-card:hover {
+.episode-grid > .ui-surface-card:hover {
   transform: translateY(-2px);
-}
-
-.episode-card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 /* Inset ring rather than outline + offset: the parent .episode-grid uses
@@ -364,13 +345,13 @@
  * inset box-shadow is painted inside the thumb's rounded corners and
  * never clips. The base bottom-gradient shadow is preserved as the
  * second layer so the episode-number stays legible on the selected card. */
-.episode-card.selected .episode-thumb {
+.episode-grid > .ui-surface-card.selected .episode-thumb {
   box-shadow:
     inset 0 0 0 2px var(--accent),
     inset 0 -40px 60px -30px rgba(0, 0, 0, 0.85);
 }
 
-.episode-card.selected .episode-title {
+.episode-grid > .ui-surface-card.selected .episode-title {
   color: var(--accent);
 }
 
@@ -387,29 +368,14 @@
   box-shadow: inset 0 -40px 60px -30px rgba(0, 0, 0, 0.85);
 }
 
-.episode-reset-btn {
+.episode-thumb > .ui-button-icon-overlay {
   position: absolute;
   top: 0.45rem;
   right: 0.45rem;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.72);
-  color: #fff;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   z-index: 4;
-  transition: background 0.15s ease;
 }
 
-.episode-reset-btn:hover {
-  background: rgba(229, 9, 20, 0.88);
-}
-
-.episode-reset-btn svg {
+.episode-thumb > .ui-button-icon-overlay svg {
   width: 12px;
   height: 12px;
 }
@@ -662,7 +628,7 @@
 
   /* Smaller episode cards on phones — fits ~1.6 cards per viewport so the
    * "swipe for more" affordance is obvious at a glance. */
-  .episode-card { flex-basis: 180px; }
+  .episode-grid > .ui-surface-card { flex-basis: 180px; }
   .episode-number { font-size: 1.35rem; }
   .episode-title { font-size: 0.9rem; }
   .episode-overview { font-size: 0.75rem; }

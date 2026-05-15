@@ -1,30 +1,9 @@
-.account-trigger {
+.ui-button-panel-pill {
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: #141414;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text);
   padding: 0.46rem 0.86rem 0.46rem 0.72rem;
-  border-radius: 999px;
-  cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    background 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.18s ease;
-}
-
-.account-trigger:hover,
-.account-trigger.open {
-  border-color: rgba(229, 9, 20, 0.24);
-  background: #1a1a1a;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
-}
-
-.account-trigger.open {
-  transform: translateY(-1px);
 }
 
 .account-dot {
@@ -57,7 +36,7 @@
   transition: transform 0.18s ease, border-color 0.18s ease;
 }
 
-.account-trigger.open .account-chevron {
+.ui-button-panel-pill[aria-expanded="true"] .account-chevron {
   transform: rotate(-135deg) translateX(-1px);
   border-color: #fff;
 }
@@ -84,24 +63,8 @@
   font-size: 0.9rem;
 }
 
-.account-menu button {
-  display: block;
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: var(--text);
-  padding: 0.65rem 1rem;
-  text-align: left;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background 0.15s;
-}
-
-.account-menu button:hover { background: var(--surface-hover); }
-.account-menu button.danger { color: #ef4444; }
-
 @media (max-width: 768px) {
-  .account-trigger {
+  .ui-button-panel-pill {
     padding: 0.42rem 0.8rem 0.42rem 0.66rem;
   }
 

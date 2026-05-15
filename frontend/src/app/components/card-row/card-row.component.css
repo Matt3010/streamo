@@ -29,38 +29,23 @@
 @media (min-width: 640px) { .scroll-row > app-card { width: 165px; } }
 @media (min-width: 1024px) { .scroll-row > app-card { width: 175px; } }
 
-.scroll-arrow {
+.row-container > .ui-button-icon-circle {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
   background: rgba(20, 20, 20, 0.95);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 10;
-  transition: all 0.2s ease;
   opacity: 0;
 }
 
-.row-container:hover .scroll-arrow { opacity: 1; }
+.row-container:hover > .ui-button-icon-circle { opacity: 1; }
 
-.scroll-arrow:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.scroll-arrow.left { left: 0; }
-.scroll-arrow.right { right: 0; }
-.scroll-arrow svg { width: 20px; height: 20px; }
+.row-container > .ui-button-icon-circle:first-child { left: 0; }
+.row-container > .ui-button-icon-circle:last-child { right: 0; }
+.row-container > .ui-button-icon-circle svg { width: 20px; height: 20px; }
 
 @media (max-width: 768px) {
-  .scroll-arrow { display: none; }
+  .row-container > .ui-button-icon-circle { display: none; }
 }
 
 .card-skeleton {

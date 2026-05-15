@@ -154,42 +154,8 @@
   .card-actions { display: flex; }
 }
 
-.card-action {
+.card-actions > .ui-button-icon-overlay {
   width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.75);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-
-.card-watchlist.active {
-  background: rgba(229, 9, 20, 0.88);
-  color: #fff;
-}
-
-.card-watchlist:hover {
-  background: rgba(229, 9, 20, 0.88);
-}
-
-.card-folder.active,
-.card-folder:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.card-remove:hover { background: var(--accent); }
-
-.card-status:hover { background: #2ea043; }
-.card-status.in-progress {
-  background: #2563eb;
-  color: #fff;
-}
-.card-status.done {
-  background: #2ea043;
-  color: #fff;
+  min-width: 28px;
+  min-height: 28px;
 }

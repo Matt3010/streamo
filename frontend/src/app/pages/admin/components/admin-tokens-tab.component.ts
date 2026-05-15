@@ -62,20 +62,20 @@ type TokenAction = 'revoke' | 'reactivate' | 'delete';
               </div>
               <div class="row-actions">
                 @if (token.revoked_at === null && canManageToken(token)) {
-                  <button class="row-action" title="Copia token" (click)="copyToken(token.token)">
+                  <button uiButton="icon-outline" title="Copia token" (click)="copyToken(token.token)">
                     <app-icon name="copy"></app-icon>
                   </button>
-                  <button class="row-action danger" title="Revoca" (click)="confirmRevoke(token)">
+                  <button uiButton="icon-outline" uiButtonHover="danger" title="Revoca" (click)="confirmRevoke(token)">
                     <app-icon name="close"></app-icon>
                   </button>
-                  <button class="row-action danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
+                  <button uiButton="icon-outline" uiButtonHover="danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
                     <app-icon name="trash"></app-icon>
                   </button>
                 } @else if (token.revoked_at !== null && canManageToken(token)) {
-                  <button class="row-action" title="Riattiva" (click)="confirmReactivate(token)">
+                  <button uiButton="icon-outline" title="Riattiva" (click)="confirmReactivate(token)">
                     <app-icon name="rotate-left"></app-icon>
                   </button>
-                  <button class="row-action danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
+                  <button uiButton="icon-outline" uiButtonHover="danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
                     <app-icon name="trash"></app-icon>
                   </button>
                 }

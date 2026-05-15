@@ -12,25 +12,6 @@
   overflow: hidden;
 }
 
-.view-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  width: 38px;
-  height: 38px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s, color 0.2s;
-}
-
-.view-btn:hover { color: var(--text); }
-.view-btn.active {
-  background: var(--accent);
-  color: var(--text);
-}
-
 .filter-bar {
   max-width: 1400px;
   margin: 0 auto 0.85rem;
@@ -105,7 +86,7 @@
   margin-top: 0.4rem;
 }
 
-.folder-card {
+.ui-surface-card {
   width: 100%;
   aspect-ratio: 2 / 3;
   border: 2px solid transparent;
@@ -116,24 +97,20 @@
     var(--surface);
   color: var(--text);
   padding: 0.9rem 0.8rem 0.7rem;
-  display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: flex-start;
-  cursor: pointer;
-  text-align: left;
   overflow: hidden;
   position: relative;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.folder-card:hover {
+.ui-surface-card:hover {
   border-color: rgba(229, 9, 20, 0.42);
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
 }
 
-.folder-card.expanded {
+.ui-surface-card.expanded {
   border-color: var(--border);
   transform: none;
   box-shadow: none;
@@ -143,7 +120,7 @@
     var(--surface);
 }
 
-.folder-card.folder-drop-active {
+.ui-surface-card.folder-drop-active {
   border-color: rgba(46, 160, 67, 0.62);
   box-shadow: 0 0 0 1px rgba(46, 160, 67, 0.3), 0 10px 22px rgba(0, 0, 0, 0.3);
 }
@@ -222,26 +199,22 @@
   list-style: none;
 }
 
-.folder-row {
+.ui-surface-row[aria-expanded] {
   width: 100%;
   border: 1px solid var(--border);
   background: linear-gradient(90deg, rgba(229, 9, 20, 0.08), rgba(255, 255, 255, 0.02));
   border-radius: var(--radius);
   padding: 0.7rem 0.85rem;
   color: var(--text);
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 0.8rem;
-  cursor: pointer;
-  text-align: left;
 }
 
-.folder-row.expanded {
+.ui-surface-row[aria-expanded].expanded {
   border-color: rgba(229, 9, 20, 0.42);
 }
 
-.folder-row.folder-drop-active {
+.ui-surface-row[aria-expanded].folder-drop-active {
   border-color: rgba(46, 160, 67, 0.62);
   background: linear-gradient(90deg, rgba(46, 160, 67, 0.18), rgba(255, 255, 255, 0.03));
 }
@@ -388,54 +361,8 @@
   text-overflow: ellipsis;
 }
 
-.row-action {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.item-row > .ui-button-icon-outline {
   flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.row-remove:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.row-watchlist.active,
-.row-watchlist:hover {
-  background: rgba(229, 9, 20, 0.88);
-  border-color: rgba(229, 9, 20, 0.88);
-  color: #fff;
-}
-
-.row-status:hover {
-  background: #2ea043;
-  border-color: #2ea043;
-}
-
-.row-status.in-progress {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
-}
-
-.row-status.done {
-  background: #2ea043;
-  border-color: #2ea043;
-  color: #fff;
-}
-
-.row-folder.active,
-.row-folder:hover {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .folder-popover-bar {
@@ -485,12 +412,12 @@
     gap: 0.45rem;
   }
 
-  .row-action {
+  .item-row > .ui-button-icon-outline {
     width: 32px;
     height: 32px;
   }
 
-  .row-action svg {
+  .item-row > .ui-button-icon-outline svg {
     width: 14px;
     height: 14px;
   }
@@ -499,7 +426,7 @@
     display: none;
   }
 
-  .folder-row {
+  .ui-surface-row[aria-expanded] {
     padding: 0.75rem;
   }
 
