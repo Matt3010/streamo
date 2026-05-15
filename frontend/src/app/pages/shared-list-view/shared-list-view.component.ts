@@ -6,96 +6,55 @@ import {
   input,
   signal
 } from '@angular/core';
-import { Router } from '@angular/router';
-import { CardComponent } from '../../components/card/card.component';
-import { ShareLinksService } from '../../services/share-links.service';
-import { ToastService } from '../../services/toast.service';
-import { UiTabsComponent, type UiTab } from '../../ui/tabs/tabs.component';
+import { UserListViewComponent } from '../user-list-view/user-list-view.component';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
+import { ShareLinksService } from '../../services/share-links.service';
 import type { CardItem, MediaType } from '../../models';
 import type { SharedWatchlistItem } from '../../../../../shared/types';
 
-type MediaFilter = 'all' | 'tv' | 'movie';
-
-const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
-  { value: 'all', label: 'Tutti' },
-  { value: 'tv', label: 'TV' },
-  { value: 'movie', label: 'Film' }
-];
-
-/* Public read-only view of someone else's watchlist. Reuses
- * <app-card> for individual items so the visual matches the rest of
- * the app, but skips the full UserListViewComponent (which is heavily
- * auth-coupled and would need ~20 readonly branches throughout). The
- * recipient can scroll, filter by media type, and visually inspect
- * cards; clicking a card does not navigate anywhere because /watch
- * is auth-gated. */
+/* Public /shared/:token page. Fetches the read-only payload and
+ * defers to <app-user-list-view> in readonly mode for the actual
+ * rendering — the component already knows how to:
+ *   - hide every mutation button (readonly flag)
+ *   - intercept card clicks with the "Accedi per vedere…" toast
+ *   - swap title and empty-state copy when ownerNameOverride is set
+ *   - skip its load() pipeline when externalItems is supplied
+ *
+ * This wrapper only owns the 404 / loading states that sit outside
+ * the user-list view's normal responsibility. */
 @Component({
   selector: 'app-shared-list-view',
   standalone: true,
-  imports: [CardComponent, UiTabsComponent, PageHeaderComponent],
+  imports: [UserListViewComponent, PageHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styleUrl: './shared-list-view.component.css',
   template: `
-    <app-page-header [title]="title()" [showBack]="false" />
-
     @if (loading()) {
+      <app-page-header title="Lista condivisa" [showBack]="false" />
       <div class="loading"><div class="spinner"></div></div>
     } @else if (notFound()) {
+      <app-page-header title="Lista condivisa" [showBack]="false" />
       <div class="empty-state">
         <p class="empty-state-title">Link non disponibile</p>
         <p class="empty-state-hint">Il link che hai aperto non esiste più o è stato sospeso dal proprietario.</p>
       </div>
     } @else {
-      <div class="filter-bar">
-        <ui-tabs [tabs]="mediaTabs" [(value)]="mediaFilter" />
-      </div>
-
-      @if (visibleItems().length === 0) {
-        <div class="empty-state">
-          <p class="empty-state-title">Nessun titolo</p>
-          <p class="empty-state-hint">La lista è vuota per il filtro selezionato.</p>
-        </div>
-      } @else {
-        <div class="content-grid shared-grid">
-          @for (item of visibleItems(); track item.tmdb_id + '-' + item.media_type) {
-            <app-card
-              [item]="item"
-              [showRemove]="false"
-              [showStatusToggle]="false"
-              [showWatchlistToggle]="false"
-              [showFolderAction]="false"
-              (cardClick)="onCardClick()" />
-          }
-        </div>
-      }
+      <app-user-list-view
+        kind="watchlist"
+        [readonly]="true"
+        [externalItems]="items()"
+        [ownerNameOverride]="ownerName()" />
     }
   `
 })
 export class SharedListViewComponent {
   private readonly service = inject(ShareLinksService);
-  private readonly toast = inject(ToastService);
-  private readonly router = inject(Router);
 
   readonly token = input.required<string>();
 
-  protected readonly mediaTabs = MEDIA_TABS;
-  protected readonly mediaFilter = signal<MediaFilter>('all');
   protected readonly loading = signal(true);
   protected readonly notFound = signal(false);
   protected readonly ownerName = signal<string | null>(null);
   protected readonly items = signal<CardItem[]>([]);
-
-  protected readonly title = computed(() => {
-    const owner = this.ownerName();
-    return owner ? `Lista di ${owner}` : 'Lista condivisa';
-  });
-
-  protected readonly visibleItems = computed(() => {
-    const filter = this.mediaFilter();
-    if (filter === 'all') return this.items();
-    return this.items().filter((item) => item.media_type === filter);
-  });
 
   constructor() {
     void this.load();
@@ -112,13 +71,6 @@ export class SharedListViewComponent {
     }
     this.ownerName.set(data.owner.name);
     this.items.set(data.items.map(sharedToCardItem));
-  }
-
-  protected onCardClick(): void {
-    /* Clicking a card in shared mode does not navigate — /watch is
-     * auth-gated, so a click would just kick the recipient to the
-     * login screen. Surface a friendly toast instead. */
-    this.toast.show('Accedi per vedere il dettaglio del titolo');
   }
 }
 
