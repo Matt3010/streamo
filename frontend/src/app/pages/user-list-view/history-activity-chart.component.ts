@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { LineChartComponent, type LineChartSeries } from '../../components/charts/line-chart.component';
 import { HistoryService } from '../../services/history.service';
+
+export type ChartMediaFilter = 'all' | 'tv' | 'movie';
 
 const DAYS = 90;
 const MONTHS_IT = [
@@ -8,16 +10,19 @@ const MONTHS_IT = [
   'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'
 ];
 
+const COLOR_EPISODES = '#9be7ae';
+const COLOR_MOVIES = '#e50914';
+
 interface ChartState {
   labels: string[];
   episodes: number[];
   movies: number[];
 }
 
-/* Self-fetches unfiltered history so the chart reflects the user's full
- * activity regardless of the page's media filter. Aggregates into a
- * 90-day window keyed by local-day buckets — values stay at 0 for days
- * with no activity, which the line chart renders as a flat baseline. */
+/* Self-fetches the user's full history so the dataset stays stable
+ * across filter changes — the visible series is then narrowed down
+ * via the mediaFilter input so the chart matches what the page
+ * currently shows. */
 @Component({
   selector: 'app-history-activity-chart',
   standalone: true,
@@ -26,36 +31,27 @@ interface ChartState {
   styleUrl: './history-activity-chart.component.css',
   template: `
     @if (state(); as s) {
-      <section class="activity-chart">
-        <div class="activity-chart-header">
-          <h3 class="activity-chart-title">Attivita ultimi 90 giorni</h3>
-          <div class="activity-chart-legend">
-            <span class="activity-chart-legend-item">
-              <span class="activity-chart-legend-dot activity-chart-legend-episodes"></span>
-              Episodi
-            </span>
-            <span class="activity-chart-legend-item">
-              <span class="activity-chart-legend-dot activity-chart-legend-movies"></span>
-              Film
-            </span>
-          </div>
-        </div>
-        <app-line-chart [series]="series()" [xLabels]="s.labels" />
-      </section>
+      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" />
     }
   `
 })
 export class HistoryActivityChartComponent {
   private readonly history = inject(HistoryService);
+  readonly mediaFilter = input<ChartMediaFilter>('all');
   protected readonly state = signal<ChartState | null>(null);
 
   protected readonly series = computed<LineChartSeries[]>(() => {
     const s = this.state();
     if (!s) return [];
-    return [
-      { name: 'Episodi', color: '#9be7ae', values: s.episodes },
-      { name: 'Film', color: '#e50914', values: s.movies }
-    ];
+    const filter = this.mediaFilter();
+    const out: LineChartSeries[] = [];
+    if (filter !== 'movie') {
+      out.push({ name: 'Episodi', color: COLOR_EPISODES, values: s.episodes });
+    }
+    if (filter !== 'tv') {
+      out.push({ name: 'Film', color: COLOR_MOVIES, values: s.movies });
+    }
+    return out;
   });
 
   constructor() {

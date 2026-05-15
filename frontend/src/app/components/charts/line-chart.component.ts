@@ -21,11 +21,14 @@ interface RenderedSeries {
   points: { x: number; y: number }[];
   linePath: string;
   areaPath: string;
+  gradientId: string;
 }
 
 const VIEW_W = 1000;
 const PAD_TOP = 10;
 const PAD_BOTTOM = 10;
+
+let instanceCounter = 0;
 
 /* Generic multi-series line chart rendered as inline SVG. Smooth curves
  * are produced by converting a Catmull-Rom spline through the data
@@ -48,8 +51,16 @@ const PAD_BOTTOM = 10;
         preserveAspectRatio="none"
         (mousemove)="onMove($event)"
         (mouseleave)="hover.set(null)">
+        <defs>
+          @for (s of rendered(); track s.name) {
+            <linearGradient [attr.id]="s.gradientId" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" [attr.stop-color]="s.color" stop-opacity="0.32" />
+              <stop offset="1" [attr.stop-color]="s.color" stop-opacity="0" />
+            </linearGradient>
+          }
+        </defs>
         @for (s of rendered(); track s.name) {
-          <path class="line-chart-area" [attr.d]="s.areaPath" [attr.fill]="s.color"></path>
+          <path class="line-chart-area" [attr.d]="s.areaPath" [attr.fill]="'url(#' + s.gradientId + ')'"></path>
           <path class="line-chart-line" [attr.d]="s.linePath" [attr.stroke]="s.color"></path>
         }
         @if (hover() !== null) {
@@ -92,6 +103,7 @@ export class LineChartComponent {
   readonly xLabels = input.required<string[]>();
   readonly height = input(140);
 
+  private readonly instanceId = ++instanceCounter;
   protected readonly hover = signal<number | null>(null);
   protected readonly svgRef = viewChild.required<ElementRef<SVGSVGElement>>('svg');
 
@@ -109,7 +121,7 @@ export class LineChartComponent {
     const maxY = Math.max(1, ...all);
     const usableH = this.viewH() - PAD_TOP - PAD_BOTTOM;
 
-    return series.map((s) => {
+    return series.map((s, idx) => {
       const points = s.values.map((v, i) => ({
         x: labelCount === 1 ? VIEW_W / 2 : (i / (labelCount - 1)) * VIEW_W,
         y: PAD_TOP + (1 - v / maxY) * usableH
@@ -119,7 +131,8 @@ export class LineChartComponent {
       const firstX = points[0].x;
       const bottomY = this.viewH() - PAD_BOTTOM + 0.5;
       const areaPath = `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
-      return { name: s.name, color: s.color, values: s.values, points, linePath, areaPath };
+      const gradientId = `line-chart-grad-${this.instanceId}-${idx}`;
+      return { name: s.name, color: s.color, values: s.values, points, linePath, areaPath, gradientId };
     });
   });
 
