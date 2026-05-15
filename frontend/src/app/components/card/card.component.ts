@@ -40,7 +40,7 @@ export interface CardFolderClickEvent {
       @if (hasActions()) {
         <div class="card-actions">
           @if (showWatchlistToggle()) {
-            <button uiButton="icon-overlay"
+            <button uiButton="icon-overlay" type="button"
                     uiButtonHover="accent"
                     [uiPending]="hasPendingAction()"
                     [uiButtonTone]="item().inWatchlist === true ? 'accent' : 'default'"
@@ -50,7 +50,7 @@ export interface CardFolderClickEvent {
             </button>
           }
           @if (showFolderAction()) {
-            <button uiButton="icon-overlay"
+            <button uiButton="icon-overlay" type="button"
                     uiButtonHover="neutral"
                     [uiPending]="hasPendingAction()"
                     [uiButtonTone]="item().folderName ? 'neutral' : 'default'"
@@ -60,7 +60,7 @@ export interface CardFolderClickEvent {
             </button>
           }
           @if (canShowStatusToggle()) {
-            <button uiButton="icon-overlay"
+            <button uiButton="icon-overlay" type="button"
                     uiButtonHover="success"
                     [uiPending]="hasPendingAction()"
                     [uiButtonTone]="item().status === 'done' ? 'success' : item().status === 'in_progress' ? 'info' : 'default'"
@@ -70,7 +70,7 @@ export interface CardFolderClickEvent {
             </button>
           }
           @if (showRemove()) {
-            <button uiButton="icon-overlay"
+            <button uiButton="icon-overlay" type="button"
                     uiButtonHover="accent"
                     [uiPending]="hasPendingAction()"
                     [title]="removeTitle()" [attr.aria-label]="removeTitle()"

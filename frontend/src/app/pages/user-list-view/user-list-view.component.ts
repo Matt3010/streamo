@@ -96,11 +96,11 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         <h2>{{ title() }}</h2>
         <div class="page-actions">
           <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
-            <button uiButton="toggle-icon" [attr.aria-pressed]="viewMode() === 'grid'"
+            <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'grid'"
                     aria-label="Griglia" (click)="setViewMode('grid')">
               <app-icon name="grid"></app-icon>
             </button>
-            <button uiButton="toggle-icon" [attr.aria-pressed]="viewMode() === 'list'"
+            <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'list'"
                     aria-label="Lista" (click)="setViewMode('list')">
               <app-icon name="list"></app-icon>
             </button>
@@ -124,9 +124,9 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         <p class="empty-state-hint">{{ emptyHint() }}</p>
         <div class="empty-state-actions">
           @if (kind() === 'watchlist') {
-            <button uiButton="primary" (click)="goToSearch()">Vai a cercare</button>
+            <button uiButton="primary" type="button" (click)="goToSearch()">Vai a cercare</button>
           } @else {
-            <button uiButton="primary" (click)="goToBrowse()">Scopri film popolari</button>
+            <button uiButton="primary" type="button" (click)="goToBrowse()">Scopri film popolari</button>
           }
         </div>
       </div>
@@ -180,7 +180,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                       }
                     </div>
                     @if (auth.isLoggedIn()) {
-                      <button uiButton="icon-outline" uiButtonHover="accent"
+                      <button uiButton="icon-outline" type="button" uiButtonHover="accent"
                               [uiPending]="!!item.pendingAction"
                               [uiButtonTone]="item.inWatchlist === true ? 'accent' : 'default'"
                               [title]="item.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -188,7 +188,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         <app-icon name="bookmark"></app-icon>
                       </button>
                     }
-                    <button uiButton="icon-outline" uiButtonHover="accent"
+                    <button uiButton="icon-outline" type="button" uiButtonHover="accent"
                             [uiPending]="!!item.pendingAction"
                             title="Rimuovi dalla cronologia"
                             (click)="onRemoveClick(item); $event.stopPropagation()">
@@ -205,7 +205,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       <div class="content-grid">
         @for (entry of displayEntries(); track entry.key) {
           @if (entry.group) {
-            <button uiSurface="card"
+            <button uiSurface="card" type="button"
                     [class.expanded]="entry.expanded"
                     [class.folder-drop-active]="isFolderDropActive(entry.group.id)"
                     [attr.aria-expanded]="entry.expanded"
@@ -275,7 +275,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         @for (entry of displayEntries(); track entry.key) {
           @if (entry.group) {
             <li class="folder-block">
-              <button uiSurface="row"
+              <button uiSurface="row" type="button"
                       [class.expanded]="entry.expanded"
                       [class.folder-drop-active]="isFolderDropActive(entry.group.id)"
                       [attr.aria-expanded]="entry.expanded"
@@ -325,7 +325,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         }
                       </div>
                       @if (kind() === 'watchlist' && !it.isUpcoming) {
-                        <button uiButton="icon-outline" uiButtonHover="success"
+                        <button uiButton="icon-outline" type="button" uiButtonHover="success"
                                 [uiPending]="!!it.pendingAction"
                                 [uiButtonTone]="it.status === 'done' ? 'success' : it.status === 'in_progress' ? 'info' : 'default'"
                                 [title]="statusButtonTitle(it.status)"
@@ -334,7 +334,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         </button>
                       }
                       @if (kind() === 'watchlist' && folderFeatureEnabled()) {
-                        <button uiButton="icon-outline" uiButtonHover="neutral"
+                        <button uiButton="icon-outline" type="button" uiButtonHover="neutral"
                                 [uiPending]="!!it.pendingAction"
                                 [uiButtonTone]="it.folderName ? 'neutral' : 'default'"
                                 [title]="it.folderName ? 'Modifica folder' : 'Assegna folder'"
@@ -343,7 +343,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         </button>
                       }
                       @if (kind() === 'history' && auth.isLoggedIn()) {
-                        <button uiButton="icon-outline" uiButtonHover="accent"
+                        <button uiButton="icon-outline" type="button" uiButtonHover="accent"
                                 [uiPending]="!!it.pendingAction"
                                 [uiButtonTone]="it.inWatchlist === true ? 'accent' : 'default'"
                                 [title]="it.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -351,7 +351,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                           <app-icon name="bookmark"></app-icon>
                         </button>
                       }
-                      <button uiButton="icon-outline" uiButtonHover="accent"
+                      <button uiButton="icon-outline" type="button" uiButtonHover="accent"
                               [uiPending]="!!it.pendingAction"
                               [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
                               (click)="onRemoveClick(it); $event.stopPropagation()">
@@ -388,7 +388,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 }
               </div>
               @if (kind() === 'watchlist' && !entry.item.isUpcoming) {
-                <button uiButton="icon-outline" uiButtonHover="success"
+                <button uiButton="icon-outline" type="button" uiButtonHover="success"
                         [uiPending]="!!entry.item.pendingAction"
                         [uiButtonTone]="entry.item.status === 'done' ? 'success' : entry.item.status === 'in_progress' ? 'info' : 'default'"
                         [title]="statusButtonTitle(entry.item.status)"
@@ -397,7 +397,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 </button>
               }
               @if (kind() === 'watchlist' && folderFeatureEnabled()) {
-                <button uiButton="icon-outline" uiButtonHover="neutral"
+                <button uiButton="icon-outline" type="button" uiButtonHover="neutral"
                         [uiPending]="!!entry.item.pendingAction"
                         [uiButtonTone]="entry.item.folderName ? 'neutral' : 'default'"
                         [title]="entry.item.folderName ? 'Modifica folder' : 'Assegna folder'"
@@ -406,7 +406,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 </button>
               }
               @if (kind() === 'history' && auth.isLoggedIn()) {
-                <button uiButton="icon-outline" uiButtonHover="accent"
+                <button uiButton="icon-outline" type="button" uiButtonHover="accent"
                         [uiPending]="!!entry.item.pendingAction"
                         [uiButtonTone]="entry.item.inWatchlist === true ? 'accent' : 'default'"
                         [title]="entry.item.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
@@ -414,7 +414,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   <app-icon name="bookmark"></app-icon>
                 </button>
               }
-              <button uiButton="icon-outline" uiButtonHover="accent"
+              <button uiButton="icon-outline" type="button" uiButtonHover="accent"
                       [uiPending]="!!entry.item.pendingAction"
                       [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
                       (click)="onRemoveClick(entry.item); $event.stopPropagation()">
@@ -452,7 +452,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                placeholder="Titolo folder"
                (input)="onFolderDraftInput($event)">
 
-        <button uiButton="primary"
+        <button uiButton="primary" type="button"
                 [uiPending]="savingFolder()"
                 [disabled]="!canSaveFolder()"
                 (click)="saveFolder()">
@@ -460,13 +460,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </button>
 
         @if (folderTargetHasFolder()) {
-          <button uiButton="danger-outline"
+          <button uiButton="danger-outline" type="button"
                   [uiPending]="savingFolder()"
                   (click)="removeFolder()">
             Rimuovi
           </button>
         } @else {
-          <button uiButton="ghost"
+          <button uiButton="ghost" type="button"
                   [disabled]="savingFolder()"
                   (click)="closeFolderPopover()">
             Chiudi

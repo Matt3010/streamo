@@ -34,7 +34,7 @@ type ConfirmAction =
     <div class="watch-page">
       <div class="watch-main">
         <div class="watch-top-row">
-          <button uiButton="back" (click)="back()">
+          <button uiButton="back" type="button" (click)="back()">
             <app-icon name="chevron-left"></app-icon>
             <span>Indietro</span>
           </button>
@@ -96,7 +96,7 @@ type ConfirmAction =
         } @else if (isUpcomingTitle()) {
           <div class="player-actions">
             <div class="release-inline-note">{{ upcomingAvailabilityStr() }}</div>
-            <button uiButton="icon"
+            <button uiButton="icon" type="button"
                     uiButtonHover="accent"
                     [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
                     [uiPending]="watchlistPending()"
@@ -108,16 +108,16 @@ type ConfirmAction =
           </div>
         } @else if (!player.iframeSrc()) {
           <div class="player-actions">
-            <button uiButton="primary" (click)="play()">
+            <button uiButton="primary" type="button" (click)="play()">
               <app-icon name="play"></app-icon>
               <span>{{ playLabel() }}</span>
             </button>
             @if (showNextButton()) {
-              <button uiButton (click)="playNext()">
+              <button uiButton type="button" (click)="playNext()">
                 <span>Vai al prossimo</span>
               </button>
             }
-            <button uiButton="icon"
+            <button uiButton="icon" type="button"
                     uiButtonHover="accent"
                     [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
                     [uiPending]="watchlistPending()"
@@ -129,11 +129,11 @@ type ConfirmAction =
           </div>
         } @else {
           <div class="player-actions">
-            <button uiButton (click)="closePlayer()">
+            <button uiButton type="button" (click)="closePlayer()">
               <app-icon name="close"></app-icon>
               <span>Chiudi player</span>
             </button>
-            <button uiButton="icon"
+            <button uiButton="icon" type="button"
                     uiButtonHover="accent"
                     [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
                     [uiPending]="watchlistPending()"

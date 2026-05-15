@@ -11,7 +11,7 @@ import type { CardItem } from '../../models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="row-container">
-      <button uiButton="icon-circle" aria-label="Scorri sinistra" (click)="scroll(-1)">
+      <button uiButton="icon-circle" type="button" aria-label="Scorri sinistra" (click)="scroll(-1)">
         <app-icon name="chevron-left"></app-icon>
       </button>
       <div class="scroll-row" #row>
@@ -64,7 +64,7 @@ import type { CardItem } from '../../models';
           }
         }
       </div>
-      <button uiButton="icon-circle" aria-label="Scorri destra" (click)="scroll(1)">
+      <button uiButton="icon-circle" type="button" aria-label="Scorri destra" (click)="scroll(1)">
         <app-icon name="chevron-right"></app-icon>
       </button>
     </div>

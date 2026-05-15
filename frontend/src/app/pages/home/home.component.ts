@@ -54,7 +54,7 @@ type HomeConfirmAction =
           <p class="home-empty-title">Niente da riprendere</p>
           <p class="home-empty-hint">I titoli che inizi a guardare compariranno qui.</p>
           <div class="home-empty-actions">
-            <button uiButton="primary" (click)="goToBrowse()">Scopri film popolari</button>
+            <button uiButton="primary" type="button" (click)="goToBrowse()">Scopri film popolari</button>
           </div>
         </div>
       </section>
@@ -80,7 +80,7 @@ type HomeConfirmAction =
           <p class="home-empty-title">La tua lista è vuota</p>
           <p class="home-empty-hint">Aggiungi un film o una serie con il segnalibro per ritrovarli qui.</p>
           <div class="home-empty-actions">
-            <button uiButton="primary" (click)="goToSearch()">Vai a cercare</button>
+            <button uiButton="primary" type="button" (click)="goToSearch()">Vai a cercare</button>
           </div>
         </div>
       </section>

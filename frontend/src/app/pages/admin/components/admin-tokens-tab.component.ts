@@ -25,7 +25,7 @@ type TokenAction = 'revoke' | 'reactivate' | 'delete';
         <div class="section-actions">
           <input uiInput="compact" type="text" placeholder="Label (opzionale)"
                  [value]="newTokenLabel()" (input)="updateLabel($event)">
-          <button uiButton="primary" [uiPending]="generateTokenPending()" (click)="generateToken()">
+          <button uiButton="primary" type="button" [uiPending]="generateTokenPending()" (click)="generateToken()">
             Genera Token
           </button>
         </div>
@@ -62,20 +62,20 @@ type TokenAction = 'revoke' | 'reactivate' | 'delete';
               </div>
               <div class="row-actions">
                 @if (token.revoked_at === null && canManageToken(token)) {
-                  <button uiButton="icon-outline" title="Copia token" (click)="copyToken(token.token)">
+                  <button uiButton="icon-outline" type="button" title="Copia token" (click)="copyToken(token.token)">
                     <app-icon name="copy"></app-icon>
                   </button>
-                  <button uiButton="icon-outline" uiButtonHover="danger" title="Revoca" (click)="confirmRevoke(token)">
+                  <button uiButton="icon-outline" type="button" uiButtonHover="danger" title="Revoca" (click)="confirmRevoke(token)">
                     <app-icon name="close"></app-icon>
                   </button>
-                  <button uiButton="icon-outline" uiButtonHover="danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
+                  <button uiButton="icon-outline" type="button" uiButtonHover="danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
                     <app-icon name="trash"></app-icon>
                   </button>
                 } @else if (token.revoked_at !== null && canManageToken(token)) {
-                  <button uiButton="icon-outline" title="Riattiva" (click)="confirmReactivate(token)">
+                  <button uiButton="icon-outline" type="button" title="Riattiva" (click)="confirmReactivate(token)">
                     <app-icon name="rotate-left"></app-icon>
                   </button>
-                  <button uiButton="icon-outline" uiButtonHover="danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
+                  <button uiButton="icon-outline" type="button" uiButtonHover="danger" title="Elimina definitivamente" (click)="confirmDelete(token)">
                     <app-icon name="trash"></app-icon>
                   </button>
                 }
@@ -105,8 +105,8 @@ type TokenAction = 'revoke' | 'reactivate' | 'delete';
         </p>
         <p class="warning">{{ confirmModalWarning() }}</p>
         <div class="modal-actions">
-          <button uiButton="ghost" (click)="cancelRevoke()">Annulla</button>
-          <button [uiButton]="confirmAction() === 'reactivate' ? 'primary' : 'danger'" [uiPending]="tokenActionPending()" (click)="executeTokenAction()">
+          <button uiButton="ghost" type="button" (click)="cancelRevoke()">Annulla</button>
+          <button [uiButton]="confirmAction() === 'reactivate' ? 'primary' : 'danger'" type="button" [uiPending]="tokenActionPending()" (click)="executeTokenAction()">
             {{ confirmModalActionLabel() }}
           </button>
         </div>

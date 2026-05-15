@@ -8,7 +8,7 @@ import { UiButtonDirective } from '../ui-button.directive';
   imports: [IconComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <button uiButton="back" [attr.aria-label]="label()" (click)="pressed.emit()">
+    <button uiButton="back" type="button" [attr.aria-label]="label()" (click)="pressed.emit()">
       <app-icon name="chevron-left"></app-icon>
       <span>{{ label() }}</span>
     </button>

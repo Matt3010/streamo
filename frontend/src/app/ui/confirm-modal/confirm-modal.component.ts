@@ -15,8 +15,8 @@ import { UiButtonDirective } from '../ui-button.directive';
           <p class="warning">{{ warning() }}</p>
         }
         <div class="modal-actions">
-          <button uiButton="ghost" (click)="cancel()">{{ cancelLabel() }}</button>
-          <button uiButton="danger" (click)="confirm()">{{ actionLabel() }}</button>
+          <button uiButton="ghost" type="button" (click)="cancel()">{{ cancelLabel() }}</button>
+          <button uiButton="danger" type="button" (click)="confirm()">{{ actionLabel() }}</button>
         </div>
       </div>
     </ui-modal>

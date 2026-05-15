@@ -16,7 +16,7 @@ import { BodyScrollLockService } from '../../services/body-scroll-lock.service';
             <h3>{{ title() }}</h3>
             <div class="modal-actions">
               <ng-content select="[modalActions]"></ng-content>
-              <button uiButton="icon-circle" aria-label="Chiudi" (click)="dismiss()">
+              <button uiButton="icon-circle" type="button" aria-label="Chiudi" (click)="dismiss()">
                 <app-icon name="close"></app-icon>
               </button>
             </div>

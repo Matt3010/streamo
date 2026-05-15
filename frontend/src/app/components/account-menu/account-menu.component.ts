@@ -10,7 +10,7 @@ import { ToastService } from '../../services/toast.service';
   imports: [UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <button uiButton="panel-pill" [attr.aria-expanded]="open()" (click)="toggle($event)">
+    <button uiButton="panel-pill" type="button" [attr.aria-expanded]="open()" (click)="toggle($event)">
       <span class="account-dot" aria-hidden="true"></span>
       <span class="account-name">{{ displayName() }}</span>
       <span class="account-chevron" aria-hidden="true"></span>
@@ -19,12 +19,12 @@ import { ToastService } from '../../services/toast.service';
       <div class="account-menu open">
         <div class="username">{{ auth.currentUser()?.email }}</div>
         @if (auth.isAdmin()) {
-          <button uiButton="menu-item" (click)="goToAdmin()">Admin</button>
+          <button uiButton="menu-item" type="button" (click)="goToAdmin()">Admin</button>
         }
-        <button uiButton="menu-item" (click)="goTo('watchlist')">La mia lista</button>
-        <button uiButton="menu-item" (click)="goTo('history')">Cronologia</button>
-        <button uiButton="menu-item" (click)="goToSettings()">Impostazioni</button>
-        <button uiButton="menu-item" uiButtonTone="danger" (click)="logout()">Esci</button>
+        <button uiButton="menu-item" type="button" (click)="goTo('watchlist')">La mia lista</button>
+        <button uiButton="menu-item" type="button" (click)="goTo('history')">Cronologia</button>
+        <button uiButton="menu-item" type="button" (click)="goToSettings()">Impostazioni</button>
+        <button uiButton="menu-item" type="button" uiButtonTone="danger" (click)="logout()">Esci</button>
       </div>
     }
   `,

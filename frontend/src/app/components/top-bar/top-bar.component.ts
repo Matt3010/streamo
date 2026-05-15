@@ -15,7 +15,7 @@ import { AuthModalService } from '../../services/auth-modal.service';
         @if (auth.isLoggedIn()) {
           <app-account-menu />
         } @else {
-          <button uiButton="panel" (click)="authModal.open()">Accedi</button>
+          <button uiButton="panel" type="button" (click)="authModal.open()">Accedi</button>
         }
       </div>
     </div>
