@@ -13,7 +13,6 @@ import { ListItemInfoComponent } from './list-item-info.component';
 import { ListRowActionsComponent } from './list-row-actions.component';
 import { FolderCardComponent } from './folder-card.component';
 import { FolderRowComponent } from './folder-row.component';
-import { HistoryActivityChartComponent } from './history-activity-chart.component';
 import type { FolderGroup } from './folder.model';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -84,7 +83,6 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     ListRowActionsComponent,
     FolderCardComponent,
     FolderRowComponent,
-    HistoryActivityChartComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -124,17 +122,6 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       </div>
     } @else if (kind() === 'history') {
       <div class="history-sections">
-        <section class="history-section">
-          <div class="history-section-header">
-            <div class="history-section-copy">
-              <h3>Statistiche</h3>
-              <p>{{ activityChart.totalLabel() }}</p>
-            </div>
-          </div>
-          <div class="stats-card">
-            <app-history-activity-chart #activityChart [mediaFilter]="mediaFilter()" />
-          </div>
-        </section>
         @for (section of historySections(); track section.key) {
           <section class="history-section">
             <div class="history-section-header">
