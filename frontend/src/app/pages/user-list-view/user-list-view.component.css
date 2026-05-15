@@ -361,10 +361,6 @@
   text-overflow: ellipsis;
 }
 
-.item-row > .ui-button-icon-outline {
-  flex-shrink: 0;
-}
-
 .folder-popover-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -393,11 +389,6 @@
 .folder-popover-input:focus {
   outline: none;
   border-color: rgba(229, 9, 20, 0.5);
-}
-
-.folder-popover-bar > .ui-button {
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
 @media (max-width: 640px) {

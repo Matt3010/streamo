@@ -33,15 +33,6 @@
   width: 180px;
 }
 
-.section-actions > .ui-button-icon {
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-
 .live-pill {
   display: inline-flex;
   align-items: center;

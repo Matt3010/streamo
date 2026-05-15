@@ -119,14 +119,15 @@
   align-items: stretch;
 }
 
+/* Non-icon buttons stretch to fill the row so the watchlist icon sits flush
+ * to the right edge. overflow:hidden + the span ellipsis below keep long
+ * labels from pushing the row width. */
 .player-actions > .ui-button:not(.ui-button-icon) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  flex: 1 1 auto;
   gap: 0.55rem;
   padding: 0.8rem 1.25rem;
+  min-width: 0;
   font-size: 1rem;
-  white-space: nowrap;
   overflow: hidden;
 }
 
@@ -140,16 +141,6 @@
   transform: scale(0.98);
 }
 
-/* Primary CTA + any other non-icon button (e.g. "Chiudi player",
- * "Vai al prossimo") stretches to fill the available row so the
- * watchlist icon sits flush to the right edge. min-width keeps the label
- * readable; no max-width — the user explicitly wants the button to fill
- * the entire row. */
-.player-actions > .ui-button:not(.ui-button-icon) {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .player-actions > .ui-button-primary {
   min-width: 12rem;
 }
@@ -159,10 +150,9 @@
   height: 18px;
 }
 
-/* Square-ish icon buttons (watchlist toggle). Same height as the primary
- * CTA so they line up cleanly on the same row. */
+/* Watchlist toggle sits flush to the right edge and is wider than the
+ * default 40px square so its tap target matches the primary CTA height. */
 .player-actions > .ui-button-icon {
-  flex: 0 0 auto;
   padding: 0.8rem 1rem;
   min-width: 3rem;
 }
