@@ -10,10 +10,12 @@ import {
   signal,
   viewChild
 } from '@angular/core';
+import { IconComponent, type IconName } from '../icon/icon.component';
 
 @Component({
   selector: 'ui-popover',
   standalone: true,
+  imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (open() && anchor()) {
@@ -27,14 +29,21 @@ import {
         <span class="ui-popover-arrow"
               [style.left.px]="arrowLeft()"
               aria-hidden="true"></span>
-        @if (title() || secondary()) {
-          <div class="ui-popover-header">
-            @if (title()) {
-              <strong class="ui-popover-title">{{ title() }}</strong>
+        @if (title() || secondary() || icon()) {
+          <div class="ui-popover-header" [class.ui-popover-header-with-icon]="!!icon()">
+            @if (icon(); as iconName) {
+              <span class="ui-popover-badge" aria-hidden="true">
+                <app-icon [name]="iconName"></app-icon>
+              </span>
             }
-            @if (secondary()) {
-              <span class="ui-popover-secondary">{{ secondary() }}</span>
-            }
+            <div class="ui-popover-copy">
+              @if (title()) {
+                <strong class="ui-popover-title">{{ title() }}</strong>
+              }
+              @if (secondary()) {
+                <span class="ui-popover-secondary">{{ secondary() }}</span>
+              }
+            </div>
           </div>
         }
         <ng-content></ng-content>
@@ -54,6 +63,7 @@ export class UiPopoverComponent {
   readonly width = input(228);
   readonly title = input('');
   readonly secondary = input('');
+  readonly icon = input<IconName | null>(null);
   readonly preferredHeight = input(96);
   readonly closed = output<void>();
   private readonly panel = viewChild<ElementRef<HTMLDivElement>>('panel');

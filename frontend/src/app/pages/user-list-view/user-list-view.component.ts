@@ -298,6 +298,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 [anchor]="folderPopoverAnchor()"
                 [width]="folderTargetHasFolder() ? 430 : 350"
                 [preferredHeight]="130"
+                icon="folder"
                 [title]="folderTargetItem()?.title ?? 'Folder'"
                 [secondary]="folderTargetHasFolder()
                   ? 'Folder attuale: ' + (folderTargetItem()?.folderName ?? '')
