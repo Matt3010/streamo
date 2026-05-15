@@ -74,11 +74,11 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
               </label>
 
               <div class="search-actions">
-                <button uiButton="primary" uiButtonSize="compact" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
+                <button uiButton="primary" uiButtonSize="dense" type="button" [disabled]="!query().trim()" (click)="submitSearch()">
                   <app-icon name="search"></app-icon>
                   <span>Cerca</span>
                 </button>
-                <button uiButton="ghost" uiButtonSize="compact" type="button" (click)="closeSearch()">Chiudi</button>
+                <button uiButton="ghost" uiButtonSize="dense" type="button" (click)="closeSearch()">Chiudi</button>
               </div>
             </div>
 

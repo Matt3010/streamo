@@ -309,16 +309,20 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* Dense metrics matching ui-input-dense — same min-height (32px),
+ * border-radius (10px) and font-size as the dense uiInput so the
+ * search field reads as the same size family as the Cerca / Chiudi
+ * buttons (uiButtonSize="dense"). */
 .search-field {
   min-width: 0;
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 0.18rem 0.24rem 0.18rem 0.66rem;
+  border-radius: 10px;
+  padding: 0.1rem 0.18rem 0.1rem 0.6rem;
   color: var(--text-muted);
   transition:
     border-color 0.18s ease,
@@ -345,9 +349,9 @@
   background: transparent;
   border: none;
   color: var(--text);
-  font-size: 0.94rem;
+  font-size: 0.82rem;
   line-height: 1.2;
-  padding: 0.62rem 0;
+  padding: 0.38rem 0;
 }
 
 .search-field input:focus {
@@ -387,7 +391,7 @@
   }
 
   .search-actions > .ui-button-primary {
-    min-width: 136px;
+    min-width: 110px;
     flex-shrink: 0;
   }
 }
