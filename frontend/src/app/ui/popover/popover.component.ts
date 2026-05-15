@@ -53,7 +53,10 @@ import { IconComponent, type IconName } from '../icon/icon.component';
   styleUrl: './popover.component.css'
 })
 export class UiPopoverComponent {
-  private readonly arrowSize = 14;
+  /* Must match .ui-popover-arrow's width in popover.component.css —
+   * otherwise the arrow tip ends up offset from the anchor centre by
+   * (cssWidth - tsSize) / 2 pixels. */
+  private readonly arrowSize = 18;
   private readonly edgePadding = 16;
   private readonly anchorGap = 8;
   /* Keep the arrow off the rounded corner curve, but not so far that
