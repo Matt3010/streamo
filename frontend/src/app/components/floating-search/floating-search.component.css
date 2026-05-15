@@ -126,13 +126,14 @@
   gap: 0.7rem;
   padding: 0.42rem 0;
   border-radius: 12px;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, padding 0.15s ease;
 }
 
 .search-suggestion:hover,
 .search-suggestion:focus-visible,
 .search-suggestion.is-highlighted {
   background: rgba(255, 255, 255, 0.04);
+  padding: 0.42rem 0.66rem;
   outline: none;
 }
 
@@ -240,13 +241,14 @@
   gap: 0.4rem;
   padding: 0.4rem 0;
   border-radius: 12px;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, padding 0.15s ease;
 }
 
 .search-recent:hover,
 .search-recent:focus-within,
 .search-recent.is-highlighted {
   background: rgba(255, 255, 255, 0.04);
+  padding: 0.4rem 0.66rem;
 }
 
 .search-recent-main {
