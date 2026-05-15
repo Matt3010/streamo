@@ -100,6 +100,18 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_invite_used_by ON invite_tokens(used_by_user_id);
+
+  CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    user_id INTEGER NOT NULL,
+    label TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_share_links_user ON share_links(user_id);
 `);
 
 // Migration: rename legacy `username` column to `email` if needed

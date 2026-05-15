@@ -11,7 +11,9 @@ import type { CardItem } from '../../models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="content-section">
-      <app-section-header [title]="title()" [icon]="icon()" />
+      <app-section-header [title]="title()" [icon]="icon()">
+        <ng-content select="[headerActions]"></ng-content>
+      </app-section-header>
       <app-card-row
         [items]="items()"
         [loading]="loading()"

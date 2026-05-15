@@ -13,6 +13,24 @@
   color: var(--text);
 }
 
+.section-title-text {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* Slot for icon-button-sized actions next to the title (e.g. the
+ * share-list trigger on the home "La mia lista" section). */
+.section-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.4rem;
+}
+
+.section-title-actions:empty {
+  display: none;
+}
+
 .section-title .icon {
   display: inline-flex;
   align-items: center;

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { CardComponent, CardFolderClickEvent } from '../../components/card/card.component';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
@@ -13,6 +13,7 @@ import { ListItemInfoComponent } from './list-item-info.component';
 import { ListRowActionsComponent } from './list-row-actions.component';
 import { FolderCardComponent } from './folder-card.component';
 import { FolderRowComponent } from './folder-row.component';
+import { ShareLinksPopoverComponent } from '../../components/share-links-popover/share-links-popover.component';
 import type { FolderGroup } from './folder.model';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
@@ -83,10 +84,20 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     ListRowActionsComponent,
     FolderCardComponent,
     FolderRowComponent,
+    ShareLinksPopoverComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header [title]="title()" (back)="back()">
+      @if (kind() === 'watchlist') {
+        <button #shareTrigger
+                uiButton="icon-outline" type="button"
+                aria-label="Condividi la lista"
+                title="Condividi"
+                (click)="toggleShareLinks($event)">
+          <app-icon name="share"></app-icon>
+        </button>
+      }
       <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
         <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'grid'"
                 aria-label="Griglia" (click)="setViewMode('grid')">
@@ -98,6 +109,12 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </button>
       </div>
     </app-page-header>
+
+    @if (kind() === 'watchlist') {
+      <app-share-links-popover #sharePopover
+        [(open)]="shareLinksOpen"
+        [anchor]="shareAnchor()" />
+    }
 
     <div class="filter-bar">
       @if (kind() === 'watchlist') {
@@ -365,6 +382,9 @@ export class UserListViewComponent {
   protected readonly folderTargetItem = signal<CardItem | null>(null);
   protected readonly folderDraft = signal('');
   protected readonly savingFolder = signal(false);
+  protected readonly shareLinksOpen = signal(false);
+  protected readonly shareAnchor = signal<HTMLElement | null>(null);
+  private readonly sharePopover = viewChild<ShareLinksPopoverComponent>('sharePopover');
   protected readonly expandedFolders = signal<Record<string, boolean>>(loadExpandedFolders());
   protected readonly draggedItem = signal<CardItem | null>(null);
   protected readonly dropFolderId = signal<string | null>(null);
@@ -512,6 +532,20 @@ export class UserListViewComponent {
 
   protected back(): void {
     this.navSource.goBack('/browse');
+  }
+
+  protected toggleShareLinks(event: MouseEvent): void {
+    if (this.shareLinksOpen()) {
+      this.shareLinksOpen.set(false);
+      this.shareAnchor.set(null);
+      return;
+    }
+    const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    this.shareAnchor.set(trigger);
+    this.shareLinksOpen.set(true);
+    /* The popover stores its own state — refresh from the API every
+     * time the user opens it so cross-tab edits show up. */
+    void this.sharePopover()?.load();
   }
 
   protected goToSearch(): void {

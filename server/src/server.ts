@@ -7,6 +7,7 @@ import preferencesRoutes from './routes/preferences';
 import progressRoutes from './routes/progress';
 import historyRoutes from './routes/history';
 import watchlistRoutes from './routes/watchlist';
+import shareLinksRoutes from './routes/share-links';
 import adminRoutes from './routes/admin';
 import playbackRoutes from './routes/playback';
 import { attachAdminLiveSessions } from './services/admin-live';
@@ -27,6 +28,7 @@ app.use(progressRoutes);
 app.use(historyRoutes);
 app.use('/admin/queues', requireSuperAdmin, getAdminQueuesBoardRouter());
 app.use(watchlistRoutes);
+app.use(shareLinksRoutes);
 app.use(adminRoutes);
 app.use(playbackRoutes);
 

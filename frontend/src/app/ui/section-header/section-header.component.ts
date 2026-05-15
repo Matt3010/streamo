@@ -10,7 +10,8 @@ import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
   template: `
     <h2 class="section-title">
       <span class="icon"><fa-icon [icon]="icon()"></fa-icon></span>
-      {{ title() }}
+      <span class="section-title-text">{{ title() }}</span>
+      <span class="section-title-actions"><ng-content></ng-content></span>
     </h2>
   `,
   styleUrl: './section-header.component.css'
