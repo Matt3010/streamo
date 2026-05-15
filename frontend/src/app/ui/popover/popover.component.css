@@ -69,19 +69,12 @@
   line-height: 1.35;
 }
 
-/* The arrow's base overlaps the panel by 1px so the popover's own
- * border-top doesn't show as a visible seam where the triangle
- * meets the panel — the arrow's background paints over the border
- * in the overlap. No ::before / ::after pseudo-elements anymore:
- * they were attempting to mimic the panel border on the arrow's
- * slanted edges and round off the tip, but ended up creating a
- * darker outline around the tip and the visible seam at the base. */
 .ui-popover-arrow {
   position: absolute;
   z-index: 0;
   width: 18px;
   height: 10px;
-  bottom: -9px;
+  bottom: -10px;
   overflow: visible;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
@@ -90,8 +83,26 @@
   pointer-events: none;
 }
 
+/* Slightly larger triangle painted in the same colour as the
+ * popover's border, sitting behind the arrow. The 1 px extension on
+ * the slanted sides shows as a faint outline so the arrow visually
+ * carries the same border as the panel. */
+.ui-popover-arrow::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px 0 -1px;
+  z-index: -1;
+  background: rgba(255, 255, 255, 0.1);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
 .ui-popover.ui-popover-below .ui-popover-arrow {
-  top: -9px;
+  top: -10px;
   bottom: auto;
+  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+}
+
+.ui-popover.ui-popover-below .ui-popover-arrow::before {
+  inset: 0 -1px -1px -1px;
   clip-path: polygon(50% 0, 0 100%, 100% 100%);
 }
