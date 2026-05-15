@@ -20,15 +20,18 @@
   color: #8f8f8f;
 }
 
+/* background-color (not the shorthand) so the select's chevron
+ * background-image set by select.ui-input survives the hover/focus
+ * states — the shorthand would reset background-image to none. */
 .ui-input:hover {
   border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .ui-input:focus {
   outline: none;
   border-color: rgba(229, 9, 20, 0.4);
-  background: rgba(255, 255, 255, 0.04);
+  background-color: rgba(255, 255, 255, 0.04);
   box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.08);
   transform: translateY(-1px);
 }

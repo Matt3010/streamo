@@ -58,10 +58,14 @@
   box-shadow: 0 10px 22px rgba(229, 9, 20, 0.22);
 }
 
+/* Re-set the gradient explicitly: the base .ui-button:hover rule
+ * has higher specificity than .ui-button-primary alone, so without
+ * this restoration the variant's red gradient gets clobbered by the
+ * neutral white-tint hover background. */
 .ui-button-primary:hover:not(:disabled):not(.ui-pending) {
+  background: linear-gradient(135deg, rgba(229, 9, 20, 1), rgba(255, 59, 48, 1));
   border-color: transparent;
   box-shadow: 0 14px 28px rgba(229, 9, 20, 0.28);
-  filter: saturate(1.05);
 }
 
 .ui-button-danger {
@@ -71,7 +75,9 @@
   box-shadow: 0 10px 22px rgba(239, 68, 68, 0.18);
 }
 
+/* Same restoration logic as ui-button-primary's hover. */
 .ui-button-danger:hover:not(:disabled):not(.ui-pending) {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 1), rgba(220, 38, 38, 1));
   border-color: rgba(239, 68, 68, 0.24);
   box-shadow: 0 14px 28px rgba(239, 68, 68, 0.22);
 }
