@@ -72,16 +72,6 @@
   width: 100%;
 }
 
-/* Stats section card hosting the activity chart. Wider than the
- * regular poster grid cards because it spans the full content row. */
-.stats-card {
-  width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.1rem 1.25rem;
-}
-
 .empty-state-actions {
   display: flex;
   justify-content: center;
