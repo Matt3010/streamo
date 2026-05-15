@@ -21,7 +21,7 @@ type UiButtonVariant =
 
 type UiButtonTone = 'default' | 'accent' | 'neutral' | 'success' | 'info' | 'danger';
 type UiButtonHover = 'default' | 'accent' | 'danger' | 'success' | 'neutral';
-type UiButtonSize = 'default' | 'compact' | 'action';
+type UiButtonSize = 'default' | 'compact' | 'dense' | 'action';
 
 @Directive({
   selector: 'button[uiButton], a[uiButton]',
@@ -54,6 +54,7 @@ type UiButtonSize = 'default' | 'compact' | 'action';
     '[class.ui-button-hover-success]': 'hover() === "success"',
     '[class.ui-button-hover-neutral]': 'hover() === "neutral"',
     '[class.ui-button-size-compact]': 'size() === "compact"',
+    '[class.ui-button-size-dense]': 'size() === "dense"',
     '[class.ui-button-size-action]': 'size() === "action"'
   }
 })
