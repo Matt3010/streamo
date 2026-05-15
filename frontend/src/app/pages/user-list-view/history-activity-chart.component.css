@@ -1,10 +1,4 @@
-/* Hairline below the chart matches the visual weight of the
- * history-section dividers and grounds the chart inside the page
- * rhythm without a full card wrapper. */
 .activity-chart {
   display: block;
-  max-width: 1400px;
-  margin: 0 auto 0.85rem;
-  padding-bottom: 0.55rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  width: 100%;
 }

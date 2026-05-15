@@ -123,8 +123,18 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </div>
       </div>
     } @else if (kind() === 'history') {
-      <app-history-activity-chart [mediaFilter]="mediaFilter()" />
       <div class="history-sections">
+        <section class="history-section">
+          <div class="history-section-header">
+            <div class="history-section-copy">
+              <h3>Statistiche</h3>
+              <p>{{ activityChart.totalLabel() }}</p>
+            </div>
+          </div>
+          <div class="stats-card">
+            <app-history-activity-chart #activityChart [mediaFilter]="mediaFilter()" />
+          </div>
+        </section>
         @for (section of historySections(); track section.key) {
           <section class="history-section">
             <div class="history-section-header">

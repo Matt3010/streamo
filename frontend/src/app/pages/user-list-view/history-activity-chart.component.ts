@@ -20,8 +20,9 @@ interface ChartState {
 
 /* Self-fetches the user's full history so the dataset stays stable
  * across filter changes — the visible total is then narrowed down
- * via the mediaFilter input ('all' = movies + episodes, 'tv' = only
- * episodes, 'movie' = only movies). */
+ * via the mediaFilter input. Exposes totalLabel for the parent's
+ * "Statistiche" section header so the chart stays responsible for
+ * its own dataset while the parent owns the section presentation. */
 @Component({
   selector: 'app-history-activity-chart',
   standalone: true,
@@ -30,7 +31,7 @@ interface ChartState {
   styleUrl: './history-activity-chart.component.css',
   template: `
     @if (state(); as s) {
-      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" [height]="110" />
+      <app-line-chart class="activity-chart" [series]="series()" [xLabels]="s.labels" [height]="160" />
     }
   `
 })
@@ -42,13 +43,16 @@ export class HistoryActivityChartComponent {
   protected readonly series = computed<LineChartSeries[]>(() => {
     const s = this.state();
     if (!s) return [];
-    const filter = this.mediaFilter();
-    const values = s.labels.map((_, i) => {
-      const ep = filter === 'movie' ? 0 : s.episodes[i];
-      const mv = filter === 'tv' ? 0 : s.movies[i];
-      return ep + mv;
-    });
-    return [{ name: seriesName(filter), color: COLOR_LINE, values }];
+    const values = s.labels.map((_, i) => this.dailyTotal(s, i));
+    return [{ name: seriesName(this.mediaFilter()), color: COLOR_LINE, values }];
+  });
+
+  readonly totalLabel = computed(() => {
+    const s = this.state();
+    if (!s) return '0 visualizzazioni totali';
+    let total = 0;
+    for (let i = 0; i < s.labels.length; i++) total += this.dailyTotal(s, i);
+    return `${total} visualizzazioni totali`;
   });
 
   constructor() {
@@ -58,6 +62,13 @@ export class HistoryActivityChartComponent {
   private async load(): Promise<void> {
     const items = await this.history.list();
     this.state.set(aggregate(items));
+  }
+
+  private dailyTotal(s: ChartState, i: number): number {
+    const filter = this.mediaFilter();
+    const ep = filter === 'movie' ? 0 : s.episodes[i];
+    const mv = filter === 'tv' ? 0 : s.movies[i];
+    return ep + mv;
   }
 }
 
