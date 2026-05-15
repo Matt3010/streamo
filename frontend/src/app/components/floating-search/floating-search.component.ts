@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  HostListener,
   computed,
   effect,
   inject,
@@ -34,7 +35,10 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
         <button type="button" class="search-backdrop" aria-label="Chiudi ricerca" (click)="closeSearch()"></button>
       }
       <section class="search-panel" [class.open]="searchOpen()" aria-label="Ricerca catalogo">
-        <button uiSurface="row" type="button" (click)="openSearch()">
+        <button uiSurface="row" type="button"
+                [attr.aria-expanded]="searchOpen()"
+                aria-controls="floating-search-content"
+                (click)="openSearch()">
           <span class="search-badge">
             <app-icon name="search"></app-icon>
           </span>
@@ -47,7 +51,7 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
         </button>
 
         @if (searchOpen()) {
-          <div class="search-box">
+          <div id="floating-search-content" class="search-box">
             <div class="search-row">
               <label class="search-field" aria-label="Termine di ricerca">
                 <app-icon name="search"></app-icon>
@@ -57,8 +61,10 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
                   placeholder="Titolo, film o serie TV"
                   [value]="query()"
                   (input)="onInput($event)"
-                  (keydown.enter)="submitSearch()"
-                  (keydown.escape)="handleEscape()">
+                  (keydown.enter)="onEnter($event)"
+                  (keydown.escape)="handleEscape()"
+                  (keydown.arrowDown)="onArrowDown($event)"
+                  (keydown.arrowUp)="onArrowUp($event)">
                 @if (query().trim()) {
                   <button uiButton="icon-subtle" type="button" aria-label="Cancella ricerca" (click)="clearQuery()">
                     <app-icon name="close"></app-icon>
@@ -75,11 +81,17 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
               </div>
             </div>
 
-            @if (showSuggestions()) {
-              <ul class="search-suggestions" role="listbox">
-                @for (item of suggestions(); track item.media_type + '-' + item.id) {
+            @if (showLoading()) {
+              <p class="search-status">Cerco...</p>
+            } @else if (showEmpty()) {
+              <p class="search-status">Nessun risultato per "{{ query() }}"</p>
+            } @else if (showSuggestions()) {
+              <ul class="search-suggestions">
+                @for (item of suggestions(); track item.media_type + '-' + item.id; let i = $index) {
                   <li>
-                    <button uiSurface="row" type="button" class="search-suggestion" (click)="openSuggestion(item)">
+                    <button uiSurface="row" type="button" class="search-suggestion"
+                            [class.is-highlighted]="i === highlighted()"
+                            (click)="openSuggestion(item)">
                       @if (item.poster_path) {
                         <img class="search-suggestion-thumb" [src]="thumbUrl(item.poster_path)" alt="" loading="lazy">
                       } @else {
@@ -105,19 +117,19 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
                 <div class="search-recents-header">
                   <span class="search-recents-title">Recenti</span>
                 </div>
-                <ul role="listbox">
-                  @for (term of recents(); track term) {
-                    <li>
-                      <button uiSurface="row" type="button" class="search-recent" (click)="useRecent(term)">
+                <ul>
+                  @for (term of recents(); track term; let i = $index) {
+                    <li class="search-recent" [class.is-highlighted]="i === highlighted()">
+                      <button uiSurface="row" type="button" class="search-recent-main" (click)="useRecent(term)">
                         <span class="search-recent-icon" aria-hidden="true">
                           <app-icon name="history"></app-icon>
                         </span>
                         <span class="search-recent-text">{{ term }}</span>
-                        <button uiButton="icon-subtle" type="button" class="search-recent-remove"
-                                aria-label="Rimuovi dalla cronologia"
-                                (click)="removeRecent(term, $event)">
-                          <app-icon name="close"></app-icon>
-                        </button>
+                      </button>
+                      <button uiButton="icon-subtle" type="button" class="search-recent-remove"
+                              aria-label="Rimuovi dalla cronologia"
+                              (click)="removeRecent(term)">
+                        <app-icon name="close"></app-icon>
                       </button>
                     </li>
                   }
@@ -140,8 +152,13 @@ export class FloatingSearchComponent {
   readonly searchOpen = signal(false);
   protected readonly suggestions = signal<TmdbItem[]>([]);
   protected readonly recents = signal<string[]>(loadRecents());
+  protected readonly loading = signal(false);
+  protected readonly highlighted = signal(-1);
 
   private fetchSeq = 0;
+  private abortController: AbortController | null = null;
+  private previousFocus: HTMLElement | null = null;
+  private wasOpen = false;
 
   private readonly nav = toSignal(
     this.router.events.pipe(filter(e => e instanceof NavigationEnd)),
@@ -162,26 +179,60 @@ export class FloatingSearchComponent {
     !this.query().trim() && this.recents().length > 0
   );
 
+  protected readonly showLoading = computed(() =>
+    this.loading() && this.query().trim().length >= 2 && this.suggestions().length === 0
+  );
+
+  protected readonly showEmpty = computed(() =>
+    !this.loading() && this.query().trim().length >= 2 && this.suggestions().length === 0
+  );
+
+  protected readonly listCount = computed(() => {
+    if (this.showSuggestions()) return this.suggestions().length;
+    if (this.showRecents()) return this.recents().length;
+    return 0;
+  });
+
   constructor() {
+    /* Single effect handles focus save (on open), input focus (when the
+     * input mounts) and focus restore (on close). wasOpen captures the
+     * open→close / close→open transitions so the save/restore only
+     * fires once per transition even though the effect re-runs when
+     * the viewChild signal updates. */
     effect(() => {
-      if (!this.searchOpen()) return;
-      const input = this.searchInput()?.nativeElement;
-      if (!input) return;
-      queueMicrotask(() => {
-        input.focus();
-        input.select();
-      });
+      const open = this.searchOpen();
+      if (open && !this.wasOpen) {
+        const active = document.activeElement;
+        this.previousFocus = active instanceof HTMLElement ? active : null;
+      } else if (!open && this.wasOpen) {
+        const target = this.previousFocus;
+        this.previousFocus = null;
+        if (target) queueMicrotask(() => target.focus());
+      }
+      this.wasOpen = open;
+
+      if (open) {
+        const input = this.searchInput()?.nativeElement;
+        if (input) {
+          queueMicrotask(() => {
+            input.focus();
+            input.select();
+          });
+        }
+      }
     });
 
-    /* Debounced typeahead. Cancels in-flight timers when the query
-     * changes; fetchSeq is bumped on every effect transition so a
-     * stale response that resolves late cannot overwrite a fresher
-     * (or already-cleared) suggestions signal. */
+    /* Debounced typeahead. fetchSeq is bumped on every effect
+     * transition; AbortController cancels any in-flight network
+     * request so abandoned queries don't keep traveling. */
     effect((onCleanup) => {
       const q = this.query().trim();
       if (q.length < 2) {
         this.suggestions.set([]);
+        this.loading.set(false);
         this.fetchSeq++;
+        this.abortController?.abort();
+        this.abortController = null;
         return;
       }
       const handle = setTimeout(() => {
@@ -190,8 +241,25 @@ export class FloatingSearchComponent {
       onCleanup(() => {
         clearTimeout(handle);
         this.fetchSeq++;
+        this.abortController?.abort();
+        this.abortController = null;
       });
     });
+
+    /* Reset the keyboard highlight when the underlying list changes
+     * so a stale index doesn't point at the wrong row. */
+    effect(() => {
+      this.suggestions();
+      this.recents();
+      this.highlighted.set(-1);
+    });
+  }
+
+  @HostListener('window:storage', ['$event'])
+  protected onStorageEvent(event: StorageEvent): void {
+    if (event.key === RECENTS_KEY) {
+      this.recents.set(loadRecents());
+    }
   }
 
   protected onInput(ev: Event): void {
@@ -209,6 +277,7 @@ export class FloatingSearchComponent {
 
   protected clearQuery(): void {
     this.query.set('');
+    queueMicrotask(() => this.searchInput()?.nativeElement.focus());
   }
 
   protected handleEscape(): void {
@@ -216,10 +285,42 @@ export class FloatingSearchComponent {
     else this.closeSearch();
   }
 
+  protected onArrowDown(event: Event): void {
+    event.preventDefault();
+    const n = this.listCount();
+    if (n === 0) return;
+    this.highlighted.update((i) => (i + 1) % n);
+  }
+
+  protected onArrowUp(event: Event): void {
+    event.preventDefault();
+    const n = this.listCount();
+    if (n === 0) return;
+    this.highlighted.update((i) => (i <= 0 ? n - 1 : i - 1));
+  }
+
+  protected onEnter(event: Event): void {
+    const idx = this.highlighted();
+    if (this.showSuggestions() && idx >= 0 && idx < this.suggestions().length) {
+      event.preventDefault();
+      this.openSuggestion(this.suggestions()[idx]);
+      return;
+    }
+    if (this.showRecents() && idx >= 0 && idx < this.recents().length) {
+      event.preventDefault();
+      this.useRecent(this.recents()[idx]);
+      return;
+    }
+    this.submitSearch();
+  }
+
   protected submitSearch(): void {
     const q = this.query().trim();
     if (!q) return;
     this.pushRecent(q);
+    /* Navigating away — drop the saved focus so the close transition
+     * doesn't try to focus an element the new page may have moved. */
+    this.previousFocus = null;
     this.searchOpen.set(false);
     this.query.set('');
     this.suggestions.set([]);
@@ -230,6 +331,7 @@ export class FloatingSearchComponent {
     const type = item.media_type;
     if (type !== 'movie' && type !== 'tv') return;
     this.pushRecent(this.query().trim());
+    this.previousFocus = null;
     this.searchOpen.set(false);
     this.query.set('');
     this.suggestions.set([]);
@@ -241,8 +343,7 @@ export class FloatingSearchComponent {
     this.submitSearch();
   }
 
-  protected removeRecent(term: string, event: Event): void {
-    event.stopPropagation();
+  protected removeRecent(term: string): void {
     this.recents.update((current) => {
       const next = current.filter((r) => r !== term);
       persistRecents(next);
@@ -265,10 +366,19 @@ export class FloatingSearchComponent {
   }
 
   private async fetchSuggestions(q: string): Promise<void> {
+    this.abortController?.abort();
+    const controller = new AbortController();
+    this.abortController = controller;
     const seq = ++this.fetchSeq;
-    const results = await this.tmdb.searchAll(q);
-    if (seq !== this.fetchSeq) return;
-    this.suggestions.set(results.slice(0, SUGGESTION_LIMIT));
+    this.loading.set(true);
+    try {
+      const results = await this.tmdb.searchAll(q, controller.signal);
+      if (seq !== this.fetchSeq) return;
+      this.suggestions.set(results.slice(0, SUGGESTION_LIMIT));
+    } finally {
+      if (this.abortController === controller) this.abortController = null;
+      if (seq === this.fetchSeq) this.loading.set(false);
+    }
   }
 
   private pushRecent(term: string): void {

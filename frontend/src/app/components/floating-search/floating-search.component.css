@@ -101,7 +101,7 @@
 .search-suggestions {
   list-style: none;
   margin: 0;
-  padding: 0.55rem 0 0.15rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -130,7 +130,8 @@
 }
 
 .search-suggestion:hover,
-.search-suggestion:focus-visible {
+.search-suggestion:focus-visible,
+.search-suggestion.is-highlighted {
   background: rgba(255, 255, 255, 0.04);
   outline: none;
 }
@@ -192,7 +193,6 @@
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  padding-top: 0.55rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   max-height: 22rem;
   overflow-y: auto;
@@ -230,19 +230,34 @@
   gap: 0.12rem;
 }
 
+/* Recent row: <li> hosts the click target + the trailing × as two
+ * sibling buttons. Previously nested a button-in-button which is
+ * invalid HTML — the browser would split them apart, breaking event
+ * delegation and styling. */
 .search-recent {
-  width: 100%;
-  gap: 0.6rem;
-  padding: 0.4rem 0.66rem;
-  border-radius: 12px;
-  transition: background 0.15s ease;
   display: flex;
   align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.66rem;
+  border-radius: 12px;
+  transition: background 0.15s ease;
 }
 
 .search-recent:hover,
-.search-recent:focus-visible {
+.search-recent:focus-within,
+.search-recent.is-highlighted {
   background: rgba(255, 255, 255, 0.04);
+}
+
+.search-recent-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.search-recent-main:focus-visible {
   outline: none;
 }
 
@@ -273,11 +288,23 @@
 .search-recent-remove {
   flex-shrink: 0;
   opacity: 0.55;
+  align-self: center;
 }
 
 .search-recent:hover .search-recent-remove,
 .search-recent-remove:focus-visible {
   opacity: 1;
+}
+
+/* Inline status messages ("Cerco..." / "Nessun risultato"). Sit in
+ * the same vertical slot as the suggestions list so the layout
+ * doesn't jump between empty / loading / populated states. */
+.search-status {
+  margin: 0;
+  padding: 0.9rem 0.66rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .search-field {
@@ -329,8 +356,13 @@
   color: #8f8f8f;
 }
 
+/* The global .ui-button-icon-subtle rule sets align-self: flex-start so
+ * icon buttons sit at the top of taller flex parents (e.g. card
+ * overlays). Inside the search-field the parent is the same height as
+ * the button, so we re-center the clear × instead. */
 .search-field > .ui-button-icon-subtle {
   flex-shrink: 0;
+  align-self: center;
 }
 
 .search-panel:not(.open) .search-badge {

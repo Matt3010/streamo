@@ -3,10 +3,12 @@ import type { MediaType, TmdbItem, TmdbReview, TmdbSeasonDetails } from '../mode
 
 const TMDB_BASE = '/api/tmdb';
 const CACHE_MAX = 100;
+const SEARCH_CACHE_MAX = 20;
 
 @Injectable({ providedIn: 'root' })
 export class TmdbService {
   private cache = new Map<string, TmdbItem>();
+  private searchCache = new Map<string, TmdbItem[]>();
 
   async getDetails(tmdbId: string | number, type: MediaType): Promise<TmdbItem | null> {
     const key = `${type}-${tmdbId}`;
@@ -69,17 +71,48 @@ export class TmdbService {
     }
   }
 
-  async searchAll(query: string): Promise<TmdbItem[]> {
+  async searchAll(query: string, signal?: AbortSignal): Promise<TmdbItem[]> {
+    const key = query.toLowerCase().trim();
+    if (!key) return [];
+
+    const cached = this.searchCacheGet(key);
+    if (cached) return cached;
+
     try {
-      const res = await fetch(`${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`);
+      const res = await fetch(
+        `${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`,
+        { signal }
+      );
+      if (!res.ok) return [];
       const data = await res.json() as { results?: TmdbItem[] };
       const results = data.results ?? [];
-      return sortByNewest(
+      const filtered = sortByNewest(
         results.filter((item): item is TmdbItem & { media_type: MediaType } => item.media_type === 'movie' || item.media_type === 'tv')
       );
+      this.searchCacheSet(key, filtered);
+      return filtered;
     } catch {
       return [];
     }
+  }
+
+  private searchCacheGet(key: string): TmdbItem[] | undefined {
+    const v = this.searchCache.get(key);
+    if (v !== undefined) {
+      this.searchCache.delete(key);
+      this.searchCache.set(key, v);
+    }
+    return v;
+  }
+
+  private searchCacheSet(key: string, value: TmdbItem[]): void {
+    if (this.searchCache.has(key)) {
+      this.searchCache.delete(key);
+    } else if (this.searchCache.size >= SEARCH_CACHE_MAX) {
+      const firstKey = this.searchCache.keys().next().value;
+      if (firstKey !== undefined) this.searchCache.delete(firstKey);
+    }
+    this.searchCache.set(key, value);
   }
 
   private cacheGet(key: string): TmdbItem | undefined {
