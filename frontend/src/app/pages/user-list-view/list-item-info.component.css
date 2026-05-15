@@ -1,0 +1,77 @@
+/* Component-scoped because list-item-info renders the spans directly.
+ * The parent's .item-row styling continues to live in user-list-view.css
+ * (the <li> is still rendered there); only the children moved. */
+:host {
+  display: contents;
+}
+
+.item-type {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.item-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.item-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Single-row layout. text-overflow: ellipsis lives on the individual
+ * spans below — applying it to the flex container itself has no effect.
+ * min-width: 0 lets each child shrink below its intrinsic content size
+ * so the ellipsis can actually kick in. */
+.item-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  min-width: 0;
+}
+
+.item-meta {
+  color: var(--text-muted);
+  /* "S2 E5" should never be truncated — it's always short and conveys
+   * exact position. Long sibling texts get truncated instead. */
+  flex-shrink: 0;
+}
+
+.item-watch-status {
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-release-status {
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .item-type {
+    display: none;
+  }
+}

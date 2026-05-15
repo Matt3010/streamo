@@ -8,7 +8,7 @@ import type { CardItem } from '../../models';
   selector: 'app-list-item-info',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [':host { display: contents; }'],
+  styleUrl: './list-item-info.component.css',
   template: `
     <span class="item-type">{{ item().media_type === 'tv' ? 'TV' : 'Film' }}</span>
     <div class="item-info">

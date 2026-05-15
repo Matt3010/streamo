@@ -80,105 +80,6 @@
   margin-top: 0.4rem;
 }
 
-.ui-surface-card {
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  border: 2px solid transparent;
-  border-radius: var(--radius);
-  background:
-    radial-gradient(circle at top left, rgba(229, 9, 20, 0.14), transparent 42%),
-    linear-gradient(160deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
-    var(--surface);
-  color: var(--text);
-  padding: 0.9rem 0.8rem 0.7rem;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-start;
-  overflow: hidden;
-  position: relative;
-}
-
-.ui-surface-card:hover {
-  border-color: rgba(229, 9, 20, 0.42);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
-}
-
-.ui-surface-card.expanded {
-  border-color: var(--border);
-  transform: none;
-  box-shadow: none;
-  background:
-    radial-gradient(circle at top left, rgba(229, 9, 20, 0.18), transparent 42%),
-    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
-    var(--surface);
-}
-
-.ui-surface-card.folder-drop-active {
-  border-color: rgba(46, 160, 67, 0.62);
-  box-shadow: 0 0 0 1px rgba(46, 160, 67, 0.3), 0 10px 22px rgba(0, 0, 0, 0.3);
-}
-
-.folder-card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: rgba(229, 9, 20, 0.18);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-}
-
-.folder-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.folder-card-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.folder-card-meta {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.82rem;
-  line-height: 1.35;
-  white-space: nowrap;
-}
-
-.folder-card-chevron,
-.folder-row-arrow {
-  color: rgba(255, 255, 255, 0.8);
-  transition: transform 0.18s ease;
-}
-
-.folder-card-chevron.expanded,
-.folder-row-arrow.expanded {
-  transform: rotate(180deg);
-}
-
-.folder-card-panel {
-  grid-column: 1 / -1;
-  margin-top: 0.1rem;
-  padding: 0.2rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.folder-card-panel-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 0.4rem;
-}
-
 /* === List view === */
 .item-list {
   max-width: 1400px;
@@ -191,73 +92,6 @@
 
 .folder-block {
   list-style: none;
-}
-
-.ui-surface-row[aria-expanded] {
-  width: 100%;
-  border: 1px solid var(--border);
-  background: linear-gradient(90deg, rgba(229, 9, 20, 0.08), rgba(255, 255, 255, 0.02));
-  border-radius: var(--radius);
-  padding: 0.7rem 0.85rem;
-  color: var(--text);
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.ui-surface-row[aria-expanded].expanded {
-  border-color: rgba(229, 9, 20, 0.42);
-}
-
-.ui-surface-row[aria-expanded].folder-drop-active {
-  border-color: rgba(46, 160, 67, 0.62);
-  background: linear-gradient(90deg, rgba(46, 160, 67, 0.18), rgba(255, 255, 255, 0.03));
-}
-
-.folder-row-main {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-}
-
-.folder-pill {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: rgba(229, 9, 20, 0.18);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.folder-row-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.folder-row-title {
-  font-size: 0.98rem;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.folder-row-meta {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-}
-
-.folder-items {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-  padding-left: 0.55rem;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .folder-child-row {
@@ -288,71 +122,6 @@
 .item-row.item-row-dragging {
   opacity: 1;
   transform: none;
-}
-
-.item-type {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-  border: 1px solid var(--border);
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.item-info {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.item-title {
-  font-size: 0.95rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Single-row layout. text-overflow: ellipsis lives on the individual
- * spans below — applying it to the flex container itself has no effect.
- * min-width: 0 lets each child shrink below its intrinsic content size
- * so the ellipsis can actually kick in. */
-.item-sub {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.78rem;
-  min-width: 0;
-}
-
-.item-meta {
-  color: var(--text-muted);
-  /* "S2 E5" should never be truncated — it's always short and conveys
-   * exact position. Long sibling texts get truncated instead. */
-  flex-shrink: 0;
-}
-
-.item-watch-status {
-  color: var(--accent);
-  font-weight: 600;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.item-release-status {
-  color: var(--text-muted);
-  font-weight: 600;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .folder-popover-bar {
@@ -390,22 +159,6 @@
     gap: 0.45rem;
   }
 
-  .item-type {
-    display: none;
-  }
-
-  .ui-surface-row[aria-expanded] {
-    padding: 0.75rem;
-  }
-
-  .folder-items {
-    padding-left: 0.35rem;
-  }
-
-  .folder-card-panel {
-    padding: 0.25rem;
-  }
-
   .folder-popover-bar {
     grid-template-columns: 1fr;
     padding: 0.5rem;
@@ -414,12 +167,5 @@
   .folder-popover-input,
   .folder-popover-bar > .ui-button {
     width: 100%;
-  }
-}
-
-@media (min-width: 640px) {
-  .folder-card-panel-grid {
-    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
-    gap: 0.6rem;
   }
 }

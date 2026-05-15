@@ -12,7 +12,7 @@ import type { FolderDragEvent } from './folder-card.component';
   standalone: true,
   imports: [IconComponent, UiSurfaceDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [':host { display: contents; }'],
+  styleUrl: './folder-row.component.css',
   template: `
     <button uiSurface="row" type="button"
             [class.expanded]="expanded()"

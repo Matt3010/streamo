@@ -1,0 +1,92 @@
+/* Component-scoped because folder-row now owns the .ui-surface-row toggle
+ * button — the parent's view encapsulation no longer reaches elements
+ * rendered inside this component's template. */
+:host {
+  display: contents;
+}
+
+.ui-surface-row[aria-expanded] {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: linear-gradient(90deg, rgba(229, 9, 20, 0.08), rgba(255, 255, 255, 0.02));
+  border-radius: var(--radius);
+  padding: 0.7rem 0.85rem;
+  color: var(--text);
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.ui-surface-row[aria-expanded].expanded {
+  border-color: rgba(229, 9, 20, 0.42);
+}
+
+.ui-surface-row[aria-expanded].folder-drop-active {
+  border-color: rgba(46, 160, 67, 0.62);
+  background: linear-gradient(90deg, rgba(46, 160, 67, 0.18), rgba(255, 255, 255, 0.03));
+}
+
+.folder-row-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.folder-pill {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(229, 9, 20, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.folder-row-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-row-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-row-meta {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.folder-row-arrow {
+  color: rgba(255, 255, 255, 0.8);
+  transition: transform 0.18s ease;
+}
+
+.folder-row-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.folder-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 640px) {
+  .ui-surface-row[aria-expanded] {
+    padding: 0.75rem;
+  }
+
+  .folder-items {
+    padding-left: 0.35rem;
+  }
+}

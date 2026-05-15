@@ -16,7 +16,7 @@ export interface FolderDragEvent {
   standalone: true,
   imports: [IconComponent, UiSurfaceDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [':host { display: contents; }'],
+  styleUrl: './folder-card.component.css',
   template: `
     <button uiSurface="card" type="button"
             [class.expanded]="expanded()"
