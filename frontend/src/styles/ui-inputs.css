@@ -1,9 +1,16 @@
+/* background-color (not the `background` shorthand) and an explicit
+ * background-color transition: the select chevron is set via
+ * background-image on select.ui-input, and any rule that uses the
+ * shorthand here would reset it to `none`. The shorthand transition
+ * would also tick background-image during the 0.18s window, which
+ * Chromium handles by briefly recomputing the image and produces a
+ * visible flicker on hover. */
 .ui-input {
   width: 100%;
   min-height: 44px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  background-color: rgba(255, 255, 255, 0.03);
   color: var(--text);
   font: inherit;
   font-size: 0.94rem;
@@ -11,7 +18,7 @@
   padding: 0.72rem 0.9rem;
   transition:
     border-color 0.18s ease,
-    background 0.18s ease,
+    background-color 0.18s ease,
     box-shadow 0.18s ease,
     transform 0.18s ease;
 }
