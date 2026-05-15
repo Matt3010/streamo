@@ -1,6 +1,8 @@
 @import './styles/ui-buttons.css';
 @import './styles/ui-inputs.css';
 @import './styles/ui-surfaces.css';
+@import './styles/ui-skeleton.css';
+@import './styles/ui-scroll-row.css';
 
 * {
   margin: 0;
@@ -129,6 +131,12 @@ main {
   font-size: 1.5rem;
   flex: 1;
   min-width: 0;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 /* Content grid — used by search and user-list pages.

@@ -14,7 +14,7 @@ import type { CardItem } from '../../models';
       <button uiButton="icon-circle" type="button" aria-label="Scorri sinistra" (click)="scroll(-1)">
         <app-icon name="chevron-left"></app-icon>
       </button>
-      <div class="scroll-row" #row>
+      <div class="card-scroll-row ui-scroll-row ui-scroll-row-hidden" #row>
         @if (loading() && items().length === 0) {
           @for (n of skeletons; track n) {
             <div class="card-skeleton" aria-hidden="true">

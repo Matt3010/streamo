@@ -287,29 +287,12 @@
   margin: 0;
 }
 
+/* Scroll mechanics (overflow-x, snap, thin scrollbar) come from the global
+ * .ui-scroll-row + .ui-scroll-row-thin classes. The padding here leaves
+ * room for focus-ring / selected outlines without clipping. */
 .episode-grid {
-  display: flex;
   gap: 0.85rem;
-  overflow-x: auto;
-  /* Native iOS-style momentum scrolling + snap to card edges so the user
-   * doesn't end with a half-visible card when they stop swiping. */
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  /* Vertical padding leaves room for focus-ring / selected outlines without
-   * clipping. NO horizontal negative margin: on mobile the <main> only adds
-   * 0.4rem of side padding, so pulling the grid further out via margin made
-   * the cards touch the screen edge. */
   padding: 0.4rem 0;
-  /* Custom scrollbar — the native one is big and ugly on Windows. */
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-hover) transparent;
-}
-
-.episode-grid::-webkit-scrollbar { height: 6px; }
-.episode-grid::-webkit-scrollbar-track { background: transparent; }
-.episode-grid::-webkit-scrollbar-thumb {
-  background: var(--surface-hover);
-  border-radius: 3px;
 }
 
 .episode-grid > .ui-surface-card {
@@ -319,7 +302,6 @@
    * min-content size above 220px and the whole card grows — making some
    * cards visually larger than their neighbours and breaking the ellipsis. */
   min-width: 0;
-  scroll-snap-align: start;
   flex-direction: column;
   gap: 0.6rem;
   border-radius: var(--radius);
@@ -488,26 +470,14 @@
   padding-top: 1.75rem;
 }
 
+/* Scroll mechanics come from .ui-scroll-row + .ui-scroll-row-thin. */
 .reviews-row {
-  display: flex;
   gap: 0.9rem;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
   padding: 0.2rem 0 0.35rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-hover) transparent;
-}
-
-.reviews-row::-webkit-scrollbar { height: 6px; }
-.reviews-row::-webkit-scrollbar-track { background: transparent; }
-.reviews-row::-webkit-scrollbar-thumb {
-  background: var(--surface-hover);
-  border-radius: 3px;
 }
 
 .review-card {
   flex: 0 0 min(420px, calc(100vw - 2rem));
-  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
@@ -630,27 +600,9 @@
   }
 }
 
-/* ===== Skeleton loading states =====
- * Shown while currentItem is null (TMDB details still in flight).
- * Same shimmer recipe as the home card-row so the visual language is
- * consistent across pages. */
-.skeleton {
-  position: relative;
-  border-radius: var(--radius);
-  background: linear-gradient(
-    100deg,
-    var(--surface) 30%,
-    var(--surface-hover) 50%,
-    var(--surface) 70%
-  );
-  background-size: 200% 100%;
-  animation: watch-skeleton-shimmer 1.4s ease-in-out infinite;
-}
-
-@keyframes watch-skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
+/* ===== Skeleton size variants =====
+ * Base .skeleton (shimmer + bg) lives in styles/ui-skeleton.css.
+ * Below are watch-specific size/aspect classes layered on top. */
 
 /* Matches the h2 visual box (font-size: 1.875rem * line-height 1.15 ≈ 2.15rem)
  * so the layout doesn't jump when the real title swaps in. Width capped to

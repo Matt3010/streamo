@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CardComponent, CardFolderClickEvent } from '../../components/card/card.component';
-import { BackButtonComponent } from '../../ui/back-button/back-button.component';
+import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
@@ -10,6 +10,8 @@ import { UiTabsComponent, UiTab } from '../../ui/tabs/tabs.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { UiInputDirective } from '../../ui/ui-input.directive';
 import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
+import { ListItemInfoComponent } from './list-item-info.component';
+import { ListRowActionsComponent } from './list-row-actions.component';
 import { AuthService } from '../../services/auth.service';
 import { TmdbService } from '../../services/tmdb.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -18,7 +20,7 @@ import { ToastService } from '../../services/toast.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { enrichLibraryCardsWithTmdb, historyToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
-import { getStatusTransition, getStatusToastMessage, getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
+import { getStatusTransition, getStatusToastMessage } from '../../utils/watchlist-status.util';
 import type { CardItem, WatchlistListStatusFilter } from '../../models';
 
 export type UserListType = 'watchlist' | 'history';
@@ -76,7 +78,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
   standalone: true,
   imports: [
     CardComponent,
-    BackButtonComponent,
+    PageHeaderComponent,
     IconComponent,
     ConfirmModalComponent,
     PendingButtonDirective,
@@ -85,29 +87,23 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     UiButtonDirective,
     UiInputDirective,
     UiSurfaceDirective,
+    ListItemInfoComponent,
+    ListRowActionsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="page-header">
-      <div class="page-header-back">
-        <ui-back-button (pressed)="back()" />
+    <app-page-header [title]="title()" (back)="back()">
+      <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
+        <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'grid'"
+                aria-label="Griglia" (click)="setViewMode('grid')">
+          <app-icon name="grid"></app-icon>
+        </button>
+        <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'list'"
+                aria-label="Lista" (click)="setViewMode('list')">
+          <app-icon name="list"></app-icon>
+        </button>
       </div>
-      <div class="page-header-row">
-        <h2>{{ title() }}</h2>
-        <div class="page-actions">
-          <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
-            <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'grid'"
-                    aria-label="Griglia" (click)="setViewMode('grid')">
-              <app-icon name="grid"></app-icon>
-            </button>
-            <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'list'"
-                    aria-label="Lista" (click)="setViewMode('list')">
-              <app-icon name="list"></app-icon>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </app-page-header>
 
     <div class="filter-bar">
       @if (kind() === 'watchlist') {
@@ -162,38 +158,16 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 @for (item of section.items; track cardKey(item)) {
                   <li class="item-row"
                       (click)="onCardClick(item)">
-                    <span class="item-type">{{ item.media_type === 'tv' ? 'TV' : 'Film' }}</span>
-                    <div class="item-info">
-                      <span class="item-title">{{ item.title }}</span>
-                      @if (item.season && item.episode || item.watchStatus || item.nextReleaseText) {
-                        <span class="item-sub">
-                          @if (item.season && item.episode) {
-                            <span class="item-meta">S{{ item.season }} E{{ item.episode }}</span>
-                          }
-                          @if (item.watchStatus) {
-                            <span class="item-watch-status">{{ item.watchStatus }}</span>
-                          }
-                          @if (item.nextReleaseText) {
-                            <span class="item-release-status">{{ item.nextReleaseText }}</span>
-                          }
-                        </span>
-                      }
-                    </div>
-                    @if (auth.isLoggedIn()) {
-                      <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="accent"
-                              [uiPending]="!!item.pendingAction"
-                              [uiButtonTone]="item.inWatchlist === true ? 'accent' : 'default'"
-                              [title]="item.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
-                              (click)="onWatchlistToggle(item); $event.stopPropagation()">
-                        <app-icon name="bookmark"></app-icon>
-                      </button>
-                    }
-                    <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="accent"
-                            [uiPending]="!!item.pendingAction"
-                            title="Rimuovi dalla cronologia"
-                            (click)="onRemoveClick(item); $event.stopPropagation()">
-                      <app-icon name="trash"></app-icon>
-                    </button>
+                    <app-list-item-info [item]="item" />
+                    <app-list-row-actions
+                      [item]="item"
+                      [kind]="kind()"
+                      [folderEnabled]="folderFeatureEnabled()"
+                      [isLoggedIn]="auth.isLoggedIn()"
+                      (statusToggle)="onStatusToggle($event)"
+                      (folderClick)="openFolderPopoverFromButton($event.item, $event.event)"
+                      (watchlistToggle)="onWatchlistToggle($event)"
+                      (removeClick)="onRemoveClick($event)" />
                   </li>
                 }
               </ul>
@@ -307,56 +281,16 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                         (click)="onCardClick(it)"
                         (dragstart)="onItemDragStart($event, it)"
                         (dragend)="onItemDragEnd()">
-                      <span class="item-type">{{ it.media_type === 'tv' ? 'TV' : 'Film' }}</span>
-                      <div class="item-info">
-                        <span class="item-title">{{ it.title }}</span>
-                        @if (it.season && it.episode || it.watchStatus || it.nextReleaseText) {
-                          <span class="item-sub">
-                            @if (it.season && it.episode) {
-                              <span class="item-meta">S{{ it.season }} E{{ it.episode }}</span>
-                            }
-                            @if (it.watchStatus) {
-                              <span class="item-watch-status">{{ it.watchStatus }}</span>
-                            }
-                            @if (it.nextReleaseText) {
-                              <span class="item-release-status">{{ it.nextReleaseText }}</span>
-                            }
-                          </span>
-                        }
-                      </div>
-                      @if (kind() === 'watchlist' && !it.isUpcoming) {
-                        <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="success"
-                                [uiPending]="!!it.pendingAction"
-                                [uiButtonTone]="it.status === 'done' ? 'success' : it.status === 'in_progress' ? 'info' : 'default'"
-                                [title]="statusButtonTitle(it.status)"
-                                (click)="onStatusToggle(it); $event.stopPropagation()">
-                          <app-icon [name]="statusButtonIcon(it.status)"></app-icon>
-                        </button>
-                      }
-                      @if (kind() === 'watchlist' && folderFeatureEnabled()) {
-                        <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="neutral"
-                                [uiPending]="!!it.pendingAction"
-                                [uiButtonTone]="it.folderName ? 'neutral' : 'default'"
-                                [title]="it.folderName ? 'Modifica folder' : 'Assegna folder'"
-                                (click)="openFolderPopoverFromButton(it, $event); $event.stopPropagation()">
-                          <app-icon name="folder"></app-icon>
-                        </button>
-                      }
-                      @if (kind() === 'history' && auth.isLoggedIn()) {
-                        <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="accent"
-                                [uiPending]="!!it.pendingAction"
-                                [uiButtonTone]="it.inWatchlist === true ? 'accent' : 'default'"
-                                [title]="it.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
-                                (click)="onWatchlistToggle(it); $event.stopPropagation()">
-                          <app-icon name="bookmark"></app-icon>
-                        </button>
-                      }
-                      <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="accent"
-                              [uiPending]="!!it.pendingAction"
-                              [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
-                              (click)="onRemoveClick(it); $event.stopPropagation()">
-                        <app-icon name="trash"></app-icon>
-                      </button>
+                      <app-list-item-info [item]="it" />
+                      <app-list-row-actions
+                        [item]="it"
+                        [kind]="kind()"
+                        [folderEnabled]="folderFeatureEnabled()"
+                        [isLoggedIn]="auth.isLoggedIn()"
+                        (statusToggle)="onStatusToggle($event)"
+                        (folderClick)="openFolderPopoverFromButton($event.item, $event.event)"
+                        (watchlistToggle)="onWatchlistToggle($event)"
+                        (removeClick)="onRemoveClick($event)" />
                     </li>
                   }
                 </ul>
@@ -370,56 +304,16 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 (click)="onCardClick(entry.item)"
                 (dragstart)="onItemDragStart($event, entry.item)"
                 (dragend)="onItemDragEnd()">
-              <span class="item-type">{{ entry.item.media_type === 'tv' ? 'TV' : 'Film' }}</span>
-              <div class="item-info">
-                <span class="item-title">{{ entry.item.title }}</span>
-                @if (entry.item.season && entry.item.episode || entry.item.watchStatus || entry.item.nextReleaseText) {
-                  <span class="item-sub">
-                    @if (entry.item.season && entry.item.episode) {
-                      <span class="item-meta">S{{ entry.item.season }} E{{ entry.item.episode }}</span>
-                    }
-                    @if (entry.item.watchStatus) {
-                      <span class="item-watch-status">{{ entry.item.watchStatus }}</span>
-                    }
-                    @if (entry.item.nextReleaseText) {
-                      <span class="item-release-status">{{ entry.item.nextReleaseText }}</span>
-                    }
-                  </span>
-                }
-              </div>
-              @if (kind() === 'watchlist' && !entry.item.isUpcoming) {
-                <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="success"
-                        [uiPending]="!!entry.item.pendingAction"
-                        [uiButtonTone]="entry.item.status === 'done' ? 'success' : entry.item.status === 'in_progress' ? 'info' : 'default'"
-                        [title]="statusButtonTitle(entry.item.status)"
-                        (click)="onStatusToggle(entry.item); $event.stopPropagation()">
-                  <app-icon [name]="statusButtonIcon(entry.item.status)"></app-icon>
-                </button>
-              }
-              @if (kind() === 'watchlist' && folderFeatureEnabled()) {
-                <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="neutral"
-                        [uiPending]="!!entry.item.pendingAction"
-                        [uiButtonTone]="entry.item.folderName ? 'neutral' : 'default'"
-                        [title]="entry.item.folderName ? 'Modifica folder' : 'Assegna folder'"
-                        (click)="openFolderPopoverFromButton(entry.item, $event); $event.stopPropagation()">
-                  <app-icon name="folder"></app-icon>
-                </button>
-              }
-              @if (kind() === 'history' && auth.isLoggedIn()) {
-                <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="accent"
-                        [uiPending]="!!entry.item.pendingAction"
-                        [uiButtonTone]="entry.item.inWatchlist === true ? 'accent' : 'default'"
-                        [title]="entry.item.inWatchlist ? 'Rimuovi dalla lista' : 'Aggiungi alla lista'"
-                        (click)="onWatchlistToggle(entry.item); $event.stopPropagation()">
-                  <app-icon name="bookmark"></app-icon>
-                </button>
-              }
-              <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="accent"
-                      [uiPending]="!!entry.item.pendingAction"
-                      [title]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
-                      (click)="onRemoveClick(entry.item); $event.stopPropagation()">
-                <app-icon name="trash"></app-icon>
-              </button>
+              <app-list-item-info [item]="entry.item" />
+              <app-list-row-actions
+                [item]="entry.item"
+                [kind]="kind()"
+                [folderEnabled]="folderFeatureEnabled()"
+                [isLoggedIn]="auth.isLoggedIn()"
+                (statusToggle)="onStatusToggle($event)"
+                (folderClick)="openFolderPopoverFromButton($event.item, $event.event)"
+                (watchlistToggle)="onWatchlistToggle($event)"
+                (removeClick)="onRemoveClick($event)" />
             </li>
           }
         }
@@ -665,8 +559,6 @@ export class UserListViewComponent {
     this.expandedFolders.update((state) => ({ ...state, [folderId]: !state[folderId] }));
   }
 
-  protected statusButtonTitle = getStatusButtonTitle;
-  protected statusButtonIcon = getStatusButtonIcon;
   protected readonly cardKey = cardKey;
 
   protected folderGridMeta(group: FolderGroup): string {

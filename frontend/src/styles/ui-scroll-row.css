@@ -1,0 +1,43 @@
+/* Horizontal scroll-snap row. Base provides momentum scrolling + edge
+ * snap; modifiers control whether the native scrollbar shows. Use
+ * .ui-scroll-row-hidden for marketing/discovery rows where the scrollbar
+ * would distract, .ui-scroll-row-thin for content rows where the user
+ * benefits from a position indicator (episode grid, review carousel). */
+.ui-scroll-row {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ui-scroll-row > * {
+  scroll-snap-align: start;
+}
+
+.ui-scroll-row-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ui-scroll-row-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.ui-scroll-row-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-hover) transparent;
+}
+
+.ui-scroll-row-thin::-webkit-scrollbar {
+  height: 6px;
+}
+
+.ui-scroll-row-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ui-scroll-row-thin::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: 3px;
+}

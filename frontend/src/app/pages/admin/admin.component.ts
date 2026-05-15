@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
-import { BackButtonComponent } from '../../ui/back-button/back-button.component';
+import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { UiTabsComponent, type UiTab } from '../../ui/tabs/tabs.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { AdminTokensTabComponent } from './components/admin-tokens-tab.component';
@@ -21,7 +21,7 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
   selector: 'app-admin',
   standalone: true,
   imports: [
-    BackButtonComponent,
+    PageHeaderComponent,
     UiTabsComponent,
     AdminQueueTabComponent,
     AdminTokensTabComponent,
@@ -30,14 +30,7 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="page-header">
-      <div class="page-header-back">
-        <ui-back-button (pressed)="back()" />
-      </div>
-      <div class="page-header-row">
-        <h2>Pannello Admin</h2>
-      </div>
-    </div>
+    <app-page-header title="Pannello Admin" (back)="back()" />
 
     <div class="admin-content">
       <div class="filter-bar">

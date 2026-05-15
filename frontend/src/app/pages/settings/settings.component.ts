@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { faCirclePlay, faFolder } from '@fortawesome/free-solid-svg-icons';
-import { BackButtonComponent } from '../../ui/back-button/back-button.component';
+import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
@@ -10,17 +10,10 @@ import { ToastService } from '../../services/toast.service';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [BackButtonComponent, SettingsToggleComponent, SectionHeaderComponent],
+  imports: [PageHeaderComponent, SettingsToggleComponent, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="page-header">
-      <div class="page-header-back">
-        <ui-back-button (pressed)="back()" />
-      </div>
-      <div class="page-header-row">
-        <h2>Impostazioni</h2>
-      </div>
-    </div>
+    <app-page-header title="Impostazioni" (back)="back()" />
 
     <div class="settings-content">
       <section class="settings-section">

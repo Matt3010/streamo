@@ -7,27 +7,21 @@
   position: relative;
 }
 
-.scroll-row {
-  display: flex;
+/* Scroll mechanics (overflow-x, snap, hidden scrollbar) come from the
+ * global .ui-scroll-row + .ui-scroll-row-hidden classes. This rule only
+ * carries the gap + vertical padding specific to home/list card rows. */
+.card-scroll-row {
   gap: 0.5rem;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  scroll-behavior: smooth;
   padding: 6px 0 12px;
 }
 
-.scroll-row::-webkit-scrollbar { display: none; }
-
-.scroll-row > app-card {
+.card-scroll-row > app-card {
   flex-shrink: 0;
   width: 150px;
-  scroll-snap-align: start;
 }
 
-@media (min-width: 640px) { .scroll-row > app-card { width: 165px; } }
-@media (min-width: 1024px) { .scroll-row > app-card { width: 175px; } }
+@media (min-width: 640px) { .card-scroll-row > app-card { width: 165px; } }
+@media (min-width: 1024px) { .card-scroll-row > app-card { width: 175px; } }
 
 .row-container > .ui-button-icon-circle {
   position: absolute;
@@ -59,6 +53,10 @@
   position: relative;
 }
 
+/* Uses the global skeleton-shimmer keyframes from styles/ui-skeleton.css.
+ * Gradient stays translucent so the shimmer reads against the card-overlay's
+ * dark gradient — the global .skeleton base uses opaque surface tones, which
+ * would clash with the title gradient that sits on top of this layer. */
 .card-skeleton-poster,
 .card-skeleton-line,
 .card-skeleton-progress::before {
@@ -69,7 +67,7 @@
     rgba(255, 255, 255, 0.05) 65%
   );
   background-size: 200% 100%;
-  animation: card-skeleton-shimmer 1.4s ease-in-out infinite;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
 .card-skeleton-poster {
@@ -129,8 +127,3 @@
 
 @media (min-width: 640px) { .card-skeleton { width: 165px; } }
 @media (min-width: 1024px) { .card-skeleton { width: 175px; } }
-
-@keyframes card-skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}

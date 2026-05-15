@@ -163,7 +163,7 @@ type ConfirmAction =
         @if (loading() && type() === 'tv') {
           <div class="episode-grid-section">
             <div class="skeleton skeleton-section-title"></div>
-            <div class="episode-grid">
+            <div class="episode-grid ui-scroll-row ui-scroll-row-thin">
               @for (i of skeletonRange; track i) {
                 <div class="episode-card skeleton-card">
                   <div class="skeleton skeleton-card-thumb"></div>
@@ -176,7 +176,7 @@ type ConfirmAction =
         } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0) {
           <div class="episode-grid-section">
             <h3 class="episode-grid-title">Episodi</h3>
-            <div class="episode-grid">
+            <div class="episode-grid ui-scroll-row ui-scroll-row-thin">
               @for (ep of player.episodes(); track ep.episode_number) {
                 <article uiSurface="card"
                          role="button"
@@ -255,7 +255,7 @@ type ConfirmAction =
           <app-section-header title="Recensioni" [icon]="reviewsIcon" />
 
           @if (reviewsLoading()) {
-            <div class="reviews-row">
+            <div class="reviews-row ui-scroll-row ui-scroll-row-thin">
               @for (i of skeletonRange; track i) {
                 <article class="review-card skeleton-review-card">
                   <div class="skeleton skeleton-review-head"></div>
@@ -266,7 +266,7 @@ type ConfirmAction =
               }
             </div>
           } @else {
-            <div class="reviews-row">
+            <div class="reviews-row ui-scroll-row ui-scroll-row-thin">
               @for (review of reviews(); track review.id) {
                 <article class="review-card">
                   <div class="review-head">
