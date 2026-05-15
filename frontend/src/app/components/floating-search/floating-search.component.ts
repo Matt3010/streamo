@@ -16,6 +16,7 @@ import { IconComponent } from '../../ui/icon/icon.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
 import { TmdbService } from '../../services/tmdb.service';
+import { BodyScrollLockService } from '../../services/body-scroll-lock.service';
 import type { TmdbItem } from '../../models';
 
 const RECENTS_KEY = 'streamo.search.recent';
@@ -146,6 +147,7 @@ const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
 export class FloatingSearchComponent {
   private readonly router = inject(Router);
   private readonly tmdb = inject(TmdbService);
+  private readonly scrollLock = inject(BodyScrollLockService);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   readonly query = signal('');
@@ -159,6 +161,7 @@ export class FloatingSearchComponent {
   private abortController: AbortController | null = null;
   private previousFocus: HTMLElement | null = null;
   private wasOpen = false;
+  private hasLockedScroll = false;
 
   private readonly nav = toSignal(
     this.router.events.pipe(filter(e => e instanceof NavigationEnd)),
@@ -204,10 +207,22 @@ export class FloatingSearchComponent {
       if (open && !this.wasOpen) {
         const active = document.activeElement;
         this.previousFocus = active instanceof HTMLElement ? active : null;
+        /* Lock the body scroll only on mobile — the desktop panel is
+         * a small floating widget, locking the page scroll would be
+         * unexpected. The backdrop overlay is hidden on desktop so
+         * the user can still interact with content underneath. */
+        if (window.matchMedia('(max-width: 768px)').matches) {
+          this.scrollLock.acquire();
+          this.hasLockedScroll = true;
+        }
       } else if (!open && this.wasOpen) {
         const target = this.previousFocus;
         this.previousFocus = null;
         if (target) queueMicrotask(() => target.focus());
+        if (this.hasLockedScroll) {
+          this.scrollLock.release();
+          this.hasLockedScroll = false;
+        }
       }
       this.wasOpen = open;
 
