@@ -124,21 +124,48 @@
   transform: none;
 }
 
+/* Same layout pattern as the floating-search .search-row: input
+ * and action buttons stack vertically on mobile and sit side-by-side
+ * on desktop, with breathing room matching the search panel's
+ * 0.72rem/0.82rem inset. */
 .folder-popover-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  padding: 0.58rem 0.62rem 0.62rem;
+  padding: 0.72rem 0.82rem;
 }
 
-/* Layout-only — visual styling (border, background, padding, focus
- * ring) comes from uiInput="compact". min-width: 0 lets the input
- * shrink inside the popover-bar grid track instead of forcing it
- * past the available column width. */
+/* Layout-only — visual styling comes from uiInput. */
 .folder-popover-input {
   width: 100%;
   min-width: 0;
+}
+
+.folder-popover-actions {
+  display: flex;
+  gap: 0.65rem;
+}
+
+@media (min-width: 769px) {
+  .folder-popover-bar {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .folder-popover-input {
+    flex: 1;
+  }
+
+  .folder-popover-actions {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .folder-popover-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  }
 }
 
 @media (max-width: 640px) {
@@ -147,12 +174,6 @@
   }
 
   .folder-popover-bar {
-    grid-template-columns: 1fr;
     padding: 0.5rem;
-  }
-
-  .folder-popover-input,
-  .folder-popover-bar > .ui-button {
-    width: 100%;
   }
 }

@@ -11,7 +11,9 @@
   max-width: calc(100vw - 24px);
   overflow: visible;
   isolation: isolate;
-  border-radius: var(--radius);
+  /* Match the floating-search panel's roundness so popovers feel
+   * like the same UI family. */
+  border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),

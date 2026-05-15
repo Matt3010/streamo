@@ -305,33 +305,35 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   : 'Aggiungi o aggiorna il folder del titolo'"
                 (closed)="closeFolderPopover()">
       <div class="folder-popover-bar">
-        <input uiInput="compact" class="folder-popover-input"
+        <input uiInput class="folder-popover-input"
                type="text"
                maxlength="60"
                [value]="folderDraft()"
                placeholder="Titolo folder"
                (input)="onFolderDraftInput($event)">
 
-        <button uiButton="primary" uiButtonSize="compact" type="button"
-                [uiPending]="savingFolder()"
-                [disabled]="!canSaveFolder()"
-                (click)="saveFolder()">
-          {{ folderTargetHasFolder() ? 'Aggiorna' : 'Aggiungi' }}
-        </button>
-
-        @if (folderTargetHasFolder()) {
-          <button uiButton="danger-outline" uiButtonSize="compact" type="button"
+        <div class="folder-popover-actions">
+          <button uiButton="primary" uiButtonSize="compact" type="button"
                   [uiPending]="savingFolder()"
-                  (click)="removeFolder()">
-            Rimuovi
+                  [disabled]="!canSaveFolder()"
+                  (click)="saveFolder()">
+            {{ folderTargetHasFolder() ? 'Aggiorna' : 'Aggiungi' }}
           </button>
-        } @else {
-          <button uiButton="ghost" uiButtonSize="compact" type="button"
-                  [disabled]="savingFolder()"
-                  (click)="closeFolderPopover()">
-            Chiudi
-          </button>
-        }
+
+          @if (folderTargetHasFolder()) {
+            <button uiButton="danger-outline" uiButtonSize="compact" type="button"
+                    [uiPending]="savingFolder()"
+                    (click)="removeFolder()">
+              Rimuovi
+            </button>
+          } @else {
+            <button uiButton="ghost" uiButtonSize="compact" type="button"
+                    [disabled]="savingFolder()"
+                    (click)="closeFolderPopover()">
+              Chiudi
+            </button>
+          }
+        </div>
       </div>
     </ui-popover>
   `,
