@@ -2,6 +2,7 @@ import http from 'http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { PORT } from './config';
+import { initDb } from './db';
 import authRoutes from './routes/auth';
 import preferencesRoutes from './routes/preferences';
 import progressRoutes from './routes/progress';
@@ -33,6 +34,7 @@ app.use(adminRoutes);
 app.use(playbackRoutes);
 
 async function start(): Promise<void> {
+  await initDb();
   await assertRedisReady();
 
   const server = http.createServer(app);

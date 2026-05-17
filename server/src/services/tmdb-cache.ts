@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { query } from '../db';
 import { TMDB_API_KEY, TMDB_CACHE_TTL } from '../config';
 import type { WatchlistSeasonInfo } from '../../../shared/types';
 import {
@@ -89,9 +89,12 @@ function parseCachedMovieSummary(data: string): TmdbMovieSummary | null {
   }
 }
 
-export function readCachedTmdbTvSummary(tmdbId: number | string): TmdbTvSummary | null {
+export async function readCachedTmdbTvSummary(tmdbId: number | string): Promise<TmdbTvSummary | null> {
   const key = `tv:${tmdbId}`;
-  const cached = db.prepare('SELECT data FROM tmdb_cache WHERE cache_key = ?').get(key) as Pick<CacheRow, 'data'> | undefined;
+  const res = await query<Pick<CacheRow, 'data'>>(
+    'SELECT data FROM tmdb_cache WHERE cache_key = $1', [key]
+  );
+  const cached = res.rows[0];
   if (!cached) return null;
   return parseCachedSummary(cached.data);
 }
@@ -110,7 +113,10 @@ export async function getTmdbMovieSummary(
 ): Promise<TmdbMovieSummary | null> {
   const key = `movie:${tmdbId}`;
   const now = Math.floor(Date.now() / 1000);
-  const cached = db.prepare('SELECT data, fetched_at FROM tmdb_cache WHERE cache_key = ?').get(key) as CacheRow | undefined;
+  const cachedRes = await query<CacheRow>(
+    'SELECT data, fetched_at FROM tmdb_cache WHERE cache_key = $1', [key]
+  );
+  const cached = cachedRes.rows[0];
   if (!options?.forceRefresh && cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
     const parsed = parseCachedMovieSummary(cached.data);
     if (parsed) return parsed;
@@ -127,10 +133,10 @@ export async function getTmdbMovieSummary(
       release_date: data.release_date ?? null
     };
 
-    db.prepare('INSERT OR REPLACE INTO tmdb_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)').run(
-      key,
-      JSON.stringify(stored),
-      now
+    await query(
+      `INSERT INTO tmdb_cache (cache_key, data, fetched_at) VALUES ($1, $2, $3)
+       ON CONFLICT (cache_key) DO UPDATE SET data = EXCLUDED.data, fetched_at = EXCLUDED.fetched_at`,
+      [key, JSON.stringify(stored), now]
     );
     return stored;
   } catch {
@@ -138,7 +144,7 @@ export async function getTmdbMovieSummary(
   }
 }
 
-// Fetches a TV show's headline counts from TMDB, with a SQLite cache.
+// Fetches a TV show's headline counts from TMDB, with a Postgres cache.
 // Old cache entries that lack required fields are transparently refreshed
 // so schema bumps do not require manual cache eviction.
 export async function getTmdbTvSummary(
@@ -147,7 +153,10 @@ export async function getTmdbTvSummary(
 ): Promise<TmdbTvSummary | null> {
   const key = `tv:${tmdbId}`;
   const now = Math.floor(Date.now() / 1000);
-  const cached = db.prepare('SELECT data, fetched_at FROM tmdb_cache WHERE cache_key = ?').get(key) as CacheRow | undefined;
+  const cachedRes = await query<CacheRow>(
+    'SELECT data, fetched_at FROM tmdb_cache WHERE cache_key = $1', [key]
+  );
+  const cached = cachedRes.rows[0];
   if (!options?.forceRefresh && cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
     const parsed = parseCachedSummary(cached.data);
     if (parsed) return parsed;
@@ -176,10 +185,10 @@ export async function getTmdbTvSummary(
       next_episode_to_air: toEpisodeRef(data.next_episode_to_air)
     };
 
-    db.prepare('INSERT OR REPLACE INTO tmdb_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)').run(
-      key,
-      JSON.stringify(stored),
-      now
+    await query(
+      `INSERT INTO tmdb_cache (cache_key, data, fetched_at) VALUES ($1, $2, $3)
+       ON CONFLICT (cache_key) DO UPDATE SET data = EXCLUDED.data, fetched_at = EXCLUDED.fetched_at`,
+      [key, JSON.stringify(stored), now]
     );
     return stored;
   } catch {

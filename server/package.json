@@ -6,7 +6,8 @@
     "build": "tsc",
     "start": "npm run start:api",
     "start:api": "node dist/server/src/server.js",
-    "start:worker": "node dist/server/src/worker.js"
+    "start:worker": "node dist/server/src/worker.js",
+    "migrate:sqlite": "node dist/server/src/scripts/migrate-sqlite-to-pg.js"
   },
   "dependencies": {
     "@bull-board/api": "^7.0.0",
@@ -20,6 +21,7 @@
     "express-rate-limit": "^7.4.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
+    "pg": "^8.20.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
@@ -29,6 +31,7 @@
     "@types/express": "^4.17.0",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.20.0",
     "typescript": "^5.6.0"
   }
 }

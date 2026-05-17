@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db } from '../db';
+import { query } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { WATCHED_THRESHOLD } from '../config';
@@ -30,7 +30,7 @@ function isCompleted(position: number | null | undefined, duration: number | nul
   return !!duration && duration > 0 && !!position && position >= duration * WATCHED_THRESHOLD;
 }
 
-router.post('/user/history', requireAuth, (req, res) => {
+router.post('/user/history', requireAuth, async (req, res) => {
   const body = req.body || {};
   const tmdb_id = toInt(body.tmdb_id, { min: 1 });
   const media_type = body.media_type;
@@ -40,14 +40,14 @@ router.post('/user/history', requireAuth, (req, res) => {
   if (!tmdb_id || !media_type) return res.status(400).json({ error: 'missing_fields' });
   if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
 
-  db.prepare(`
+  await query(`
     INSERT INTO history (user_id, tmdb_id, media_type, season, episode, title, poster, watched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%s','now'))
-    ON CONFLICT(user_id, tmdb_id, media_type, season, episode) DO UPDATE SET
-      title = COALESCE(excluded.title, title),
-      poster = COALESCE(excluded.poster, poster),
-      watched_at = strftime('%s','now')
-  `).run(req.user!.id, tmdb_id, media_type, season, episode, body.title || null, body.poster || null);
+    VALUES ($1, $2, $3, $4, $5, $6, $7, EXTRACT(EPOCH FROM NOW())::BIGINT)
+    ON CONFLICT (user_id, tmdb_id, media_type, season, episode) DO UPDATE SET
+      title = COALESCE(EXCLUDED.title, history.title),
+      poster = COALESCE(EXCLUDED.poster, history.poster),
+      watched_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+  `, [req.user!.id, tmdb_id, media_type, season, episode, body.title || null, body.poster || null]);
   res.json({ ok: true });
 });
 
@@ -57,14 +57,14 @@ router.get('/user/history', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'invalid_type' });
   }
 
-  const where = ['h.user_id = ?'];
   const params: Array<number | string> = [req.user!.id];
+  let whereExtra = '';
   if (mediaFilter) {
-    where.push('h.media_type = ?');
     params.push(mediaFilter);
+    whereExtra = ` AND h.media_type = $${params.length}`;
   }
 
-  const rows = db.prepare(`
+  const r = await query<HistoryRow>(`
     SELECT
       h.tmdb_id,
       h.media_type,
@@ -83,10 +83,11 @@ router.get('/user/history', requireAuth, async (req, res) => {
       AND p.season = h.season
       AND p.episode = h.episode
       AND p.synthetic = 0
-    WHERE ${where.join(' AND ')}
+    WHERE h.user_id = $1${whereExtra}
     ORDER BY h.watched_at DESC, h.id DESC
     LIMIT 100
-  `).all(...params) as HistoryRow[];
+  `, params);
+  const rows = r.rows;
 
   const latestEntryByTitle = new Set<string>();
   const seenTitles = new Set<string>();
@@ -128,12 +129,12 @@ router.get('/user/history', requireAuth, async (req, res) => {
   res.json({ items });
 });
 
-router.delete('/user/history', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM history WHERE user_id = ?').run(req.user!.id);
+router.delete('/user/history', requireAuth, async (req, res) => {
+  await query('DELETE FROM history WHERE user_id = $1', [req.user!.id]);
   res.json({ ok: true });
 });
 
-router.delete('/user/history/:type/:tmdb_id', requireAuth, (req, res) => {
+router.delete('/user/history/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   const season = toInt(req.query.season, { min: 0 });
@@ -141,16 +142,17 @@ router.delete('/user/history/:type/:tmdb_id', requireAuth, (req, res) => {
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
 
   if (season !== null && season !== undefined && episode !== null && episode !== undefined) {
-    db.prepare(`
+    await query(`
       DELETE FROM history
-      WHERE user_id = ? AND tmdb_id = ? AND media_type = ? AND season = ? AND episode = ?
-    `).run(req.user!.id, tmdb_id, type, season, episode);
+      WHERE user_id = $1 AND tmdb_id = $2 AND media_type = $3 AND season = $4 AND episode = $5
+    `, [req.user!.id, tmdb_id, type, season, episode]);
     return res.json({ ok: true });
   }
 
-  db.prepare(`
-    DELETE FROM history WHERE user_id = ? AND tmdb_id = ? AND media_type = ?
-  `).run(req.user!.id, tmdb_id, type);
+  await query(
+    'DELETE FROM history WHERE user_id = $1 AND tmdb_id = $2 AND media_type = $3',
+    [req.user!.id, tmdb_id, type]
+  );
   res.json({ ok: true });
 });
 

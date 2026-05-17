@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { db } from '../db';
+import { query } from '../db';
 import { authenticateToken, readCookie } from '../middleware/auth';
 import { createRedisClient, getRedisPublisher, hasRedisConfig } from './redis';
 import type { MediaType, WatchlistUpdatedEvent } from '../../../shared/types';
@@ -47,19 +47,21 @@ export function attachUserLiveSessions(server: HttpServer): void {
   const sharedWss = new WebSocketServer({ noServer: true });
 
   watchlistWss.on('connection', (ws, req) => {
-    const userId = getUserId(req);
-    if (!userId) {
-      ws.close();
-      return;
-    }
+    void (async () => {
+      const userId = await getUserId(req);
+      if (!userId) {
+        ws.close();
+        return;
+      }
 
-    addToUserClients(userId, ws);
-    trackClient(ws);
+      addToUserClients(userId, ws);
+      trackClient(ws);
 
-    ws.on('close', () => {
-      removeFromUserClients(userId, ws);
-      clearHeartbeatIntervalIfIdle();
-    });
+      ws.on('close', () => {
+        removeFromUserClients(userId, ws);
+        clearHeartbeatIntervalIfIdle();
+      });
+    })();
   });
 
   /* Shared-token WS: opened by the public /shared/:token page. We
@@ -87,50 +89,53 @@ export function attachUserLiveSessions(server: HttpServer): void {
   });
 
   server.on('upgrade', (req, socket, head) => {
-    const pathname = getPathname(req);
+    void (async () => {
+      const pathname = getPathname(req);
 
-    if (pathname === USER_WATCHLIST_WS_PATH) {
-      const token = readCookie(req.headers.cookie, 'token');
-      const auth = authenticateToken(token);
-      if (!auth.user) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
+      if (pathname === USER_WATCHLIST_WS_PATH) {
+        const token = readCookie(req.headers.cookie, 'token');
+        const auth = await authenticateToken(token);
+        if (!auth.user) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        watchlistWss.handleUpgrade(req, socket, head, (ws) => {
+          watchlistWss.emit('connection', ws, req);
+        });
         return;
       }
 
-      watchlistWss.handleUpgrade(req, socket, head, (ws) => {
-        watchlistWss.emit('connection', ws, req);
-      });
-      return;
-    }
+      const shareToken = extractShareToken(pathname);
+      if (shareToken) {
+        const ip = getClientIp(req);
+        if (!checkSharedUpgradeRate(ip)) {
+          socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+          socket.destroy();
+          return;
+        }
 
-    const shareToken = extractShareToken(pathname);
-    if (shareToken) {
-      const ip = getClientIp(req);
-      if (!checkSharedUpgradeRate(ip)) {
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
-        socket.destroy();
-        return;
+        const res = await query<{ user_id: number; status: string }>(`
+          SELECT user_id, status FROM share_links WHERE token = $1
+        `, [shareToken]);
+        const row = res.rows[0];
+
+        if (!row || row.status !== 'active') {
+          socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        const taggedReq = req as IncomingMessage & { _shareToken?: string; _shareUserId?: number };
+        taggedReq._shareToken = shareToken;
+        taggedReq._shareUserId = row.user_id;
+
+        sharedWss.handleUpgrade(req, socket, head, (ws) => {
+          sharedWss.emit('connection', ws, taggedReq);
+        });
       }
-
-      const row = db.prepare(`
-        SELECT user_id, status FROM share_links WHERE token = ?
-      `).get(shareToken) as { user_id: number; status: string } | undefined;
-
-      if (!row || row.status !== 'active') {
-        socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
-        socket.destroy();
-        return;
-      }
-
-      const taggedReq = req as IncomingMessage & { _shareToken?: string; _shareUserId?: number };
-      taggedReq._shareToken = shareToken;
-      taggedReq._shareUserId = row.user_id;
-
-      sharedWss.handleUpgrade(req, socket, head, (ws) => {
-        sharedWss.emit('connection', ws, taggedReq);
-      });
-    }
+    })();
   });
 }
 
@@ -302,9 +307,9 @@ function heartbeatClients(clients: Set<WebSocket>): void {
   }
 }
 
-function getUserId(req: IncomingMessage): number | null {
+async function getUserId(req: IncomingMessage): Promise<number | null> {
   const token = readCookie(req.headers.cookie, 'token');
-  const auth = authenticateToken(token);
+  const auth = await authenticateToken(token);
   return auth.user?.id ?? null;
 }
 

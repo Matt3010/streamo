@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { db } from '../db';
+import { query } from '../db';
 import { authenticateToken, requireAuth } from '../middleware/auth';
 import { publishShareLinkRevoked } from '../services/user-live';
 import type {
@@ -15,11 +15,6 @@ const router = Router();
 
 const MAX_LABEL_LENGTH = 60;
 
-/* Per-IP throttle for the public /shared/:token endpoint. 60 req/min
- * is generous for a human browsing their friend's list (page open,
- * occasional refresh) but stops trivial enumeration of the token
- * space. The auth-required CRUD endpoints don't need this — they're
- * already gated by session. */
 const sharedLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
@@ -35,41 +30,37 @@ function normalizeLabel(value: unknown): string | null {
   return trimmed.slice(0, MAX_LABEL_LENGTH);
 }
 
-/* GET /user/share-links — list the share links the caller owns. */
-router.get('/user/share-links', requireAuth, (req, res) => {
-  const rows = db.prepare(`
+router.get('/user/share-links', requireAuth, async (req, res) => {
+  const r = await query<ShareLink>(`
     SELECT id, token, label, status, view_count, created_at
     FROM share_links
-    WHERE user_id = ?
+    WHERE user_id = $1
     ORDER BY created_at DESC
-  `).all(req.user!.id) as ShareLink[];
+  `, [req.user!.id]);
 
-  res.json({ links: rows });
+  res.json({ links: r.rows });
 });
 
-/* POST /user/share-links — create a new share link for the caller. */
-router.post('/user/share-links', requireAuth, (req, res) => {
+router.post('/user/share-links', requireAuth, async (req, res) => {
   const body = req.body || {};
   const label = normalizeLabel(body.label);
   const token = crypto.randomBytes(18).toString('base64url');
 
-  db.prepare(`
+  await query(`
     INSERT INTO share_links (token, user_id, label, status)
-    VALUES (?, ?, ?, 'active')
-  `).run(token, req.user!.id, label);
+    VALUES ($1, $2, $3, 'active')
+  `, [token, req.user!.id, label]);
 
-  const row = db.prepare(`
+  const r = await query<ShareLink>(`
     SELECT id, token, label, status, view_count, created_at
     FROM share_links
-    WHERE token = ?
-  `).get(token) as ShareLink;
+    WHERE token = $1
+  `, [token]);
 
-  res.json(row);
+  res.json(r.rows[0]);
 });
 
-/* PATCH /user/share-links/:id — toggle status (suspend / resume). The
- * caller can also update the label here in one round-trip. */
-router.patch('/user/share-links/:id', requireAuth, (req, res) => {
+router.patch('/user/share-links/:id', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) {
     return res.status(400).json({ error: 'invalid_id' });
@@ -78,22 +69,20 @@ router.patch('/user/share-links/:id', requireAuth, (req, res) => {
   const body = req.body || {};
   const updates: string[] = [];
   const params: Array<string | number> = [];
+  let idx = 1;
 
   if (body.status !== undefined) {
     const status = body.status as ShareLinkStatus;
     if (status !== 'active' && status !== 'suspended') {
       return res.status(400).json({ error: 'invalid_status' });
     }
-    updates.push('status = ?');
+    updates.push(`status = $${idx++}`);
     params.push(status);
   }
 
   if (body.label !== undefined) {
-    updates.push('label = ?');
+    updates.push(`label = $${idx++}`);
     params.push(normalizeLabel(body.label) ?? '');
-    /* SQLite stores '' for the empty label rather than NULL — keeps
-     * the column non-null for clients that prefer no nullable check.
-     * Read paths treat empty and null equivalently. */
   }
 
   if (updates.length === 0) {
@@ -101,21 +90,22 @@ router.patch('/user/share-links/:id', requireAuth, (req, res) => {
   }
 
   params.push(id, req.user!.id);
-  const result = db.prepare(`
+  const result = await query(`
     UPDATE share_links
     SET ${updates.join(', ')}
-    WHERE id = ? AND user_id = ?
-  `).run(...params);
+    WHERE id = $${idx} AND user_id = $${idx + 1}
+  `, params);
 
-  if (result.changes === 0) {
+  if (result.rowCount === 0) {
     return res.status(404).json({ error: 'not_found' });
   }
 
-  const row = db.prepare(`
+  const r = await query<ShareLink>(`
     SELECT id, token, label, status, view_count, created_at
     FROM share_links
-    WHERE id = ? AND user_id = ?
-  `).get(id, req.user!.id) as ShareLink;
+    WHERE id = $1 AND user_id = $2
+  `, [id, req.user!.id]);
+  const row = r.rows[0];
 
   if (row.status === 'suspended') {
     publishShareLinkRevoked(row.token);
@@ -124,24 +114,22 @@ router.patch('/user/share-links/:id', requireAuth, (req, res) => {
   res.json(row);
 });
 
-/* DELETE /user/share-links/:id — permanently remove a share link.
- * Anyone holding that URL gets a 404 from the public endpoint
- * afterwards. */
-router.delete('/user/share-links/:id', requireAuth, (req, res) => {
+router.delete('/user/share-links/:id', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) {
     return res.status(400).json({ error: 'invalid_id' });
   }
 
-  const existing = db.prepare(`
-    SELECT token FROM share_links WHERE id = ? AND user_id = ?
-  `).get(id, req.user!.id) as { token: string } | undefined;
+  const existingRes = await query<{ token: string }>(`
+    SELECT token FROM share_links WHERE id = $1 AND user_id = $2
+  `, [id, req.user!.id]);
+  const existing = existingRes.rows[0];
 
-  const result = db.prepare(`
-    DELETE FROM share_links WHERE id = ? AND user_id = ?
-  `).run(id, req.user!.id);
+  const result = await query(`
+    DELETE FROM share_links WHERE id = $1 AND user_id = $2
+  `, [id, req.user!.id]);
 
-  if (result.changes === 0) {
+  if (result.rowCount === 0) {
     return res.status(404).json({ error: 'not_found' });
   }
 
@@ -150,56 +138,43 @@ router.delete('/user/share-links/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* GET /shared/:token — public read-only view of the owner's
- * watchlist. Returns 404 if the token is unknown OR the link is
- * suspended — the recipient cannot tell the two apart, which is
- * exactly the requested UX. */
-router.get('/shared/:token', sharedLimiter, (req, res) => {
+router.get('/shared/:token', sharedLimiter, async (req, res) => {
   const { token } = req.params;
   if (!token || typeof token !== 'string') {
     return res.status(404).json({ error: 'not_found' });
   }
 
-  const link = db.prepare(`
+  const linkRes = await query<{ user_id: number; status: string; email: string }>(`
     SELECT s.user_id, s.status, u.email
     FROM share_links s
     JOIN users u ON u.id = s.user_id
-    WHERE s.token = ?
-  `).get(token) as { user_id: number; status: string; email: string } | undefined;
+    WHERE s.token = $1
+  `, [token]);
+  const link = linkRes.rows[0];
 
   if (!link || link.status !== 'active') {
     return res.status(404).json({ error: 'not_found' });
   }
 
-  /* Count this open if:
-   *   - the caller explicitly asked to (?track=1 — the initial page
-   *     load, not the WS-triggered refetches that would inflate it);
-   *   - the caller is not the owner of the link (an owner opening
-   *     their own link should not pollute their own metric).
-   * Unauthenticated visitors always count when track=1; authenticated
-   * non-owner visitors also count. */
   const shouldTrack = req.query.track === '1';
   if (shouldTrack) {
-    const viewer = authenticateToken(req.cookies?.token).user;
+    const viewer = (await authenticateToken(req.cookies?.token)).user;
     if (!viewer || viewer.id !== link.user_id) {
-      db.prepare('UPDATE share_links SET view_count = view_count + 1 WHERE token = ?').run(token);
+      await query('UPDATE share_links SET view_count = view_count + 1 WHERE token = $1', [token]);
     }
   }
 
-  const items = db.prepare(`
+  const itemsRes = await query<SharedWatchlistItem>(`
     SELECT tmdb_id, media_type, title, poster, status, folder_name,
            done_aired_episodes, added_at
     FROM watchlist
-    WHERE user_id = ?
+    WHERE user_id = $1
     ORDER BY added_at DESC
-  `).all(link.user_id) as SharedWatchlistItem[];
+  `, [link.user_id]);
 
-  /* Only the local-part of the email is exposed (before the @) so
-   * the recipient sees a username-like handle rather than the
-   * owner's full address. */
   const response: SharedWatchlistResponse = {
     owner: { name: link.email.split('@')[0] },
-    items
+    items: itemsRes.rows
   };
 
   res.json(response);

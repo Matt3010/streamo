@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { query } from '../db';
 import { getTmdbTvSummary, isFutureDate } from './tmdb-cache';
 
 function getEffectiveLastEpisode(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): { season_number: number; episode_number: number } | null {
@@ -45,12 +45,13 @@ export async function findNextEpisode(tmdbId: number, season: number, episode: n
 // at exactly position == duration (the 'ended' event handler signature).
 // Falls back to the last touched episode if there is no following one.
 export async function resolveNextPlayable(userId: number, tmdbId: number): Promise<{ season: number; episode: number } | null> {
-  const last = db.prepare(`
+  const res = await query<{ season: number; episode: number; position: number; duration: number }>(`
     SELECT season, episode, position, duration FROM progress
-    WHERE user_id = ? AND tmdb_id = ? AND media_type = 'tv' AND synthetic = 0
+    WHERE user_id = $1 AND tmdb_id = $2 AND media_type = 'tv' AND synthetic = 0
     ORDER BY updated_at DESC, season DESC, episode DESC
     LIMIT 1
-  `).get(userId, tmdbId) as { season: number; episode: number; position: number; duration: number } | undefined;
+  `, [userId, tmdbId]);
+  const last = res.rows[0];
   if (!last) return null;
 
   const ended = last.duration > 0 && last.position >= last.duration;

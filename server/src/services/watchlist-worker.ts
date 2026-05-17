@@ -69,7 +69,7 @@ export async function startWatchlistWorker(): Promise<void> {
 
 async function processWatchlistJob(job: Job<WatchlistJobData, void, string>): Promise<void> {
   if (job.name === WATCHLIST_SCAN_JOB) {
-    await enqueueTrackedWatchlistRefreshes(listTrackedWatchlistTvIds());
+    await enqueueTrackedWatchlistRefreshes(await listTrackedWatchlistTvIds());
     return;
   }
 

@@ -50,7 +50,7 @@ export function attachAdminLiveSessions(server: HttpServer): void {
   sessionsWss.on('connection', (ws) => {
     sessionClients.add(ws);
     trackClient(ws);
-    broadcastSessions();
+    void broadcastSessions();
 
     ws.on('close', () => {
       sessionClients.delete(ws);
@@ -89,49 +89,51 @@ export function attachAdminLiveSessions(server: HttpServer): void {
   });
 
   server.on('upgrade', (req, socket, head) => {
-    const pathname = getPathname(req);
-    if (
-      pathname !== ADMIN_SESSIONS_WS_PATH &&
-      pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
-      pathname !== ADMIN_TRANSPORT_LOGS_WS_PATH
-    ) return;
+    void (async () => {
+      const pathname = getPathname(req);
+      if (
+        pathname !== ADMIN_SESSIONS_WS_PATH &&
+        pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
+        pathname !== ADMIN_TRANSPORT_LOGS_WS_PATH
+      ) return;
 
-    const token = readCookie(req.headers.cookie, 'token');
-    const auth = authenticateToken(token);
-    if (!auth.user) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-    if (!isSuperAdminUser(auth.user)) {
-      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-      socket.destroy();
-      return;
-    }
+      const token = readCookie(req.headers.cookie, 'token');
+      const auth = await authenticateToken(token);
+      if (!auth.user) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      if (!isSuperAdminUser(auth.user)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
 
-    const target = pathname === ADMIN_SESSIONS_WS_PATH
-      ? sessionsWss
-      : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
-        ? playbackLogsWss
-        : transportLogsWss;
-    target.handleUpgrade(req, socket, head, (ws) => {
-      target.emit('connection', ws, req);
-    });
+      const target = pathname === ADMIN_SESSIONS_WS_PATH
+        ? sessionsWss
+        : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
+          ? playbackLogsWss
+          : transportLogsWss;
+      target.handleUpgrade(req, socket, head, (ws) => {
+        target.emit('connection', ws, req);
+      });
+    })();
   });
 }
 
 export function notifyAdminSessionsChanged(): void {
   if (sessionClients.size === 0) return;
-  broadcastSessions();
+  void broadcastSessions();
 }
 
-function broadcastSessions(): void {
+async function broadcastSessions(): Promise<void> {
   if (sessionClients.size === 0) {
     clearExpiryTimeout();
     return;
   }
 
-  const sessions = listLiveAdminSessions();
+  const sessions = await listLiveAdminSessions();
   const payload = JSON.stringify({
     type: 'sessions',
     sessions
@@ -160,7 +162,7 @@ function scheduleNextExpiry(sessions: AdminSession[]): void {
   const delayMs = Math.max(0, earliestExpiryMs - Date.now() + EXPIRY_FUZZ_MS);
   expiryTimeout = setTimeout(() => {
     expiryTimeout = null;
-    broadcastSessions();
+    void broadcastSessions();
   }, delayMs);
 }
 

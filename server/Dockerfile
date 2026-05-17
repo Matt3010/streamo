@@ -12,6 +12,7 @@ WORKDIR /app
 COPY server/package.json ./
 RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /build/server/dist ./dist
+COPY server/src/db-schema.sql ./dist/server/src/db-schema.sql
 
 ENV NODE_ENV=production
 ENV PORT=3000

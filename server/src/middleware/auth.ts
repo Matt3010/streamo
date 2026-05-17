@@ -1,9 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { db, getOrCreateJwtSecret } from '../db';
+import { query, getJwtSecret } from '../db';
 import { COOKIE_SECURE, TOKEN_TTL, SUPER_ADMIN_EMAIL } from '../config';
-
-export const JWT_SECRET = process.env.JWT_SECRET || getOrCreateJwtSecret();
 
 export interface AuthedUser {
   id: number;
@@ -21,21 +19,23 @@ declare global {
   }
 }
 
-export function authenticateToken(token?: string): { user: AuthedUser | null; error?: AuthFailureReason } {
+export async function authenticateToken(token?: string): Promise<{ user: AuthedUser | null; error?: AuthFailureReason }> {
   if (!token) {
     return { user: null, error: 'missing_token' };
   }
 
   try {
-    const user = jwt.verify(token, JWT_SECRET) as AuthedUser;
+    const user = jwt.verify(token, getJwtSecret()) as AuthedUser;
 
     if (isSuperAdminUser(user)) {
       return { user };
     }
 
-    const inviteRow = db.prepare(
-      'SELECT revoked_at FROM invite_tokens WHERE used_by_user_id = ?'
-    ).get(user.id) as { revoked_at: number | null } | undefined;
+    const res = await query<{ revoked_at: number | null }>(
+      'SELECT revoked_at FROM invite_tokens WHERE used_by_user_id = $1',
+      [user.id]
+    );
+    const inviteRow = res.rows[0];
 
     if (!inviteRow || inviteRow.revoked_at !== null) {
       return { user: null, error: 'access_revoked' };
@@ -69,8 +69,8 @@ export function readCookie(cookieHeader: string | undefined, name: string): stri
   return undefined;
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const result = authenticateToken(req.cookies?.token);
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const result = await authenticateToken(req.cookies?.token);
   if (!result.user) {
     if (result.error === 'access_revoked') {
       res.clearCookie('token', { path: '/' });
@@ -84,7 +84,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 }
 
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
-  requireAuth(req, res, () => {
+  void requireAuth(req, res, () => {
     if (!isSuperAdminUser(req.user)) {
       res.status(403).json({ error: 'forbidden' });
       return;
@@ -94,7 +94,7 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
 }
 
 export function setAuthCookie(res: Response, user: AuthedUser): void {
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, {
+  const token = jwt.sign({ id: user.id, email: user.email }, getJwtSecret(), {
     expiresIn: TOKEN_TTL
   });
 

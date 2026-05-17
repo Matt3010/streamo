@@ -3,6 +3,21 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-streamo}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-streamo}
+      - POSTGRES_DB=${POSTGRES_DB:-streamo}
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-streamo} -d ${POSTGRES_DB:-streamo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: .
@@ -12,19 +27,21 @@ services:
     volumes:
       - ./data:/data
     environment:
-      # If unset, the backend generates and persists a JWT secret in SQLite.
+      # JWT secret persists in Postgres _meta if unset.
       - JWT_SECRET=${JWT_SECRET:-}
       - COOKIE_SECURE=${COOKIE_SECURE:-}
-      # Used to enrich watchlist items with TMDB metadata (e.g. total seasons).
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
-      # Email that becomes admin automatically (no invite token needed).
       - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:-}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - TMDB_REFRESH_INTERVAL_SECONDS=${TMDB_REFRESH_INTERVAL_SECONDS:-1800}
+      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@postgres:5432/${POSTGRES_DB:-streamo}}
     expose:
       - "3000"
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   backend-worker:
     image: streamingimmunity-backend:local
@@ -42,8 +59,12 @@ services:
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
       - TMDB_JOB_RATE_LIMIT_MAX=${TMDB_JOB_RATE_LIMIT_MAX:-6}
       - TMDB_JOB_RATE_LIMIT_DURATION_MS=${TMDB_JOB_RATE_LIMIT_DURATION_MS:-1000}
+      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@postgres:5432/${POSTGRES_DB:-streamo}}
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   streamo:
     build: .

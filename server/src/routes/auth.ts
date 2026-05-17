@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { promisify } from 'node:util';
 import rateLimit from 'express-rate-limit';
-import { db } from '../db';
+import { query, withTx, clientQuery } from '../db';
 import { EMAIL_RE, SUPER_ADMIN_EMAIL } from '../config';
 import { requireAuth, setAuthCookie } from '../middleware/auth';
 import type { User } from '../../../shared/types';
@@ -43,7 +43,6 @@ router.post('/auth/register', authLimiter, async (req, res) => {
   const normalized = (email as string).trim().toLowerCase();
   const isSuperAdmin = Boolean(SUPER_ADMIN_EMAIL) && normalized === SUPER_ADMIN_EMAIL;
 
-  // Super admin doesn't need a token; others do
   if (!isSuperAdmin) {
     if (!SUPER_ADMIN_EMAIL) {
       return res.status(400).json({ error: 'super_admin_not_configured' });
@@ -56,38 +55,37 @@ router.post('/auth/register', authLimiter, async (req, res) => {
   try {
     const hash = await bcryptHash(password, 10);
 
-    // Use a transaction for atomicity
-    const result = db.transaction(() => {
-      // Validate invite token if not super admin
+    const result = await withTx(async (client) => {
       if (!isSuperAdmin) {
-        const inviteRow = db.prepare(
-          'SELECT token, used_at, revoked_at FROM invite_tokens WHERE token = ?'
-        ).get(token) as InviteTokenRow | undefined;
+        const inviteRes = await clientQuery<InviteTokenRow>(
+          client,
+          'SELECT token, used_at, revoked_at FROM invite_tokens WHERE token = $1',
+          [token]
+        );
+        const inviteRow = inviteRes.rows[0];
 
-        if (!inviteRow) {
-          return { error: 'invalid_token' };
-        }
-        if (inviteRow.revoked_at !== null) {
-          return { error: 'revoked_token' };
-        }
-        if (inviteRow.used_at !== null) {
-          return { error: 'token_already_used' };
-        }
+        if (!inviteRow) return { error: 'invalid_token' as const };
+        if (inviteRow.revoked_at !== null) return { error: 'revoked_token' as const };
+        if (inviteRow.used_at !== null) return { error: 'token_already_used' as const };
       }
 
-      // Insert user
-      const info = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run(normalized, hash);
-      const userId = Number(info.lastInsertRowid);
+      const userRes = await clientQuery<{ id: number }>(
+        client,
+        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
+        [normalized, hash]
+      );
+      const userId = userRes.rows[0].id;
 
-      // Mark token as used (if not super admin)
       if (!isSuperAdmin) {
-        db.prepare(
-          "UPDATE invite_tokens SET used_at = strftime('%s','now'), used_by_user_id = ? WHERE token = ?"
-        ).run(userId, token);
+        await clientQuery(
+          client,
+          "UPDATE invite_tokens SET used_at = EXTRACT(EPOCH FROM NOW())::BIGINT, used_by_user_id = $1 WHERE token = $2",
+          [userId, token]
+        );
       }
 
       return { userId };
-    })();
+    });
 
     if ('error' in result) {
       return res.status(400).json({ error: result.error });
@@ -103,7 +101,11 @@ router.post('/auth/register', authLimiter, async (req, res) => {
     setAuthCookie(res, user);
     res.json({ user });
   } catch (e) {
-    if (String((e as Error).message).includes('UNIQUE')) return res.status(409).json({ error: 'email_taken' });
+    const msg = String((e as Error).message);
+    if (msg.includes('duplicate key') || msg.includes('users_email_key')) {
+      return res.status(409).json({ error: 'email_taken' });
+    }
+    console.error('[auth/register]', e);
     res.status(500).json({ error: 'server_error' });
   }
 });
@@ -113,9 +115,11 @@ router.post('/auth/login', authLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
 
   const normalized = (email as string).trim().toLowerCase();
-  const row = db.prepare(
-    'SELECT id, email, password_hash, autoplay_next, folders_enabled FROM users WHERE email = ?'
-  ).get(normalized) as UserRow | undefined;
+  const userRes = await query<UserRow>(
+    'SELECT id, email, password_hash, autoplay_next, folders_enabled FROM users WHERE email = $1',
+    [normalized]
+  );
+  const row = userRes.rows[0];
   if (!row || !(await bcryptCompare(password, row.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
@@ -136,10 +140,12 @@ router.post('/auth/logout', (_req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/auth/me', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT autoplay_next, folders_enabled FROM users WHERE id = ?').get(req.user!.id) as
-    | { autoplay_next: 0 | 1; folders_enabled: 0 | 1 }
-    | undefined;
+router.get('/auth/me', requireAuth, async (req, res) => {
+  const r = await query<{ autoplay_next: 0 | 1; folders_enabled: 0 | 1 }>(
+    'SELECT autoplay_next, folders_enabled FROM users WHERE id = $1',
+    [req.user!.id]
+  );
+  const row = r.rows[0];
   const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && req.user!.email.toLowerCase() === SUPER_ADMIN_EMAIL;
   const user: User = {
     id: req.user!.id,
@@ -152,9 +158,8 @@ router.get('/auth/me', requireAuth, (req, res) => {
 });
 
 // Lightweight session check used by nginx `auth_request` to gate the
-// playback routes (/player, /embed). Just verifies the JWT cookie — no
-// DB query, no body — so gating doesn't add latency to every iframe load.
-// 200 = authenticated, 401 = not. Anything else nginx treats as 500.
+// playback routes (/player, /embed). Just verifies the JWT cookie + the
+// invite-token revocation state via requireAuth.
 router.get('/auth/check', requireAuth, (_req, res) => {
   res.status(200).end();
 });

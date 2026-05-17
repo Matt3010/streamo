@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { db } from '../db';
+import { query } from '../db';
 import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
 import { listLiveAdminSessions } from '../services/admin-sessions';
@@ -11,64 +11,63 @@ import type { AdminQueueStatus, AdminUserRow, AdminTokenRow } from '../../../sha
 
 const router = Router();
 
-// GET /admin/users - List all users with their token status (excludes super admin)
-router.get('/admin/users', requireSuperAdmin, (_req, res) => {
-  const rows = db.prepare(`
+router.get('/admin/users', requireSuperAdmin, async (_req, res) => {
+  const r = await query<AdminUserRow>(`
     SELECT u.id, u.email, u.created_at,
            t.token, t.label, t.created_at AS token_created_at,
            t.used_at, t.revoked_at
     FROM users u
     LEFT JOIN invite_tokens t ON t.used_by_user_id = u.id
-    WHERE u.email != ?
+    WHERE u.email != $1
     ORDER BY u.created_at DESC
-  `).all(SUPER_ADMIN_EMAIL) as AdminUserRow[];
+  `, [SUPER_ADMIN_EMAIL]);
 
-  res.json({ users: rows });
+  res.json({ users: r.rows });
 });
 
-// GET /admin/tokens - List all invite tokens
-router.get('/admin/tokens', requireSuperAdmin, (_req, res) => {
-  const rows = db.prepare(`
+router.get('/admin/tokens', requireSuperAdmin, async (_req, res) => {
+  const r = await query<AdminTokenRow>(`
     SELECT token, label, created_at, used_at, revoked_at,
            (SELECT email FROM users WHERE id = used_by_user_id) AS used_by_email
     FROM invite_tokens
     ORDER BY created_at DESC
-  `).all() as AdminTokenRow[];
+  `);
 
-  for (const row of rows) {
+  for (const row of r.rows) {
     row.can_manage = !row.used_by_email || row.used_by_email.toLowerCase() !== SUPER_ADMIN_EMAIL;
   }
 
-  res.json({ tokens: rows });
+  res.json({ tokens: r.rows });
 });
 
-// POST /admin/tokens - Generate a new invite token
-router.post('/admin/tokens', requireSuperAdmin, (req, res) => {
+router.post('/admin/tokens', requireSuperAdmin, async (req, res) => {
   const { label } = req.body || {};
   const token = crypto.randomBytes(18).toString('base64url');
 
-  db.prepare(
-    'INSERT INTO invite_tokens (token, label) VALUES (?, ?)'
-  ).run(token, label || null);
+  await query(
+    'INSERT INTO invite_tokens (token, label) VALUES ($1, $2)',
+    [token, label || null]
+  );
 
-  const row = db.prepare(
-    'SELECT token, label, created_at FROM invite_tokens WHERE token = ?'
-  ).get(token) as { token: string; label: string | null; created_at: number };
+  const r = await query<{ token: string; label: string | null; created_at: number }>(
+    'SELECT token, label, created_at FROM invite_tokens WHERE token = $1',
+    [token]
+  );
 
-  res.json(row);
+  res.json(r.rows[0]);
 });
 
-// DELETE /admin/tokens/:token - Revoke a token
-router.delete('/admin/tokens/:token', requireSuperAdmin, (req, res) => {
+router.delete('/admin/tokens/:token', requireSuperAdmin, async (req, res) => {
   const { token } = req.params;
 
-  // Check current state
-  const existing = db.prepare(
+  const existingRes = await query<{ used_at: number | null; used_by_email: string | null }>(
     `SELECT t.used_at,
             (SELECT email FROM users WHERE id = t.used_by_user_id) AS used_by_email
      FROM invite_tokens t
-     WHERE t.token = ? AND t.revoked_at IS NULL`
-  ).get(token) as { used_at: number | null; used_by_email: string | null } | undefined;
+     WHERE t.token = $1 AND t.revoked_at IS NULL`,
+    [token]
+  );
+  const existing = existingRes.rows[0];
 
   if (!existing) {
     return res.status(404).json({ error: 'token_not_found_or_already_revoked' });
@@ -77,23 +76,25 @@ router.delete('/admin/tokens/:token', requireSuperAdmin, (req, res) => {
     return res.status(403).json({ error: 'cannot_modify_super_admin_token' });
   }
 
-  db.prepare(
-    "UPDATE invite_tokens SET revoked_at = strftime('%s','now') WHERE token = ? AND revoked_at IS NULL"
-  ).run(token);
+  await query(
+    "UPDATE invite_tokens SET revoked_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE token = $1 AND revoked_at IS NULL",
+    [token]
+  );
 
   res.json({ ok: true, was_used: existing.used_at !== null });
 });
 
-// PATCH /admin/tokens/:token/reactivate - Reactivate a revoked token
-router.patch('/admin/tokens/:token/reactivate', requireSuperAdmin, (req, res) => {
+router.patch('/admin/tokens/:token/reactivate', requireSuperAdmin, async (req, res) => {
   const { token } = req.params;
 
-  const existing = db.prepare(
+  const existingRes = await query<{ used_at: number | null; used_by_email: string | null }>(
     `SELECT t.used_at,
             (SELECT email FROM users WHERE id = t.used_by_user_id) AS used_by_email
      FROM invite_tokens t
-     WHERE t.token = ? AND t.revoked_at IS NOT NULL`
-  ).get(token) as { used_at: number | null; used_by_email: string | null } | undefined;
+     WHERE t.token = $1 AND t.revoked_at IS NOT NULL`,
+    [token]
+  );
+  const existing = existingRes.rows[0];
 
   if (!existing) {
     return res.status(404).json({ error: 'token_not_found_or_not_revoked' });
@@ -102,23 +103,25 @@ router.patch('/admin/tokens/:token/reactivate', requireSuperAdmin, (req, res) =>
     return res.status(403).json({ error: 'cannot_modify_super_admin_token' });
   }
 
-  db.prepare(
-    'UPDATE invite_tokens SET revoked_at = NULL WHERE token = ? AND revoked_at IS NOT NULL'
-  ).run(token);
+  await query(
+    'UPDATE invite_tokens SET revoked_at = NULL WHERE token = $1 AND revoked_at IS NOT NULL',
+    [token]
+  );
 
   res.json({ ok: true, was_used: existing.used_at !== null });
 });
 
-// DELETE /admin/tokens/:token/permanent - Permanently delete a token
-router.delete('/admin/tokens/:token/permanent', requireSuperAdmin, (req, res) => {
+router.delete('/admin/tokens/:token/permanent', requireSuperAdmin, async (req, res) => {
   const { token } = req.params;
 
-  const existing = db.prepare(
+  const existingRes = await query<{ used_at: number | null; used_by_email: string | null }>(
     `SELECT t.used_at,
             (SELECT email FROM users WHERE id = t.used_by_user_id) AS used_by_email
      FROM invite_tokens t
-     WHERE t.token = ?`
-  ).get(token) as { used_at: number | null; used_by_email: string | null } | undefined;
+     WHERE t.token = $1`,
+    [token]
+  );
+  const existing = existingRes.rows[0];
 
   if (!existing) {
     return res.status(404).json({ error: 'token_not_found' });
@@ -127,17 +130,15 @@ router.delete('/admin/tokens/:token/permanent', requireSuperAdmin, (req, res) =>
     return res.status(403).json({ error: 'cannot_modify_super_admin_token' });
   }
 
-  db.prepare('DELETE FROM invite_tokens WHERE token = ?').run(token);
+  await query('DELETE FROM invite_tokens WHERE token = $1', [token]);
 
   res.json({ ok: true, was_used: existing.used_at !== null });
 });
 
-// GET /admin/sessions - List currently watching users
-router.get('/admin/sessions', requireSuperAdmin, (_req, res) => {
-  res.json({ sessions: listLiveAdminSessions() });
+router.get('/admin/sessions', requireSuperAdmin, async (_req, res) => {
+  res.json({ sessions: await listLiveAdminSessions() });
 });
 
-// GET /admin/playback-logs - List recent playback proxy logs
 router.get('/admin/playback-logs', requireSuperAdmin, (_req, res) => {
   const logs = listPlaybackLogs();
   res.json({
