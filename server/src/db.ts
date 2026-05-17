@@ -1,5 +1,6 @@
 import { Pool, types as pgTypes } from 'pg';
 import { Kysely, PostgresDialect, Transaction, sql } from 'kysely';
+import { FileMigrationProvider, Migrator } from 'kysely/migration';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -36,16 +37,33 @@ export async function withTx<T>(fn: (trx: Tx) => Promise<T>): Promise<T> {
   return kdb.transaction().execute(fn);
 }
 
-function findSchemaFile(): string {
+function findMigrationsFolder(): string {
   const candidates = [
-    path.join(__dirname, 'db-schema.sql'),
-    path.join(__dirname, '..', 'src', 'db-schema.sql'),
-    path.join(process.cwd(), 'server', 'src', 'db-schema.sql')
+    path.join(__dirname, 'migrations'),
+    path.join(__dirname, '..', 'src', 'migrations'),
+    path.join(process.cwd(), 'server', 'src', 'migrations')
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
-  throw new Error('db-schema.sql not found in any of: ' + candidates.join(', '));
+  throw new Error('migrations folder not found in: ' + candidates.join(', '));
+}
+
+async function runMigrations(): Promise<void> {
+  const migrator = new Migrator({
+    db: kdb,
+    provider: new FileMigrationProvider({
+      fs: fs.promises,
+      path,
+      migrationFolder: findMigrationsFolder()
+    })
+  });
+  const { results, error } = await migrator.migrateToLatest();
+  for (const r of results ?? []) {
+    if (r.status === 'Success') console.log(`[migrate] applied ${r.migrationName}`);
+    else if (r.status === 'Error') console.error(`[migrate] FAILED ${r.migrationName}`);
+  }
+  if (error) throw error;
 }
 
 let initPromise: Promise<void> | null = null;
@@ -54,9 +72,13 @@ let cachedJwtSecret: string | null = null;
 export function initDb(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const schemaPath = findSchemaFile();
-    const ddl = fs.readFileSync(schemaPath, 'utf8');
-    await pool.query(ddl);
+    const autoMigrate = ['1', 'true', 'yes'].includes((process.env.AUTO_MIGRATE ?? '').toLowerCase());
+    if (autoMigrate) {
+      console.log('[migrate] AUTO_MIGRATE enabled — running migrations to latest');
+      await runMigrations();
+    } else {
+      console.log('[migrate] AUTO_MIGRATE not set — skipping. Run `npm run migrate:up` manually.');
+    }
     await runLegacyInviteMigration();
     cachedJwtSecret = process.env.JWT_SECRET || await loadOrCreateJwtSecret();
   })();
