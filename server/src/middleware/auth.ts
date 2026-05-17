@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { query, getJwtSecret } from '../db';
+import { kdb, getJwtSecret } from '../db';
 import { COOKIE_SECURE, TOKEN_TTL, SUPER_ADMIN_EMAIL } from '../config';
 
 export interface AuthedUser {
@@ -31,11 +31,11 @@ export async function authenticateToken(token?: string): Promise<{ user: AuthedU
       return { user };
     }
 
-    const res = await query<{ revoked_at: number | null }>(
-      'SELECT revoked_at FROM invite_tokens WHERE used_by_user_id = $1',
-      [user.id]
-    );
-    const inviteRow = res.rows[0];
+    const inviteRow = await kdb
+      .selectFrom('invite_tokens')
+      .select('revoked_at')
+      .where('used_by_user_id', '=', user.id)
+      .executeTakeFirst();
 
     if (!inviteRow || inviteRow.revoked_at !== null) {
       return { user: null, error: 'access_revoked' };

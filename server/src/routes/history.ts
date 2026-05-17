@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { query } from '../db';
+import { sql } from 'kysely';
+import { kdb } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { WATCHED_THRESHOLD } from '../config';
@@ -40,14 +41,27 @@ router.post('/user/history', requireAuth, async (req, res) => {
   if (!tmdb_id || !media_type) return res.status(400).json({ error: 'missing_fields' });
   if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
 
-  await query(`
-    INSERT INTO history (user_id, tmdb_id, media_type, season, episode, title, poster, watched_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, EXTRACT(EPOCH FROM NOW())::BIGINT)
-    ON CONFLICT (user_id, tmdb_id, media_type, season, episode) DO UPDATE SET
-      title = COALESCE(EXCLUDED.title, history.title),
-      poster = COALESCE(EXCLUDED.poster, history.poster),
-      watched_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-  `, [req.user!.id, tmdb_id, media_type, season, episode, body.title || null, body.poster || null]);
+  await kdb
+    .insertInto('history')
+    .values({
+      user_id: req.user!.id,
+      tmdb_id,
+      media_type,
+      season,
+      episode,
+      title: body.title || null,
+      poster: body.poster || null,
+      watched_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`
+    })
+    .onConflict((oc) => oc
+      .columns(['user_id', 'tmdb_id', 'media_type', 'season', 'episode'])
+      .doUpdateSet({
+        title: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.title')}, ${eb.ref('history.title')})`,
+        poster: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.poster')}, ${eb.ref('history.poster')})`,
+        watched_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`
+      })
+    )
+    .execute();
   res.json({ ok: true });
 });
 
@@ -57,37 +71,31 @@ router.get('/user/history', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'invalid_type' });
   }
 
-  const params: Array<number | string> = [req.user!.id];
-  let whereExtra = '';
+  let q = kdb
+    .selectFrom('history as h')
+    .leftJoin('progress as p', (join) => join
+      .onRef('p.user_id', '=', 'h.user_id')
+      .onRef('p.tmdb_id', '=', 'h.tmdb_id')
+      .onRef('p.media_type', '=', 'h.media_type')
+      .onRef('p.season', '=', 'h.season')
+      .onRef('p.episode', '=', 'h.episode')
+      .on('p.synthetic', '=', 0))
+    .select([
+      'h.tmdb_id', 'h.media_type', 'h.season', 'h.episode',
+      'h.title', 'h.poster', 'h.watched_at',
+      'p.position', 'p.duration'
+    ])
+    .where('h.user_id', '=', req.user!.id);
+
   if (mediaFilter) {
-    params.push(mediaFilter);
-    whereExtra = ` AND h.media_type = $${params.length}`;
+    q = q.where('h.media_type', '=', mediaFilter);
   }
 
-  const r = await query<HistoryRow>(`
-    SELECT
-      h.tmdb_id,
-      h.media_type,
-      h.season,
-      h.episode,
-      h.title,
-      h.poster,
-      h.watched_at,
-      p.position,
-      p.duration
-    FROM history h
-    LEFT JOIN progress p
-      ON p.user_id = h.user_id
-      AND p.tmdb_id = h.tmdb_id
-      AND p.media_type = h.media_type
-      AND p.season = h.season
-      AND p.episode = h.episode
-      AND p.synthetic = 0
-    WHERE h.user_id = $1${whereExtra}
-    ORDER BY h.watched_at DESC, h.id DESC
-    LIMIT 100
-  `, params);
-  const rows = r.rows;
+  const rows = await q
+    .orderBy('h.watched_at', 'desc')
+    .orderBy('h.id', 'desc')
+    .limit(100)
+    .execute() as HistoryRow[];
 
   const latestEntryByTitle = new Set<string>();
   const seenTitles = new Set<string>();
@@ -130,7 +138,7 @@ router.get('/user/history', requireAuth, async (req, res) => {
 });
 
 router.delete('/user/history', requireAuth, async (req, res) => {
-  await query('DELETE FROM history WHERE user_id = $1', [req.user!.id]);
+  await kdb.deleteFrom('history').where('user_id', '=', req.user!.id).execute();
   res.json({ ok: true });
 });
 
@@ -142,17 +150,23 @@ router.delete('/user/history/:type/:tmdb_id', requireAuth, async (req, res) => {
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
 
   if (season !== null && season !== undefined && episode !== null && episode !== undefined) {
-    await query(`
-      DELETE FROM history
-      WHERE user_id = $1 AND tmdb_id = $2 AND media_type = $3 AND season = $4 AND episode = $5
-    `, [req.user!.id, tmdb_id, type, season, episode]);
+    await kdb
+      .deleteFrom('history')
+      .where('user_id', '=', req.user!.id)
+      .where('tmdb_id', '=', tmdb_id)
+      .where('media_type', '=', type)
+      .where('season', '=', season)
+      .where('episode', '=', episode)
+      .execute();
     return res.json({ ok: true });
   }
 
-  await query(
-    'DELETE FROM history WHERE user_id = $1 AND tmdb_id = $2 AND media_type = $3',
-    [req.user!.id, tmdb_id, type]
-  );
+  await kdb
+    .deleteFrom('history')
+    .where('user_id', '=', req.user!.id)
+    .where('tmdb_id', '=', tmdb_id)
+    .where('media_type', '=', type)
+    .execute();
   res.json({ ok: true });
 });
 

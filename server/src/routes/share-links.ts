@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { query } from '../db';
+import { sql } from 'kysely';
+import { kdb } from '../db';
 import { authenticateToken, requireAuth } from '../middleware/auth';
 import { publishShareLinkRevoked } from '../services/user-live';
 import type {
@@ -31,14 +32,14 @@ function normalizeLabel(value: unknown): string | null {
 }
 
 router.get('/user/share-links', requireAuth, async (req, res) => {
-  const r = await query<ShareLink>(`
-    SELECT id, token, label, status, view_count, created_at
-    FROM share_links
-    WHERE user_id = $1
-    ORDER BY created_at DESC
-  `, [req.user!.id]);
+  const links = await kdb
+    .selectFrom('share_links')
+    .select(['id', 'token', 'label', 'status', 'view_count', 'created_at'])
+    .where('user_id', '=', req.user!.id)
+    .orderBy('created_at', 'desc')
+    .execute() as ShareLink[];
 
-  res.json({ links: r.rows });
+  res.json({ links });
 });
 
 router.post('/user/share-links', requireAuth, async (req, res) => {
@@ -46,18 +47,18 @@ router.post('/user/share-links', requireAuth, async (req, res) => {
   const label = normalizeLabel(body.label);
   const token = crypto.randomBytes(18).toString('base64url');
 
-  await query(`
-    INSERT INTO share_links (token, user_id, label, status)
-    VALUES ($1, $2, $3, 'active')
-  `, [token, req.user!.id, label]);
+  await kdb
+    .insertInto('share_links')
+    .values({ token, user_id: req.user!.id, label, status: 'active' })
+    .execute();
 
-  const r = await query<ShareLink>(`
-    SELECT id, token, label, status, view_count, created_at
-    FROM share_links
-    WHERE token = $1
-  `, [token]);
+  const row = await kdb
+    .selectFrom('share_links')
+    .select(['id', 'token', 'label', 'status', 'view_count', 'created_at'])
+    .where('token', '=', token)
+    .executeTakeFirstOrThrow();
 
-  res.json(r.rows[0]);
+  res.json(row);
 });
 
 router.patch('/user/share-links/:id', requireAuth, async (req, res) => {
@@ -67,45 +68,41 @@ router.patch('/user/share-links/:id', requireAuth, async (req, res) => {
   }
 
   const body = req.body || {};
-  const updates: string[] = [];
-  const params: Array<string | number> = [];
-  let idx = 1;
+  const updates: { status?: ShareLinkStatus; label?: string } = {};
 
   if (body.status !== undefined) {
     const status = body.status as ShareLinkStatus;
     if (status !== 'active' && status !== 'suspended') {
       return res.status(400).json({ error: 'invalid_status' });
     }
-    updates.push(`status = $${idx++}`);
-    params.push(status);
+    updates.status = status;
   }
 
   if (body.label !== undefined) {
-    updates.push(`label = $${idx++}`);
-    params.push(normalizeLabel(body.label) ?? '');
+    updates.label = normalizeLabel(body.label) ?? '';
   }
 
-  if (updates.length === 0) {
+  if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'no_changes' });
   }
 
-  params.push(id, req.user!.id);
-  const result = await query(`
-    UPDATE share_links
-    SET ${updates.join(', ')}
-    WHERE id = $${idx} AND user_id = $${idx + 1}
-  `, params);
+  const result = await kdb
+    .updateTable('share_links')
+    .set(updates)
+    .where('id', '=', id)
+    .where('user_id', '=', req.user!.id)
+    .executeTakeFirst();
 
-  if (result.rowCount === 0) {
+  if (Number(result.numUpdatedRows) === 0) {
     return res.status(404).json({ error: 'not_found' });
   }
 
-  const r = await query<ShareLink>(`
-    SELECT id, token, label, status, view_count, created_at
-    FROM share_links
-    WHERE id = $1 AND user_id = $2
-  `, [id, req.user!.id]);
-  const row = r.rows[0];
+  const row = await kdb
+    .selectFrom('share_links')
+    .select(['id', 'token', 'label', 'status', 'view_count', 'created_at'])
+    .where('id', '=', id)
+    .where('user_id', '=', req.user!.id)
+    .executeTakeFirstOrThrow();
 
   if (row.status === 'suspended') {
     publishShareLinkRevoked(row.token);
@@ -120,16 +117,20 @@ router.delete('/user/share-links/:id', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'invalid_id' });
   }
 
-  const existingRes = await query<{ token: string }>(`
-    SELECT token FROM share_links WHERE id = $1 AND user_id = $2
-  `, [id, req.user!.id]);
-  const existing = existingRes.rows[0];
+  const existing = await kdb
+    .selectFrom('share_links')
+    .select('token')
+    .where('id', '=', id)
+    .where('user_id', '=', req.user!.id)
+    .executeTakeFirst();
 
-  const result = await query(`
-    DELETE FROM share_links WHERE id = $1 AND user_id = $2
-  `, [id, req.user!.id]);
+  const result = await kdb
+    .deleteFrom('share_links')
+    .where('id', '=', id)
+    .where('user_id', '=', req.user!.id)
+    .executeTakeFirst();
 
-  if (result.rowCount === 0) {
+  if (Number(result.numDeletedRows) === 0) {
     return res.status(404).json({ error: 'not_found' });
   }
 
@@ -144,13 +145,12 @@ router.get('/shared/:token', sharedLimiter, async (req, res) => {
     return res.status(404).json({ error: 'not_found' });
   }
 
-  const linkRes = await query<{ user_id: number; status: string; email: string }>(`
-    SELECT s.user_id, s.status, u.email
-    FROM share_links s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.token = $1
-  `, [token]);
-  const link = linkRes.rows[0];
+  const link = await kdb
+    .selectFrom('share_links as s')
+    .innerJoin('users as u', 'u.id', 's.user_id')
+    .select(['s.user_id', 's.status', 'u.email'])
+    .where('s.token', '=', token)
+    .executeTakeFirst();
 
   if (!link || link.status !== 'active') {
     return res.status(404).json({ error: 'not_found' });
@@ -160,21 +160,27 @@ router.get('/shared/:token', sharedLimiter, async (req, res) => {
   if (shouldTrack) {
     const viewer = (await authenticateToken(req.cookies?.token)).user;
     if (!viewer || viewer.id !== link.user_id) {
-      await query('UPDATE share_links SET view_count = view_count + 1 WHERE token = $1', [token]);
+      await kdb
+        .updateTable('share_links')
+        .set({ view_count: sql<number>`view_count + 1` })
+        .where('token', '=', token)
+        .execute();
     }
   }
 
-  const itemsRes = await query<SharedWatchlistItem>(`
-    SELECT tmdb_id, media_type, title, poster, status, folder_name,
-           done_aired_episodes, added_at
-    FROM watchlist
-    WHERE user_id = $1
-    ORDER BY added_at DESC
-  `, [link.user_id]);
+  const items = await kdb
+    .selectFrom('watchlist')
+    .select([
+      'tmdb_id', 'media_type', 'title', 'poster', 'status',
+      'folder_name', 'done_aired_episodes', 'added_at'
+    ])
+    .where('user_id', '=', link.user_id)
+    .orderBy('added_at', 'desc')
+    .execute() as SharedWatchlistItem[];
 
   const response: SharedWatchlistResponse = {
     owner: { name: link.email.split('@')[0] },
-    items: itemsRes.rows
+    items
   };
 
   res.json(response);

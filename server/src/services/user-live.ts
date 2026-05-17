@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { query } from '../db';
+import { kdb } from '../db';
 import { authenticateToken, readCookie } from '../middleware/auth';
 import { createRedisClient, getRedisPublisher, hasRedisConfig } from './redis';
 import type { MediaType, WatchlistUpdatedEvent } from '../../../shared/types';
@@ -116,10 +116,11 @@ export function attachUserLiveSessions(server: HttpServer): void {
           return;
         }
 
-        const res = await query<{ user_id: number; status: string }>(`
-          SELECT user_id, status FROM share_links WHERE token = $1
-        `, [shareToken]);
-        const row = res.rows[0];
+        const row = await kdb
+          .selectFrom('share_links')
+          .select(['user_id', 'status'])
+          .where('token', '=', shareToken)
+          .executeTakeFirst();
 
         if (!row || row.status !== 'active') {
           socket.write('HTTP/1.1 404 Not Found\r\n\r\n');

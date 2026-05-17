@@ -2,7 +2,8 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { promisify } from 'node:util';
 import rateLimit from 'express-rate-limit';
-import { query, withTx, clientQuery } from '../db';
+import { sql } from 'kysely';
+import { kdb, withTx } from '../db';
 import { EMAIL_RE, SUPER_ADMIN_EMAIL } from '../config';
 import { requireAuth, setAuthCookie } from '../middleware/auth';
 import type { User } from '../../../shared/types';
@@ -19,20 +20,6 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'too_many_attempts' }
 });
-
-interface UserRow {
-  id: number;
-  email: string;
-  password_hash: string;
-  autoplay_next: 0 | 1;
-  folders_enabled: 0 | 1;
-}
-
-interface InviteTokenRow {
-  token: string;
-  used_at: number | null;
-  revoked_at: number | null;
-}
 
 router.post('/auth/register', authLimiter, async (req, res) => {
   const { email, password, token } = req.body || {};
@@ -55,36 +42,37 @@ router.post('/auth/register', authLimiter, async (req, res) => {
   try {
     const hash = await bcryptHash(password, 10);
 
-    const result = await withTx(async (client) => {
+    const result = await withTx(async (trx) => {
       if (!isSuperAdmin) {
-        const inviteRes = await clientQuery<InviteTokenRow>(
-          client,
-          'SELECT token, used_at, revoked_at FROM invite_tokens WHERE token = $1',
-          [token]
-        );
-        const inviteRow = inviteRes.rows[0];
+        const inviteRow = await trx
+          .selectFrom('invite_tokens')
+          .select(['token', 'used_at', 'revoked_at'])
+          .where('token', '=', token)
+          .executeTakeFirst();
 
         if (!inviteRow) return { error: 'invalid_token' as const };
         if (inviteRow.revoked_at !== null) return { error: 'revoked_token' as const };
         if (inviteRow.used_at !== null) return { error: 'token_already_used' as const };
       }
 
-      const userRes = await clientQuery<{ id: number }>(
-        client,
-        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
-        [normalized, hash]
-      );
-      const userId = userRes.rows[0].id;
+      const inserted = await trx
+        .insertInto('users')
+        .values({ email: normalized, password_hash: hash })
+        .returning('id')
+        .executeTakeFirstOrThrow();
 
       if (!isSuperAdmin) {
-        await clientQuery(
-          client,
-          "UPDATE invite_tokens SET used_at = EXTRACT(EPOCH FROM NOW())::BIGINT, used_by_user_id = $1 WHERE token = $2",
-          [userId, token]
-        );
+        await trx
+          .updateTable('invite_tokens')
+          .set({
+            used_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`,
+            used_by_user_id: inserted.id
+          })
+          .where('token', '=', token)
+          .execute();
       }
 
-      return { userId };
+      return { userId: inserted.id };
     });
 
     if ('error' in result) {
@@ -115,11 +103,11 @@ router.post('/auth/login', authLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
 
   const normalized = (email as string).trim().toLowerCase();
-  const userRes = await query<UserRow>(
-    'SELECT id, email, password_hash, autoplay_next, folders_enabled FROM users WHERE email = $1',
-    [normalized]
-  );
-  const row = userRes.rows[0];
+  const row = await kdb
+    .selectFrom('users')
+    .select(['id', 'email', 'password_hash', 'autoplay_next', 'folders_enabled'])
+    .where('email', '=', normalized)
+    .executeTakeFirst();
   if (!row || !(await bcryptCompare(password, row.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
@@ -141,11 +129,11 @@ router.post('/auth/logout', (_req, res) => {
 });
 
 router.get('/auth/me', requireAuth, async (req, res) => {
-  const r = await query<{ autoplay_next: 0 | 1; folders_enabled: 0 | 1 }>(
-    'SELECT autoplay_next, folders_enabled FROM users WHERE id = $1',
-    [req.user!.id]
-  );
-  const row = r.rows[0];
+  const row = await kdb
+    .selectFrom('users')
+    .select(['autoplay_next', 'folders_enabled'])
+    .where('id', '=', req.user!.id)
+    .executeTakeFirst();
   const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && req.user!.email.toLowerCase() === SUPER_ADMIN_EMAIL;
   const user: User = {
     id: req.user!.id,
@@ -157,9 +145,6 @@ router.get('/auth/me', requireAuth, async (req, res) => {
   res.json({ user });
 });
 
-// Lightweight session check used by nginx `auth_request` to gate the
-// playback routes (/player, /embed). Just verifies the JWT cookie + the
-// invite-token revocation state via requireAuth.
 router.get('/auth/check', requireAuth, (_req, res) => {
   res.status(200).end();
 });

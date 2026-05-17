@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { query } from '../db';
+import { sql } from 'kysely';
+import { kdb } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
@@ -103,11 +104,17 @@ router.post('/user/watchlist', requireAuth, async (req, res) => {
   const media_type = body.media_type;
   if (!tmdb_id || !media_type) return res.status(400).json({ error: 'missing_fields' });
   if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
-  await query(`
-    INSERT INTO watchlist (user_id, tmdb_id, media_type, title, poster)
-    VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT (user_id, tmdb_id, media_type) DO NOTHING
-  `, [req.user!.id, tmdb_id, media_type, body.title || null, body.poster || null]);
+
+  await kdb
+    .insertInto('watchlist')
+    .values({
+      user_id: req.user!.id, tmdb_id, media_type,
+      title: body.title || null,
+      poster: body.poster || null
+    })
+    .onConflict((oc) => oc.columns(['user_id', 'tmdb_id', 'media_type']).doNothing())
+    .execute();
+
   publishUserWatchlistChanged(req.user!.id, {
     reason: 'watchlist-changed',
     tmdb_id,
@@ -131,37 +138,36 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'invalid_type' });
   }
 
-  const params: Array<number | string> = [req.user!.id];
-  let whereExtra = '';
+  let wlQuery = kdb
+    .selectFrom('watchlist')
+    .select([
+      'tmdb_id', 'media_type', 'title', 'poster', 'status',
+      'folder_name', 'done_aired_episodes', 'added_at'
+    ])
+    .where('user_id', '=', req.user!.id);
+
   if (mediaFilter) {
-    params.push(mediaFilter);
-    whereExtra = ` AND media_type = $${params.length}`;
+    wlQuery = wlQuery.where('media_type', '=', mediaFilter);
   }
 
-  const wlRes = await query<WatchlistRow>(`
-    SELECT tmdb_id, media_type, title, poster, status, folder_name, done_aired_episodes, added_at
-    FROM watchlist
-    WHERE user_id = $1${whereExtra}
-    ORDER BY added_at DESC
-  `, params);
-  const rows = wlRes.rows;
+  const rows = await wlQuery.orderBy('added_at', 'desc').execute() as WatchlistRow[];
 
   const latestProgress = new Map<string, { position: number; duration: number }>();
   if (rows.length > 0) {
-    const latestRes = await query<{ tmdb_id: number; media_type: string; position: number; duration: number }>(`
+    const latestRows = await sql<{ tmdb_id: number; media_type: string; position: number; duration: number }>`
       SELECT tmdb_id, media_type, position, duration FROM (
         SELECT tmdb_id, media_type, position, duration, updated_at,
                ROW_NUMBER() OVER (PARTITION BY tmdb_id, media_type ORDER BY updated_at DESC) AS rn
         FROM progress
-        WHERE user_id = $1
+        WHERE user_id = ${req.user!.id}
           AND synthetic = 0
       ) p
       WHERE rn = 1
         AND duration > 0
         AND position > 5
         AND position < duration * ${CONTINUE_HIDE_THRESHOLD}
-    `, [req.user!.id]);
-    for (const p of latestRes.rows) {
+    `.execute(kdb).then((r) => r.rows);
+    for (const p of latestRows) {
       latestProgress.set(`${p.media_type}:${p.tmdb_id}`, { position: p.position, duration: p.duration });
     }
   }
@@ -170,36 +176,50 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
   const progressByTmdb = new Map<number, ProgressAggregate>();
   const latestTvProgressByTmdb = new Map<number, LatestTvProgressRow>();
   if (tvIds.length > 0) {
-    const seasonsRes = await query<{ tmdb_id: number; max_season: number; watched_count: number }>(`
-      SELECT tmdb_id,
-        MAX(season) AS max_season,
-        SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END)::INTEGER AS watched_count
-      FROM progress
-      WHERE user_id = $1 AND media_type = 'tv' AND synthetic = 0 AND tmdb_id = ANY($2::int[])
-      GROUP BY tmdb_id
-    `, [req.user!.id, tvIds]);
-    for (const s of seasonsRes.rows) {
-      const epRes = await query<{ max_episode: number | null }>(`
-        SELECT MAX(episode) AS max_episode FROM progress
-        WHERE user_id = $1 AND media_type = 'tv' AND synthetic = 0 AND tmdb_id = $2 AND season = $3
-      `, [req.user!.id, s.tmdb_id, s.max_season]);
+    const seasons = await kdb
+      .selectFrom('progress')
+      .select((eb) => [
+        'tmdb_id',
+        eb.fn.max('season').as('max_season'),
+        eb.fn
+          .sum<number>(sql<number>`CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END`)
+          .as('watched_count')
+      ])
+      .where('user_id', '=', req.user!.id)
+      .where('media_type', '=', 'tv')
+      .where('synthetic', '=', 0)
+      .where('tmdb_id', 'in', tvIds)
+      .groupBy('tmdb_id')
+      .execute();
+
+    for (const s of seasons) {
+      const ep = await kdb
+        .selectFrom('progress')
+        .select((eb) => eb.fn.max('episode').as('max_episode'))
+        .where('user_id', '=', req.user!.id)
+        .where('media_type', '=', 'tv')
+        .where('synthetic', '=', 0)
+        .where('tmdb_id', '=', s.tmdb_id)
+        .where('season', '=', Number(s.max_season))
+        .executeTakeFirst();
       progressByTmdb.set(s.tmdb_id, {
-        last_season: s.max_season,
-        last_episode: epRes.rows[0]?.max_episode ?? 0,
-        watched_count: s.watched_count
+        last_season: Number(s.max_season),
+        last_episode: Number(ep?.max_episode ?? 0),
+        watched_count: Number(s.watched_count)
       });
     }
 
-    const latestRes = await query<{ tmdb_id: number; season: number; episode: number; position: number; duration: number }>(`
+    const latestRows = await sql<{ tmdb_id: number; season: number; episode: number; position: number; duration: number }>`
       SELECT tmdb_id, season, episode, position, duration FROM (
         SELECT tmdb_id, season, episode, position, duration, updated_at,
                ROW_NUMBER() OVER (PARTITION BY tmdb_id ORDER BY updated_at DESC, season DESC, episode DESC) AS rn
         FROM progress
-        WHERE user_id = $1 AND media_type = 'tv' AND synthetic = 0 AND tmdb_id = ANY($2::int[])
+        WHERE user_id = ${req.user!.id} AND media_type = 'tv' AND synthetic = 0 AND tmdb_id = ANY(${tvIds}::int[])
       ) p
       WHERE rn = 1
-    `, [req.user!.id, tvIds]);
-    for (const row of latestRes.rows) {
+    `.execute(kdb).then((r) => r.rows);
+
+    for (const row of latestRows) {
       latestTvProgressByTmdb.set(row.tmdb_id, {
         season: row.season,
         episode: row.episode,
@@ -235,10 +255,13 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
     let doneAiredEpisodes = r.done_aired_episodes ?? 0;
 
     if (status === 'done' && doneAiredEpisodes === 0 && airedEpisodes > 0) {
-      await query(`
-        UPDATE watchlist SET done_aired_episodes = $1
-        WHERE user_id = $2 AND tmdb_id = $3 AND media_type = 'tv'
-      `, [airedEpisodes, req.user!.id, r.tmdb_id]);
+      await kdb
+        .updateTable('watchlist')
+        .set({ done_aired_episodes: airedEpisodes })
+        .where('user_id', '=', req.user!.id)
+        .where('tmdb_id', '=', r.tmdb_id)
+        .where('media_type', '=', 'tv')
+        .execute();
       doneAiredEpisodes = airedEpisodes;
     }
 
@@ -252,10 +275,13 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
 
     if (status === 'done' && doneAiredEpisodes > 0 && airedEpisodes > doneAiredEpisodes) {
       status = 'in_progress';
-      await query(`
-        UPDATE watchlist SET status = 'in_progress'
-        WHERE user_id = $1 AND tmdb_id = $2 AND media_type = 'tv'
-      `, [req.user!.id, r.tmdb_id]);
+      await kdb
+        .updateTable('watchlist')
+        .set({ status: 'in_progress' })
+        .where('user_id', '=', req.user!.id)
+        .where('tmdb_id', '=', r.tmdb_id)
+        .where('media_type', '=', 'tv')
+        .execute();
     }
 
     return {
@@ -304,11 +330,14 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
 
   if (status === undefined) {
     const mediaType = type as 'movie' | 'tv';
-    const result = await query(`
-      UPDATE watchlist SET folder_name = $1
-      WHERE user_id = $2 AND tmdb_id = $3 AND media_type = $4
-    `, [folderName ?? null, req.user!.id, tmdb_id, type]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+    const result = await kdb
+      .updateTable('watchlist')
+      .set({ folder_name: folderName ?? null })
+      .where('user_id', '=', req.user!.id)
+      .where('tmdb_id', '=', tmdb_id)
+      .where('media_type', '=', type)
+      .executeTakeFirst();
+    if (Number(result.numUpdatedRows) === 0) return res.status(404).json({ error: 'not_found' });
     publishUserWatchlistChanged(req.user!.id, {
       reason: 'folder-changed',
       tmdb_id,
@@ -320,17 +349,23 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   if (type === 'tv' && status === 'done') {
     const summary = await getTmdbTvSummary(tmdb_id);
     const doneAiredEpisodes = getAiredEpisodesCount(summary);
-    const result = await query(`
-      UPDATE watchlist SET status = $1, done_aired_episodes = $2
-      WHERE user_id = $3 AND tmdb_id = $4 AND media_type = $5
-    `, [status, doneAiredEpisodes, req.user!.id, tmdb_id, type]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+    const result = await kdb
+      .updateTable('watchlist')
+      .set({ status, done_aired_episodes: doneAiredEpisodes })
+      .where('user_id', '=', req.user!.id)
+      .where('tmdb_id', '=', tmdb_id)
+      .where('media_type', '=', type)
+      .executeTakeFirst();
+    if (Number(result.numUpdatedRows) === 0) return res.status(404).json({ error: 'not_found' });
   } else {
-    const result = await query(`
-      UPDATE watchlist SET status = $1
-      WHERE user_id = $2 AND tmdb_id = $3 AND media_type = $4
-    `, [status, req.user!.id, tmdb_id, type]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+    const result = await kdb
+      .updateTable('watchlist')
+      .set({ status })
+      .where('user_id', '=', req.user!.id)
+      .where('tmdb_id', '=', tmdb_id)
+      .where('media_type', '=', type)
+      .executeTakeFirst();
+    if (Number(result.numUpdatedRows) === 0) return res.status(404).json({ error: 'not_found' });
   }
 
   publishUserWatchlistChanged(req.user!.id, {
@@ -345,10 +380,12 @@ router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) =>
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
-  await query(
-    'DELETE FROM watchlist WHERE user_id = $1 AND tmdb_id = $2 AND media_type = $3',
-    [req.user!.id, tmdb_id, type]
-  );
+  await kdb
+    .deleteFrom('watchlist')
+    .where('user_id', '=', req.user!.id)
+    .where('tmdb_id', '=', tmdb_id)
+    .where('media_type', '=', type)
+    .execute();
   publishUserWatchlistChanged(req.user!.id, {
     reason: 'watchlist-changed',
     tmdb_id,
@@ -361,11 +398,14 @@ router.get('/user/watchlist/check/:type/:tmdb_id', requireAuth, async (req, res)
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
   if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
-  const r = await query(`
-    SELECT 1 as in_list FROM watchlist
-    WHERE user_id = $1 AND tmdb_id = $2 AND media_type = $3
-  `, [req.user!.id, tmdb_id, type]);
-  res.json({ in_list: r.rowCount > 0 });
+  const row = await kdb
+    .selectFrom('watchlist')
+    .select(sql<number>`1`.as('in_list'))
+    .where('user_id', '=', req.user!.id)
+    .where('tmdb_id', '=', tmdb_id)
+    .where('media_type', '=', type)
+    .executeTakeFirst();
+  res.json({ in_list: !!row });
 });
 
 export default router;

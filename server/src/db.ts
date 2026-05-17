@@ -1,13 +1,21 @@
-import { Pool, type PoolClient, type QueryResultRow } from 'pg';
+import { Pool, types as pgTypes } from 'pg';
+import { Kysely, PostgresDialect, Transaction, sql } from 'kysely';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { SUPER_ADMIN_EMAIL } from './config';
+import type { Database } from './db-types';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   throw new Error('DATABASE_URL is required (postgres connection string)');
 }
+
+// node-pg returns BIGINT as string by default to avoid precision loss
+// for values > 2^53. Our schema only stores Unix-epoch seconds (well
+// within safe-int range) and INTEGER counts, so parse them as JS
+// numbers — keeps the existing app code unchanged.
+pgTypes.setTypeParser(20, (val) => (val === null ? null : Number(val)));
 
 export const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -18,41 +26,17 @@ pool.on('error', (err) => {
   console.error('[pg pool] idle client error', err);
 });
 
-export async function query<T extends QueryResultRow = QueryResultRow>(
-  text: string,
-  params: ReadonlyArray<unknown> = []
-): Promise<{ rows: T[]; rowCount: number }> {
-  const res = await pool.query<T>(text, params as unknown as unknown[]);
-  return { rows: res.rows, rowCount: res.rowCount ?? 0 };
-}
+export const kdb = new Kysely<Database>({
+  dialect: new PostgresDialect({ pool })
+});
 
-export async function withTx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const out = await fn(client);
-    await client.query('COMMIT');
-    return out;
-  } catch (err) {
-    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
-    throw err;
-  } finally {
-    client.release();
-  }
-}
+export type Tx = Transaction<Database>;
 
-// Convenience for query() inside a transaction client.
-export async function clientQuery<T extends QueryResultRow = QueryResultRow>(
-  client: PoolClient,
-  text: string,
-  params: ReadonlyArray<unknown> = []
-): Promise<{ rows: T[]; rowCount: number }> {
-  const res = await client.query<T>(text, params as unknown as unknown[]);
-  return { rows: res.rows, rowCount: res.rowCount ?? 0 };
+export async function withTx<T>(fn: (trx: Tx) => Promise<T>): Promise<T> {
+  return kdb.transaction().execute(fn);
 }
 
 function findSchemaFile(): string {
-  // Try src layout (ts-node / dev) then dist layout (compiled).
   const candidates = [
     path.join(__dirname, 'db-schema.sql'),
     path.join(__dirname, '..', 'src', 'db-schema.sql'),
@@ -87,37 +71,52 @@ export function getJwtSecret(): string {
 }
 
 async function runLegacyInviteMigration(): Promise<void> {
-  const done = await query<{ value: string }>(
-    "SELECT value FROM _meta WHERE key = 'migration_invite_tokens_v1'"
-  );
-  if (done.rowCount > 0) return;
+  const done = await kdb
+    .selectFrom('_meta')
+    .select('value')
+    .where('key', '=', 'migration_invite_tokens_v1')
+    .executeTakeFirst();
+  if (done) return;
 
-  const users = await query<{ id: number; email: string }>('SELECT id, email FROM users');
-  for (const u of users.rows) {
+  const users = await kdb.selectFrom('users').select(['id', 'email']).execute();
+  for (const u of users) {
     if (SUPER_ADMIN_EMAIL && u.email.toLowerCase() === SUPER_ADMIN_EMAIL) continue;
     const legacyToken = `legacy_${crypto.randomBytes(12).toString('base64url')}`;
-    await query(
-      "INSERT INTO invite_tokens (token, label, used_at, used_by_user_id) " +
-      "VALUES ($1, 'legacy', EXTRACT(EPOCH FROM NOW())::BIGINT, $2)",
-      [legacyToken, u.id]
-    );
+    await kdb
+      .insertInto('invite_tokens')
+      .values({
+        token: legacyToken,
+        label: 'legacy',
+        used_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`,
+        used_by_user_id: u.id
+      })
+      .execute();
   }
-  await query(
-    "INSERT INTO _meta (key, value) VALUES ('migration_invite_tokens_v1', 'done') " +
-    "ON CONFLICT (key) DO NOTHING"
-  );
+  await kdb
+    .insertInto('_meta')
+    .values({ key: 'migration_invite_tokens_v1', value: 'done' })
+    .onConflict((oc) => oc.column('key').doNothing())
+    .execute();
 }
 
 async function loadOrCreateJwtSecret(): Promise<string> {
-  const row = await query<{ value: string }>(
-    "SELECT value FROM _meta WHERE key = 'jwt_secret'"
-  );
-  if (row.rowCount > 0) return row.rows[0].value;
+  const row = await kdb
+    .selectFrom('_meta')
+    .select('value')
+    .where('key', '=', 'jwt_secret')
+    .executeTakeFirst();
+  if (row) return row.value;
+
   const secret = crypto.randomBytes(48).toString('hex');
-  await query(
-    "INSERT INTO _meta (key, value) VALUES ('jwt_secret', $1) ON CONFLICT (key) DO NOTHING",
-    [secret]
-  );
-  const verify = await query<{ value: string }>("SELECT value FROM _meta WHERE key = 'jwt_secret'");
-  return verify.rows[0].value;
+  await kdb
+    .insertInto('_meta')
+    .values({ key: 'jwt_secret', value: secret })
+    .onConflict((oc) => oc.column('key').doNothing())
+    .execute();
+  const verify = await kdb
+    .selectFrom('_meta')
+    .select('value')
+    .where('key', '=', 'jwt_secret')
+    .executeTakeFirstOrThrow();
+  return verify.value;
 }

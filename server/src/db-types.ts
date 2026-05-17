@@ -1,0 +1,104 @@
+import type { ColumnType, Generated } from 'kysely';
+
+// Unix-epoch seconds, stored as BIGINT in PG. Kysely returns BIGINT as
+// string by default, but our app code treats updated_at/created_at as
+// numbers — we configure node-pg in db.ts to parse INT8 as number, so
+// `number` is correct here at the type level.
+type Epoch = number;
+
+interface UsersTable {
+  id: Generated<number>;
+  email: string;
+  password_hash: string;
+  autoplay_next: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  folders_enabled: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface ProgressTable {
+  user_id: number;
+  tmdb_id: number;
+  media_type: string;
+  season: ColumnType<number, number | undefined, number>;
+  episode: ColumnType<number, number | undefined, number>;
+  position: number;
+  duration: ColumnType<number, number | undefined, number>;
+  synthetic: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  title: string | null;
+  poster: string | null;
+  backdrop: string | null;
+  updated_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface HiddenContinueTable {
+  user_id: number;
+  tmdb_id: number;
+  media_type: string;
+  hidden_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface HistoryTable {
+  id: Generated<number>;
+  user_id: number;
+  tmdb_id: number;
+  media_type: string;
+  season: ColumnType<number, number | undefined, number>;
+  episode: ColumnType<number, number | undefined, number>;
+  title: string | null;
+  poster: string | null;
+  watched_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface WatchlistTable {
+  user_id: number;
+  tmdb_id: number;
+  media_type: string;
+  title: string | null;
+  poster: string | null;
+  status: ColumnType<'todo' | 'in_progress' | 'done', 'todo' | 'in_progress' | 'done' | undefined, 'todo' | 'in_progress' | 'done'>;
+  folder_name: string | null;
+  done_aired_episodes: ColumnType<number, number | undefined, number>;
+  added_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface MetaTable {
+  key: string;
+  value: string;
+}
+
+interface TmdbCacheTable {
+  cache_key: string;
+  data: string;
+  fetched_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface InviteTokensTable {
+  token: string;
+  label: string | null;
+  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+  used_at: Epoch | null;
+  used_by_user_id: number | null;
+  revoked_at: Epoch | null;
+}
+
+interface ShareLinksTable {
+  id: Generated<number>;
+  token: string;
+  user_id: number;
+  label: string | null;
+  status: ColumnType<'active' | 'suspended', 'active' | 'suspended' | undefined, 'active' | 'suspended'>;
+  view_count: ColumnType<number, number | undefined, number>;
+  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+export interface Database {
+  users: UsersTable;
+  progress: ProgressTable;
+  hidden_continue: HiddenContinueTable;
+  history: HistoryTable;
+  watchlist: WatchlistTable;
+  _meta: MetaTable;
+  tmdb_cache: TmdbCacheTable;
+  invite_tokens: InviteTokensTable;
+  share_links: ShareLinksTable;
+}
