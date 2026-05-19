@@ -14,10 +14,15 @@ interface ProviderResolvedEpisode {
   embedUrl: string | null;
 }
 
+interface ProviderResolvedMovie {
+  embedUrl: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProviderResolveService {
   private readonly titleCache = new Map<string, ProviderResolvedTitle | null>();
   private readonly episodeCache = new Map<string, ProviderResolvedEpisode | null>();
+  private readonly movieCache = new Map<number, ProviderResolvedMovie | null>();
 
   async resolve(
     tmdbId: number,
@@ -78,6 +83,29 @@ export class ProviderResolveService {
       const data = await res.json() as { resolved?: ProviderResolvedEpisode | null };
       const resolved = data.resolved ?? null;
       this.episodeCache.set(key, resolved);
+      return resolved;
+    } catch {
+      return null;
+    }
+  }
+
+  async resolveMovie(providerTitleId: number): Promise<ProviderResolvedMovie | null> {
+    if (this.movieCache.has(providerTitleId)) {
+      return this.movieCache.get(providerTitleId) ?? null;
+    }
+
+    try {
+      const res = await fetch('/api/user/provider/resolve-movie', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider_title_id: providerTitleId
+        })
+      });
+      if (!res.ok) return null;
+      const data = await res.json() as { resolved?: ProviderResolvedMovie | null };
+      const resolved = data.resolved ?? null;
+      this.movieCache.set(providerTitleId, resolved);
       return resolved;
     } catch {
       return null;

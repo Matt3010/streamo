@@ -228,7 +228,8 @@ export class PlayerService {
       this.episodes.set([]);
       const playback = this.requirePlaybackTitle();
       if (!playback) return;
-      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${playback.id}`;
+      const prepared = await this.setMovieUrl(playback);
+      if (!prepared) return;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, tmdbId, 'movie');
     }
@@ -379,7 +380,8 @@ export class PlayerService {
       const playback = this.requirePlaybackTitle();
       if (!playback) return;
       this.resetPlayer();
-      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${playback.id}`;
+      const prepared = await this.setMovieUrl(playback);
+      if (!prepared) return;
       this.urlSeq++;
       this.resumeProgress.set(null);
       this.resumeText.set('');
@@ -500,6 +502,17 @@ export class PlayerService {
     return true;
   }
 
+  private async setMovieUrl(playback: ProviderPlaybackTitle): Promise<boolean> {
+    const resolved = await this.providerResolve.resolveMovie(playback.id);
+    if (!resolved?.embedUrl) {
+      this.toast.show('Embed film non disponibile sul provider');
+      return false;
+    }
+
+    this.pendingVideoUrl = resolved.embedUrl;
+    return true;
+  }
+
   private async applyResumeProgress(seq: number, tmdbId: string | number, type: MediaType, season = 0, episode = 0): Promise<void> {
     // No early gate on `auth.currentUser()` here — on a hard refresh the
     // signal is briefly null while AuthService.checkAuth() resolves, but the
@@ -585,7 +598,8 @@ export class PlayerService {
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
     } else {
-      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${playback.id}`;
+      const prepared = await this.setMovieUrl(playback);
+      if (!prepared) return;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'movie');
     }

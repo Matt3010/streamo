@@ -26,6 +26,10 @@ export interface ProviderResolvedEpisode {
   embedUrl: string | null;
 }
 
+export interface ProviderResolvedMovie {
+  embedUrl: string | null;
+}
+
 type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
 
 interface ProviderSearchPage {
@@ -188,6 +192,22 @@ export async function resolveProviderEpisode(args: {
   });
 
   return { episodeId: match.id, embedUrl };
+}
+
+export async function resolveProviderMovie(args: {
+  providerTitleId: number;
+}): Promise<ProviderResolvedMovie | null> {
+  const embedUrl = await fetchProviderEmbedUrl(args.providerTitleId);
+  console.log('[provider-resolver] movie decision', {
+    providerTitleId: args.providerTitleId,
+    resolved: embedUrl ? { embedUrl } : null
+  });
+
+  if (!embedUrl) {
+    return null;
+  }
+
+  return { embedUrl };
 }
 
 function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: number): void {
@@ -695,14 +715,16 @@ async function fetchProviderSlug(providerTitleId: number): Promise<string | null
 
 async function fetchProviderEmbedUrl(
   providerTitleId: number,
-  episodeId: number
+  episodeId?: number
 ): Promise<string | null> {
   const url = new URL(
     `/${PROVIDER_CATALOG_LOCALE}/iframe/${providerTitleId}`,
     PROVIDER_CATALOG_BASE_URL
   );
-  url.searchParams.set('episode_id', String(episodeId));
-  url.searchParams.set('next_episode', '1');
+  if (episodeId) {
+    url.searchParams.set('episode_id', String(episodeId));
+    url.searchParams.set('next_episode', '1');
+  }
 
   let res: Response;
   try {
@@ -714,7 +736,7 @@ async function fetchProviderEmbedUrl(
   } catch {
     console.error('[provider-resolver] embed fetch failed', {
       providerTitleId,
-      episodeId,
+      episodeId: episodeId ?? null,
       url: url.toString()
     });
     return null;
@@ -722,7 +744,7 @@ async function fetchProviderEmbedUrl(
 
   console.log('[provider-resolver] embed upstream response', {
     providerTitleId,
-    episodeId,
+    episodeId: episodeId ?? null,
     url: url.toString(),
     status: res.status,
     contentType: res.headers.get('content-type') ?? ''
@@ -735,7 +757,7 @@ async function fetchProviderEmbedUrl(
   if (!match?.[1]) {
     console.error('[provider-resolver] embed iframe src missing', {
       providerTitleId,
-      episodeId
+      episodeId: episodeId ?? null
     });
     return null;
   }
@@ -747,7 +769,7 @@ async function fetchProviderEmbedUrl(
     if (!isVixEmbed) {
       console.error('[provider-resolver] unexpected embed host', {
         providerTitleId,
-        episodeId,
+        episodeId: episodeId ?? null,
         embedUrl
       });
       return null;
@@ -756,14 +778,14 @@ async function fetchProviderEmbedUrl(
     const relative = `/embed${parsed.pathname.slice('/embed'.length)}${parsed.search}`;
     console.log('[provider-resolver] embed url resolved', {
       providerTitleId,
-      episodeId,
+      episodeId: episodeId ?? null,
       embedUrl: relative
     });
     return relative;
   } catch {
     console.error('[provider-resolver] invalid embed url', {
       providerTitleId,
-      episodeId,
+      episodeId: episodeId ?? null,
       embedUrl
     });
     return null;
