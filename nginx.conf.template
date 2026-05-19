@@ -88,32 +88,32 @@ server {
         add_header Access-Control-Allow-Origin * always;
     }
 
-    # ---- VixSrc namespaced API ----
+    # ---- VixCloud namespaced API ----
     location /api/vixsrc/ {
-        proxy_pass https://vixsrc.to/api/;
+        proxy_pass https://vixcloud.co/api/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Origin https://vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Origin https://vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
     }
 
-    # ---- VixSrc generic API (fallback) ----
+    # ---- VixCloud generic API (fallback) ----
     location /api/ {
-        proxy_pass https://vixsrc.to/api/;
+        proxy_pass https://vixcloud.co/api/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Origin https://vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Origin https://vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixSrc Next.js assets ----
+    # ---- VixCloud Next.js assets ----
     location ^~ /_next/ {
-        proxy_pass https://vixsrc.to/_next/;
+        proxy_pass https://vixcloud.co/_next/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
     # ---- vix-content.net CDN proxy ----
@@ -125,7 +125,7 @@ server {
         proxy_pass https://$cdn_host/$2$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Host $cdn_host;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
     # ---- VixCloud proxy ----
@@ -133,28 +133,28 @@ server {
         proxy_pass https://vixcloud.co/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixSrc embed player with ad-block injection ----
+    # ---- VixCloud embed player with ad-block injection ----
     location ^~ /embed/ {
         auth_request /auth-check;
         error_page 401 = @auth_required;
 
-        proxy_pass https://vixsrc.to/embed/;
+        proxy_pass https://vixcloud.co/embed/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter 'https://vixsrc.to/playlist/' 'https://$host/playlist/';
-        sub_filter '//vixsrc.to/playlist/' '//$host/playlist/';
+        sub_filter 'https://vixcloud.co/playlist/' 'https://$host/playlist/';
+        sub_filter '//vixcloud.co/playlist/' '//$host/playlist/';
         sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/autoseek.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
     }
 
-    # ---- VixSrc playlist/streaming endpoints ----
+    # ---- VixCloud playlist/streaming endpoints ----
     location ^~ /playlist/ {
         proxy_pass http://backend/playback/playlist/;
         proxy_http_version 1.1;
@@ -166,51 +166,51 @@ server {
 
     location ^~ /storage/ {
         set $playback_log_kind "storage";
-        set $playback_upstream_host "vixsrc.to";
+        set $playback_upstream_host "vixcloud.co";
         access_log /data/nginx-playback-access.log playback_transport;
-        proxy_pass https://vixsrc.to/storage/;
+        proxy_pass https://vixcloud.co/storage/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
     # ---- JW Player assets ----
     location ~ ^/jwplayer- {
-        proxy_pass https://vixsrc.to$request_uri;
+        proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixSrc build assets ----
+    # ---- VixCloud build assets ----
     location ^~ /build/ {
-        proxy_pass https://vixsrc.to/build/;
+        proxy_pass https://vixcloud.co/build/;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixSrc favicon ----
+    # ---- VixCloud favicon ----
     location = /favicon.ico {
-        proxy_pass https://vixsrc.to/favicon.ico;
+        proxy_pass https://vixcloud.co/favicon.ico;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
+        proxy_set_header Host vixcloud.co;
     }
 
-    # ---- VixSrc Player with ad-block + auto-seek injection ----
+    # ---- VixCloud Player with ad-block + auto-seek injection ----
     location ~ ^/player/(movie|tv)/(.*)$ {
         auth_request /auth-check;
         error_page 401 = @auth_required;
 
         set $vix_path $1/$2;
-        proxy_pass https://vixsrc.to/$vix_path$is_args$args;
+        proxy_pass https://vixcloud.co/$vix_path$is_args$args;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
         proxy_set_header Accept-Encoding "";
 
-        sub_filter 'https://vixsrc.to/playlist/' 'https://$host/playlist/';
-        sub_filter '//vixsrc.to/playlist/' '//$host/playlist/';
+        sub_filter 'https://vixcloud.co/playlist/' 'https://$host/playlist/';
+        sub_filter '//vixcloud.co/playlist/' '//$host/playlist/';
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
@@ -222,10 +222,10 @@ server {
     }
 
     location @vixsrc_proxy {
-        proxy_pass https://vixsrc.to$request_uri;
+        proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
-        proxy_set_header Host vixsrc.to;
-        proxy_set_header Referer https://vixsrc.to/;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer https://vixcloud.co/;
     }
 
     # ---- Frontend SPA ----

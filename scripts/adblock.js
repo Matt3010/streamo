@@ -12,7 +12,7 @@
   }
 
   // Allowed hosts whitelist
-  var allowedHosts = [location.host, 'vixsrc.to', 'vixcloud.co'];
+  var allowedHosts = [location.host, 'vixcloud.co'];
 
   function isBadUrl(u) {
     if (!u) return false;

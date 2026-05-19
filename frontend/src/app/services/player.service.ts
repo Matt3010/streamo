@@ -796,7 +796,7 @@ function progressKey(season: number, episode: number): string {
 
 // Stub episode list for when the season-details fetch fails — keeps the
 // dropdown / card grid populated with bare numbered placeholders so the user
-// can still pick an episode (the player will then load whatever vixsrc has).
+// can still pick an episode (the player will then load whatever vixcloud has).
 function episodeStubs(count: number): TmdbEpisodeDetail[] {
   return Array.from({ length: count }, (_, i) => ({ episode_number: i + 1 }));
 }

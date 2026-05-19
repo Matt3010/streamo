@@ -10,7 +10,7 @@ containers behind an nginx reverse proxy.
 - **Backend**: Node 20 + Express + better-sqlite3
 - **Reverse proxy**: nginx (template processed with `envsubst`)
 - **Catalog**: [TMDB](https://www.themoviedb.org/) (requires an API key)
-- **Player**: vixsrc.to iframe proxied through nginx
+- **Player**: vixcloud.co iframe proxied through nginx
 
 ## Getting started
 

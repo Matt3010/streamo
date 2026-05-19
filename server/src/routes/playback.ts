@@ -8,7 +8,7 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   const tail = req.params[0] ?? '';
   const query = req.url.indexOf('?');
   const search = query >= 0 ? req.url.slice(query) : '';
-  const upstreamUrl = `https://vixsrc.to/playlist/${tail}${search}`;
+  const upstreamUrl = `https://vixcloud.co/playlist/${tail}${search}`;
   logPlayback(`[playlist-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
 
   let upstream: Response;
@@ -17,8 +17,8 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
       headers: {
         accept: req.headers.accept ?? '*/*',
         'accept-encoding': 'identity',
-        referer: 'https://vixsrc.to/',
-        origin: 'https://vixsrc.to'
+        referer: 'https://vixcloud.co/',
+        origin: 'https://vixcloud.co'
       }
     });
   } catch (error) {
@@ -56,6 +56,14 @@ function rewritePlaylist(body: string): string {
     .replace(
       /\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
       '/cdn/$1$2'
+    )
+    .replace(
+      /https?:\/\/vixcloud\.co(\/(?:playlist|storage|build)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
+      '$1'
+    )
+    .replace(
+      /\/\/vixcloud\.co(\/(?:playlist|storage|build)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
+      '$1'
     )
     .replace(
       /https?:\/\/vixcloud\.co(\/[^\s"']*)/gi,
