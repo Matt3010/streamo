@@ -111,22 +111,35 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
       }
     });
   } catch {
+    console.error('[provider-resolver] fetch failed', { query, url: url.toString() });
     return null;
   }
+
+  console.log('[provider-resolver] upstream response', {
+    query,
+    url: url.toString(),
+    status: res.status,
+    contentType: res.headers.get('content-type') ?? ''
+  });
 
   if (!res.ok) return null;
 
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
     try {
-      return await res.json() as ProviderSearchPage;
+      const page = await res.json() as ProviderSearchPage;
+      logProviderPayloadShape(query, page, 'json');
+      return page;
     } catch {
+      console.error('[provider-resolver] invalid json payload', { query, url: url.toString() });
       return null;
     }
   }
 
   const html = await res.text();
-  return parseInertiaPageFromHtml(html);
+  const page = parseInertiaPageFromHtml(html);
+  logProviderPayloadShape(query, page, 'html');
+  return page;
 }
 
 function parseInertiaPageFromHtml(html: string): ProviderSearchPage | null {
@@ -271,6 +284,29 @@ function extractYear(value: string | null): number | null {
   if (!match) return null;
   const year = Number(match[1]);
   return Number.isInteger(year) ? year : null;
+}
+
+function logProviderPayloadShape(
+  query: string,
+  page: ProviderSearchPage | null,
+  source: 'json' | 'html'
+): void {
+  const titles = extractProviderTitles(page);
+  const sample = titles.slice(0, 3).map((title) => ({
+    id: title.id ?? null,
+    slug: title.slug ?? null,
+    name: title.name ?? null,
+    type: title.type ?? null,
+    last_air_date: title.last_air_date ?? null,
+    translationKeys: (title.translations ?? []).map((entry) => entry.key ?? null).slice(0, 8)
+  }));
+
+  console.log('[provider-resolver] payload shape', {
+    query,
+    source,
+    titlesCount: titles.length,
+    sample
+  });
 }
 
 function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number } | null): {
