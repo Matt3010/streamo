@@ -91,6 +91,22 @@ interface ShareLinksTable {
   created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
 }
 
+interface ProviderTitleMapTable {
+  tmdb_id: number;
+  media_type: string;
+  provider: string;
+  provider_id: number | null;
+  provider_slug: string | null;
+  match_status: string;
+  match_confidence: ColumnType<number, number | undefined, number>;
+  source_title: string;
+  resolved_title: string | null;
+  release_year: number | null;
+  failure_reason: string | null;
+  resolved_at: Epoch | null;
+  last_checked_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
 export interface Database {
   users: UsersTable;
   progress: ProgressTable;
@@ -101,4 +117,5 @@ export interface Database {
   tmdb_cache: TmdbCacheTable;
   invite_tokens: InviteTokensTable;
   share_links: ShareLinksTable;
+  provider_title_map: ProviderTitleMapTable;
 }

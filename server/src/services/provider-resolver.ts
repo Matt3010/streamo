@@ -1,4 +1,5 @@
 import type { MediaType } from '../../../shared/types';
+import { kdb } from '../db';
 import {
   PROVIDER_CATALOG_BASE_URL,
   PROVIDER_CATALOG_LOCALE,
@@ -19,6 +20,8 @@ export interface ProviderResolvedTitle {
   title: string;
   mediaType: MediaType;
 }
+
+type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
 
 interface ProviderSearchPage {
   props?: {
@@ -44,6 +47,9 @@ type CacheEntry = {
 };
 
 const resolveCache = new Map<string, CacheEntry>();
+const PROVIDER_NAME = 'streamingcommunity';
+const STRONG_MATCH_THRESHOLD = 170;
+const REVIEW_MATCH_THRESHOLD = 120;
 
 export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitle | null> {
   const cacheKey = `${args.mediaType}:${args.tmdbId}`;
@@ -53,8 +59,20 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
     return cached.value;
   }
 
+  const cachedMapping = await readStoredMapping(args, now);
+  if (cachedMapping !== undefined) {
+    cacheResolve(cacheKey, cachedMapping, now);
+    return cachedMapping;
+  }
+
   const query = args.title.trim();
   if (!query) {
+    await upsertMapping(args, {
+      matchStatus: 'failed',
+      matchConfidence: 0,
+      failureReason: 'missing_title',
+      candidate: null
+    }, now);
     cacheResolve(cacheKey, null, now);
     return null;
   }
@@ -65,7 +83,9 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
   }
 
   const titles = extractProviderTitles(page);
-  const match = pickBestMatch(titles, args);
+  const best = pickBestMatch(titles, args);
+  const { match, persistence } = finalizeMatch(best);
+  await upsertMapping(args, persistence, now);
   cacheResolve(cacheKey, match, now);
   return match;
 }
@@ -141,7 +161,7 @@ function extractProviderTitles(page: ProviderSearchPage | null): ProviderSearchT
 function pickBestMatch(
   titles: ProviderSearchTitle[],
   args: ResolveArgs
-): ProviderResolvedTitle | null {
+): { candidate: ProviderResolvedTitle; score: number } | null {
   const wantedYear = extractYear(args.releaseDate ?? null);
   const candidates = titles
     .filter((title) => title.id && normalizeProviderType(title.type) === args.mediaType)
@@ -155,11 +175,14 @@ function pickBestMatch(
   if (!best || best.score < 40 || !best.title.id) return null;
 
   return {
-    provider: 'streamingcommunity',
-    id: best.title.id,
-    slug: best.title.slug ?? null,
-    title: best.title.name?.trim() || args.title,
-    mediaType: args.mediaType
+    score: best.score,
+    candidate: {
+      provider: 'streamingcommunity',
+      id: best.title.id,
+      slug: best.title.slug ?? null,
+      title: best.title.name?.trim() || args.title,
+      mediaType: args.mediaType
+    }
   };
 }
 
@@ -233,4 +256,150 @@ function extractYear(value: string | null): number | null {
   if (!match) return null;
   const year = Number(match[1]);
   return Number.isInteger(year) ? year : null;
+}
+
+function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number } | null): {
+  match: ProviderResolvedTitle | null;
+  persistence: {
+    matchStatus: MatchStatus;
+    matchConfidence: number;
+    failureReason: string | null;
+    candidate: ProviderResolvedTitle | null;
+  };
+} {
+  if (!best) {
+    return {
+      match: null,
+      persistence: {
+        matchStatus: 'failed',
+        matchConfidence: 0,
+        failureReason: 'no_match',
+        candidate: null
+      }
+    };
+  }
+
+  if (best.score >= STRONG_MATCH_THRESHOLD) {
+    return {
+      match: best.candidate,
+      persistence: {
+        matchStatus: 'auto_confirmed',
+        matchConfidence: best.score,
+        failureReason: null,
+        candidate: best.candidate
+      }
+    };
+  }
+
+  if (best.score >= REVIEW_MATCH_THRESHOLD) {
+    return {
+      match: null,
+      persistence: {
+        matchStatus: 'pending_review',
+        matchConfidence: best.score,
+        failureReason: 'low_confidence',
+        candidate: best.candidate
+      }
+    };
+  }
+
+  return {
+    match: null,
+    persistence: {
+      matchStatus: 'failed',
+      matchConfidence: best.score,
+      failureReason: 'low_confidence',
+      candidate: best.candidate
+    }
+  };
+}
+
+async function readStoredMapping(
+  args: ResolveArgs,
+  nowMs: number
+): Promise<ProviderResolvedTitle | null | undefined> {
+  const row = await kdb
+    .selectFrom('provider_title_map')
+    .select([
+      'provider',
+      'provider_id',
+      'provider_slug',
+      'resolved_title',
+      'match_status',
+      'last_checked_at'
+    ])
+    .where('tmdb_id', '=', args.tmdbId)
+    .where('media_type', '=', args.mediaType)
+    .where('provider', '=', PROVIDER_NAME)
+    .executeTakeFirst();
+
+  if (!row) return undefined;
+
+  if (row.match_status === 'manual_confirmed' || row.match_status === 'auto_confirmed') {
+    if (row.provider_id) {
+      return {
+        provider: 'streamingcommunity',
+        id: row.provider_id,
+        slug: row.provider_slug,
+        title: row.resolved_title ?? args.title,
+        mediaType: args.mediaType
+      };
+    }
+    return null;
+  }
+
+  const freshUntilMs = (row.last_checked_at * 1000) + (PROVIDER_RESOLVE_CACHE_TTL * 1000);
+  if (freshUntilMs > nowMs) {
+    return null;
+  }
+
+  return undefined;
+}
+
+async function upsertMapping(
+  args: ResolveArgs,
+  result: {
+    matchStatus: MatchStatus;
+    matchConfidence: number;
+    failureReason: string | null;
+    candidate: ProviderResolvedTitle | null;
+  },
+  nowMs: number
+): Promise<void> {
+  const now = Math.floor(nowMs / 1000);
+  const releaseYear = extractYear(args.releaseDate ?? null);
+  const resolvedAt = result.matchStatus === 'auto_confirmed' || result.matchStatus === 'manual_confirmed'
+    ? now
+    : null;
+
+  await kdb
+    .insertInto('provider_title_map')
+    .values({
+      tmdb_id: args.tmdbId,
+      media_type: args.mediaType,
+      provider: PROVIDER_NAME,
+      provider_id: result.candidate?.id ?? null,
+      provider_slug: result.candidate?.slug ?? null,
+      match_status: result.matchStatus,
+      match_confidence: result.matchConfidence,
+      source_title: args.title,
+      resolved_title: result.candidate?.title ?? null,
+      release_year: releaseYear,
+      failure_reason: result.failureReason,
+      resolved_at: resolvedAt,
+      last_checked_at: now
+    })
+    .onConflict((oc) => oc.columns(['tmdb_id', 'media_type', 'provider']).doUpdateSet({
+      provider_id: result.candidate?.id ?? null,
+      provider_slug: result.candidate?.slug ?? null,
+      match_status: result.matchStatus,
+      match_confidence: result.matchConfidence,
+      source_title: args.title,
+      resolved_title: result.candidate?.title ?? null,
+      release_year: releaseYear,
+      failure_reason: result.failureReason,
+      resolved_at: resolvedAt,
+      last_checked_at: now
+    }))
+    .execute();
 }
