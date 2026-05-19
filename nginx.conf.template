@@ -116,7 +116,6 @@ server {
 
         sub_filter 'https://vixcloud.co/playlist/' 'https://$host/playlist/';
         sub_filter '//vixcloud.co/playlist/' '//$host/playlist/';
-        sub_filter '</head>' '<script src="/scripts/adblock.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
 
