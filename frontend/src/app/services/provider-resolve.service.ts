@@ -9,9 +9,14 @@ interface ProviderResolvedTitle {
   mediaType: MediaType;
 }
 
+interface ProviderResolvedEpisode {
+  episodeId: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProviderResolveService {
-  private readonly cache = new Map<string, ProviderResolvedTitle | null>();
+  private readonly titleCache = new Map<string, ProviderResolvedTitle | null>();
+  private readonly episodeCache = new Map<string, ProviderResolvedEpisode | null>();
 
   async resolve(
     tmdbId: number,
@@ -20,8 +25,8 @@ export class ProviderResolveService {
     releaseDate?: string | null
   ): Promise<ProviderResolvedTitle | null> {
     const key = `${mediaType}:${tmdbId}`;
-    if (this.cache.has(key)) {
-      return this.cache.get(key) ?? null;
+    if (this.titleCache.has(key)) {
+      return this.titleCache.get(key) ?? null;
     }
 
     try {
@@ -38,7 +43,40 @@ export class ProviderResolveService {
       if (!res.ok) return null;
       const data = await res.json() as { resolved?: ProviderResolvedTitle | null };
       const resolved = data.resolved ?? null;
-      this.cache.set(key, resolved);
+      this.titleCache.set(key, resolved);
+      return resolved;
+    } catch {
+      return null;
+    }
+  }
+
+  async resolveEpisode(
+    providerTitleId: number,
+    providerSlug: string | null,
+    season: number,
+    episode: number
+  ): Promise<ProviderResolvedEpisode | null> {
+    const slug = providerSlug?.trim() || null;
+    const key = `${providerTitleId}:${slug ?? '-'}:${season}:${episode}`;
+    if (this.episodeCache.has(key)) {
+      return this.episodeCache.get(key) ?? null;
+    }
+
+    try {
+      const res = await fetch('/api/user/provider/resolve-episode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider_title_id: providerTitleId,
+          provider_slug: slug,
+          season,
+          episode
+        })
+      });
+      if (!res.ok) return null;
+      const data = await res.json() as { resolved?: ProviderResolvedEpisode | null };
+      const resolved = data.resolved ?? null;
+      this.episodeCache.set(key, resolved);
       return resolved;
     } catch {
       return null;

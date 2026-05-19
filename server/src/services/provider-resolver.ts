@@ -21,11 +21,24 @@ export interface ProviderResolvedTitle {
   mediaType: MediaType;
 }
 
+export interface ProviderResolvedEpisode {
+  episodeId: number;
+}
+
 type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
 
 interface ProviderSearchPage {
   props?: {
     titles?: ProviderSearchTitle[] | { data?: ProviderSearchTitle[] };
+  };
+}
+
+interface ProviderTitlePage {
+  props?: {
+    title?: {
+      seasons?: ProviderSeasonSummary[];
+    };
+    loadedSeason?: ProviderLoadedSeason | null;
   };
 }
 
@@ -46,7 +59,32 @@ type CacheEntry = {
   value: ProviderResolvedTitle | null;
 };
 
+interface ProviderSeasonSummary {
+  id?: number;
+  number?: number;
+  episodes_count?: number;
+}
+
+interface ProviderLoadedSeason {
+  id?: number;
+  number?: number;
+  episodes?: ProviderEpisode[];
+}
+
+interface ProviderEpisode {
+  id?: number;
+  number?: number;
+  scws_id?: number | null;
+  season_id?: number | null;
+}
+
+type EpisodeCacheEntry = {
+  expiresAt: number;
+  value: ProviderLoadedSeason | null;
+};
+
 const resolveCache = new Map<string, CacheEntry>();
+const seasonCache = new Map<string, EpisodeCacheEntry>();
 const PROVIDER_NAME = 'streamingcommunity';
 const STRONG_MATCH_THRESHOLD = 170;
 const REVIEW_MATCH_THRESHOLD = 120;
@@ -100,6 +138,53 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
   await upsertMapping(args, persistence, now);
   cacheResolve(cacheKey, match, now);
   return match;
+}
+
+export async function resolveProviderEpisode(args: {
+  providerTitleId: number;
+  providerSlug: string | null;
+  seasonNumber: number;
+  episodeNumber: number;
+}): Promise<ProviderResolvedEpisode | null> {
+  const season = await fetchProviderSeason(args.providerTitleId, args.providerSlug, args.seasonNumber);
+  const episodes = season?.episodes;
+  if (!episodes?.length) {
+    console.log('[provider-resolver] episode decision', {
+      providerTitleId: args.providerTitleId,
+      providerSlug: args.providerSlug,
+      seasonNumber: args.seasonNumber,
+      episodeNumber: args.episodeNumber,
+      resolved: null,
+      reason: 'missing_season_payload'
+    });
+    return null;
+  }
+
+  const match = episodes.find((episode) => episode.number === args.episodeNumber && episode.id);
+  if (!match?.id) {
+    console.log('[provider-resolver] episode decision', {
+      providerTitleId: args.providerTitleId,
+      providerSlug: args.providerSlug,
+      seasonNumber: args.seasonNumber,
+      episodeNumber: args.episodeNumber,
+      resolved: null,
+      availableEpisodes: episodes
+        .map((episode) => ({ id: episode.id ?? null, number: episode.number ?? null }))
+        .slice(0, 20),
+      reason: 'episode_not_found'
+    });
+    return null;
+  }
+
+  console.log('[provider-resolver] episode decision', {
+    providerTitleId: args.providerTitleId,
+    providerSlug: args.providerSlug,
+    seasonNumber: args.seasonNumber,
+    episodeNumber: args.episodeNumber,
+    resolved: { episodeId: match.id }
+  });
+
+  return { episodeId: match.id };
 }
 
 function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: number): void {
@@ -194,6 +279,12 @@ function extractProviderTitles(page: ProviderSearchPage | null): ProviderSearchT
   if (Array.isArray(titles)) return titles;
   if (Array.isArray(titles?.data)) return titles.data;
   return [];
+}
+
+function extractLoadedSeason(page: ProviderTitlePage | null): ProviderLoadedSeason | null {
+  const loadedSeason = page?.props?.loadedSeason;
+  if (!loadedSeason || typeof loadedSeason !== 'object') return null;
+  return loadedSeason;
 }
 
 function pickBestMatch(
@@ -486,4 +577,115 @@ async function upsertMapping(
       last_checked_at: now
     }))
     .execute();
+}
+
+async function fetchProviderSeason(
+  providerTitleId: number,
+  providerSlug: string | null,
+  seasonNumber: number
+): Promise<ProviderLoadedSeason | null> {
+  const slug = providerSlug?.trim() || await fetchProviderSlug(providerTitleId);
+  if (!slug) {
+    console.error('[provider-resolver] missing slug for season lookup', {
+      providerTitleId,
+      seasonNumber
+    });
+    return null;
+  }
+
+  const cacheKey = `${providerTitleId}:${slug}:${seasonNumber}`;
+  const now = Date.now();
+  const cached = seasonCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const url = new URL(
+    `/${PROVIDER_CATALOG_LOCALE}/titles/${providerTitleId}-${slug}/season-${seasonNumber}`,
+    PROVIDER_CATALOG_BASE_URL
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+      }
+    });
+  } catch {
+    console.error('[provider-resolver] season fetch failed', {
+      providerTitleId,
+      slug,
+      seasonNumber,
+      url: url.toString()
+    });
+    return null;
+  }
+
+  console.log('[provider-resolver] season upstream response', {
+    providerTitleId,
+    slug,
+    seasonNumber,
+    url: url.toString(),
+    status: res.status,
+    contentType: res.headers.get('content-type') ?? ''
+  });
+
+  if (!res.ok) return null;
+
+  const contentType = res.headers.get('content-type') ?? '';
+  let page: ProviderTitlePage | null = null;
+  if (contentType.includes('application/json')) {
+    try {
+      page = await res.json() as ProviderTitlePage;
+    } catch {
+      console.error('[provider-resolver] invalid season json payload', {
+        providerTitleId,
+        slug,
+        seasonNumber,
+        url: url.toString()
+      });
+      return null;
+    }
+  } else {
+    const html = await res.text();
+    page = parseInertiaPageFromHtml(html) as ProviderTitlePage | null;
+  }
+
+  const loadedSeason = extractLoadedSeason(page);
+  console.log('[provider-resolver] season payload shape', {
+    providerTitleId,
+    slug,
+    seasonNumber,
+    loadedSeasonNumber: loadedSeason?.number ?? null,
+    episodesCount: loadedSeason?.episodes?.length ?? 0,
+    sampleEpisodes: (loadedSeason?.episodes ?? [])
+      .slice(0, 5)
+      .map((episode) => ({
+        id: episode.id ?? null,
+        number: episode.number ?? null,
+        scwsId: episode.scws_id ?? null
+      }))
+  });
+
+  seasonCache.set(cacheKey, {
+    value: loadedSeason,
+    expiresAt: now + (PROVIDER_RESOLVE_CACHE_TTL * 1000)
+  });
+
+  return loadedSeason;
+}
+
+async function fetchProviderSlug(providerTitleId: number): Promise<string | null> {
+  const row = await kdb
+    .selectFrom('provider_title_map')
+    .select('provider_slug')
+    .where('provider', '=', PROVIDER_NAME)
+    .where('provider_id', '=', providerTitleId)
+    .where('provider_slug', 'is not', null)
+    .orderBy('resolved_at', 'desc')
+    .orderBy('last_checked_at', 'desc')
+    .executeTakeFirst();
+
+  return row?.provider_slug?.trim() || null;
 }

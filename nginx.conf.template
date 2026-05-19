@@ -197,12 +197,12 @@ server {
         proxy_set_header Host vixcloud.co;
     }
 
-    # ---- VixCloud Player with ad-block + auto-seek injection ----
-    location ~ ^/player/(movie|tv)/(.*)$ {
+    # ---- VixCloud movie player with ad-block + auto-seek injection ----
+    location ~ ^/player/movie/(.*)$ {
         auth_request /auth-check;
         error_page 401 = @auth_required;
 
-        set $vix_path $1/$2;
+        set $vix_path movie/$1;
         proxy_pass https://vixcloud.co/$vix_path$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
@@ -211,6 +211,22 @@ server {
 
         sub_filter 'https://vixcloud.co/playlist/' 'https://$host/playlist/';
         sub_filter '//vixcloud.co/playlist/' '//$host/playlist/';
+        sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
+        sub_filter_types text/html;
+        sub_filter_once off;
+    }
+
+    # ---- Provider TV iframe page with ad-block + auto-seek injection ----
+    location ~ ^/player/tv/([0-9]+)$ {
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
+        proxy_pass https://streamingcommunityz.associates/it/iframe/$1$is_args$args;
+        proxy_ssl_server_name on;
+        proxy_set_header Host streamingcommunityz.associates;
+        proxy_set_header Referer https://streamingcommunityz.associates/it/watch/$1;
+        proxy_set_header Accept-Encoding "";
+
         sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
