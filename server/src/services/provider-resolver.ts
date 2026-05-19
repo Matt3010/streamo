@@ -105,9 +105,7 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
   try {
     res = await fetch(url, {
       headers: {
-        accept: 'application/json',
-        'x-inertia': 'true',
-        'x-requested-with': 'XMLHttpRequest'
+        accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
       }
     });
   } catch {
