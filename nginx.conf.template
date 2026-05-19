@@ -221,26 +221,6 @@ server {
         sub_filter_once off;
     }
 
-    # ---- Provider TV iframe page with ad-block + auto-seek injection ----
-    location ~ ^/player/tv/([0-9]+)$ {
-        auth_request /auth-check;
-        error_page 401 = @auth_required;
-
-        proxy_pass https://streamingcommunityz.associates/it/iframe/$1$is_args$args;
-        proxy_ssl_server_name on;
-        proxy_set_header Host streamingcommunityz.associates;
-        proxy_set_header Referer https://streamingcommunityz.associates/it/watch/$1;
-        proxy_set_header Accept-Encoding "";
-        proxy_hide_header Content-Security-Policy;
-        proxy_hide_header X-Frame-Options;
-
-        sub_filter 'https://vixcloud.co/embed/' 'https://$host/embed/';
-        sub_filter '//vixcloud.co/embed/' '//$host/embed/';
-        sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
-        sub_filter_types text/html;
-        sub_filter_once off;
-    }
-
     # ---- VixSrc static asset fallback ----
     location ~ \.(js|css|woff2?|ttf|otf|svg|png|jpg|jpeg|gif|ico|webp|mp4|m3u8|ts|vtt)$ {
         try_files $uri @vixsrc_proxy;
