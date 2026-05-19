@@ -88,8 +88,11 @@ server {
         add_header Access-Control-Allow-Origin * always;
     }
 
-    # ---- VixCloud namespaced API ----
+    # ---- Candidate removal: keep only if runtime traffic shows /api/vixsrc/* ----
     location /api/vixsrc/ {
+        set $playback_log_kind "candidate-api-vixsrc";
+        set $playback_upstream_host "vixcloud.co";
+        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://vixcloud.co/api/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
@@ -99,8 +102,11 @@ server {
         add_header Access-Control-Allow-Origin * always;
     }
 
-    # ---- VixCloud generic API (fallback) ----
+    # ---- Candidate removal: broad fallback for relative /api/* calls from upstream pages ----
     location /api/ {
+        set $playback_log_kind "candidate-api-fallback";
+        set $playback_upstream_host "vixcloud.co";
+        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://vixcloud.co/api/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
@@ -108,15 +114,18 @@ server {
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixCloud Next.js assets ----
+    # ---- Candidate removal: embed/build pages may still reference /_next/* assets ----
     location ^~ /_next/ {
+        set $playback_log_kind "candidate-next";
+        set $playback_upstream_host "vixcloud.co";
+        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://vixcloud.co/_next/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- vix-content.net CDN proxy ----
+    # ---- Core playback: segment/asset CDN targets rewritten by playlist proxy ----
     location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
         set $cdn_host "$1.vix-content.net";
         set $playback_log_kind "cdn";
@@ -128,15 +137,18 @@ server {
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixCloud proxy ----
+    # ---- Candidate removal: generic fallback for absolute vixcloud URLs rewritten by playlist proxy ----
     location ^~ /vixcloud/ {
+        set $playback_log_kind "candidate-vixcloud";
+        set $playback_upstream_host "vixcloud.co";
+        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://vixcloud.co/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixCloud embed player with ad-block injection ----
+    # ---- Core playback: TV episodes now resolve directly to /embed/* ----
     location ^~ /embed/ {
         auth_request /auth-check;
         error_page 401 = @auth_required;
@@ -159,7 +171,7 @@ server {
         add_header Content-Security-Policy "frame-ancestors 'self'" always;
     }
 
-    # ---- VixCloud playlist/streaming endpoints ----
+    # ---- Core playback: playlist proxy rewrites downstream asset URLs ----
     location ^~ /playlist/ {
         proxy_pass http://backend/playback/playlist/;
         proxy_http_version 1.1;
@@ -169,6 +181,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # ---- Core playback: referenced by playlist rewrite rules ----
     location ^~ /storage/ {
         set $playback_log_kind "storage";
         set $playback_upstream_host "vixcloud.co";
@@ -179,7 +192,7 @@ server {
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- JW Player assets ----
+    # ---- Core playback: referenced by playlist rewrite rules ----
     location ~ ^/jwplayer- {
         proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
@@ -187,7 +200,7 @@ server {
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixCloud build assets ----
+    # ---- Core playback: referenced by playlist rewrite rules ----
     location ^~ /build/ {
         proxy_pass https://vixcloud.co/build/;
         proxy_ssl_server_name on;
@@ -195,7 +208,7 @@ server {
         proxy_set_header Referer https://vixcloud.co/;
     }
 
-    # ---- VixCloud favicon ----
+    # ---- Core playback: referenced by playlist rewrite rules ----
     location = /favicon.ico {
         proxy_pass https://vixcloud.co/favicon.ico;
         proxy_ssl_server_name on;
