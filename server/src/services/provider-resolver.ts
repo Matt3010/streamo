@@ -1,0 +1,236 @@
+import type { MediaType } from '../../../shared/types';
+import {
+  PROVIDER_CATALOG_BASE_URL,
+  PROVIDER_CATALOG_LOCALE,
+  PROVIDER_RESOLVE_CACHE_TTL
+} from '../config';
+
+interface ResolveArgs {
+  tmdbId: number;
+  mediaType: MediaType;
+  title: string;
+  releaseDate?: string | null;
+}
+
+export interface ProviderResolvedTitle {
+  provider: 'streamingcommunity';
+  id: number;
+  slug: string | null;
+  title: string;
+  mediaType: MediaType;
+}
+
+interface ProviderSearchPage {
+  props?: {
+    titles?: ProviderSearchTitle[] | { data?: ProviderSearchTitle[] };
+  };
+}
+
+interface ProviderSearchTitle {
+  id?: number;
+  slug?: string | null;
+  name?: string | null;
+  type?: string | null;
+  last_air_date?: string | null;
+  translations?: Array<{
+    key?: string | null;
+    value?: string | null;
+  }>;
+}
+
+type CacheEntry = {
+  expiresAt: number;
+  value: ProviderResolvedTitle | null;
+};
+
+const resolveCache = new Map<string, CacheEntry>();
+
+export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitle | null> {
+  const cacheKey = `${args.mediaType}:${args.tmdbId}`;
+  const now = Date.now();
+  const cached = resolveCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const query = args.title.trim();
+  if (!query) {
+    cacheResolve(cacheKey, null, now);
+    return null;
+  }
+
+  const page = await fetchProviderSearchPage(query);
+  if (!page) {
+    return null;
+  }
+
+  const titles = extractProviderTitles(page);
+  const match = pickBestMatch(titles, args);
+  cacheResolve(cacheKey, match, now);
+  return match;
+}
+
+function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: number): void {
+  resolveCache.set(key, {
+    value,
+    expiresAt: now + (PROVIDER_RESOLVE_CACHE_TTL * 1000)
+  });
+}
+
+async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPage | null> {
+  const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/search`, PROVIDER_CATALOG_BASE_URL);
+  url.searchParams.set('q', query);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        accept: 'application/json, text/html;q=0.9, */*;q=0.8',
+        'x-inertia': 'true',
+        'x-requested-with': 'XMLHttpRequest'
+      }
+    });
+  } catch {
+    return null;
+  }
+
+  if (!res.ok) return null;
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    try {
+      return await res.json() as ProviderSearchPage;
+    } catch {
+      return null;
+    }
+  }
+
+  const html = await res.text();
+  return parseInertiaPageFromHtml(html);
+}
+
+function parseInertiaPageFromHtml(html: string): ProviderSearchPage | null {
+  const match = html.match(/data-page="([^"]+)"/i);
+  if (!match?.[1]) return null;
+
+  try {
+    return JSON.parse(decodeHtmlEntities(match[1])) as ProviderSearchPage;
+  } catch {
+    return null;
+  }
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&#039;/g, '\'')
+    .replace(/&#39;/g, '\'')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractProviderTitles(page: ProviderSearchPage | null): ProviderSearchTitle[] {
+  const titles = page?.props?.titles;
+  if (Array.isArray(titles)) return titles;
+  if (Array.isArray(titles?.data)) return titles.data;
+  return [];
+}
+
+function pickBestMatch(
+  titles: ProviderSearchTitle[],
+  args: ResolveArgs
+): ProviderResolvedTitle | null {
+  const wantedYear = extractYear(args.releaseDate ?? null);
+  const candidates = titles
+    .filter((title) => title.id && normalizeProviderType(title.type) === args.mediaType)
+    .map((title) => ({
+      title,
+      score: scoreCandidate(title, args.title, wantedYear)
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const best = candidates[0];
+  if (!best || best.score < 40 || !best.title.id) return null;
+
+  return {
+    provider: 'streamingcommunity',
+    id: best.title.id,
+    slug: best.title.slug ?? null,
+    title: best.title.name?.trim() || args.title,
+    mediaType: args.mediaType
+  };
+}
+
+function scoreCandidate(
+  candidate: ProviderSearchTitle,
+  wantedTitle: string,
+  wantedYear: number | null
+): number {
+  const candidateTitle = candidate.name?.trim() ?? '';
+  if (!candidateTitle) return 0;
+
+  const wantedNorm = normalizeTitle(wantedTitle);
+  const candidateNorm = normalizeTitle(candidateTitle);
+  if (!wantedNorm || !candidateNorm) return 0;
+
+  let score = tokenOverlapScore(wantedNorm, candidateNorm);
+
+  if (candidateNorm === wantedNorm) score += 120;
+  else if (candidateNorm.startsWith(wantedNorm) || wantedNorm.startsWith(candidateNorm)) score += 70;
+  else if (candidateNorm.includes(wantedNorm) || wantedNorm.includes(candidateNorm)) score += 35;
+
+  const candidateYear = extractYear(getProviderReleaseDate(candidate));
+  if (wantedYear !== null && candidateYear !== null) {
+    if (candidateYear === wantedYear) score += 35;
+    else if (Math.abs(candidateYear - wantedYear) === 1) score += 10;
+    else score -= 20;
+  }
+
+  return score;
+}
+
+function tokenOverlapScore(a: string, b: string): number {
+  const aTokens = new Set(a.split(' ').filter(Boolean));
+  const bTokens = new Set(b.split(' ').filter(Boolean));
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+
+  let overlap = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) overlap += 1;
+  }
+
+  const total = Math.max(aTokens.size, bTokens.size);
+  return Math.round((overlap / total) * 100);
+}
+
+function normalizeTitle(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeProviderType(value: string | null | undefined): MediaType | null {
+  if (value === 'movie' || value === 'tv') return value;
+  return null;
+}
+
+function getProviderReleaseDate(title: ProviderSearchTitle): string | null {
+  const translationValue = title.translations?.find((entry) => (
+    entry.key === 'release_date' || entry.key === 'last_air_date'
+  ))?.value;
+
+  return translationValue ?? title.last_air_date ?? null;
+}
+
+function extractYear(value: string | null): number | null {
+  if (!value) return null;
+  const match = value.match(/\b(\d{4})\b/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  return Number.isInteger(year) ? year : null;
+}

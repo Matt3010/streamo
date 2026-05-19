@@ -1,5 +1,6 @@
 import { Injectable, signal, computed, inject, untracked } from '@angular/core';
 import { TmdbService } from './tmdb.service';
+import { ProviderResolveService } from './provider-resolve.service';
 import { ProgressService } from './progress.service';
 import { WatchlistService } from './watchlist.service';
 import { HistoryService } from './history.service';
@@ -15,6 +16,7 @@ const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private tmdb = inject(TmdbService);
+  private providerResolve = inject(ProviderResolveService);
   private progress = inject(ProgressService);
   private watchlist = inject(WatchlistService);
   private history = inject(HistoryService);
@@ -42,6 +44,7 @@ export class PlayerService {
   // `urlSeq` invalidates in-flight `applyResumeProgress` calls when the URL
   // base changes (open, changeSeason, changeEpisode, maybeAutoPlayNext).
   private pendingVideoUrl = '';
+  private playbackId: number | null = null;
   private urlSeq = 0;
   readonly iframeSrc = signal('');
 
@@ -135,6 +138,7 @@ export class PlayerService {
     this.currentItem.set(null);
     this.backdropUrl.set('');
     this.isInWatchlist.set(false);
+    this.playbackId = null;
     this.seasons.set([]);
     this.episodes.set([]);
     this.seriesProgress.set(new Map());
@@ -169,6 +173,7 @@ export class PlayerService {
 
     this.currentItem.set(item);
     this.currentItemType.set(type);
+    this.playbackId = await this.resolvePlaybackId(item, type);
 
     const backdrop = item.backdrop_path ?? item.poster_path;
     this.backdropUrl.set(backdrop ? `${BACKDROP_BASE}${backdrop}` : '');
@@ -213,7 +218,9 @@ export class PlayerService {
     } else {
       this.seasons.set([]);
       this.episodes.set([]);
-      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${tmdbId}`;
+      const playbackId = this.requirePlaybackId();
+      if (!playbackId) return;
+      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${playbackId}`;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, tmdbId, 'movie');
     }
@@ -231,6 +238,7 @@ export class PlayerService {
 
     this.iframeSrc.set('');
     this.pendingVideoUrl = '';
+    this.playbackId = null;
     // Invalidate any in-flight applyResumeProgress so it can't write to a
     // freshly-cleared pendingVideoUrl after the page is gone.
     this.urlSeq++;
@@ -286,6 +294,8 @@ export class PlayerService {
     const item = this.currentItem();
     if (!item) return;
     if (!this.seasons().includes(season)) return;
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
     this.saveCurrentEpisodeProgress();
 
     this.selectedSeason.set(season);
@@ -296,7 +306,7 @@ export class PlayerService {
     this.selectedEpisode.set(1);
 
     this.resetPlayer();
-    this.setEpisodeUrl(item.id, season, 1);
+    this.setEpisodeUrl(playbackId, season, 1);
     const seq = ++this.urlSeq;
     await this.applyResumeProgress(seq, item.id, 'tv', season, 1);
   }
@@ -304,13 +314,15 @@ export class PlayerService {
   async changeEpisode(episode: number): Promise<void> {
     const item = this.currentItem();
     if (!item) return;
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
     this.saveCurrentEpisodeProgress();
 
     this.selectedEpisode.set(episode);
     const season = this.selectedSeason();
     this.activeEpisodeRef.set({ season, episode });
     this.resetPlayer();
-    this.setEpisodeUrl(item.id, season, episode);
+    this.setEpisodeUrl(playbackId, season, episode);
     const seq = ++this.urlSeq;
     await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
   }
@@ -354,8 +366,10 @@ export class PlayerService {
     if (!item || !type) return;
 
     if (type === 'movie') {
+      const playbackId = this.requirePlaybackId();
+      if (!playbackId) return;
       this.resetPlayer();
-      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${item.id}`;
+      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${playbackId}`;
       this.urlSeq++;
       this.resumeProgress.set(null);
       this.resumeText.set('');
@@ -367,9 +381,11 @@ export class PlayerService {
 
     const season = this.selectedSeason();
     const episode = this.selectedEpisode();
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
 
     this.resetPlayer();
-    this.setEpisodeUrl(item.id, season, episode);
+    this.setEpisodeUrl(playbackId, season, episode);
     this.urlSeq++;
     this.resumeProgress.set(null);
     this.resumeText.set('');
@@ -393,11 +409,13 @@ export class PlayerService {
 
     const item = this.currentItem();
     if (!item || this.currentItemType() !== 'tv') return;
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
 
     const isCurrentEpisode = season === this.selectedSeason() && episode === this.selectedEpisode();
     if (isCurrentEpisode) {
       this.resetPlayer();
-      this.setEpisodeUrl(item.id, season, episode);
+      this.setEpisodeUrl(playbackId, season, episode);
       this.urlSeq++;
       this.resumeProgress.set(null);
       this.resumeText.set('');
@@ -417,6 +435,9 @@ export class PlayerService {
 
   // ===== PRIVATE =====
   private async setupTVPlayer(tmdbId: string | number, item: TmdbItem, resumeSeason: number, resumeEpisode: number): Promise<void> {
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
+
     const seasonsList = availableSeasons(item);
     const seasonNumbers = seasonsList.length ? seasonsList.map(s => s.season_number) : [1];
     this.seasons.set(seasonNumbers);
@@ -435,7 +456,7 @@ export class PlayerService {
     this.selectedEpisode.set(targetEpisode);
     this.activeEpisodeRef.set({ season: targetSeason, episode: targetEpisode });
 
-    this.setEpisodeUrl(tmdbId, targetSeason, targetEpisode);
+    this.setEpisodeUrl(playbackId, targetSeason, targetEpisode);
     const seq = ++this.urlSeq;
     await this.applyResumeProgress(seq, tmdbId, 'tv', targetSeason, targetEpisode);
   }
@@ -518,15 +539,17 @@ export class PlayerService {
     const item = untracked(() => this.currentItem());
     const type = untracked(() => this.currentItemType());
     if (!item || !type) return;
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
 
     if (type === 'tv') {
       const season = untracked(() => this.selectedSeason());
       const episode = untracked(() => this.selectedEpisode());
-      this.setEpisodeUrl(item.id, season, episode);
+      this.setEpisodeUrl(playbackId, season, episode);
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
     } else {
-      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${item.id}`;
+      this.pendingVideoUrl = `${VIXSRC_BASE}/movie/${playbackId}`;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'movie');
     }
@@ -539,6 +562,8 @@ export class PlayerService {
     const next = untracked(() => this.nextEpisode());
     const item = untracked(() => this.currentItem());
     if (!next || !item) return;
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
 
     this.saveCurrentEpisodeProgress();
 
@@ -555,7 +580,7 @@ export class PlayerService {
     }
 
     this.resetPlayer();
-    this.setEpisodeUrl(item.id, next.season, next.episode);
+    this.setEpisodeUrl(playbackId, next.season, next.episode);
     // No applyResumeProgress — we want a clean start, not a seek to a
     // half-watched checkpoint of an episode the user explicitly skipped.
     this.urlSeq++;
@@ -570,6 +595,34 @@ export class PlayerService {
     // the request, so watchlist.check() returns the real flag. Gating dropped
     // the bookmark "active" state intermittently on /watch reloads.
     this.isInWatchlist.set(await this.watchlist.check(tmdbId, type));
+  }
+
+  private async resolvePlaybackId(item: TmdbItem, type: MediaType): Promise<number | null> {
+    const title = (item.title ?? item.name ?? '').trim();
+    if (!title) {
+      this.toast.show('Titolo non valido per il provider');
+      return null;
+    }
+
+    const resolved = await this.providerResolve.resolve(
+      item.id,
+      type,
+      title,
+      item.release_date ?? item.first_air_date ?? null
+    );
+
+    if (!resolved) {
+      this.toast.show('Impossibile trovare l\'id del provider per questo titolo');
+      return null;
+    }
+
+    return resolved.id;
+  }
+
+  private requirePlaybackId(): number | null {
+    if (this.playbackId) return this.playbackId;
+    this.toast.show('Id provider non disponibile');
+    return null;
   }
 
   private resetPlayer(): void {
@@ -694,6 +747,8 @@ export class PlayerService {
 
     const item = this.currentItem();
     if (!item) return;
+    const playbackId = this.requirePlaybackId();
+    if (!playbackId) return;
 
     const eps = this.episodes();
     const currentEp = this.selectedEpisode();
@@ -703,7 +758,7 @@ export class PlayerService {
       const season = this.selectedSeason();
       this.activeEpisodeRef.set({ season, episode: nextEp.episode_number });
       this.resetPlayer();
-      this.setEpisodeUrl(item.id, season, nextEp.episode_number);
+      this.setEpisodeUrl(playbackId, season, nextEp.episode_number);
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'tv', season, nextEp.episode_number);
       this.startVideo();

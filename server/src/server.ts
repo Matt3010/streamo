@@ -11,6 +11,7 @@ import watchlistRoutes from './routes/watchlist';
 import shareLinksRoutes from './routes/share-links';
 import adminRoutes from './routes/admin';
 import playbackRoutes from './routes/playback';
+import providerRoutes from './routes/provider';
 import { attachAdminLiveSessions } from './services/admin-live';
 import { requireSuperAdmin } from './middleware/auth';
 import { getAdminQueuesBoardRouter } from './services/admin-queues-board';
@@ -32,6 +33,7 @@ app.use(watchlistRoutes);
 app.use(shareLinksRoutes);
 app.use(adminRoutes);
 app.use(playbackRoutes);
+app.use(providerRoutes);
 
 async function start(): Promise<void> {
   await initDb();
