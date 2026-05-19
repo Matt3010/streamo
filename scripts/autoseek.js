@@ -3,10 +3,11 @@
   var startTime = parseInt(params.get('start'), 10);
   var shouldSeek = startTime > 0;
 
-  var playerAttached = false;
   var seekDone = !shouldSeek;
+  var jwAttached = false;
+  var videoAttached = false;
   var attempts = 0;
-  var maxAttempts = 120; // ~60 seconds (500ms * 120)
+  var maxAttempts = 240; // ~120 seconds
 
   function getPlayer() {
     if (typeof jwplayer === 'function') {
@@ -24,48 +25,43 @@
     return null;
   }
 
-  function readCurrentTime(player, fallback) {
-    if (typeof fallback === 'number') return fallback;
+  function getVideo() {
     try {
-      if (player && typeof player.getPosition === 'function') {
-        var pos = player.getPosition();
-        if (typeof pos === 'number' && pos >= 0) return pos;
-      }
-    } catch (e) {}
-    return undefined;
+      return document.querySelector('video');
+    } catch (e) {
+      return null;
+    }
   }
 
-  function readDuration(player, fallback) {
-    if (typeof fallback === 'number' && fallback > 0) return fallback;
-    try {
-      if (player && typeof player.getDuration === 'function') {
-        var dur = player.getDuration();
-        if (typeof dur === 'number' && dur > 0) return dur;
-      }
-    } catch (e) {}
-    return undefined;
-  }
-
-  function emitToParent(eventName, player, payload) {
+  function emitToParent(eventName, currentTime, duration) {
     try {
       if (!window.parent || window.parent === window) return;
-      var currentTime = readCurrentTime(player, payload && payload.position);
-      var duration = readDuration(player, payload && payload.duration);
       window.parent.postMessage({
         type: 'PLAYER_EVENT',
         event: {
           event: eventName,
-          currentTime: currentTime,
-          duration: duration
+          currentTime: typeof currentTime === 'number' ? currentTime : undefined,
+          duration: typeof duration === 'number' ? duration : undefined
         }
       }, '*');
     } catch (e) {}
   }
 
-  function trySeek(player) {
-    if (seekDone || !shouldSeek) return;
+  function trySeekVideo(video) {
+    if (seekDone || !shouldSeek || !video) return;
     try {
-      var dur = readDuration(player);
+      var dur = video.duration;
+      if (typeof dur === 'number' && dur > 0 && startTime < dur - 5) {
+        video.currentTime = startTime;
+        seekDone = true;
+      }
+    } catch (e) {}
+  }
+
+  function trySeekPlayer(player) {
+    if (seekDone || !shouldSeek || !player) return;
+    try {
+      var dur = typeof player.getDuration === 'function' ? player.getDuration() : 0;
       if (typeof dur === 'number' && dur > 0 && startTime < dur - 5) {
         player.seek(startTime);
         seekDone = true;
@@ -73,56 +69,115 @@
     } catch (e) {}
   }
 
+  function attachVideo(video) {
+    if (!video || videoAttached) return;
+    videoAttached = true;
+
+    video.addEventListener('loadedmetadata', function() {
+      trySeekVideo(video);
+      emitToParent('ready', video.currentTime, video.duration);
+    });
+    video.addEventListener('play', function() {
+      trySeekVideo(video);
+      emitToParent('play', video.currentTime, video.duration);
+    });
+    video.addEventListener('playing', function() {
+      trySeekVideo(video);
+      emitToParent('playing', video.currentTime, video.duration);
+    });
+    video.addEventListener('pause', function() {
+      emitToParent('pause', video.currentTime, video.duration);
+    });
+    video.addEventListener('timeupdate', function() {
+      trySeekVideo(video);
+      emitToParent('time', video.currentTime, video.duration);
+    });
+    video.addEventListener('seeked', function() {
+      emitToParent('seek', video.currentTime, video.duration);
+    });
+    video.addEventListener('ended', function() {
+      emitToParent('complete', video.duration, video.duration);
+    });
+    video.addEventListener('error', function() {
+      emitToParent('error', video.currentTime, video.duration);
+    });
+
+    trySeekVideo(video);
+  }
+
   function attachPlayer(player) {
-    if (!player || playerAttached) return true;
-    playerAttached = true;
+    if (!player || jwAttached) return;
+    jwAttached = true;
 
     try {
       player.on('ready', function() {
-        emitToParent('ready', player);
-        trySeek(player);
+        trySeekPlayer(player);
+        emitToParent('ready',
+          typeof player.getPosition === 'function' ? player.getPosition() : undefined,
+          typeof player.getDuration === 'function' ? player.getDuration() : undefined
+        );
       });
       player.on('firstFrame', function() {
-        emitToParent('playing', player);
-        trySeek(player);
+        trySeekPlayer(player);
+        emitToParent('playing',
+          typeof player.getPosition === 'function' ? player.getPosition() : undefined,
+          typeof player.getDuration === 'function' ? player.getDuration() : undefined
+        );
       });
       player.on('play', function() {
-        emitToParent('play', player);
-        trySeek(player);
+        trySeekPlayer(player);
+        emitToParent('play',
+          typeof player.getPosition === 'function' ? player.getPosition() : undefined,
+          typeof player.getDuration === 'function' ? player.getDuration() : undefined
+        );
       });
       player.on('pause', function() {
-        emitToParent('pause', player);
+        emitToParent('pause',
+          typeof player.getPosition === 'function' ? player.getPosition() : undefined,
+          typeof player.getDuration === 'function' ? player.getDuration() : undefined
+        );
       });
       player.on('time', function(ev) {
-        emitToParent('time', player, ev || {});
-        trySeek(player);
+        trySeekPlayer(player);
+        emitToParent('time',
+          ev && typeof ev.position === 'number' ? ev.position : undefined,
+          ev && typeof ev.duration === 'number' ? ev.duration : undefined
+        );
       });
       player.on('seek', function(ev) {
-        emitToParent('seek', player, ev || {});
+        emitToParent('seek',
+          ev && typeof ev.position === 'number' ? ev.position : undefined,
+          ev && typeof ev.duration === 'number' ? ev.duration : undefined
+        );
       });
       player.on('complete', function() {
-        emitToParent('complete', player, {
-          position: readDuration(player),
-          duration: readDuration(player)
-        });
+        var dur = typeof player.getDuration === 'function' ? player.getDuration() : undefined;
+        emitToParent('complete', dur, dur);
       });
       player.on('error', function() {
-        emitToParent('error', player);
+        emitToParent('error',
+          typeof player.getPosition === 'function' ? player.getPosition() : undefined,
+          typeof player.getDuration === 'function' ? player.getDuration() : undefined
+        );
       });
     } catch (e) {}
 
-    return true;
+    trySeekPlayer(player);
   }
 
   function bootstrap() {
-    if (++attempts > maxAttempts) return;
-    var player = getPlayer();
-    if (attachPlayer(player)) {
-      trySeek(player);
-      if (playerAttached && seekDone) return;
-    }
+    attempts += 1;
+    attachVideo(getVideo());
+    attachPlayer(getPlayer());
+
+    if (seekDone && (videoAttached || jwAttached)) return;
+    if (attempts >= maxAttempts) return;
     setTimeout(bootstrap, 500);
   }
 
-  setTimeout(bootstrap, 500);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+  } else {
+    bootstrap();
+  }
 })();
