@@ -104,9 +104,6 @@ server {
     location ^~ /embed/ {
         auth_request /auth-check;
         error_page 401 = @auth_required;
-        set $playback_log_kind "verify-embed";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
 
         proxy_pass https://vixcloud.co/embed/;
         proxy_ssl_server_name on;
@@ -128,9 +125,6 @@ server {
 
     # ---- Core playback: playlist proxy rewrites downstream asset URLs ----
     location ^~ /playlist/ {
-        set $playback_log_kind "verify-playlist";
-        set $playback_upstream_host "backend";
-        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass http://backend/playback/playlist/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -152,21 +146,7 @@ server {
 
     # ---- Core playback: referenced by playlist rewrite rules ----
     location ~ ^/jwplayer- {
-        set $playback_log_kind "verify-jwplayer";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
         proxy_pass https://vixcloud.co$request_uri;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
-    }
-
-    # ---- Core playback: referenced by playlist rewrite rules ----
-    location ^~ /build/ {
-        set $playback_log_kind "verify-build";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
-        proxy_pass https://vixcloud.co/build/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer https://vixcloud.co/;
@@ -177,28 +157,6 @@ server {
         proxy_pass https://vixcloud.co/favicon.ico;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
-    }
-
-    # ---- VixCloud movie player with ad-block + auto-seek injection ----
-    location ~ ^/player/movie/(.*)$ {
-        auth_request /auth-check;
-        error_page 401 = @auth_required;
-        set $playback_log_kind "verify-player-movie";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
-
-        set $vix_path movie/$1;
-        proxy_pass https://vixcloud.co/$vix_path$is_args$args;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
-        proxy_set_header Accept-Encoding "";
-
-        sub_filter 'https://vixcloud.co/playlist/' 'https://$host/playlist/';
-        sub_filter '//vixcloud.co/playlist/' '//$host/playlist/';
-        sub_filter '</head>' '<script src="/scripts/adblock-light.js"></script><script src="/scripts/seek-forwarder.js"></script></head>';
-        sub_filter_types text/html;
-        sub_filter_once off;
     }
 
     # ---- VixSrc static asset fallback ----
