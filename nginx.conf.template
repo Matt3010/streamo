@@ -88,43 +88,6 @@ server {
         add_header Access-Control-Allow-Origin * always;
     }
 
-    # ---- Candidate removal: keep only if runtime traffic shows /api/vixsrc/* ----
-    location /api/vixsrc/ {
-        set $playback_log_kind "candidate-api-vixsrc";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
-        proxy_pass https://vixcloud.co/api/;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Origin https://vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
-        proxy_hide_header Access-Control-Allow-Origin;
-        add_header Access-Control-Allow-Origin * always;
-    }
-
-    # ---- Candidate removal: broad fallback for relative /api/* calls from upstream pages ----
-    location /api/ {
-        set $playback_log_kind "candidate-api-fallback";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
-        proxy_pass https://vixcloud.co/api/;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Origin https://vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
-    }
-
-    # ---- Candidate removal: embed/build pages may still reference /_next/* assets ----
-    location ^~ /_next/ {
-        set $playback_log_kind "candidate-next";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
-        proxy_pass https://vixcloud.co/_next/;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
-    }
-
     # ---- Core playback: segment/asset CDN targets rewritten by playlist proxy ----
     location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
         set $cdn_host "$1.vix-content.net";
@@ -134,17 +97,6 @@ server {
         proxy_pass https://$cdn_host/$2$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Host $cdn_host;
-        proxy_set_header Referer https://vixcloud.co/;
-    }
-
-    # ---- Candidate removal: generic fallback for absolute vixcloud URLs rewritten by playlist proxy ----
-    location ^~ /vixcloud/ {
-        set $playback_log_kind "candidate-vixcloud";
-        set $playback_upstream_host "vixcloud.co";
-        access_log /data/nginx-playback-access.log playback_transport;
-        proxy_pass https://vixcloud.co/;
-        proxy_ssl_server_name on;
-        proxy_set_header Host vixcloud.co;
         proxy_set_header Referer https://vixcloud.co/;
     }
 
