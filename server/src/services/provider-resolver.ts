@@ -83,8 +83,20 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
   }
 
   const titles = extractProviderTitles(page);
+  logCandidateSummary(args, titles);
   const best = pickBestMatch(titles, args);
   const { match, persistence } = finalizeMatch(best);
+  console.log('[provider-resolver] match decision', {
+    query: args.title,
+    mediaType: args.mediaType,
+    tmdbId: args.tmdbId,
+    releaseDate: args.releaseDate ?? null,
+    bestScore: best?.score ?? null,
+    selected: match
+      ? { id: match.id, slug: match.slug, title: match.title, mediaType: match.mediaType }
+      : null,
+    persistence
+  });
   await upsertMapping(args, persistence, now);
   cacheResolve(cacheKey, match, now);
   return match;
@@ -304,6 +316,29 @@ function logProviderPayloadShape(
     source,
     titlesCount: titles.length,
     sample
+  });
+}
+
+function logCandidateSummary(args: ResolveArgs, titles: ProviderSearchTitle[]): void {
+  const wantedYear = extractYear(args.releaseDate ?? null);
+  const ranked = titles
+    .filter((title) => title.id)
+    .map((title) => ({
+      id: title.id ?? null,
+      title: title.name ?? null,
+      type: normalizeProviderType(title.type),
+      year: extractYear(getProviderReleaseDate(title)),
+      score: scoreCandidate(title, args.title, wantedYear)
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  console.log('[provider-resolver] candidate summary', {
+    query: args.title,
+    mediaType: args.mediaType,
+    tmdbId: args.tmdbId,
+    wantedYear,
+    top: ranked
   });
 }
 
