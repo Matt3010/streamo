@@ -11,6 +11,7 @@ interface ProviderResolvedTitle {
 
 interface ProviderResolvedEpisode {
   episodeId: number;
+  embedUrl: string | null;
 }
 
 @Injectable({ providedIn: 'root' })

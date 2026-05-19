@@ -491,7 +491,12 @@ export class PlayerService {
       return false;
     }
 
-    this.pendingVideoUrl = `${VIXSRC_BASE}/tv/${playback.id}?episode_id=${resolved.episodeId}&next_episode=1`;
+    if (!resolved.embedUrl) {
+      this.toast.show(`Embed episodio S${season} E${episode} non disponibile sul provider`);
+      return false;
+    }
+
+    this.pendingVideoUrl = resolved.embedUrl;
     return true;
   }
 
