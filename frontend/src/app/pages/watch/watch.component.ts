@@ -630,6 +630,7 @@ export class WatchComponent {
     startTime: number | null
   ): (() => void) | null {
     try {
+      this.applyIframeAdblock(iframe);
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
       const video = doc?.querySelector('.jw-video, video') as HTMLVideoElement | null;
       if (!video) return null;
@@ -705,6 +706,146 @@ export class WatchComponent {
     } catch {
       return null;
     }
+  }
+
+  private applyIframeAdblock(iframe: HTMLIFrameElement): void {
+    try {
+      const win = iframe.contentWindow as (Window & { __scAdblockPatched?: boolean }) | null;
+      const doc = iframe.contentDocument;
+      if (!win || !doc || win.__scAdblockPatched) return;
+      win.__scAdblockPatched = true;
+
+      const allowedHosts = new Set([window.location.host, 'vixcloud.co']);
+      const isBadUrl = (value: string | null | undefined): boolean => {
+        if (!value) return false;
+        try {
+          const url = new URL(value, win.location.href);
+          const host = url.host;
+          for (const allowed of allowedHosts) {
+            if (host === allowed || host.endsWith(`.${allowed}`)) return false;
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const noopOpen = () => null;
+      try {
+        Object.defineProperty(win, 'open', {
+          value: noopOpen,
+          writable: false,
+          configurable: false
+        });
+      } catch {
+        try {
+          (win as Window & { open: typeof window.open }).open = noopOpen as typeof window.open;
+        } catch {}
+      }
+
+      const nodeProto = (win as Window & { Node?: typeof Node }).Node?.prototype;
+      if (nodeProto) {
+        const origAppend = nodeProto.appendChild;
+        if (typeof origAppend === 'function') {
+          nodeProto.appendChild = function<T extends Node>(node: T): T {
+            const el = node as unknown as Element;
+            const tag = el?.tagName?.toLowerCase?.();
+            const src = (el as HTMLScriptElement | HTMLIFrameElement | null)?.src;
+            if ((tag === 'script' || tag === 'iframe') && isBadUrl(src)) return node;
+            if (tag === 'a') {
+              const anchor = el as HTMLAnchorElement;
+              if (anchor.target === '_blank') {
+                anchor.target = '_self';
+                anchor.removeAttribute('target');
+              }
+            }
+            return origAppend.call(this, node) as T;
+          };
+        }
+
+        const origInsert = nodeProto.insertBefore;
+        if (typeof origInsert === 'function') {
+          nodeProto.insertBefore = function<T extends Node>(node: T, ref: Node | null): T {
+            const el = node as unknown as Element;
+            const tag = el?.tagName?.toLowerCase?.();
+            const src = (el as HTMLScriptElement | HTMLIFrameElement | null)?.src;
+            if ((tag === 'script' || tag === 'iframe') && isBadUrl(src)) return node;
+            return origInsert.call(this, node, ref) as T;
+          };
+        }
+      }
+
+      const events = ['click', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'contextmenu'];
+      for (const eventName of events) {
+        doc.addEventListener(eventName, (event) => {
+          let target = event.target as HTMLElement | null;
+          while (target && target !== doc.body) {
+            const tag = target.tagName;
+            if (tag === 'A') {
+              const anchor = target as HTMLAnchorElement;
+              if (anchor.target === '_blank' || anchor.getAttribute('target') === '_blank' || isBadUrl(anchor.href)) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return;
+              }
+            }
+            if (tag === 'FORM') {
+              const form = target as HTMLFormElement;
+              if (form.target === '_blank') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return;
+              }
+            }
+            target = target.parentElement;
+          }
+        }, true);
+      }
+
+      const eventTargetProto = (win as Window & { EventTarget?: typeof EventTarget }).EventTarget?.prototype;
+      if (eventTargetProto?.addEventListener) {
+        const origAddEventListener = eventTargetProto.addEventListener;
+        eventTargetProto.addEventListener = function(
+          type: string,
+          listener: EventListenerOrEventListenerObject | null,
+          options?: AddEventListenerOptions | boolean
+        ): void {
+          if (type === 'beforeunload' || type === 'unload' || type === 'pagehide') return;
+          if (type === 'visibilitychange' && this === doc) return;
+          return origAddEventListener.call(this, type, listener, options);
+        };
+      }
+
+      try {
+        Object.defineProperty(win, 'onbeforeunload', {
+          get: () => null,
+          set: () => {},
+          configurable: false
+        });
+      } catch {}
+
+      try {
+        Object.defineProperty(win, 'onunload', {
+          get: () => null,
+          set: () => {},
+          configurable: false
+        });
+      } catch {}
+
+      const origCreateElement = doc.createElement.bind(doc);
+      doc.createElement = ((tagName: string, options?: ElementCreationOptions) => {
+        const el = origCreateElement(tagName, options);
+        if (tagName.toLowerCase() === 'a') {
+          const anchor = el as HTMLAnchorElement & { click: () => void };
+          const origClick = anchor.click.bind(anchor);
+          anchor.click = () => {
+            if (anchor.target === '_blank' || isBadUrl(anchor.href)) return;
+            origClick();
+          };
+        }
+        return el;
+      }) as typeof doc.createElement;
+    } catch {}
   }
 
   private teardownIframeBridge(): void {
