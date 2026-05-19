@@ -105,7 +105,7 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
   try {
     res = await fetch(url, {
       headers: {
-        accept: 'application/json, text/html;q=0.9, */*;q=0.8',
+        accept: 'application/json',
         'x-inertia': 'true',
         'x-requested-with': 'XMLHttpRequest'
       }
@@ -130,11 +130,25 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
 }
 
 function parseInertiaPageFromHtml(html: string): ProviderSearchPage | null {
-  const match = html.match(/data-page="([^"]+)"/i);
-  if (!match?.[1]) return null;
+  const marker = 'data-page=';
+  const idx = html.indexOf(marker);
+  if (idx < 0) return null;
+
+  const after = html.slice(idx + marker.length);
+  const quote = after[0];
+  if (quote !== '"' && quote !== '\'') return null;
+
+  let value = '';
+  for (let i = 1; i < after.length; i += 1) {
+    const ch = after[i];
+    if (ch === quote) break;
+    value += ch;
+  }
+
+  if (!value) return null;
 
   try {
-    return JSON.parse(decodeHtmlEntities(match[1])) as ProviderSearchPage;
+    return JSON.parse(decodeHtmlEntities(value)) as ProviderSearchPage;
   } catch {
     return null;
   }
@@ -144,6 +158,7 @@ function decodeHtmlEntities(value: string): string {
   return value
     .replace(/&quot;/g, '"')
     .replace(/&#34;/g, '"')
+    .replace(/&apos;/g, '\'')
     .replace(/&#039;/g, '\'')
     .replace(/&#39;/g, '\'')
     .replace(/&amp;/g, '&')
