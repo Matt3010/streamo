@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, numberAttribute, signal, viewChild } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
@@ -81,7 +81,7 @@ type ConfirmAction =
             @if (loading()) {
               <div class="skeleton skeleton-backdrop"></div>
             } @else {
-              <iframe [src]="iframeSrcSafe()" allowfullscreen
+              <iframe #playerFrame [src]="iframeSrcSafe()" allowfullscreen
                       allow="autoplay; encrypted-media; fullscreen"></iframe>
             }
           </div>
@@ -328,6 +328,7 @@ export class WatchComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly destroyRef = inject(DestroyRef);
   private readonly background = inject(BackgroundService);
+  private readonly playerFrame = viewChild<ElementRef<HTMLIFrameElement>>('playerFrame');
 
   protected readonly recommendationsIcon = faThumbsUp;
   protected readonly reviewsIcon = faCommentDots;
@@ -353,6 +354,8 @@ export class WatchComponent {
   // jumps between titles before the previous fetch resolves.
   private recommendationsSeq = 0;
   private reviewsSeq = 0;
+  private iframeBridgeTimer: number | null = null;
+  private detachIframeBridge: (() => void) | null = null;
 
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -559,6 +562,39 @@ export class WatchComponent {
       this.background.setUrl(this.player.backdropUrl() || null);
     });
 
+    effect((onCleanup) => {
+      const src = this.player.iframeSrc();
+      const frameRef = this.playerFrame();
+
+      this.teardownIframeBridge();
+      if (!src || !frameRef) return;
+
+      let cancelled = false;
+      const iframe = frameRef.nativeElement;
+      const start = parseStartParam(src);
+
+      const bind = () => {
+        if (cancelled) return;
+        const cleanup = this.tryAttachIframeBridge(iframe, start);
+        if (cleanup) {
+          this.detachIframeBridge = cleanup;
+          return;
+        }
+
+        this.iframeBridgeTimer = window.setTimeout(bind, 500);
+      };
+
+      const onLoad = () => bind();
+      iframe.addEventListener('load', onLoad);
+      bind();
+
+      onCleanup(() => {
+        cancelled = true;
+        iframe.removeEventListener('load', onLoad);
+        this.teardownIframeBridge();
+      });
+    });
+
     // Recommendations are tied to the *route inputs* (not the loaded item)
     // so they kick off the moment the URL changes, in parallel with the
     // TMDB details fetch. Skips empty/invalid combos.
@@ -583,9 +619,103 @@ export class WatchComponent {
     });
 
     this.destroyRef.onDestroy(() => {
+      this.teardownIframeBridge();
       this.player.cleanup();
       this.background.clear();
     });
+  }
+
+  private tryAttachIframeBridge(
+    iframe: HTMLIFrameElement,
+    startTime: number | null
+  ): (() => void) | null {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      const video = doc?.querySelector('.jw-video, video') as HTMLVideoElement | null;
+      if (!video) return null;
+
+      let seekDone = !(startTime && startTime > 0);
+      const emit = (eventName: string) => {
+        this.player.ingestPlayerEvent({
+          type: 'PLAYER_EVENT',
+          event: {
+            event: eventName,
+            currentTime: Number.isFinite(video.currentTime) ? video.currentTime : undefined,
+            duration: Number.isFinite(video.duration) ? video.duration : undefined
+          }
+        });
+      };
+
+      const maybeSeek = () => {
+        if (seekDone || !(startTime && startTime > 0)) return;
+        if (Number.isFinite(video.duration) && video.duration > 0 && startTime < video.duration - 5) {
+          try {
+            video.currentTime = startTime;
+            seekDone = true;
+          } catch {}
+        }
+      };
+
+      const onLoadedMetadata = () => {
+        maybeSeek();
+        emit('ready');
+      };
+      const onPlay = () => {
+        maybeSeek();
+        emit('play');
+      };
+      const onPlaying = () => {
+        maybeSeek();
+        emit('playing');
+      };
+      const onPause = () => emit('pause');
+      const onTimeUpdate = () => {
+        maybeSeek();
+        emit('time');
+      };
+      const onSeeked = () => emit('seek');
+      const onEnded = () => {
+        emit('complete');
+      };
+      const onError = () => emit('error');
+
+      video.addEventListener('loadedmetadata', onLoadedMetadata);
+      video.addEventListener('play', onPlay);
+      video.addEventListener('playing', onPlaying);
+      video.addEventListener('pause', onPause);
+      video.addEventListener('timeupdate', onTimeUpdate);
+      video.addEventListener('seeked', onSeeked);
+      video.addEventListener('ended', onEnded);
+      video.addEventListener('error', onError);
+
+      if (video.readyState >= 1) {
+        onLoadedMetadata();
+      }
+
+      return () => {
+        video.removeEventListener('loadedmetadata', onLoadedMetadata);
+        video.removeEventListener('play', onPlay);
+        video.removeEventListener('playing', onPlaying);
+        video.removeEventListener('pause', onPause);
+        video.removeEventListener('timeupdate', onTimeUpdate);
+        video.removeEventListener('seeked', onSeeked);
+        video.removeEventListener('ended', onEnded);
+        video.removeEventListener('error', onError);
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private teardownIframeBridge(): void {
+    if (this.iframeBridgeTimer !== null) {
+      clearTimeout(this.iframeBridgeTimer);
+      this.iframeBridgeTimer = null;
+    }
+    if (this.detachIframeBridge) {
+      this.detachIframeBridge();
+      this.detachIframeBridge = null;
+    }
   }
 
   private async loadRecommendations(id: string, type: MediaType): Promise<void> {
@@ -791,6 +921,16 @@ function formatTimeCompact(seconds: number): string {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function parseStartParam(src: string): number | null {
+  try {
+    const url = new URL(src, window.location.origin);
+    const raw = Number(url.searchParams.get('start'));
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {

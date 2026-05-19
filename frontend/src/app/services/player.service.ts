@@ -124,6 +124,10 @@ export class PlayerService {
     window.addEventListener('message', (event: MessageEvent) => this.handlePlayerMessage(event));
   }
 
+  ingestPlayerEvent(event: PlayerEventMessage): void {
+    this.applyPlayerEvent(event.event);
+  }
+
   // ===== OPEN / CLEANUP =====
   async open(tmdbId: string | number, type: MediaType, resumeSeason = 0, resumeEpisode = 0): Promise<void> {
     // open() is called from the WatchComponent's effect — any signal *read*
@@ -766,8 +770,10 @@ export class PlayerService {
   private handlePlayerMessage(event: MessageEvent): void {
     const data = event.data;
     if (!data || typeof data !== 'object' || (data as { type?: unknown }).type !== 'PLAYER_EVENT') return;
+    this.applyPlayerEvent((data as PlayerEventMessage).event);
+  }
 
-    const ev = (data as PlayerEventMessage).event;
+  private applyPlayerEvent(ev: PlayerEventMessage['event']): void {
     const evtName = ev.event;
     const ct = ev.currentTime;
     const dur = ev.duration;
