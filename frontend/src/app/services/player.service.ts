@@ -823,6 +823,8 @@ export class PlayerService {
       return false;
     }
 
+    const previousCandidateIds = this.providerCandidates().map((c) => c.providerTitleId).sort().join(',');
+
     const result = await this.providerResolve.refreshResolve(
       item.id,
       type,
@@ -834,12 +836,24 @@ export class PlayerService {
     this.providerMatchStatus.set(result.matchStatus);
     this.providerResolvedTitleId.set(result.resolved?.id ?? null);
 
+    const newCandidateIds = result.candidates.map((c) => c.providerTitleId).sort().join(',');
+    const candidatesChanged = previousCandidateIds !== newCandidateIds;
+
     if (!result.resolved) {
       this.setPlaybackUnavailable(result.reason);
+      if (result.reason === 'temporarily_unavailable') {
+        this.toast.show('Impossibile aggiornare la ricerca');
+      } else {
+        this.toast.show(candidatesChanged ? 'Lista versioni aggiornata' : 'Nessuna nuova versione trovata');
+      }
       return false;
     }
 
-    return this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+    const prepared = await this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+    if (prepared) {
+      this.toast.show(candidatesChanged ? 'Lista versioni aggiornata' : 'Versione confermata');
+    }
+    return prepared;
   }
 
   async manuallyConfirmProvider(providerTitleId: number): Promise<boolean> {
@@ -855,10 +869,13 @@ export class PlayerService {
 
     if (!result.resolved) {
       this.setPlaybackUnavailable(result.reason);
+      this.toast.show('Impossibile confermare la versione');
       return false;
     }
 
-    return this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+    const prepared = await this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+    if (prepared) this.toast.show('Versione aggiornata');
+    return prepared;
   }
 
   private async applyResolvedTitleAndPrepare(

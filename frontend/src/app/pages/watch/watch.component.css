@@ -687,6 +687,13 @@
 .skeleton-line.short { width: 40%; }
 .skeleton-line.medium { width: 70%; }
 
+.player-unavailable-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .provider-picker {
   padding: 1rem;
   display: flex;
@@ -742,4 +749,18 @@
 .provider-picker-current {
   color: var(--accent);
   font-weight: 700;
+}
+
+.provider-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.provider-picker-footer-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }

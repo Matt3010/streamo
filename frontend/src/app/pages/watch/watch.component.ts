@@ -119,6 +119,7 @@ type ConfirmAction =
                       [disabled]="!canManualRefreshProvider()"
                       [uiPending]="providerRefreshPending()"
                       (click)="triggerManualProviderRefresh()">
+                <app-icon name="rotate-left"></app-icon>
                 <span>{{ manualProviderRefreshLabel() }}</span>
               </button>
             }
@@ -143,6 +144,9 @@ type ConfirmAction =
               <app-icon name="bookmark"></app-icon>
             </button>
           </div>
+          @if (showUnavailableHint()) {
+            <p class="player-unavailable-hint">{{ unavailableHint() }}</p>
+          }
         } @else {
           <div class="player-actions">
             <button uiButton type="button" (click)="closePlayer()">
@@ -338,17 +342,17 @@ type ConfirmAction =
         (cancelled)="cancelConfirmedAction()"
         (confirmed)="executeConfirmedAction()" />
 
-      <ui-modal [(open)]="providerPickerOpen" title="Scegli match provider" size="sm">
+      <ui-modal [(open)]="providerPickerOpen" title="Scegli la versione" size="sm">
         <div class="provider-picker">
           <p class="provider-picker-hint">
-            Seleziona il titolo del provider che corrisponde a quello che stai guardando. La scelta resta salvata e non verr&agrave; pi&ugrave; ricalcolata automaticamente.
+            Quale di queste &egrave; il titolo giusto? La scelta resta salvata e non verr&agrave; pi&ugrave; ricalcolata automaticamente.
           </p>
           <ul class="provider-picker-list">
             @for (c of providerCandidates(); track c.providerTitleId) {
               <li>
                 <button uiButton="panel" type="button"
                         [class.is-current]="player.providerResolvedTitleId() === c.providerTitleId"
-                        [disabled]="providerPickerPending()"
+                        [disabled]="providerPickerPending() || providerRefreshPending()"
                         (click)="chooseProviderCandidate(c.providerTitleId)">
                   <span class="provider-picker-title">{{ c.title }}</span>
                   <span class="provider-picker-meta">
@@ -361,6 +365,16 @@ type ConfirmAction =
               </li>
             }
           </ul>
+          <div class="provider-picker-footer">
+            <span class="provider-picker-footer-hint">Nessuno è quello giusto?</span>
+            <button uiButton="ghost" type="button"
+                    [disabled]="!canRefreshFromPicker()"
+                    [uiPending]="providerRefreshPending()"
+                    (click)="refreshFromPicker()">
+              <app-icon name="rotate-left"></app-icon>
+              <span>{{ pickerRefreshLabel() }}</span>
+            </button>
+          </div>
         </div>
       </ui-modal>
     </div>
@@ -494,7 +508,7 @@ export class WatchComponent {
   protected readonly confirmModalTitle = computed(() => {
     const action = this.pendingConfirmAction();
     if (action?.type === 'remove-watchlist') return 'Rimuovi Dalla Lista';
-    if (action?.type === 'refresh-provider') return 'Riprova Ricerca Provider';
+    if (action?.type === 'refresh-provider') return 'Cerca Versioni';
     return 'Riparti Dall\'Inizio';
   });
 
@@ -504,7 +518,7 @@ export class WatchComponent {
       return `Vuoi rimuovere ${this.title()} dalla tua lista?`;
     }
     if (action?.type === 'refresh-provider') {
-      return 'Vuoi rilanciare manualmente la ricerca del provider per questo titolo?';
+      return 'Vuoi cercare di nuovo le versioni disponibili per questo titolo?';
     }
     if (this.player.currentItemType() === 'tv') {
       const season = action?.type === 'clear-progress' ? (action.season ?? this.player.selectedSeason()) : this.player.selectedSeason();
@@ -520,7 +534,7 @@ export class WatchComponent {
       return 'Potrai sempre riaggiungerlo più tardi.';
     }
     if (action === 'refresh-provider') {
-      return 'Usalo solo se pensi che il titolo sia appena comparso sul provider.';
+      return 'Usalo solo se pensi che siano comparse nuove versioni del titolo.';
     }
     return 'Ripartirai dall’inizio al prossimo play.';
   });
@@ -592,26 +606,55 @@ export class WatchComponent {
     && this.player.providerManualRefreshState() !== null
     && this.player.providerCandidates().length === 0
   ));
-  protected readonly manualProviderRefreshRemaining = computed(() => {
-    if (!this.showManualProviderRefresh()) return 0;
+  // Cooldown remaining is computed without UI gating so the modal "Rilancia
+  // ricerca" link can show the same countdown even when the outer button is
+  // hidden by the picker-takes-priority rule above.
+  protected readonly providerRefreshCooldownRemaining = computed(() => {
     const state = this.player.providerManualRefreshState();
     if (!state) return 0;
     return Math.max(0, state.nextAllowedAt - this.manualRefreshNow());
   });
   protected readonly canManualRefreshProvider = computed(() => (
-    this.showManualProviderRefresh() && this.manualProviderRefreshRemaining() === 0
+    this.showManualProviderRefresh() && this.providerRefreshCooldownRemaining() === 0
   ));
   protected readonly manualProviderRefreshLabel = computed(() => {
     if (!this.showManualProviderRefresh()) return '';
-    const remaining = this.manualProviderRefreshRemaining();
-    if (remaining === 0) return 'Riprova ricerca provider';
-    return `Riprova tra ${formatCooldownLabel(remaining)}`;
+    const remaining = this.providerRefreshCooldownRemaining();
+    if (remaining === 0) return 'Cerca versioni';
+    return `Cerca tra ${formatCooldownLabel(remaining)}`;
   });
 
   protected readonly providerCandidates = computed(() => this.player.providerCandidates());
-  protected readonly showProviderPicker = computed(() => this.providerCandidates().length > 0);
+  protected readonly showProviderPicker = computed(() => {
+    const candidates = this.providerCandidates();
+    if (candidates.length === 0) return false;
+    const currentId = this.player.providerResolvedTitleId();
+    // If the only candidate is the one already confirmed, the picker would
+    // show a single row marked "attuale" with nothing else to choose — hide
+    // the button so the UI doesn't promise a meaningful action.
+    if (candidates.length === 1 && candidates[0].providerTitleId === currentId) return false;
+    return true;
+  });
   protected readonly providerPickerButtonLabel = computed(() => (
-    this.player.providerMatchStatus() === 'failed' ? 'Scegli match provider' : 'Cambia match provider'
+    this.player.providerMatchStatus() === 'failed' ? 'Scegli versione' : 'Cambia versione'
+  ));
+  protected readonly canRefreshFromPicker = computed(() => (
+    this.player.providerManualRefreshState() !== null
+    && this.providerRefreshCooldownRemaining() === 0
+  ));
+  protected readonly pickerRefreshLabel = computed(() => {
+    const remaining = this.providerRefreshCooldownRemaining();
+    if (remaining === 0) return 'Aggiorna lista versioni';
+    return `Aggiorna tra ${formatCooldownLabel(remaining)}`;
+  });
+
+  protected readonly showUnavailableHint = computed(() => (
+    this.player.playbackAvailability() === 'unavailable'
+    && this.player.playbackUnavailableReason() === 'not_found'
+    && this.providerCandidates().length > 0
+  ));
+  protected readonly unavailableHint = computed(() => (
+    'Potrebbe essere disponibile con un titolo diverso — scegli la versione giusta dalla lista.'
   ));
 
   protected readonly primaryPlayLabel = computed(() => {
@@ -686,9 +729,11 @@ export class WatchComponent {
     });
 
     // Tick once per second only while the manual-refresh button is visible
-    // AND a cooldown is active, so the countdown label updates in real time.
+    // OR the picker modal is open (which also shows a countdown on its
+    // "Rilancia ricerca completa" link) AND a cooldown is active.
     effect(() => {
-      const needsTimer = this.showManualProviderRefresh() && this.manualProviderRefreshRemaining() > 0;
+      const visibleCountdown = this.showManualProviderRefresh() || this.providerPickerOpen();
+      const needsTimer = visibleCountdown && this.providerRefreshCooldownRemaining() > 0;
       if (needsTimer) {
         if (this.manualRefreshTimer === null) {
           this.manualRefreshTimer = window.setInterval(() => {
@@ -811,6 +856,13 @@ export class WatchComponent {
       const ok = await this.player.manuallyConfirmProvider(providerTitleId);
       if (ok) this.providerPickerOpen.set(false);
     });
+  }
+
+  protected refreshFromPicker(): void {
+    if (!this.canRefreshFromPicker() || this.providerRefreshPending()) return;
+    // Stay in the modal — the candidates signal will repopulate from the
+    // refresh response and the list updates in place.
+    void runWithPending(this.providerRefreshPending, () => this.player.refreshProviderTitleResolution());
   }
 
   protected cancelConfirmedAction(): void {
