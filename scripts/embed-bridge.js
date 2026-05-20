@@ -1,0 +1,237 @@
+(function() {
+  var params = new URLSearchParams(location.search);
+  var startTime = parseInt(params.get('start'), 10);
+  var shouldSeek = startTime > 0;
+
+  var seekDone = !shouldSeek;
+  var activeVideo = null;
+  var activePlayer = null;
+  var videoCleanup = null;
+  var playerCleanup = null;
+  var syncTimer = null;
+  var observer = null;
+  var attempts = 0;
+  var maxAttempts = 240; // ~120s
+
+  function getPlayer() {
+    if (typeof jwplayer === 'function') {
+      try {
+        var p = jwplayer();
+        if (p && typeof p.on === 'function') return p;
+      } catch (e) {}
+    }
+    if (window.jwplayer && typeof window.jwplayer === 'function') {
+      try {
+        var p2 = window.jwplayer();
+        if (p2 && typeof p2.on === 'function') return p2;
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function getVideo() {
+    try {
+      return document.querySelector('.jw-video, video');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function emitToParent(eventName, currentTime, duration) {
+    try {
+      if (!window.parent || window.parent === window) return;
+      window.parent.postMessage({
+        type: 'PLAYER_EVENT',
+        event: {
+          event: eventName,
+          currentTime: typeof currentTime === 'number' && isFinite(currentTime) ? currentTime : undefined,
+          duration: typeof duration === 'number' && isFinite(duration) ? duration : undefined
+        }
+      }, '*');
+    } catch (e) {}
+  }
+
+  function maybeSeekVideo(video) {
+    if (!video || seekDone || !shouldSeek) return;
+    try {
+      var dur = video.duration;
+      if (typeof dur === 'number' && isFinite(dur) && dur > 0 && startTime < dur - 5) {
+        video.currentTime = startTime;
+        seekDone = true;
+      }
+    } catch (e) {}
+  }
+
+  function maybeSeekPlayer(player) {
+    if (!player || seekDone || !shouldSeek || typeof player.seek !== 'function') return;
+    try {
+      var dur = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+      if (typeof dur === 'number' && isFinite(dur) && dur > 0 && startTime < dur - 5) {
+        player.seek(startTime);
+        seekDone = true;
+      }
+    } catch (e) {}
+  }
+
+  function attachVideo(video) {
+    if (!video || video === activeVideo) return;
+    if (videoCleanup) {
+      videoCleanup();
+      videoCleanup = null;
+    }
+
+    activeVideo = video;
+    try {
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', 'true');
+    } catch (e) {}
+
+    function emit(eventName) {
+      emitToParent(eventName, video.currentTime, video.duration);
+    }
+
+    function onReady() {
+      maybeSeekVideo(video);
+      emit('ready');
+    }
+    function onPlay() {
+      maybeSeekVideo(video);
+      emit('play');
+    }
+    function onPlaying() {
+      maybeSeekVideo(video);
+      emit('playing');
+    }
+    function onPause() { emit('pause'); }
+    function onTime() {
+      maybeSeekVideo(video);
+      emit('time');
+    }
+    function onSeeked() { emit('seek'); }
+    function onEnded() { emitToParent('complete', video.duration, video.duration); }
+    function onError() { emit('error'); }
+
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('durationchange', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('seeked', onSeeked);
+    video.addEventListener('ended', onEnded);
+    video.addEventListener('error', onError);
+
+    if (video.readyState >= 1) {
+      onReady();
+    }
+
+    videoCleanup = function() {
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('durationchange', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('ended', onEnded);
+      video.removeEventListener('error', onError);
+    };
+  }
+
+  function attachPlayer(player) {
+    if (!player || player === activePlayer) return;
+    if (playerCleanup) {
+      playerCleanup();
+      playerCleanup = null;
+    }
+
+    activePlayer = player;
+
+    function readPosition(payload) {
+      if (payload && typeof payload.position === 'number') return payload.position;
+      try {
+        if (typeof player.getPosition === 'function') return player.getPosition();
+      } catch (e) {}
+      return undefined;
+    }
+
+    function readDuration(payload) {
+      if (payload && typeof payload.duration === 'number') return payload.duration;
+      try {
+        if (typeof player.getDuration === 'function') return player.getDuration();
+      } catch (e) {}
+      return undefined;
+    }
+
+    function emit(eventName, payload) {
+      emitToParent(eventName, readPosition(payload), readDuration(payload));
+    }
+
+    var listeners = [
+      ['ready', function() { maybeSeekPlayer(player); emit('ready'); }],
+      ['firstFrame', function() { maybeSeekPlayer(player); emit('playing'); }],
+      ['play', function() { maybeSeekPlayer(player); emit('play'); }],
+      ['pause', function() { emit('pause'); }],
+      ['time', function(payload) { maybeSeekPlayer(player); emit('time', payload); }],
+      ['seek', function(payload) { emit('seek', payload); }],
+      ['complete', function() {
+        var dur = readDuration();
+        emitToParent('complete', dur, dur);
+      }],
+      ['error', function() { emit('error'); }]
+    ];
+
+    for (var i = 0; i < listeners.length; i += 1) {
+      try {
+        player.on(listeners[i][0], listeners[i][1]);
+      } catch (e) {}
+    }
+
+    maybeSeekPlayer(player);
+
+    playerCleanup = function() {
+      for (var j = 0; j < listeners.length; j += 1) {
+        try {
+          if (typeof player.off === 'function') {
+            player.off(listeners[j][0], listeners[j][1]);
+          }
+        } catch (e) {}
+      }
+    };
+  }
+
+  function sync() {
+    attachVideo(getVideo());
+    attachPlayer(getPlayer());
+  }
+
+  function bootstrap() {
+    attempts += 1;
+    sync();
+
+    if (activeVideo || activePlayer) {
+      if (!observer && typeof MutationObserver !== 'undefined' && document.documentElement) {
+        observer = new MutationObserver(sync);
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+      }
+      if (!syncTimer) {
+        syncTimer = window.setInterval(sync, 1000);
+      }
+    }
+
+    if ((activeVideo || activePlayer) && seekDone) return;
+    if (attempts >= maxAttempts) return;
+    setTimeout(bootstrap, 500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+  } else {
+    bootstrap();
+  }
+})();

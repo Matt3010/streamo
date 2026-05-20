@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, numberAttribute, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, numberAttribute, signal } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
@@ -81,7 +81,7 @@ type ConfirmAction =
             @if (loading()) {
               <div class="skeleton skeleton-backdrop"></div>
             } @else {
-              <iframe #playerFrame [src]="iframeSrcSafe()" allowfullscreen
+              <iframe [src]="iframeSrcSafe()" allowfullscreen
                       allow="autoplay; encrypted-media; fullscreen"></iframe>
             }
           </div>
@@ -328,7 +328,6 @@ export class WatchComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly destroyRef = inject(DestroyRef);
   private readonly background = inject(BackgroundService);
-  private readonly playerFrame = viewChild<ElementRef<HTMLIFrameElement>>('playerFrame');
 
   protected readonly recommendationsIcon = faThumbsUp;
   protected readonly reviewsIcon = faCommentDots;
@@ -354,8 +353,6 @@ export class WatchComponent {
   // jumps between titles before the previous fetch resolves.
   private recommendationsSeq = 0;
   private reviewsSeq = 0;
-  private iframeBridgeTimer: number | null = null;
-  private detachIframeBridge: (() => void) | null = null;
 
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -562,39 +559,6 @@ export class WatchComponent {
       this.background.setUrl(this.player.backdropUrl() || null);
     });
 
-    effect((onCleanup) => {
-      const src = this.player.iframeSrc();
-      const frameRef = this.playerFrame();
-
-      this.teardownIframeBridge();
-      if (!src || !frameRef) return;
-
-      let cancelled = false;
-      const iframe = frameRef.nativeElement;
-      const start = parseStartParam(src);
-
-      const bind = () => {
-        if (cancelled) return;
-        const cleanup = this.tryAttachIframeBridge(iframe, start);
-        if (cleanup) {
-          this.detachIframeBridge = cleanup;
-          return;
-        }
-
-        this.iframeBridgeTimer = window.setTimeout(bind, 500);
-      };
-
-      const onLoad = () => bind();
-      iframe.addEventListener('load', onLoad);
-      bind();
-
-      onCleanup(() => {
-        cancelled = true;
-        iframe.removeEventListener('load', onLoad);
-        this.teardownIframeBridge();
-      });
-    });
-
     // Recommendations are tied to the *route inputs* (not the loaded item)
     // so they kick off the moment the URL changes, in parallel with the
     // TMDB details fetch. Skips empty/invalid combos.
@@ -619,407 +583,9 @@ export class WatchComponent {
     });
 
     this.destroyRef.onDestroy(() => {
-      this.teardownIframeBridge();
       this.player.cleanup();
       this.background.clear();
     });
-  }
-
-  private tryAttachIframeBridge(
-    iframe: HTMLIFrameElement,
-    startTime: number | null
-  ): (() => void) | null {
-    try {
-      this.applyIframeAdblock(iframe);
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return null;
-
-      let seekDone = !(startTime && startTime > 0);
-      let activeVideo: HTMLVideoElement | null = null;
-      let detachVideoListeners: (() => void) | null = null;
-      let activePlayer: {
-        on: (eventName: string, handler: (...args: unknown[]) => void) => void;
-        off?: (eventName: string, handler: (...args: unknown[]) => void) => void;
-        getPosition?: () => number;
-        getDuration?: () => number;
-        seek?: (seconds: number) => void;
-      } | null = null;
-      let detachPlayerListeners: (() => void) | null = null;
-      let syncTimer: number | null = null;
-      let observer: MutationObserver | null = null;
-
-      const attachVideo = (video: HTMLVideoElement): void => {
-        activeVideo = video;
-        try {
-          video.playsInline = true;
-          video.setAttribute('playsinline', '');
-          video.setAttribute('webkit-playsinline', 'true');
-        } catch {}
-
-        const emit = (eventName: string) => {
-          this.player.ingestPlayerEvent({
-            type: 'PLAYER_EVENT',
-            event: {
-              event: eventName,
-              currentTime: Number.isFinite(video.currentTime) ? video.currentTime : undefined,
-              duration: Number.isFinite(video.duration) ? video.duration : undefined
-            }
-          });
-        };
-
-        const maybeSeek = () => {
-          if (seekDone || !(startTime && startTime > 0)) return;
-          if (Number.isFinite(video.duration) && video.duration > 0 && startTime < video.duration - 5) {
-            try {
-              video.currentTime = startTime;
-              seekDone = true;
-            } catch {}
-          }
-        };
-
-        const onLoadedMetadata = () => {
-          maybeSeek();
-          emit('ready');
-        };
-        const onPlay = () => {
-          maybeSeek();
-          emit('play');
-        };
-        const onPlaying = () => {
-          maybeSeek();
-          emit('playing');
-        };
-        const onPause = () => emit('pause');
-        const onTimeUpdate = () => {
-          maybeSeek();
-          emit('time');
-        };
-        const onSeeked = () => emit('seek');
-        const onEnded = () => emit('complete');
-        const onError = () => emit('error');
-
-        video.addEventListener('loadedmetadata', onLoadedMetadata);
-        video.addEventListener('loadeddata', onLoadedMetadata);
-        video.addEventListener('durationchange', onLoadedMetadata);
-        video.addEventListener('canplay', onLoadedMetadata);
-        video.addEventListener('play', onPlay);
-        video.addEventListener('playing', onPlaying);
-        video.addEventListener('pause', onPause);
-        video.addEventListener('timeupdate', onTimeUpdate);
-        video.addEventListener('seeked', onSeeked);
-        video.addEventListener('ended', onEnded);
-        video.addEventListener('error', onError);
-
-        if (video.readyState >= 1) {
-          onLoadedMetadata();
-        }
-
-        detachVideoListeners = () => {
-          video.removeEventListener('loadedmetadata', onLoadedMetadata);
-          video.removeEventListener('loadeddata', onLoadedMetadata);
-          video.removeEventListener('durationchange', onLoadedMetadata);
-          video.removeEventListener('canplay', onLoadedMetadata);
-          video.removeEventListener('play', onPlay);
-          video.removeEventListener('playing', onPlaying);
-          video.removeEventListener('pause', onPause);
-          video.removeEventListener('timeupdate', onTimeUpdate);
-          video.removeEventListener('seeked', onSeeked);
-          video.removeEventListener('ended', onEnded);
-          video.removeEventListener('error', onError);
-        };
-      };
-
-      const attachPlayer = (player: {
-        on: (eventName: string, handler: (...args: unknown[]) => void) => void;
-        off?: (eventName: string, handler: (...args: unknown[]) => void) => void;
-        getPosition?: () => number;
-        getDuration?: () => number;
-        seek?: (seconds: number) => void;
-      }): void => {
-        activePlayer = player;
-
-        const emit = (eventName: string, payload?: { position?: number; duration?: number }) => {
-          let currentTime = payload?.position;
-          let duration = payload?.duration;
-          try {
-            if (currentTime === undefined && typeof player.getPosition === 'function') {
-              currentTime = player.getPosition();
-            }
-          } catch {}
-          try {
-            if (duration === undefined && typeof player.getDuration === 'function') {
-              duration = player.getDuration();
-            }
-          } catch {}
-
-          this.player.ingestPlayerEvent({
-            type: 'PLAYER_EVENT',
-            event: {
-              event: eventName,
-              currentTime: typeof currentTime === 'number' && Number.isFinite(currentTime) ? currentTime : undefined,
-              duration: typeof duration === 'number' && Number.isFinite(duration) ? duration : undefined
-            }
-          });
-        };
-
-        const maybeSeek = () => {
-          if (seekDone || !(startTime && startTime > 0) || typeof player.seek !== 'function') return;
-          try {
-            const duration = typeof player.getDuration === 'function' ? player.getDuration() : 0;
-            if (Number.isFinite(duration) && duration > 0 && startTime < duration - 5) {
-              player.seek(startTime);
-              seekDone = true;
-            }
-          } catch {}
-        };
-
-        const listeners: Array<[string, (...args: unknown[]) => void]> = [
-          ['ready', () => { maybeSeek(); emit('ready'); }],
-          ['firstFrame', () => { maybeSeek(); emit('playing'); }],
-          ['play', () => { maybeSeek(); emit('play'); }],
-          ['pause', () => emit('pause')],
-          ['time', (...args: unknown[]) => {
-            const payload = (args[0] as { position?: number; duration?: number } | undefined);
-            maybeSeek();
-            emit('time', payload);
-          }],
-          ['seek', (...args: unknown[]) => {
-            const payload = (args[0] as { position?: number; duration?: number } | undefined);
-            emit('seek', payload);
-          }],
-          ['complete', () => emit('complete')],
-          ['error', () => emit('error')]
-        ];
-
-        for (const [eventName, handler] of listeners) {
-          try {
-            player.on(eventName, handler);
-          } catch {}
-        }
-
-        maybeSeek();
-
-        detachPlayerListeners = () => {
-          for (const [eventName, handler] of listeners) {
-            try {
-              player.off?.(eventName, handler);
-            } catch {}
-          }
-        };
-      };
-
-      const syncVideo = () => {
-        this.applyIframeAdblock(iframe);
-        const currentDoc = iframe.contentDocument || iframe.contentWindow?.document || doc;
-        const nextVideo = currentDoc.querySelector('.jw-video, video') as HTMLVideoElement | null;
-        if (!nextVideo) return;
-        if (nextVideo === activeVideo) return;
-        detachVideoListeners?.();
-        detachVideoListeners = null;
-        attachVideo(nextVideo);
-      };
-
-      const syncPlayer = () => {
-        const currentWindow = iframe.contentWindow as (Window & {
-          jwplayer?: (() => {
-            on: (eventName: string, handler: (...args: unknown[]) => void) => void;
-            off?: (eventName: string, handler: (...args: unknown[]) => void) => void;
-            getPosition?: () => number;
-            getDuration?: () => number;
-            seek?: (seconds: number) => void;
-          }) | undefined;
-        }) | null;
-        const nextPlayer = currentWindow?.jwplayer?.();
-        if (!nextPlayer) return;
-        if (nextPlayer === activePlayer) return;
-        detachPlayerListeners?.();
-        detachPlayerListeners = null;
-        attachPlayer(nextPlayer);
-      };
-
-      syncVideo();
-      syncPlayer();
-      if (!activeVideo && !activePlayer) return null;
-
-      if (typeof MutationObserver !== 'undefined') {
-        observer = new MutationObserver(() => {
-          syncVideo();
-          syncPlayer();
-        });
-        observer.observe(doc.documentElement, { childList: true, subtree: true });
-      }
-
-      syncTimer = window.setInterval(() => {
-        syncVideo();
-        syncPlayer();
-      }, 1000);
-
-      return () => {
-        if (syncTimer !== null) {
-          clearInterval(syncTimer);
-        }
-        observer?.disconnect();
-        detachVideoListeners?.();
-        detachPlayerListeners?.();
-        detachVideoListeners = null;
-        detachPlayerListeners = null;
-        activeVideo = null;
-        activePlayer = null;
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private applyIframeAdblock(iframe: HTMLIFrameElement): void {
-    try {
-      const win = iframe.contentWindow as (Window & { __scAdblockPatched?: boolean }) | null;
-      const doc = iframe.contentDocument;
-      if (!win || !doc || win.__scAdblockPatched) return;
-      win.__scAdblockPatched = true;
-
-      const allowedHosts = new Set([window.location.host, 'vixcloud.co']);
-      const isBadUrl = (value: string | null | undefined): boolean => {
-        if (!value) return false;
-        try {
-          const url = new URL(value, win.location.href);
-          const host = url.host;
-          for (const allowed of allowedHosts) {
-            if (host === allowed || host.endsWith(`.${allowed}`)) return false;
-          }
-          return true;
-        } catch {
-          return false;
-        }
-      };
-
-      const noopOpen = () => null;
-      try {
-        Object.defineProperty(win, 'open', {
-          value: noopOpen,
-          writable: false,
-          configurable: false
-        });
-      } catch {
-        try {
-          (win as Window & { open: typeof window.open }).open = noopOpen as typeof window.open;
-        } catch {}
-      }
-
-      const nodeProto = (win as Window & { Node?: typeof Node }).Node?.prototype;
-      if (nodeProto) {
-        const origAppend = nodeProto.appendChild;
-        if (typeof origAppend === 'function') {
-          nodeProto.appendChild = function<T extends Node>(node: T): T {
-            const el = node as unknown as Element;
-            const tag = el?.tagName?.toLowerCase?.();
-            const src = (el as HTMLScriptElement | HTMLIFrameElement | null)?.src;
-            if ((tag === 'script' || tag === 'iframe') && isBadUrl(src)) return node;
-            if (tag === 'a') {
-              const anchor = el as HTMLAnchorElement;
-              if (anchor.target === '_blank') {
-                anchor.target = '_self';
-                anchor.removeAttribute('target');
-              }
-            }
-            return origAppend.call(this, node) as T;
-          };
-        }
-
-        const origInsert = nodeProto.insertBefore;
-        if (typeof origInsert === 'function') {
-          nodeProto.insertBefore = function<T extends Node>(node: T, ref: Node | null): T {
-            const el = node as unknown as Element;
-            const tag = el?.tagName?.toLowerCase?.();
-            const src = (el as HTMLScriptElement | HTMLIFrameElement | null)?.src;
-            if ((tag === 'script' || tag === 'iframe') && isBadUrl(src)) return node;
-            return origInsert.call(this, node, ref) as T;
-          };
-        }
-      }
-
-      const events = ['click', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'contextmenu'];
-      for (const eventName of events) {
-        doc.addEventListener(eventName, (event) => {
-          let target = event.target as HTMLElement | null;
-          while (target && target !== doc.body) {
-            const tag = target.tagName;
-            if (tag === 'A') {
-              const anchor = target as HTMLAnchorElement;
-              if (anchor.target === '_blank' || anchor.getAttribute('target') === '_blank' || isBadUrl(anchor.href)) {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                return;
-              }
-            }
-            if (tag === 'FORM') {
-              const form = target as HTMLFormElement;
-              if (form.target === '_blank') {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                return;
-              }
-            }
-            target = target.parentElement;
-          }
-        }, true);
-      }
-
-      const eventTargetProto = (win as Window & { EventTarget?: typeof EventTarget }).EventTarget?.prototype;
-      if (eventTargetProto?.addEventListener) {
-        const origAddEventListener = eventTargetProto.addEventListener;
-        eventTargetProto.addEventListener = function(
-          type: string,
-          listener: EventListenerOrEventListenerObject | null,
-          options?: AddEventListenerOptions | boolean
-        ): void {
-          if (type === 'beforeunload' || type === 'unload' || type === 'pagehide') return;
-          if (type === 'visibilitychange' && this === doc) return;
-          return origAddEventListener.call(this, type, listener, options);
-        };
-      }
-
-      try {
-        Object.defineProperty(win, 'onbeforeunload', {
-          get: () => null,
-          set: () => {},
-          configurable: false
-        });
-      } catch {}
-
-      try {
-        Object.defineProperty(win, 'onunload', {
-          get: () => null,
-          set: () => {},
-          configurable: false
-        });
-      } catch {}
-
-      const origCreateElement = doc.createElement.bind(doc);
-      doc.createElement = ((tagName: string, options?: ElementCreationOptions) => {
-        const el = origCreateElement(tagName, options);
-        if (tagName.toLowerCase() === 'a') {
-          const anchor = el as HTMLAnchorElement & { click: () => void };
-          const origClick = anchor.click.bind(anchor);
-          anchor.click = () => {
-            if (anchor.target === '_blank' || isBadUrl(anchor.href)) return;
-            origClick();
-          };
-        }
-        return el;
-      }) as typeof doc.createElement;
-    } catch {}
-  }
-
-  private teardownIframeBridge(): void {
-    if (this.iframeBridgeTimer !== null) {
-      clearTimeout(this.iframeBridgeTimer);
-      this.iframeBridgeTimer = null;
-    }
-    if (this.detachIframeBridge) {
-      this.detachIframeBridge();
-      this.detachIframeBridge = null;
-    }
   }
 
   private async loadRecommendations(id: string, type: MediaType): Promise<void> {
@@ -1225,16 +791,6 @@ function formatTimeCompact(seconds: number): string {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
-function parseStartParam(src: string): number | null {
-  try {
-    const url = new URL(src, window.location.origin);
-    const raw = Number(url.searchParams.get('start'));
-    return Number.isFinite(raw) && raw > 0 ? raw : null;
-  } catch {
-    return null;
-  }
 }
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {
