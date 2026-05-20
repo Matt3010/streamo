@@ -20,10 +20,10 @@ router.get(/^\/playback\/playlist\/(.*)$/, async (req, res) => {
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {
+      referrerPolicy: 'no-referrer',
       headers: {
         accept: req.headers.accept ?? '*/*',
         'accept-encoding': 'identity',
-        referer: 'https://vixcloud.co/',
         origin: 'https://vixcloud.co'
       }
     });

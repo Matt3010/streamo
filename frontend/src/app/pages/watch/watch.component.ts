@@ -82,6 +82,7 @@ type ConfirmAction =
               <div class="skeleton skeleton-backdrop"></div>
             } @else {
               <iframe [src]="iframeSrcSafe()" allowfullscreen
+                      referrerpolicy="no-referrer"
                       allow="autoplay; encrypted-media; fullscreen"></iframe>
             }
           </div>

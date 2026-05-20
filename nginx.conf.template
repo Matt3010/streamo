@@ -106,7 +106,7 @@ server {
         proxy_pass https://$cdn_host/$2$is_args$args;
         proxy_ssl_server_name on;
         proxy_set_header Host $cdn_host;
-        proxy_set_header Referer https://vixcloud.co/;
+        proxy_set_header Referer "";
     }
 
     # ---- Core playback: TV episodes now resolve directly to /embed/* ----
@@ -117,7 +117,7 @@ server {
         proxy_pass https://vixcloud.co/embed/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
+        proxy_set_header Referer "";
         proxy_set_header Accept-Encoding "";
         proxy_hide_header Content-Security-Policy;
         proxy_hide_header Content-Security-Policy-Report-Only;
@@ -153,7 +153,7 @@ server {
         proxy_pass https://vixcloud.co/storage/;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
+        proxy_set_header Referer "";
     }
 
     # ---- Core playback: referenced by playlist rewrite rules ----
@@ -164,7 +164,7 @@ server {
         proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
+        proxy_set_header Referer "";
     }
 
     # ---- Core playback: referenced by playlist rewrite rules ----
@@ -172,6 +172,7 @@ server {
         proxy_pass https://vixcloud.co/favicon.ico;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer "";
     }
 
     # ---- VixSrc static asset fallback ----
@@ -183,7 +184,7 @@ server {
         proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
-        proxy_set_header Referer https://vixcloud.co/;
+        proxy_set_header Referer "";
     }
 
     # ---- Frontend SPA ----

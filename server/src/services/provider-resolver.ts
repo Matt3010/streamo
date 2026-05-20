@@ -266,6 +266,7 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
   let res: Response;
   try {
     res = await fetch(url, {
+      referrerPolicy: 'no-referrer',
       headers: {
         accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
       }
@@ -708,6 +709,7 @@ async function fetchProviderSeason(
   let res: Response;
   try {
     res = await fetch(url, {
+      referrerPolicy: 'no-referrer',
       headers: {
         accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
       }
@@ -815,6 +817,7 @@ async function fetchProviderEmbedUrl(
   let res: Response;
   try {
     res = await fetch(url, {
+      referrerPolicy: 'no-referrer',
       headers: {
         accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
       }
