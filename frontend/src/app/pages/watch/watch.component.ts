@@ -411,7 +411,8 @@ export class WatchComponent {
     const item = this.player.currentItem();
     const type = this.player.currentItemType();
     if (!item || !type) return '';
-    if (this.player.playbackAvailability() === 'unavailable') return '';
+    const isUpcoming = isTitleUpcoming(item, type);
+    if (this.player.playbackAvailability() === 'unavailable' && !isUpcoming) return '';
     // When the user has caught up with all aired episodes (next-unwatched is
     // null for TV), suppress the "Nuovo episodio!" branch — the
     // message is meant for users who still have to watch the new release.
