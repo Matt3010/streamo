@@ -7,11 +7,15 @@
   overflow: hidden;
 }
 
+.view-share-button.ui-button-icon-outline,
 .view-toggle .ui-button-toggle-icon {
   width: 44px;
   min-width: 44px;
   height: 44px;
   min-height: 44px;
+}
+
+.view-toggle .ui-button-toggle-icon {
   border-radius: 0;
 }
 

@@ -92,6 +92,7 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     <app-page-header [title]="title()" (back)="back()">
       @if (kind() === 'watchlist' && !readonly()) {
         <button #shareTrigger
+                class="view-share-button"
                 uiButton="icon-outline" type="button"
                 aria-label="Condividi la lista"
                 title="Condividi"
