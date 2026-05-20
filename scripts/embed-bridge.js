@@ -13,6 +13,8 @@
   var syncTimer = null;
   var observer = null;
   var completionSent = false;
+  var nativeNextEpisodeFallback = false;
+  var nextEpisodeAckTimer = null;
   var attempts = 0;
   var maxAttempts = 240; // ~120s
 
@@ -70,6 +72,20 @@
     if (completionSent) return;
     completionSent = true;
     emitToParent('complete', currentTime, duration);
+  }
+
+  function clearNextEpisodeAckTimer() {
+    if (!nextEpisodeAckTimer) return;
+    clearTimeout(nextEpisodeAckTimer);
+    nextEpisodeAckTimer = null;
+  }
+
+  function handleBridgeAck(event) {
+    var data = event && event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type !== 'PLAYER_BRIDGE_ACK' || data.event !== 'next-episode') return;
+    clearNextEpisodeAckTimer();
+    nativeNextEpisodeFallback = false;
   }
 
   function maybeSeekVideo(video) {
@@ -242,6 +258,11 @@
     activeNextButton = button;
 
     function onClick(event) {
+      if (nativeNextEpisodeFallback) {
+        nativeNextEpisodeFallback = false;
+        return;
+      }
+
       try {
         if (event) {
           event.preventDefault();
@@ -252,7 +273,18 @@
         }
       } catch (e) {}
 
+      clearNextEpisodeAckTimer();
       emitToParent('next-episode');
+      nextEpisodeAckTimer = window.setTimeout(function() {
+        nextEpisodeAckTimer = null;
+        if (!button.isConnected) return;
+        nativeNextEpisodeFallback = true;
+        try {
+          button.click();
+        } catch (e) {
+          nativeNextEpisodeFallback = false;
+        }
+      }, 1500);
     }
 
     button.addEventListener('click', onClick, true);
@@ -292,4 +324,6 @@
   } else {
     bootstrap();
   }
+
+  window.addEventListener('message', handleBridgeAck);
 })();

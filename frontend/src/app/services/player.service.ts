@@ -118,6 +118,7 @@ export class PlayerService {
   private videoStartTime: number | null = null;
   private playbackInstanceId = 0;
   private handledCompletionPlaybackId = 0;
+  private playbackResolveSeq = 0;
   private playingSeason = 0;
   private playingEpisode = 0;
   private progressSaveInterval: number | null = null;
@@ -130,6 +131,10 @@ export class PlayerService {
   }
 
   ingestPlayerEvent(event: PlayerEventMessage): void {
+    if (event.event.event === 'next-episode') {
+      void this.playNextEpisode();
+      return;
+    }
     this.applyPlayerEvent(event.event);
   }
 
@@ -157,6 +162,7 @@ export class PlayerService {
     this.isInWatchlist.set(false);
     this.pendingVideoUrl = '';
     this.playbackTitle = null;
+    this.playbackResolveSeq += 1;
     this.playbackAvailability.set('resolving');
     this.playbackUnavailableMessage.set(null);
     this.seasons.set([]);
@@ -240,8 +246,9 @@ export class PlayerService {
       this.seasons.set([]);
       this.episodes.set([]);
       const seq = ++this.urlSeq;
+      const resolveSeq = this.beginPlaybackResolve();
       if (this.playbackTitle) {
-        await this.setMovieUrl(this.playbackTitle);
+        await this.setMovieUrl(this.playbackTitle, resolveSeq);
       }
       await this.applyResumeProgress(seq, tmdbId, 'movie');
     }
@@ -260,6 +267,7 @@ export class PlayerService {
     this.iframeSrc.set('');
     this.pendingVideoUrl = '';
     this.playbackTitle = null;
+    this.playbackResolveSeq += 1;
     this.playbackAvailability.set('idle');
     this.playbackUnavailableMessage.set(null);
     // Invalidate any in-flight applyResumeProgress so it can't write to a
@@ -330,9 +338,10 @@ export class PlayerService {
 
     this.resetPlayer();
     const seq = ++this.urlSeq;
+    const resolveSeq = this.beginPlaybackResolve();
     const playback = this.requirePlaybackTitle();
     if (playback) {
-      await this.setEpisodeUrl(playback, season, 1);
+      await this.setEpisodeUrl(playback, season, 1, resolveSeq);
     }
     await this.applyResumeProgress(seq, item.id, 'tv', season, 1);
   }
@@ -347,9 +356,10 @@ export class PlayerService {
     this.activeEpisodeRef.set({ season, episode });
     this.resetPlayer();
     const seq = ++this.urlSeq;
+    const resolveSeq = this.beginPlaybackResolve();
     const playback = this.requirePlaybackTitle();
     if (playback) {
-      await this.setEpisodeUrl(playback, season, episode);
+      await this.setEpisodeUrl(playback, season, episode, resolveSeq);
     }
     await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
   }
@@ -400,7 +410,8 @@ export class PlayerService {
       await this.progress.remove(item.id, 'movie');
       const playback = this.requirePlaybackTitle();
       if (playback) {
-        void this.setMovieUrl(playback);
+        const resolveSeq = this.beginPlaybackResolve();
+        void this.setMovieUrl(playback, resolveSeq);
       }
       this.progressTick.update(n => n + 1);
       this.toast.show('Progresso film azzerato');
@@ -423,7 +434,8 @@ export class PlayerService {
     await this.refreshNextUnwatchedRef();
     const playback = this.requirePlaybackTitle();
     if (playback) {
-      void this.setEpisodeUrl(playback, season, episode);
+      const resolveSeq = this.beginPlaybackResolve();
+      void this.setEpisodeUrl(playback, season, episode, resolveSeq);
     }
     this.progressTick.update(n => n + 1);
     this.toast.show(`Progresso S${season} E${episode} azzerato`);
@@ -456,7 +468,8 @@ export class PlayerService {
     if (isCurrentEpisode) {
       const playback = this.requirePlaybackTitle();
       if (playback) {
-        void this.setEpisodeUrl(playback, season, episode);
+        const resolveSeq = this.beginPlaybackResolve();
+        void this.setEpisodeUrl(playback, season, episode, resolveSeq);
       }
     }
     this.progressTick.update(n => n + 1);
@@ -490,8 +503,9 @@ export class PlayerService {
     this.activeEpisodeRef.set({ season: targetSeason, episode: targetEpisode });
 
     const seq = ++this.urlSeq;
+    const resolveSeq = this.beginPlaybackResolve();
     if (playback) {
-      await this.setEpisodeUrl(playback, targetSeason, targetEpisode);
+      await this.setEpisodeUrl(playback, targetSeason, targetEpisode, resolveSeq);
     }
     await this.applyResumeProgress(seq, tmdbId, 'tv', targetSeason, targetEpisode);
   }
@@ -499,8 +513,43 @@ export class PlayerService {
   private async setEpisodeUrl(
     playback: ProviderPlaybackTitle,
     season: number,
-    episode: number
+    episode: number,
+    resolveSeq: number
   ): Promise<boolean> {
+    const embedUrl = await this.resolveEpisodeEmbedUrl(playback, season, episode);
+    if (!this.isCurrentPlaybackResolve(resolveSeq)) {
+      return false;
+    }
+
+    if (!embedUrl) {
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
+      return false;
+    }
+
+    return this.commitResolvedPlaybackUrl(embedUrl, resolveSeq);
+  }
+
+  private async setMovieUrl(playback: ProviderPlaybackTitle, resolveSeq: number): Promise<boolean> {
+    const embedUrl = await this.resolveMovieEmbedUrl(playback);
+    if (!this.isCurrentPlaybackResolve(resolveSeq)) {
+      return false;
+    }
+
+    if (!embedUrl) {
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
+      return false;
+    }
+
+    return this.commitResolvedPlaybackUrl(embedUrl, resolveSeq);
+  }
+
+  private async resolveEpisodeEmbedUrl(
+    playback: ProviderPlaybackTitle,
+    season: number,
+    episode: number
+  ): Promise<string | null> {
     const resolved = await this.providerResolve.resolveEpisode(
       playback.id,
       playback.slug,
@@ -508,33 +557,31 @@ export class PlayerService {
       episode
     );
 
-    if (!resolved) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
-      return false;
-    }
-
-    if (!resolved.embedUrl) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
-      return false;
-    }
-
-    this.pendingVideoUrl = resolved.embedUrl;
-    this.playbackAvailability.set('ready');
-    this.playbackUnavailableMessage.set(null);
-    return true;
+    return resolved?.embedUrl ?? null;
   }
 
-  private async setMovieUrl(playback: ProviderPlaybackTitle): Promise<boolean> {
+  private async resolveMovieEmbedUrl(playback: ProviderPlaybackTitle): Promise<string | null> {
     const resolved = await this.providerResolve.resolveMovie(playback.id);
-    if (!resolved?.embedUrl) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
+    return resolved?.embedUrl ?? null;
+  }
+
+  private beginPlaybackResolve(): number {
+    this.playbackResolveSeq += 1;
+    this.playbackAvailability.set('resolving');
+    this.playbackUnavailableMessage.set(null);
+    return this.playbackResolveSeq;
+  }
+
+  private isCurrentPlaybackResolve(resolveSeq: number): boolean {
+    return resolveSeq === this.playbackResolveSeq;
+  }
+
+  private commitResolvedPlaybackUrl(embedUrl: string, resolveSeq: number): boolean {
+    if (!this.isCurrentPlaybackResolve(resolveSeq)) {
       return false;
     }
 
-    this.pendingVideoUrl = resolved.embedUrl;
+    this.pendingVideoUrl = embedUrl;
     this.playbackAvailability.set('ready');
     this.playbackUnavailableMessage.set(null);
     return true;
@@ -622,12 +669,14 @@ export class PlayerService {
     if (type === 'tv') {
       const season = untracked(() => this.selectedSeason());
       const episode = untracked(() => this.selectedEpisode());
-      const prepared = await this.setEpisodeUrl(playback, season, episode);
+      const resolveSeq = this.beginPlaybackResolve();
+      const prepared = await this.setEpisodeUrl(playback, season, episode, resolveSeq);
       if (!prepared) return;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
     } else {
-      const prepared = await this.setMovieUrl(playback);
+      const resolveSeq = this.beginPlaybackResolve();
+      const prepared = await this.setMovieUrl(playback, resolveSeq);
       if (!prepared) return;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'movie');
@@ -637,36 +686,54 @@ export class PlayerService {
   // Switch the player to the next episode and start it from the beginning.
   // Used by the preview "Vai al prossimo" button to skip past the tail-end
   // of the current episode (≥80%) instead of resuming it.
-  async playNextEpisode(): Promise<void> {
+  async playNextEpisode(bridgeSource: MessageEventSource | null = null): Promise<boolean> {
     const next = untracked(() => this.nextEpisode());
     const item = untracked(() => this.currentItem());
-    if (!next || !item) return;
+    if (!next || !item) return false;
     const playback = this.requirePlaybackTitle();
-    if (!playback) return;
-
-    this.saveCurrentEpisodeProgress();
+    if (!playback) return false;
 
     const seasonChanged = next.season !== this.selectedSeason();
-    this.selectedSeason.set(next.season);
-    this.selectedEpisode.set(next.episode);
-    this.activeEpisodeRef.set(next);
+    let nextSeasonEpisodes: TmdbEpisodeDetail[] | null = null;
 
     if (seasonChanged) {
       const seasonData = await this.tmdb.getSeasonDetails(item.id, next.season);
       const aired = airedEpisodes(seasonData?.episodes, next.season, getEffectiveLastEpisode(item));
       const fallback = (item.seasons ?? []).find(s => s.season_number === next.season)?.episode_count ?? 10;
-      this.episodes.set(aired.length ? aired : episodeStubs(fallback));
+      nextSeasonEpisodes = aired.length ? aired : episodeStubs(fallback);
     }
 
+    const resolveSeq = this.beginPlaybackResolve();
+    const nextUrl = await this.resolveEpisodeEmbedUrl(playback, next.season, next.episode);
+    if (!this.isCurrentPlaybackResolve(resolveSeq)) return false;
+    if (!nextUrl) {
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
+      return false;
+    }
+
+    if (bridgeSource) {
+      this.postBridgeAck(bridgeSource, 'next-episode');
+    }
+
+    this.saveCurrentEpisodeProgress();
+    this.selectedSeason.set(next.season);
+    this.selectedEpisode.set(next.episode);
+    this.activeEpisodeRef.set(next);
+    if (nextSeasonEpisodes) {
+      this.episodes.set(nextSeasonEpisodes);
+    }
+
+    if (!this.isCurrentPlaybackResolve(resolveSeq)) return false;
     this.resetPlayer();
-    const prepared = await this.setEpisodeUrl(playback, next.season, next.episode);
-    if (!prepared) return;
+    if (!this.commitResolvedPlaybackUrl(nextUrl, resolveSeq)) return false;
     // No applyResumeProgress — we want a clean start, not a seek to a
     // half-watched checkpoint of an episode the user explicitly skipped.
     this.urlSeq++;
     this.resumeText.set('');
     this.resumeProgress.set(null);
     this.startVideo();
+    return true;
   }
 
   private async refreshWatchlistStatus(tmdbId: string | number, type: MediaType): Promise<void> {
@@ -706,6 +773,19 @@ export class PlayerService {
   private requirePlaybackTitle(): ProviderPlaybackTitle | null {
     if (this.playbackTitle) return this.playbackTitle;
     return null;
+  }
+
+  private postBridgeAck(source: MessageEventSource | null, eventName: string): void {
+    if (!source || typeof (source as { postMessage?: unknown }).postMessage !== 'function') {
+      return;
+    }
+
+    try {
+      (source as { postMessage: (message: unknown, targetOrigin: string) => void }).postMessage({
+        type: 'PLAYER_BRIDGE_ACK',
+        event: eventName
+      }, '*');
+    } catch {}
   }
 
   private resetPlayer(): void {
@@ -799,18 +879,18 @@ export class PlayerService {
   private handlePlayerMessage(event: MessageEvent): void {
     const data = event.data;
     if (!data || typeof data !== 'object' || (data as { type?: unknown }).type !== 'PLAYER_EVENT') return;
-    this.applyPlayerEvent((data as PlayerEventMessage).event);
+    const playerEvent = (data as PlayerEventMessage).event;
+    if (playerEvent.event === 'next-episode') {
+      void this.playNextEpisode(event.source);
+      return;
+    }
+    this.applyPlayerEvent(playerEvent);
   }
 
   private applyPlayerEvent(ev: PlayerEventMessage['event']): void {
     const evtName = ev.event;
     const ct = ev.currentTime;
     const dur = ev.duration;
-
-    if (evtName === 'next-episode') {
-      void this.playNextEpisode();
-      return;
-    }
 
     if (typeof ct === 'number' && ct >= 0) this.currentVideoTime = ct;
     if (typeof dur === 'number' && dur > 0) this.currentVideoDuration = dur;
@@ -849,11 +929,20 @@ export class PlayerService {
     const currentEp = this.selectedEpisode();
     const nextEp = eps.find(e => e.episode_number > currentEp);
     if (nextEp !== undefined) {
-      this.selectedEpisode.set(nextEp.episode_number);
       const season = this.selectedSeason();
+      const resolveSeq = this.beginPlaybackResolve();
+      const nextUrl = await this.resolveEpisodeEmbedUrl(playback, season, nextEp.episode_number);
+      if (!this.isCurrentPlaybackResolve(resolveSeq)) return;
+      if (!nextUrl) {
+        this.playbackAvailability.set('unavailable');
+        this.playbackUnavailableMessage.set('Titolo non disponibile');
+        return;
+      }
+
+      this.selectedEpisode.set(nextEp.episode_number);
       this.activeEpisodeRef.set({ season, episode: nextEp.episode_number });
       this.resetPlayer();
-      const prepared = await this.setEpisodeUrl(playback, season, nextEp.episode_number);
+      const prepared = this.commitResolvedPlaybackUrl(nextUrl, resolveSeq);
       if (!prepared) return;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'tv', season, nextEp.episode_number);
@@ -865,8 +954,8 @@ export class PlayerService {
     const currentSeason = this.selectedSeason();
     const nextSeason = seasons.find(s => s > currentSeason);
     if (nextSeason !== undefined) {
-      await this.changeSeason(nextSeason);
-      this.startVideo();
+      const started = await this.playNextEpisode();
+      if (!started) return;
     }
   }
 }

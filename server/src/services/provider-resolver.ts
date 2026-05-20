@@ -126,6 +126,7 @@ const resolveCache = new Map<string, CacheEntry>();
 const seasonCache = new Map<string, EpisodeCacheEntry>();
 let providerCatalogBaseUrlCache: ProviderCatalogBaseUrlCacheEntry | null = null;
 const PROVIDER_NAME = 'streamingcommunity';
+const PROVIDER_CATALOG_BASE_URL_META_KEY = 'provider_catalog_base_url';
 const STRONG_MATCH_THRESHOLD = 170;
 const REVIEW_MATCH_THRESHOLD = 120;
 
@@ -542,7 +543,9 @@ function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number }
 
   if (best.score >= REVIEW_MATCH_THRESHOLD) {
     return {
-      match: null,
+      // Keep a soft-review marker in persistence, but don't block playback for
+      // titles that already have a concrete provider id candidate.
+      match: best.candidate,
       persistence: {
         matchStatus: 'pending_review',
         matchConfidence: best.score,
@@ -595,6 +598,13 @@ async function readStoredMapping(
   }
 
   const freshUntilMs = (row.last_checked_at * 1000) + (PROVIDER_RESOLVE_CACHE_TTL * 1000);
+  if (row.match_status === 'pending_review') {
+    if (freshUntilMs > nowMs) {
+      return toStoredMappingCandidate(row, args);
+    }
+    return undefined;
+  }
+
   if (freshUntilMs > nowMs) {
     return null;
   }
@@ -610,6 +620,23 @@ function toConfirmedStoredMapping(
     return undefined;
   }
 
+  if (!row.provider_id) {
+    return null;
+  }
+
+  return {
+    provider: 'streamingcommunity',
+    id: row.provider_id,
+    slug: row.provider_slug,
+    title: row.resolved_title ?? args.title,
+    mediaType: args.mediaType
+  };
+}
+
+function toStoredMappingCandidate(
+  row: Pick<StoredProviderMappingRow, 'provider_id' | 'provider_slug' | 'resolved_title'>,
+  args: ResolveArgs
+): ProviderResolvedTitle | null {
   if (!row.provider_id) {
     return null;
   }
@@ -893,6 +920,13 @@ async function getProviderCatalogBaseUrl(): Promise<string | null> {
       value: resolved,
       expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
     };
+    try {
+      await persistProviderCatalogBaseUrl(resolved);
+    } catch {
+      providerResolveLogger.warn('provider catalog base url persist failed', {
+        key: PROVIDER_CATALOG_BASE_URL_META_KEY
+      });
+    }
     return resolved;
   }
 
@@ -906,6 +940,19 @@ async function getProviderCatalogBaseUrl(): Promise<string | null> {
       expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
     };
     return PROVIDER_CATALOG_BASE_URL_OVERRIDE;
+  }
+
+  const persisted = await readPersistedProviderCatalogBaseUrl();
+  if (persisted) {
+    providerResolveLogger.warn('provider catalog base url persisted fallback used', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      providerCatalogBaseUrl: persisted
+    });
+    providerCatalogBaseUrlCache = {
+      value: persisted,
+      expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
+    };
+    return persisted;
   }
 
   providerResolveLogger.error('provider catalog base url resolution failed', {
@@ -997,4 +1044,37 @@ function extractHrefFromNode(node: TelegraphPageNode | string): string | null {
   }
 
   return null;
+}
+
+async function persistProviderCatalogBaseUrl(value: string): Promise<void> {
+  await kdb
+    .insertInto('_meta')
+    .values({
+      key: PROVIDER_CATALOG_BASE_URL_META_KEY,
+      value
+    })
+    .onConflict((oc) => oc.column('key').doUpdateSet({
+      value
+    }))
+    .execute();
+}
+
+async function readPersistedProviderCatalogBaseUrl(): Promise<string | null> {
+  const row = await kdb
+    .selectFrom('_meta')
+    .select('value')
+    .where('key', '=', PROVIDER_CATALOG_BASE_URL_META_KEY)
+    .executeTakeFirst();
+
+  const value = row?.value?.trim() ?? '';
+  if (!value) return null;
+
+  try {
+    return new URL(value).toString().replace(/\/$/, '');
+  } catch {
+    providerResolveLogger.warn('provider catalog base url persisted value invalid', {
+      key: PROVIDER_CATALOG_BASE_URL_META_KEY
+    });
+    return null;
+  }
 }
