@@ -214,7 +214,40 @@ export async function resolveProviderTitle(
   logCandidateSummary(args, titles);
   const best = pickBestMatch(titles, args);
   const candidates = await buildCandidateList(titles, args);
-  const { match, persistence } = finalizeMatch(best, candidates);
+  let { match, persistence } = finalizeMatch(best, candidates);
+
+  // A given provider_title_id can be claimed by only one TMDB title at a
+  // time (UNIQUE INDEX on provider_title_map). If our top auto match has
+  // already been claimed by another TMDB id (typically because that user
+  // manual-confirmed it), don't try to upsert with that provider_id —
+  // we'd get a 23505 violation that crashes the resolve. Downgrade to
+  // failed with candidates preserved so the user can still pick another.
+  if (match?.id != null) {
+    const claimed = await kdb
+      .selectFrom('provider_title_map')
+      .select('tmdb_id')
+      .where('provider', '=', PROVIDER_NAME)
+      .where('media_type', '=', args.mediaType)
+      .where('provider_id', '=', match.id)
+      .where('tmdb_id', '!=', args.tmdbId)
+      .executeTakeFirst();
+    if (claimed) {
+      providerResolveLogger.info('auto match already claimed', {
+        tmdbId: args.tmdbId,
+        providerId: match.id,
+        claimedByTmdbId: claimed.tmdb_id
+      });
+      match = null;
+      persistence = {
+        matchStatus: 'failed',
+        matchConfidence: 0,
+        failureReason: 'provider_id_claimed_elsewhere',
+        candidate: null,
+        candidates
+      };
+    }
+  }
+
   providerResolveLogger.info('title match decision', {
     query: args.title,
     mediaType: args.mediaType,
