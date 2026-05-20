@@ -632,76 +632,112 @@ export class WatchComponent {
     try {
       this.applyIframeAdblock(iframe);
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      const video = doc?.querySelector('.jw-video, video') as HTMLVideoElement | null;
-      if (!video) return null;
+      if (!doc) return null;
 
       let seekDone = !(startTime && startTime > 0);
-      const emit = (eventName: string) => {
-        this.player.ingestPlayerEvent({
-          type: 'PLAYER_EVENT',
-          event: {
-            event: eventName,
-            currentTime: Number.isFinite(video.currentTime) ? video.currentTime : undefined,
-            duration: Number.isFinite(video.duration) ? video.duration : undefined
+      let activeVideo: HTMLVideoElement | null = null;
+      let detachVideoListeners: (() => void) | null = null;
+      let syncTimer: number | null = null;
+      let observer: MutationObserver | null = null;
+
+      const attachVideo = (video: HTMLVideoElement): void => {
+        activeVideo = video;
+        const emit = (eventName: string) => {
+          this.player.ingestPlayerEvent({
+            type: 'PLAYER_EVENT',
+            event: {
+              event: eventName,
+              currentTime: Number.isFinite(video.currentTime) ? video.currentTime : undefined,
+              duration: Number.isFinite(video.duration) ? video.duration : undefined
+            }
+          });
+        };
+
+        const maybeSeek = () => {
+          if (seekDone || !(startTime && startTime > 0)) return;
+          if (Number.isFinite(video.duration) && video.duration > 0 && startTime < video.duration - 5) {
+            try {
+              video.currentTime = startTime;
+              seekDone = true;
+            } catch {}
           }
-        });
-      };
+        };
 
-      const maybeSeek = () => {
-        if (seekDone || !(startTime && startTime > 0)) return;
-        if (Number.isFinite(video.duration) && video.duration > 0 && startTime < video.duration - 5) {
-          try {
-            video.currentTime = startTime;
-            seekDone = true;
-          } catch {}
+        const onLoadedMetadata = () => {
+          maybeSeek();
+          emit('ready');
+        };
+        const onPlay = () => {
+          maybeSeek();
+          emit('play');
+        };
+        const onPlaying = () => {
+          maybeSeek();
+          emit('playing');
+        };
+        const onPause = () => emit('pause');
+        const onTimeUpdate = () => {
+          maybeSeek();
+          emit('time');
+        };
+        const onSeeked = () => emit('seek');
+        const onEnded = () => emit('complete');
+        const onError = () => emit('error');
+
+        video.addEventListener('loadedmetadata', onLoadedMetadata);
+        video.addEventListener('play', onPlay);
+        video.addEventListener('playing', onPlaying);
+        video.addEventListener('pause', onPause);
+        video.addEventListener('timeupdate', onTimeUpdate);
+        video.addEventListener('seeked', onSeeked);
+        video.addEventListener('ended', onEnded);
+        video.addEventListener('error', onError);
+
+        if (video.readyState >= 1) {
+          onLoadedMetadata();
         }
+
+        detachVideoListeners = () => {
+          video.removeEventListener('loadedmetadata', onLoadedMetadata);
+          video.removeEventListener('play', onPlay);
+          video.removeEventListener('playing', onPlaying);
+          video.removeEventListener('pause', onPause);
+          video.removeEventListener('timeupdate', onTimeUpdate);
+          video.removeEventListener('seeked', onSeeked);
+          video.removeEventListener('ended', onEnded);
+          video.removeEventListener('error', onError);
+        };
       };
 
-      const onLoadedMetadata = () => {
-        maybeSeek();
-        emit('ready');
+      const syncVideo = () => {
+        this.applyIframeAdblock(iframe);
+        const currentDoc = iframe.contentDocument || iframe.contentWindow?.document || doc;
+        const nextVideo = currentDoc.querySelector('.jw-video, video') as HTMLVideoElement | null;
+        if (!nextVideo) return;
+        if (nextVideo === activeVideo) return;
+        detachVideoListeners?.();
+        detachVideoListeners = null;
+        attachVideo(nextVideo);
       };
-      const onPlay = () => {
-        maybeSeek();
-        emit('play');
-      };
-      const onPlaying = () => {
-        maybeSeek();
-        emit('playing');
-      };
-      const onPause = () => emit('pause');
-      const onTimeUpdate = () => {
-        maybeSeek();
-        emit('time');
-      };
-      const onSeeked = () => emit('seek');
-      const onEnded = () => {
-        emit('complete');
-      };
-      const onError = () => emit('error');
 
-      video.addEventListener('loadedmetadata', onLoadedMetadata);
-      video.addEventListener('play', onPlay);
-      video.addEventListener('playing', onPlaying);
-      video.addEventListener('pause', onPause);
-      video.addEventListener('timeupdate', onTimeUpdate);
-      video.addEventListener('seeked', onSeeked);
-      video.addEventListener('ended', onEnded);
-      video.addEventListener('error', onError);
+      syncVideo();
+      if (!activeVideo) return null;
 
-      if (video.readyState >= 1) {
-        onLoadedMetadata();
+      if (typeof MutationObserver !== 'undefined') {
+        observer = new MutationObserver(() => syncVideo());
+        observer.observe(doc.documentElement, { childList: true, subtree: true });
       }
 
+      syncTimer = window.setInterval(syncVideo, 1000);
+
       return () => {
-        video.removeEventListener('loadedmetadata', onLoadedMetadata);
-        video.removeEventListener('play', onPlay);
-        video.removeEventListener('playing', onPlaying);
-        video.removeEventListener('pause', onPause);
-        video.removeEventListener('timeupdate', onTimeUpdate);
-        video.removeEventListener('seeked', onSeeked);
-        video.removeEventListener('ended', onEnded);
-        video.removeEventListener('error', onError);
+        if (syncTimer !== null) {
+          clearInterval(syncTimer);
+        }
+        observer?.disconnect();
+        detachVideoListeners?.();
+        detachVideoListeners = null;
+        activeVideo = null;
       };
     } catch {
       return null;
