@@ -105,6 +105,7 @@ interface ProviderTitleMapTable {
   failure_reason: string | null;
   resolved_at: Epoch | null;
   last_checked_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+  candidates_json: string | null;
 }
 
 interface ProviderManualRefreshCooldownsTable {

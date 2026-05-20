@@ -1,6 +1,11 @@
 import { Injectable, signal, computed, inject, untracked } from '@angular/core';
 import { TmdbService } from './tmdb.service';
-import { ProviderResolveService, type ProviderManualRefreshState } from './provider-resolve.service';
+import {
+  ProviderResolveService,
+  type ProviderManualRefreshState,
+  type ProviderMatchStatus,
+  type ProviderResolvedTitleCandidate
+} from './provider-resolve.service';
 import { ProgressService } from './progress.service';
 import { WatchlistService } from './watchlist.service';
 import { HistoryService } from './history.service';
@@ -61,6 +66,9 @@ export class PlayerService {
   readonly playbackUnavailableMessage = signal<string | null>(null);
   readonly playbackUnavailableReason = signal<ProviderResolveFailureReason | null>(null);
   readonly providerManualRefreshState = signal<ProviderManualRefreshState | null>(null);
+  readonly providerCandidates = signal<ProviderResolvedTitleCandidate[]>([]);
+  readonly providerMatchStatus = signal<ProviderMatchStatus | null>(null);
+  readonly providerResolvedTitleId = signal<number | null>(null);
 
   // Playback tracking
   readonly resumeText = signal('');
@@ -170,6 +178,9 @@ export class PlayerService {
     this.playbackUnavailableMessage.set(null);
     this.playbackUnavailableReason.set(null);
     this.providerManualRefreshState.set(null);
+    this.providerCandidates.set([]);
+    this.providerMatchStatus.set(null);
+    this.providerResolvedTitleId.set(null);
     this.seasons.set([]);
     this.episodes.set([]);
     this.seriesProgress.set(new Map());
@@ -277,6 +288,9 @@ export class PlayerService {
     this.playbackUnavailableMessage.set(null);
     this.playbackUnavailableReason.set(null);
     this.providerManualRefreshState.set(null);
+    this.providerCandidates.set([]);
+    this.providerMatchStatus.set(null);
+    this.providerResolvedTitleId.set(null);
     // Invalidate any in-flight applyResumeProgress so it can't write to a
     // freshly-cleared pendingVideoUrl after the page is gone.
     this.urlSeq++;
@@ -783,6 +797,9 @@ export class PlayerService {
       item.release_date ?? item.first_air_date ?? null
     );
     this.providerManualRefreshState.set(result.manualRefresh);
+    this.providerCandidates.set(result.candidates);
+    this.providerMatchStatus.set(result.matchStatus);
+    this.providerResolvedTitleId.set(result.resolved?.id ?? null);
 
     if (!result.resolved) {
       this.setPlaybackUnavailable(result.reason);
@@ -813,29 +830,59 @@ export class PlayerService {
       item.release_date ?? item.first_air_date ?? null
     );
     this.providerManualRefreshState.set(result.manualRefresh);
+    this.providerCandidates.set(result.candidates);
+    this.providerMatchStatus.set(result.matchStatus);
+    this.providerResolvedTitleId.set(result.resolved?.id ?? null);
 
     if (!result.resolved) {
       this.setPlaybackUnavailable(result.reason);
       return false;
     }
 
-    this.playbackTitle = result.resolved;
+    return this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+  }
+
+  async manuallyConfirmProvider(providerTitleId: number): Promise<boolean> {
+    const item = this.currentItem();
+    const type = this.currentItemType();
+    if (!item || !type) return false;
+
+    const result = await this.providerResolve.manualConfirm(item.id, type, providerTitleId);
+    this.providerManualRefreshState.set(result.manualRefresh);
+    this.providerCandidates.set(result.candidates);
+    this.providerMatchStatus.set(result.matchStatus);
+    this.providerResolvedTitleId.set(result.resolved?.id ?? null);
+
+    if (!result.resolved) {
+      this.setPlaybackUnavailable(result.reason);
+      return false;
+    }
+
+    return this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+  }
+
+  private async applyResolvedTitleAndPrepare(
+    tmdbId: number,
+    type: MediaType,
+    resolved: ProviderPlaybackTitle
+  ): Promise<boolean> {
+    this.playbackTitle = resolved;
     if (type === 'tv') {
       const season = this.selectedSeason();
       const episode = this.selectedEpisode();
       const resolveSeq = this.beginPlaybackResolve();
-      const prepared = await this.setEpisodeUrl(result.resolved, season, episode, resolveSeq);
+      const prepared = await this.setEpisodeUrl(resolved, season, episode, resolveSeq);
       if (!prepared) return false;
       const seq = ++this.urlSeq;
-      await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
+      await this.applyResumeProgress(seq, tmdbId, 'tv', season, episode);
       return true;
     }
 
     const resolveSeq = this.beginPlaybackResolve();
-    const prepared = await this.setMovieUrl(result.resolved, resolveSeq);
+    const prepared = await this.setMovieUrl(resolved, resolveSeq);
     if (!prepared) return false;
     const seq = ++this.urlSeq;
-    await this.applyResumeProgress(seq, item.id, 'movie');
+    await this.applyResumeProgress(seq, tmdbId, 'movie');
     return true;
   }
 

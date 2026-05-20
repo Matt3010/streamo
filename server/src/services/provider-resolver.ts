@@ -50,11 +50,24 @@ export interface ProviderManualRefreshState {
   cooldownSeconds: number;
 }
 
-export interface ProviderResolvedTitleOutcome extends ProviderResolveOutcome<ProviderResolvedTitle> {
-  manualRefresh: ProviderManualRefreshState;
+export interface ProviderResolvedTitleCandidate {
+  providerTitleId: number;
+  providerSlug: string | null;
+  title: string;
+  year: number | null;
+  score: number;
 }
 
-type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
+export interface ProviderResolvedTitleOutcome extends ProviderResolveOutcome<ProviderResolvedTitle> {
+  manualRefresh: ProviderManualRefreshState;
+  candidates: ProviderResolvedTitleCandidate[];
+  matchStatus: MatchStatus | null;
+}
+
+type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'failed';
+
+const MAX_STORED_CANDIDATES = 10;
+const MIN_CANDIDATE_SCORE = 40;
 
 interface ProviderSearchPage {
   props?: {
@@ -86,6 +99,8 @@ interface ProviderSearchTitle {
 type CacheEntry = {
   expiresAt: number;
   value: ProviderResolvedTitle | null;
+  candidates: ProviderResolvedTitleCandidate[];
+  matchStatus: MatchStatus | null;
 };
 
 interface ProviderSeasonSummary {
@@ -141,6 +156,7 @@ interface StoredProviderMappingRow {
   resolved_title: string | null;
   match_status: MatchStatus;
   last_checked_at: number;
+  candidates_json: string | null;
 }
 
 const resolveCache = new Map<string, CacheEntry>();
@@ -149,7 +165,6 @@ let providerCatalogBaseUrlRefreshInFlight: Promise<string | null> | null = null;
 const PROVIDER_NAME = 'streamingcommunity';
 const PROVIDER_CATALOG_BASE_URL_META_KEY = 'provider_catalog_base_url';
 const STRONG_MATCH_THRESHOLD = 170;
-const REVIEW_MATCH_THRESHOLD = 120;
 const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_MS = 30 * 1000;
 const PROVIDER_CATALOG_BASE_URL_REDIS_KEY = 'streamo:provider:catalog-base-url';
 const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_REDIS_KEY = 'streamo:provider:catalog-base-url:refresh-cooldown';
@@ -164,15 +179,15 @@ export async function resolveProviderTitle(
   if (!options?.forceRefresh) {
     const cached = resolveCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
-      return finalizeTitleResolveOutcome(args, cached.value, cached.value ? null : 'not_found', override);
+      return finalizeTitleResolveOutcome(args, cached.value, cached.value ? null : 'not_found', override, cached.candidates, cached.matchStatus);
     }
   }
 
   if (!options?.forceRefresh) {
-    const cachedMapping = await readStoredMapping(args, now);
-    if (cachedMapping !== undefined) {
-      cacheResolve(cacheKey, cachedMapping, now);
-      return finalizeTitleResolveOutcome(args, cachedMapping, cachedMapping ? null : 'not_found', override);
+    const stored = await readStoredMapping(args, now);
+    if (stored !== undefined) {
+      cacheResolve(cacheKey, stored.resolved, stored.candidates, stored.matchStatus, now);
+      return finalizeTitleResolveOutcome(args, stored.resolved, stored.resolved ? null : 'not_found', override, stored.candidates, stored.matchStatus);
     }
   }
 
@@ -182,21 +197,23 @@ export async function resolveProviderTitle(
       matchStatus: 'failed',
       matchConfidence: 0,
       failureReason: 'missing_title',
-      candidate: null
+      candidate: null,
+      candidates: []
     }, now);
-    cacheResolve(cacheKey, null, now);
-    return finalizeTitleResolveOutcome(args, null, 'not_found', override);
+    cacheResolve(cacheKey, null, [], 'failed', now);
+    return finalizeTitleResolveOutcome(args, null, 'not_found', override, [], 'failed');
   }
 
   const page = await fetchProviderSearchPage(query);
   if (!page) {
-    return finalizeTitleResolveOutcome(args, null, 'temporarily_unavailable', override);
+    return finalizeTitleResolveOutcome(args, null, 'temporarily_unavailable', override, [], null);
   }
 
   const titles = extractProviderTitles(page);
   logCandidateSummary(args, titles);
   const best = pickBestMatch(titles, args);
-  const { match, persistence } = finalizeMatch(best);
+  const candidates = buildCandidateList(titles, args);
+  const { match, persistence } = finalizeMatch(best, candidates);
   providerResolveLogger.info('title match decision', {
     query: args.title,
     mediaType: args.mediaType,
@@ -206,11 +223,12 @@ export async function resolveProviderTitle(
     selected: match
       ? { id: match.id, slug: match.slug, title: match.title, mediaType: match.mediaType }
       : null,
+    candidateCount: candidates.length,
     persistence
   });
   await upsertMapping(args, persistence, now);
-  cacheResolve(cacheKey, match, now);
-  return finalizeTitleResolveOutcome(args, match, match ? null : 'not_found', override);
+  cacheResolve(cacheKey, match, candidates, persistence.matchStatus, now);
+  return finalizeTitleResolveOutcome(args, match, match ? null : 'not_found', override, candidates, persistence.matchStatus);
 }
 
 export async function resolveProviderEpisode(args: {
@@ -296,11 +314,14 @@ export async function refreshProviderTitle(args: ResolveArgs): Promise<ProviderR
     // provider so concurrent / repeated clicks can't bypass the rate limit.
     const cacheKey = `${args.mediaType}:${args.tmdbId}`;
     const cached = resolveCache.get(cacheKey);
-    const resolved = cached && cached.expiresAt > Date.now() ? cached.value : null;
+    const fresh = cached && cached.expiresAt > Date.now();
+    const resolved = fresh ? cached.value : null;
     return {
       resolved,
       reason: resolved ? null : 'not_found',
-      manualRefresh: await readProviderManualRefreshState(args)
+      manualRefresh: await readProviderManualRefreshState(args),
+      candidates: fresh ? cached.candidates : [],
+      matchStatus: fresh ? cached.matchStatus : null
     };
   }
 
@@ -310,9 +331,92 @@ export async function refreshProviderTitle(args: ResolveArgs): Promise<ProviderR
   });
 }
 
-function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: number): void {
+export async function manuallyConfirmProviderTitle(args: {
+  tmdbId: number;
+  mediaType: MediaType;
+  providerTitleId: number;
+}): Promise<ProviderResolvedTitleOutcome> {
+  const cacheKey = `${args.mediaType}:${args.tmdbId}`;
+
+  // Load the persisted candidate list. The user can only confirm one of the
+  // candidates we previously fetched — we never call the provider here.
+  const row = await kdb
+    .selectFrom('provider_title_map')
+    .select(['source_title', 'candidates_json'])
+    .where('tmdb_id', '=', args.tmdbId)
+    .where('media_type', '=', args.mediaType)
+    .where('provider', '=', PROVIDER_NAME)
+    .executeTakeFirst();
+
+  if (!row) {
+    return finalizeTitleResolveOutcome(
+      { tmdbId: args.tmdbId, mediaType: args.mediaType, title: '', releaseDate: null },
+      null,
+      'not_found',
+      undefined,
+      [],
+      'failed'
+    );
+  }
+
+  const candidates = parseCandidatesJson(row.candidates_json);
+  const chosen = candidates.find((c) => c.providerTitleId === args.providerTitleId);
+  if (!chosen) {
+    // Choice doesn't match any stored candidate — refuse without mutating.
+    const resolveArgs: ResolveArgs = {
+      tmdbId: args.tmdbId,
+      mediaType: args.mediaType,
+      title: row.source_title,
+      releaseDate: null
+    };
+    return finalizeTitleResolveOutcome(resolveArgs, null, 'not_found', undefined, candidates, 'failed');
+  }
+
+  const resolveArgs: ResolveArgs = {
+    tmdbId: args.tmdbId,
+    mediaType: args.mediaType,
+    title: row.source_title,
+    releaseDate: null
+  };
+  const resolved: ProviderResolvedTitle = {
+    provider: 'streamingcommunity',
+    id: chosen.providerTitleId,
+    slug: chosen.providerSlug,
+    title: chosen.title,
+    mediaType: args.mediaType
+  };
+
+  await upsertMapping(resolveArgs, {
+    matchStatus: 'manual_confirmed',
+    matchConfidence: chosen.score,
+    failureReason: null,
+    candidate: resolved,
+    candidates
+  }, Date.now());
+
+  cacheResolve(cacheKey, resolved, candidates, 'manual_confirmed', Date.now());
+
+  providerResolveLogger.info('manual confirm', {
+    tmdbId: args.tmdbId,
+    mediaType: args.mediaType,
+    chosenProviderTitleId: chosen.providerTitleId,
+    chosenTitle: chosen.title
+  });
+
+  return finalizeTitleResolveOutcome(resolveArgs, resolved, null, undefined, candidates, 'manual_confirmed');
+}
+
+function cacheResolve(
+  key: string,
+  value: ProviderResolvedTitle | null,
+  candidates: ProviderResolvedTitleCandidate[],
+  matchStatus: MatchStatus | null,
+  now: number
+): void {
   resolveCache.set(key, {
     value,
+    candidates,
+    matchStatus,
     expiresAt: now + (PROVIDER_RESOLVE_CACHE_TTL * 1000)
   });
 }
@@ -582,13 +686,17 @@ function logCandidateSummary(args: ResolveArgs, titles: ProviderSearchTitle[]): 
   });
 }
 
-function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number } | null): {
+function finalizeMatch(
+  best: { candidate: ProviderResolvedTitle; score: number } | null,
+  candidates: ProviderResolvedTitleCandidate[]
+): {
   match: ProviderResolvedTitle | null;
   persistence: {
     matchStatus: MatchStatus;
     matchConfidence: number;
     failureReason: string | null;
     candidate: ProviderResolvedTitle | null;
+    candidates: ProviderResolvedTitleCandidate[];
   };
 } {
   if (!best) {
@@ -598,7 +706,8 @@ function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number }
         matchStatus: 'failed',
         matchConfidence: 0,
         failureReason: 'no_match',
-        candidate: null
+        candidate: null,
+        candidates
       }
     };
   }
@@ -610,53 +719,74 @@ function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number }
         matchStatus: 'auto_confirmed',
         matchConfidence: best.score,
         failureReason: null,
-        candidate: best.candidate
+        candidate: best.candidate,
+        candidates
       }
     };
   }
 
-  if (best.score >= REVIEW_MATCH_THRESHOLD) {
-    return {
-      // Keep a soft-review marker in persistence, but don't block playback for
-      // titles that already have a concrete provider id candidate.
-      match: best.candidate,
-      persistence: {
-        matchStatus: 'pending_review',
-        matchConfidence: best.score,
-        failureReason: 'low_confidence',
-        candidate: best.candidate
-      }
-    };
-  }
-
+  // Weak match: don't auto-use it. The candidate list is persisted so the
+  // user can pick from the picker UI; without a manual confirmation the
+  // title plays as "failed".
   return {
     match: null,
     persistence: {
       matchStatus: 'failed',
       matchConfidence: best.score,
       failureReason: 'low_confidence',
-      candidate: best.candidate
+      candidate: null,
+      candidates
     }
   };
+}
+
+function buildCandidateList(
+  titles: ProviderSearchTitle[],
+  args: ResolveArgs
+): ProviderResolvedTitleCandidate[] {
+  const wantedYear = extractYear(args.releaseDate ?? null);
+  return titles
+    .filter((title) => title.id && normalizeProviderType(title.type) === args.mediaType)
+    .map((title) => ({ title, score: scoreCandidate(title, args.title, wantedYear) }))
+    .filter(({ score }) => score >= MIN_CANDIDATE_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_STORED_CANDIDATES)
+    .map(({ title, score }) => ({
+      providerTitleId: title.id as number,
+      providerSlug: title.slug ?? null,
+      title: title.name?.trim() || args.title,
+      year: extractYear(getProviderReleaseDate(title)),
+      score
+    }));
 }
 
 async function finalizeTitleResolveOutcome(
   args: ResolveArgs,
   resolved: ProviderResolvedTitle | null,
   reason: ProviderResolveFailureReason | null,
-  manualRefreshOverride?: ProviderManualRefreshState
+  manualRefreshOverride?: ProviderManualRefreshState,
+  candidates: ProviderResolvedTitleCandidate[] = [],
+  matchStatus: MatchStatus | null = null
 ): Promise<ProviderResolvedTitleOutcome> {
   return {
     resolved,
     reason,
-    manualRefresh: manualRefreshOverride ?? await readProviderManualRefreshState(args)
+    manualRefresh: manualRefreshOverride ?? await readProviderManualRefreshState(args),
+    candidates,
+    matchStatus
   };
+}
+
+interface StoredMappingHit {
+  resolved: ProviderResolvedTitle | null;
+  candidates: ProviderResolvedTitleCandidate[];
+  matchStatus: MatchStatus;
 }
 
 async function readStoredMapping(
   args: ResolveArgs,
   nowMs: number
-): Promise<ProviderResolvedTitle | null | undefined> {
+): Promise<StoredMappingHit | undefined> {
   const row = await kdb
     .selectFrom('provider_title_map')
     .select([
@@ -665,7 +795,8 @@ async function readStoredMapping(
       'provider_slug',
       'resolved_title',
       'match_status',
-      'last_checked_at'
+      'last_checked_at',
+      'candidates_json'
     ])
     .where('tmdb_id', '=', args.tmdbId)
     .where('media_type', '=', args.mediaType)
@@ -674,60 +805,33 @@ async function readStoredMapping(
 
   if (!row) return undefined;
 
+  const candidates = parseCandidatesJson(row.candidates_json);
+
   // Once we have a confirmed provider title id, treat it as durable and
   // never go back to the provider's search endpoint just to "re-find" it.
   // Slug / season / embed lookups may still happen later, but title-id
   // resolution itself is locked to the persisted mapping.
-  const confirmed = toConfirmedStoredMapping(row, args);
-  if (confirmed !== undefined) {
-    if (confirmed) return confirmed;
-    return null;
+  if (row.match_status === 'auto_confirmed' || row.match_status === 'manual_confirmed') {
+    return {
+      resolved: toConfirmedResolvedTitle(row, args),
+      candidates,
+      matchStatus: row.match_status
+    };
   }
 
   const freshUntilMs = (row.last_checked_at * 1000) + (PROVIDER_RESOLVE_CACHE_TTL * 1000);
-  if (row.match_status === 'pending_review') {
-    if (freshUntilMs > nowMs) {
-      return toStoredMappingCandidate(row, args);
-    }
-    return undefined;
-  }
-
   if (freshUntilMs > nowMs) {
-    return null;
+    return { resolved: null, candidates, matchStatus: 'failed' };
   }
 
   return undefined;
 }
 
-function toConfirmedStoredMapping(
-  row: StoredProviderMappingRow,
-  args: ResolveArgs
-): ProviderResolvedTitle | null | undefined {
-  if (row.match_status !== 'manual_confirmed' && row.match_status !== 'auto_confirmed') {
-    return undefined;
-  }
-
-  if (!row.provider_id) {
-    return null;
-  }
-
-  return {
-    provider: 'streamingcommunity',
-    id: row.provider_id,
-    slug: row.provider_slug,
-    title: row.resolved_title ?? args.title,
-    mediaType: args.mediaType
-  };
-}
-
-function toStoredMappingCandidate(
+function toConfirmedResolvedTitle(
   row: Pick<StoredProviderMappingRow, 'provider_id' | 'provider_slug' | 'resolved_title'>,
   args: ResolveArgs
 ): ProviderResolvedTitle | null {
-  if (!row.provider_id) {
-    return null;
-  }
-
+  if (!row.provider_id) return null;
   return {
     provider: 'streamingcommunity',
     id: row.provider_id,
@@ -737,16 +841,55 @@ function toStoredMappingCandidate(
   };
 }
 
-async function readProviderManualRefreshState(args: ResolveArgs): Promise<ProviderManualRefreshState> {
-  const row = await kdb
-    .selectFrom('provider_manual_refresh_cooldowns')
-    .select('last_manual_refresh_at')
-    .where('tmdb_id', '=', args.tmdbId)
-    .where('media_type', '=', args.mediaType)
-    .where('provider', '=', PROVIDER_NAME)
-    .executeTakeFirst();
+function parseCandidatesJson(value: string | null): ProviderResolvedTitleCandidate[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is ProviderResolvedTitleCandidate => (
+      !!entry
+      && typeof entry === 'object'
+      && typeof (entry as { providerTitleId?: unknown }).providerTitleId === 'number'
+      && typeof (entry as { title?: unknown }).title === 'string'
+      && typeof (entry as { score?: unknown }).score === 'number'
+    ));
+  } catch {
+    return [];
+  }
+}
 
-  return buildProviderManualRefreshState(row?.last_manual_refresh_at ?? null);
+async function readProviderManualRefreshState(args: ResolveArgs): Promise<ProviderManualRefreshState> {
+  const anchor = await readManualRefreshCooldownAnchor(args);
+  return buildProviderManualRefreshState(anchor);
+}
+
+async function readManualRefreshCooldownAnchor(args: ResolveArgs): Promise<number | null> {
+  // The manual cooldown is gated by the most recent *check* of any kind:
+  // an auto-resolve that just ran (last_checked_at) blocks the manual
+  // button just like a recent manual click would, since both produce the
+  // same provider query.
+  const [cooldownRow, titleRow] = await Promise.all([
+    kdb
+      .selectFrom('provider_manual_refresh_cooldowns')
+      .select('last_manual_refresh_at')
+      .where('tmdb_id', '=', args.tmdbId)
+      .where('media_type', '=', args.mediaType)
+      .where('provider', '=', PROVIDER_NAME)
+      .executeTakeFirst(),
+    kdb
+      .selectFrom('provider_title_map')
+      .select('last_checked_at')
+      .where('tmdb_id', '=', args.tmdbId)
+      .where('media_type', '=', args.mediaType)
+      .where('provider', '=', PROVIDER_NAME)
+      .executeTakeFirst()
+  ]);
+
+  const lastManual = cooldownRow?.last_manual_refresh_at ?? null;
+  const lastChecked = titleRow && titleRow.last_checked_at > 0 ? titleRow.last_checked_at : null;
+  if (lastManual === null) return lastChecked;
+  if (lastChecked === null) return lastManual;
+  return Math.max(lastManual, lastChecked);
 }
 
 function buildProviderManualRefreshState(lastTriggeredAt: number | null): ProviderManualRefreshState {
@@ -761,10 +904,23 @@ function buildProviderManualRefreshState(lastTriggeredAt: number | null): Provid
 }
 
 async function tryClaimProviderManualRefreshSlot(args: ResolveArgs, now: number): Promise<boolean> {
-  // Atomic: INSERT if no row exists, otherwise UPDATE only if the previous
-  // refresh is older than the cooldown. Concurrent callers race on the same
-  // row and exactly one wins; losers see 0 affected rows.
   const cutoff = now - PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS;
+
+  // Auto-resolve attempts (tracked via provider_title_map.last_checked_at)
+  // also count toward the manual cooldown: there's no point clicking
+  // "Riprova" right after the system has just queried the provider.
+  const titleRow = await kdb
+    .selectFrom('provider_title_map')
+    .select('last_checked_at')
+    .where('tmdb_id', '=', args.tmdbId)
+    .where('media_type', '=', args.mediaType)
+    .where('provider', '=', PROVIDER_NAME)
+    .executeTakeFirst();
+  if (titleRow && titleRow.last_checked_at > cutoff) return false;
+
+  // Atomic: INSERT if no row exists, otherwise UPDATE only if the previous
+  // manual refresh is older than the cooldown. Concurrent manual callers
+  // race on the same row and exactly one wins; losers see 0 affected rows.
   const result = await kdb
     .insertInto('provider_manual_refresh_cooldowns')
     .values({
@@ -790,6 +946,7 @@ async function upsertMapping(
     matchConfidence: number;
     failureReason: string | null;
     candidate: ProviderResolvedTitle | null;
+    candidates: ProviderResolvedTitleCandidate[];
   },
   nowMs: number
 ): Promise<void> {
@@ -798,6 +955,7 @@ async function upsertMapping(
   const resolvedAt = result.matchStatus === 'auto_confirmed' || result.matchStatus === 'manual_confirmed'
     ? now
     : null;
+  const candidatesJson = result.candidates.length > 0 ? JSON.stringify(result.candidates) : null;
 
   await kdb
     .insertInto('provider_title_map')
@@ -814,7 +972,8 @@ async function upsertMapping(
       release_year: releaseYear,
       failure_reason: result.failureReason,
       resolved_at: resolvedAt,
-      last_checked_at: now
+      last_checked_at: now,
+      candidates_json: candidatesJson
     })
     .onConflict((oc) => oc.columns(['tmdb_id', 'media_type', 'provider']).doUpdateSet({
       provider_id: result.candidate?.id ?? null,
@@ -826,7 +985,8 @@ async function upsertMapping(
       release_year: releaseYear,
       failure_reason: result.failureReason,
       resolved_at: resolvedAt,
-      last_checked_at: now
+      last_checked_at: now,
+      candidates_json: candidatesJson
     }))
     .execute();
 }

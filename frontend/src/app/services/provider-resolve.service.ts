@@ -32,8 +32,20 @@ interface ProviderResolveResult<T> {
   reason: ProviderResolveFailureReason | null;
 }
 
+export interface ProviderResolvedTitleCandidate {
+  providerTitleId: number;
+  providerSlug: string | null;
+  title: string;
+  year: number | null;
+  score: number;
+}
+
+export type ProviderMatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'failed';
+
 export interface ProviderResolvedTitleResult extends ProviderResolveResult<ProviderResolvedTitle> {
   manualRefresh: ProviderManualRefreshState;
+  candidates: ProviderResolvedTitleCandidate[];
+  matchStatus: ProviderMatchStatus | null;
 }
 
 const DEFAULT_MANUAL_REFRESH_COOLDOWN_SECONDS = 4 * 60 * 60;
@@ -47,9 +59,28 @@ function fallbackManualRefreshState(): ProviderManualRefreshState {
   };
 }
 
+function fallbackTitleResult(
+  reason: ProviderResolveFailureReason | null,
+  resolved: ProviderResolvedTitle | null = null
+): ProviderResolvedTitleResult {
+  return {
+    resolved,
+    reason,
+    manualRefresh: fallbackManualRefreshState(),
+    candidates: [],
+    matchStatus: null
+  };
+}
+
+interface TitleCacheEntry {
+  resolved: ProviderResolvedTitle | null;
+  candidates: ProviderResolvedTitleCandidate[];
+  matchStatus: ProviderMatchStatus | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProviderResolveService {
-  private readonly titleCache = new Map<string, ProviderResolvedTitle | null>();
+  private readonly titleCache = new Map<string, TitleCacheEntry>();
   private readonly episodeCache = new Map<string, ProviderResolvedEpisode | null>();
   private readonly movieCache = new Map<number, ProviderResolvedMovie | null>();
 
@@ -60,11 +91,14 @@ export class ProviderResolveService {
     releaseDate?: string | null
   ): Promise<ProviderResolvedTitleResult> {
     const key = `${mediaType}:${tmdbId}`;
-    if (this.titleCache.has(key)) {
+    const cached = this.titleCache.get(key);
+    if (cached) {
       return {
-        resolved: this.titleCache.get(key) ?? null,
-        reason: null,
-        manualRefresh: fallbackManualRefreshState()
+        resolved: cached.resolved,
+        reason: cached.resolved ? null : 'not_found',
+        manualRefresh: fallbackManualRefreshState(),
+        candidates: cached.candidates,
+        matchStatus: cached.matchStatus
       };
     }
 
@@ -80,28 +114,32 @@ export class ProviderResolveService {
         })
       });
       if (!res.ok) {
-        return {
-          resolved: null,
-          reason: 'temporarily_unavailable',
-          manualRefresh: fallbackManualRefreshState()
-        };
+        return fallbackTitleResult('temporarily_unavailable');
       }
       const data = await res.json() as ProviderResolvedTitleResult;
-      const resolved = data.resolved ?? null;
-      if (resolved) {
-        this.titleCache.set(key, resolved);
-      }
+      this.cacheTitleEntry(key, data);
       return {
-        resolved,
+        resolved: data.resolved ?? null,
         reason: data.reason ?? null,
-        manualRefresh: data.manualRefresh
+        manualRefresh: data.manualRefresh,
+        candidates: data.candidates ?? [],
+        matchStatus: data.matchStatus ?? null
       };
     } catch {
-      return {
-        resolved: null,
-        reason: 'temporarily_unavailable',
-        manualRefresh: fallbackManualRefreshState()
-      };
+      return fallbackTitleResult('temporarily_unavailable');
+    }
+  }
+
+  private cacheTitleEntry(key: string, data: ProviderResolvedTitleResult): void {
+    // Only cache successful resolutions; null/failed results stay uncached so
+    // a fresh navigation re-attempts. Candidates ride along so the picker has
+    // them available without a re-fetch.
+    if (data.resolved) {
+      this.titleCache.set(key, {
+        resolved: data.resolved,
+        candidates: data.candidates ?? [],
+        matchStatus: data.matchStatus ?? null
+      });
     }
   }
 
@@ -125,30 +163,60 @@ export class ProviderResolveService {
         })
       });
       if (!res.ok) {
-        return {
-          resolved: null,
-          reason: 'temporarily_unavailable',
-          manualRefresh: fallbackManualRefreshState()
-        };
+        return fallbackTitleResult('temporarily_unavailable');
       }
       const data = await res.json() as ProviderResolvedTitleResult;
-      const resolved = data.resolved ?? null;
-      if (resolved) {
-        this.titleCache.set(key, resolved);
+      if (data.resolved) {
+        this.cacheTitleEntry(key, data);
       } else {
         this.titleCache.delete(key);
       }
       return {
-        resolved,
+        resolved: data.resolved ?? null,
         reason: data.reason ?? null,
-        manualRefresh: data.manualRefresh
+        manualRefresh: data.manualRefresh,
+        candidates: data.candidates ?? [],
+        matchStatus: data.matchStatus ?? null
       };
     } catch {
+      return fallbackTitleResult('temporarily_unavailable');
+    }
+  }
+
+  async manualConfirm(
+    tmdbId: number,
+    mediaType: MediaType,
+    providerTitleId: number
+  ): Promise<ProviderResolvedTitleResult> {
+    const key = `${mediaType}:${tmdbId}`;
+    try {
+      const res = await fetch('/api/user/provider/manual-confirm', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          tmdb_id: tmdbId,
+          media_type: mediaType,
+          provider_title_id: providerTitleId
+        })
+      });
+      if (!res.ok) {
+        return fallbackTitleResult('temporarily_unavailable');
+      }
+      const data = await res.json() as ProviderResolvedTitleResult;
+      if (data.resolved) {
+        this.cacheTitleEntry(key, data);
+      } else {
+        this.titleCache.delete(key);
+      }
       return {
-        resolved: null,
-        reason: 'temporarily_unavailable',
-        manualRefresh: fallbackManualRefreshState()
+        resolved: data.resolved ?? null,
+        reason: data.reason ?? null,
+        manualRefresh: data.manualRefresh,
+        candidates: data.candidates ?? [],
+        matchStatus: data.matchStatus ?? null
       };
+    } catch {
+      return fallbackTitleResult('temporarily_unavailable');
     }
   }
 

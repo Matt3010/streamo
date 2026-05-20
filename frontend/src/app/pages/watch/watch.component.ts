@@ -3,6 +3,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
+import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
@@ -29,7 +30,7 @@ type ConfirmAction =
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, ConfirmModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiSurfaceDirective, UiSelectComponent],
+  imports: [IconComponent, ConfirmModalComponent, UiModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiSurfaceDirective, UiSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -119,6 +120,12 @@ type ConfirmAction =
                       [uiPending]="providerRefreshPending()"
                       (click)="triggerManualProviderRefresh()">
                 <span>{{ manualProviderRefreshLabel() }}</span>
+              </button>
+            }
+            @if (showProviderPicker()) {
+              <button uiButton type="button" (click)="openProviderPicker()">
+                <app-icon name="search"></app-icon>
+                <span>{{ providerPickerButtonLabel() }}</span>
               </button>
             }
             @if (showNextButton() && canStartPlayback()) {
@@ -330,6 +337,32 @@ type ConfirmAction =
         [actionLabel]="confirmModalActionLabel()"
         (cancelled)="cancelConfirmedAction()"
         (confirmed)="executeConfirmedAction()" />
+
+      <ui-modal [(open)]="providerPickerOpen" title="Scegli match provider" size="sm">
+        <div class="provider-picker">
+          <p class="provider-picker-hint">
+            Seleziona il titolo del provider che corrisponde a quello che stai guardando. La scelta resta salvata e non verr&agrave; pi&ugrave; ricalcolata automaticamente.
+          </p>
+          <ul class="provider-picker-list">
+            @for (c of providerCandidates(); track c.providerTitleId) {
+              <li>
+                <button uiButton="panel" type="button"
+                        [class.is-current]="player.providerResolvedTitleId() === c.providerTitleId"
+                        [disabled]="providerPickerPending()"
+                        (click)="chooseProviderCandidate(c.providerTitleId)">
+                  <span class="provider-picker-title">{{ c.title }}</span>
+                  <span class="provider-picker-meta">
+                    @if (c.year) { <span>{{ c.year }}</span> }
+                    @if (player.providerResolvedTitleId() === c.providerTitleId) {
+                      <span class="provider-picker-current">attuale</span>
+                    }
+                  </span>
+                </button>
+              </li>
+            }
+          </ul>
+        </div>
+      </ui-modal>
     </div>
   `,
   styleUrl: './watch.component.css'
@@ -355,6 +388,8 @@ export class WatchComponent {
   protected readonly providerRefreshPending = signal(false);
   private readonly manualRefreshNow = signal(Math.floor(Date.now() / 1000));
   private manualRefreshTimer: number | null = null;
+  protected readonly providerPickerOpen = signal(false);
+  protected readonly providerPickerPending = signal(false);
   private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
@@ -555,6 +590,7 @@ export class WatchComponent {
     this.player.playbackAvailability() === 'unavailable'
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.player.providerManualRefreshState() !== null
+    && this.player.providerCandidates().length === 0
   ));
   protected readonly manualProviderRefreshRemaining = computed(() => {
     if (!this.showManualProviderRefresh()) return 0;
@@ -571,6 +607,12 @@ export class WatchComponent {
     if (remaining === 0) return 'Riprova ricerca provider';
     return `Riprova tra ${formatCooldownLabel(remaining)}`;
   });
+
+  protected readonly providerCandidates = computed(() => this.player.providerCandidates());
+  protected readonly showProviderPicker = computed(() => this.providerCandidates().length > 0);
+  protected readonly providerPickerButtonLabel = computed(() => (
+    this.player.providerMatchStatus() === 'failed' ? 'Scegli match provider' : 'Cambia match provider'
+  ));
 
   protected readonly primaryPlayLabel = computed(() => {
     if (this.player.playbackAvailability() === 'unavailable') {
@@ -747,6 +789,28 @@ export class WatchComponent {
       return;
     }
     void runWithPending(this.providerRefreshPending, () => this.player.refreshProviderTitleResolution());
+  }
+
+  protected openProviderPicker(): void {
+    if (this.providerCandidates().length === 0) return;
+    this.providerPickerOpen.set(true);
+  }
+
+  protected closeProviderPicker(): void {
+    this.providerPickerOpen.set(false);
+  }
+
+  protected chooseProviderCandidate(providerTitleId: number): void {
+    if (this.providerPickerPending()) return;
+    if (this.player.providerResolvedTitleId() === providerTitleId) {
+      // Already this one — just close.
+      this.providerPickerOpen.set(false);
+      return;
+    }
+    void runWithPending(this.providerPickerPending, async () => {
+      const ok = await this.player.manuallyConfirmProvider(providerTitleId);
+      if (ok) this.providerPickerOpen.set(false);
+    });
   }
 
   protected cancelConfirmedAction(): void {

@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { authenticateToken, respondAuthFailure } from '../middleware/auth';
 import { providerResolveLogger } from '../services/provider-resolve-logs';
 import { toInt } from '../utils/validation';
-import { refreshProviderTitle, resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
+import { manuallyConfirmProviderTitle, refreshProviderTitle, resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
 
 const router = Router();
 
@@ -79,6 +79,40 @@ router.post('/user/provider/refresh-resolve', async (req, res) => {
     });
     console.error('[provider/refresh-resolve]', error);
     return res.status(500).json({ error: 'provider_refresh_resolve_failed' });
+  }
+});
+
+router.post('/user/provider/manual-confirm', async (req, res) => {
+  const authed = await authorizeProviderRequest(req, res, 'route manual confirm auth denied');
+  if (!authed) return;
+
+  const body = req.body || {};
+  const tmdbId = toInt(body.tmdb_id, { min: 1 });
+  const mediaType = body.media_type === 'movie' || body.media_type === 'tv'
+    ? body.media_type
+    : null;
+  const providerTitleId = toInt(body.provider_title_id, { min: 1 });
+
+  if (!tmdbId || !mediaType || !providerTitleId) {
+    return res.status(400).json({ error: 'invalid_params' });
+  }
+
+  try {
+    const resolved = await manuallyConfirmProviderTitle({
+      tmdbId,
+      mediaType,
+      providerTitleId
+    });
+    return res.json(resolved);
+  } catch (error) {
+    providerResolveLogger.error('route manual confirm failed', {
+      user: req.user?.email ?? '-',
+      tmdbId,
+      mediaType,
+      providerTitleId
+    });
+    console.error('[provider/manual-confirm]', error);
+    return res.status(500).json({ error: 'provider_manual_confirm_failed' });
   }
 });
 
