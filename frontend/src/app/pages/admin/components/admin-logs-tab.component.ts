@@ -80,7 +80,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                             {{ playbackLogLabel(log) }}
                           </span>
                         </div>
-                        <pre class="log-message">{{ log | json }}</pre>
+                        <pre class="log-message">{{ playbackLogPayload(log) | json }}</pre>
                       </div>
                     </li>
                   }
@@ -94,7 +94,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                             {{ providerResolveLogLabel(log) }}
                           </span>
                         </div>
-                        <pre class="log-message">{{ log | json }}</pre>
+                        <pre class="log-message">{{ providerResolveLogPayload(log) | json }}</pre>
                       </div>
                     </li>
                   }
@@ -108,7 +108,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                             {{ transportLogLabel(log) }}
                           </span>
                         </div>
-                        <pre class="log-message">{{ log | json }}</pre>
+                        <pre class="log-message">{{ transportLogPayload(log) | json }}</pre>
                       </div>
                     </li>
                   }
@@ -126,6 +126,7 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
   protected readonly admin = inject(AdminService);
   protected readonly logsIcon = faFileLines;
   protected readonly selectedSource = signal<LogSource>('playback');
+  private readonly parsedDomainLogCache = new Map<string, unknown>();
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
   protected readonly providerResolveLogsDesc = computed(() => [...this.admin.providerResolveLogs()].reverse());
   protected readonly transportLogsDesc = computed(() => [...this.admin.transportLogs()].reverse());
@@ -215,6 +216,10 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     return this.logLabel(this.playbackLogTone(log));
   }
 
+  protected playbackLogPayload(log: PlaybackLogEntry): unknown {
+    return this.parseDomainLogPayload(log.message, log.ts);
+  }
+
   protected trackProviderResolveLog(_index: number, log: ProviderResolveLogEntry): string {
     return `${log.ts}:${log.message}`;
   }
@@ -249,6 +254,10 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     return this.logLabel(this.providerResolveLogTone(log));
   }
 
+  protected providerResolveLogPayload(log: ProviderResolveLogEntry): unknown {
+    return this.parseDomainLogPayload(log.message, log.ts);
+  }
+
   protected trackTransportLog(_index: number, log: TransportLogEntry): string {
     return `${log.ts}:${log.kind}:${log.request_uri}:${log.status}:${log.upstream_status}:${log.denied_by}`;
   }
@@ -272,7 +281,68 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     return this.logLabel(this.transportLogTone(log));
   }
 
+  protected transportLogPayload(log: TransportLogEntry): unknown {
+    return log;
+  }
+
   private logLabel(tone: LogTone): string {
     return tone === 'ok' ? 'OK' : tone === 'warn' ? 'WARN' : tone === 'error' ? 'ERR' : tone === 'cancelled' ? 'CANCELLED' : 'INFO';
+  }
+
+  private parseDomainLogPayload(message: string, timestampMs: number): unknown {
+    const cached = this.parsedDomainLogCache.get(message);
+    if (cached !== undefined) return cached;
+
+    const parsed = this.parseDomainLogMessage(message, timestampMs);
+    this.parsedDomainLogCache.set(message, parsed);
+    return parsed;
+  }
+
+  private parseDomainLogMessage(message: string, timestampMs: number): unknown {
+    const prefixMatch = /^\[([^\]]+)\]\s+(.*)$/.exec(message);
+    if (!prefixMatch) {
+      return {
+        ts: timestampMs,
+        message
+      };
+    }
+
+    const [, domain, rest0] = prefixMatch;
+    let rest = rest0.trim();
+    let level: string | null = null;
+    let event = rest;
+    let context: unknown = null;
+
+    const levelMatch = /^level=([^\s]+)\s+(.*)$/.exec(rest);
+    if (levelMatch) {
+      level = levelMatch[1];
+      rest = levelMatch[2].trim();
+    }
+
+    if (rest.startsWith('event=')) {
+      const body = rest.slice('event='.length);
+      const jsonStart = body.indexOf('{');
+      if (jsonStart >= 0) {
+        const candidateEvent = body.slice(0, jsonStart).trim();
+        const candidateJson = body.slice(jsonStart).trim();
+        try {
+          context = JSON.parse(candidateJson);
+          event = candidateEvent;
+        } catch {
+          event = body.trim();
+        }
+      } else {
+        event = body.trim();
+      }
+    }
+
+    return {
+      ts: timestampMs,
+      domain,
+      ...(level ? { level } : {}),
+      event,
+      ...(context !== null ? { context } : {}),
+      raw: message
+    };
   }
 }
