@@ -114,6 +114,26 @@ server {
         proxy_set_header Forwarded "";
     }
 
+    # ---- Core playback: generic upstream asset namespace emitted by playlist rewrites ----
+    location ^~ /vixcloud/ {
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
+        set $playback_log_kind "vixcloud";
+        set $playback_upstream_host "vixcloud.co";
+        access_log /data/nginx-playback-access.log playback_transport;
+
+        proxy_pass https://vixcloud.co/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host vixcloud.co;
+        proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
+    }
+
     # ---- Core playback: TV episodes now resolve directly to /embed/* ----
     location ^~ /embed/ {
         auth_request /auth-check;
@@ -201,12 +221,12 @@ server {
         proxy_set_header Forwarded "";
     }
 
-    # ---- VixSrc static asset fallback ----
+    # ---- Vixcloud static asset fallback ----
     location ~ \.(js|css|woff2?|ttf|otf|svg|png|jpg|jpeg|gif|ico|webp|mp4|m3u8|ts|vtt)$ {
-        try_files $uri @vixsrc_proxy;
+        try_files $uri @vixcloud_proxy;
     }
 
-    location @vixsrc_proxy {
+    location @vixcloud_proxy {
         proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;

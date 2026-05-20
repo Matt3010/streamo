@@ -101,14 +101,6 @@ function rewritePlaylist(body: string): string {
     .replace(
       /\/\/vixcloud\.co(\/[^\s"']*)/gi,
       '/vixcloud$1'
-    )
-    .replace(
-      /https?:\/\/vixsrc\.to(\/[^\s"']*)/gi,
-      '$1'
-    )
-    .replace(
-      /\/\/vixsrc\.to(\/[^\s"']*)/gi,
-      '$1'
     );
 }
 

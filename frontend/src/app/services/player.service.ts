@@ -10,7 +10,6 @@ import { isTitleUpcoming } from '../utils/media-release.util';
 import { getEffectiveLastEpisode } from '../utils/aired-episodes.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
-const VIXSRC_BASE = '/player';
 const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
 
 interface ProviderPlaybackTitle {
