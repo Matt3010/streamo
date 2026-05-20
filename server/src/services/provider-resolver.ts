@@ -1,7 +1,9 @@
 import type { MediaType } from '../../../shared/types';
 import { kdb } from '../db';
 import {
-  PROVIDER_CATALOG_BASE_URL,
+  PROVIDER_CATALOG_BASE_URL_OVERRIDE,
+  PROVIDER_CATALOG_LINK_SOURCE_URL,
+  PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS,
   PROVIDER_CATALOG_LOCALE,
   PROVIDER_RESOLVE_CACHE_TTL,
   PROVIDER_RESOLVER_DEBUG
@@ -85,9 +87,30 @@ interface ProviderEpisode {
   season_id?: number | null;
 }
 
+interface TelegraphPageNode {
+  tag?: string;
+  attrs?: {
+    href?: string;
+    [key: string]: unknown;
+  };
+  children?: Array<TelegraphPageNode | string>;
+}
+
+interface TelegraphPageResponse {
+  ok?: boolean;
+  result?: {
+    content?: TelegraphPageNode[];
+  };
+}
+
 type EpisodeCacheEntry = {
   expiresAt: number;
   value: ProviderLoadedSeason | null;
+};
+
+type ProviderCatalogBaseUrlCacheEntry = {
+  expiresAt: number;
+  value: string;
 };
 
 interface StoredProviderMappingRow {
@@ -101,6 +124,7 @@ interface StoredProviderMappingRow {
 
 const resolveCache = new Map<string, CacheEntry>();
 const seasonCache = new Map<string, EpisodeCacheEntry>();
+let providerCatalogBaseUrlCache: ProviderCatalogBaseUrlCacheEntry | null = null;
 const PROVIDER_NAME = 'streamingcommunity';
 const STRONG_MATCH_THRESHOLD = 170;
 const REVIEW_MATCH_THRESHOLD = 120;
@@ -229,7 +253,14 @@ function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: num
 }
 
 async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPage | null> {
-  const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/search`, PROVIDER_CATALOG_BASE_URL);
+  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
+  if (!providerCatalogBaseUrl) {
+    providerResolveLogger.error('provider catalog base url unavailable', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL
+    });
+    return null;
+  }
+  const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/search`, providerCatalogBaseUrl);
   url.searchParams.set('q', query);
 
   let res: Response;
@@ -660,9 +691,18 @@ async function fetchProviderSeason(
     return cached.value;
   }
 
+  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
+  if (!providerCatalogBaseUrl) {
+    providerResolveLogger.error('provider catalog base url unavailable', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      providerTitleId,
+      seasonNumber
+    });
+    return null;
+  }
   const url = new URL(
     `/${PROVIDER_CATALOG_LOCALE}/titles/${providerTitleId}-${slug}/season-${seasonNumber}`,
-    PROVIDER_CATALOG_BASE_URL
+    providerCatalogBaseUrl
   );
 
   let res: Response;
@@ -754,9 +794,18 @@ async function fetchProviderEmbedUrl(
   providerTitleId: number,
   episodeId?: number
 ): Promise<string | null> {
+  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
+  if (!providerCatalogBaseUrl) {
+    providerResolveLogger.error('provider catalog base url unavailable', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      providerTitleId,
+      episodeId: episodeId ?? null
+    });
+    return null;
+  }
   const url = new URL(
     `/${PROVIDER_CATALOG_LOCALE}/iframe/${providerTitleId}`,
-    PROVIDER_CATALOG_BASE_URL
+    providerCatalogBaseUrl
   );
   if (episodeId) {
     url.searchParams.set('episode_id', String(episodeId));
@@ -801,7 +850,7 @@ async function fetchProviderEmbedUrl(
 
   const embedUrl = decodeHtmlEntities(match[1].trim());
   try {
-    const parsed = new URL(embedUrl, PROVIDER_CATALOG_BASE_URL);
+    const parsed = new URL(embedUrl, providerCatalogBaseUrl);
     const isVixEmbed = parsed.hostname === 'vixcloud.co' && parsed.pathname.startsWith('/embed/');
     if (!isVixEmbed) {
     providerResolveLogger.error('embed host unexpected', {
@@ -827,4 +876,122 @@ async function fetchProviderEmbedUrl(
     });
     return null;
   }
+}
+
+async function getProviderCatalogBaseUrl(): Promise<string | null> {
+  const now = Date.now();
+  if (providerCatalogBaseUrlCache && providerCatalogBaseUrlCache.expiresAt > now) {
+    return providerCatalogBaseUrlCache.value;
+  }
+
+  const resolved = await fetchProviderCatalogBaseUrlFromTelegraph();
+  if (resolved) {
+    providerCatalogBaseUrlCache = {
+      value: resolved,
+      expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
+    };
+    return resolved;
+  }
+
+  if (PROVIDER_CATALOG_BASE_URL_OVERRIDE) {
+    providerResolveLogger.warn('provider catalog base url override used', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      providerCatalogBaseUrl: PROVIDER_CATALOG_BASE_URL_OVERRIDE
+    });
+    providerCatalogBaseUrlCache = {
+      value: PROVIDER_CATALOG_BASE_URL_OVERRIDE,
+      expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
+    };
+    return PROVIDER_CATALOG_BASE_URL_OVERRIDE;
+  }
+
+  providerResolveLogger.error('provider catalog base url resolution failed', {
+    sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL
+  });
+  return null;
+}
+
+async function fetchProviderCatalogBaseUrlFromTelegraph(): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetch(PROVIDER_CATALOG_LINK_SOURCE_URL, {
+      headers: {
+        accept: 'application/json'
+      }
+    });
+  } catch {
+    providerResolveLogger.error('provider link source request failed', {
+      url: PROVIDER_CATALOG_LINK_SOURCE_URL
+    });
+    return null;
+  }
+
+  if (!res.ok) {
+    providerResolveLogger.error('provider link source response invalid', {
+      url: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      status: res.status
+    });
+    return null;
+  }
+
+  let payload: TelegraphPageResponse;
+  try {
+    payload = await res.json() as TelegraphPageResponse;
+  } catch {
+    providerResolveLogger.error('provider link source payload invalid', {
+      url: PROVIDER_CATALOG_LINK_SOURCE_URL
+    });
+    return null;
+  }
+
+  const href = extractFirstHref(payload.result?.content);
+  if (!href) {
+    providerResolveLogger.error('provider link source href missing', {
+      url: PROVIDER_CATALOG_LINK_SOURCE_URL
+    });
+    return null;
+  }
+
+  try {
+    const parsed = new URL(href);
+    const normalized = parsed.toString().replace(/\/$/, '');
+    debug('provider catalog base url resolved', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      providerCatalogBaseUrl: normalized
+    });
+    return normalized;
+  } catch {
+    providerResolveLogger.error('provider link source href invalid', {
+      url: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      href
+    });
+    return null;
+  }
+}
+
+function extractFirstHref(nodes: TelegraphPageNode[] | undefined): string | null {
+  if (!nodes?.length) return null;
+
+  for (const node of nodes) {
+    const href = extractHrefFromNode(node);
+    if (href) return href;
+  }
+
+  return null;
+}
+
+function extractHrefFromNode(node: TelegraphPageNode | string): string | null {
+  if (typeof node === 'string') return null;
+  const href = typeof node.attrs?.href === 'string' ? node.attrs.href.trim() : '';
+  if (href) {
+    return href;
+  }
+
+  const children = node.children ?? [];
+  for (const child of children) {
+    const nested = extractHrefFromNode(child);
+    if (nested) return nested;
+  }
+
+  return null;
 }
