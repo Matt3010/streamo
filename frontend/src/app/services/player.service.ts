@@ -21,6 +21,7 @@ interface ProviderPlaybackTitle {
 }
 
 type PlaybackAvailability = 'idle' | 'resolving' | 'ready' | 'unavailable';
+type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
@@ -516,40 +517,38 @@ export class PlayerService {
     episode: number,
     resolveSeq: number
   ): Promise<boolean> {
-    const embedUrl = await this.resolveEpisodeEmbedUrl(playback, season, episode);
+    const result = await this.resolveEpisodeEmbedUrl(playback, season, episode);
     if (!this.isCurrentPlaybackResolve(resolveSeq)) {
       return false;
     }
 
-    if (!embedUrl) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
+    if (!result.embedUrl) {
+      this.setPlaybackUnavailable(result.reason);
       return false;
     }
 
-    return this.commitResolvedPlaybackUrl(embedUrl, resolveSeq);
+    return this.commitResolvedPlaybackUrl(result.embedUrl, resolveSeq);
   }
 
   private async setMovieUrl(playback: ProviderPlaybackTitle, resolveSeq: number): Promise<boolean> {
-    const embedUrl = await this.resolveMovieEmbedUrl(playback);
+    const result = await this.resolveMovieEmbedUrl(playback);
     if (!this.isCurrentPlaybackResolve(resolveSeq)) {
       return false;
     }
 
-    if (!embedUrl) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
+    if (!result.embedUrl) {
+      this.setPlaybackUnavailable(result.reason);
       return false;
     }
 
-    return this.commitResolvedPlaybackUrl(embedUrl, resolveSeq);
+    return this.commitResolvedPlaybackUrl(result.embedUrl, resolveSeq);
   }
 
   private async resolveEpisodeEmbedUrl(
     playback: ProviderPlaybackTitle,
     season: number,
     episode: number
-  ): Promise<string | null> {
+  ): Promise<{ embedUrl: string | null; reason: ProviderResolveFailureReason | null }> {
     const resolved = await this.providerResolve.resolveEpisode(
       playback.id,
       playback.slug,
@@ -557,12 +556,20 @@ export class PlayerService {
       episode
     );
 
-    return resolved?.embedUrl ?? null;
+    return {
+      embedUrl: resolved.resolved?.embedUrl ?? null,
+      reason: resolved.reason
+    };
   }
 
-  private async resolveMovieEmbedUrl(playback: ProviderPlaybackTitle): Promise<string | null> {
+  private async resolveMovieEmbedUrl(
+    playback: ProviderPlaybackTitle
+  ): Promise<{ embedUrl: string | null; reason: ProviderResolveFailureReason | null }> {
     const resolved = await this.providerResolve.resolveMovie(playback.id);
-    return resolved?.embedUrl ?? null;
+    return {
+      embedUrl: resolved.resolved?.embedUrl ?? null,
+      reason: resolved.reason
+    };
   }
 
   private beginPlaybackResolve(): number {
@@ -585,6 +592,15 @@ export class PlayerService {
     this.playbackAvailability.set('ready');
     this.playbackUnavailableMessage.set(null);
     return true;
+  }
+
+  private setPlaybackUnavailable(reason: ProviderResolveFailureReason | null): void {
+    this.playbackAvailability.set('unavailable');
+    this.playbackUnavailableMessage.set(
+      reason === 'temporarily_unavailable'
+        ? 'Riproduzione temporaneamente non disponibile'
+        : 'Titolo non disponibile'
+    );
   }
 
   private async applyResumeProgress(seq: number, tmdbId: string | number, type: MediaType, season = 0, episode = 0): Promise<void> {
@@ -704,11 +720,10 @@ export class PlayerService {
     }
 
     const resolveSeq = this.beginPlaybackResolve();
-    const nextUrl = await this.resolveEpisodeEmbedUrl(playback, next.season, next.episode);
+    const nextResult = await this.resolveEpisodeEmbedUrl(playback, next.season, next.episode);
     if (!this.isCurrentPlaybackResolve(resolveSeq)) return false;
-    if (!nextUrl) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
+    if (!nextResult.embedUrl) {
+      this.setPlaybackUnavailable(nextResult.reason);
       return false;
     }
 
@@ -726,7 +741,7 @@ export class PlayerService {
 
     if (!this.isCurrentPlaybackResolve(resolveSeq)) return false;
     this.resetPlayer();
-    if (!this.commitResolvedPlaybackUrl(nextUrl, resolveSeq)) return false;
+    if (!this.commitResolvedPlaybackUrl(nextResult.embedUrl, resolveSeq)) return false;
     // No applyResumeProgress — we want a clean start, not a seek to a
     // half-watched checkpoint of an episode the user explicitly skipped.
     this.urlSeq++;
@@ -752,22 +767,21 @@ export class PlayerService {
       return null;
     }
 
-    const resolved = await this.providerResolve.resolve(
+    const result = await this.providerResolve.resolve(
       item.id,
       type,
       title,
       item.release_date ?? item.first_air_date ?? null
     );
 
-    if (!resolved) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
+    if (!result.resolved) {
+      this.setPlaybackUnavailable(result.reason);
       return null;
     }
 
     this.playbackAvailability.set('resolving');
     this.playbackUnavailableMessage.set(null);
-    return resolved;
+    return result.resolved;
   }
 
   private requirePlaybackTitle(): ProviderPlaybackTitle | null {
@@ -931,18 +945,17 @@ export class PlayerService {
     if (nextEp !== undefined) {
       const season = this.selectedSeason();
       const resolveSeq = this.beginPlaybackResolve();
-      const nextUrl = await this.resolveEpisodeEmbedUrl(playback, season, nextEp.episode_number);
+      const nextResult = await this.resolveEpisodeEmbedUrl(playback, season, nextEp.episode_number);
       if (!this.isCurrentPlaybackResolve(resolveSeq)) return;
-      if (!nextUrl) {
-        this.playbackAvailability.set('unavailable');
-        this.playbackUnavailableMessage.set('Titolo non disponibile');
+      if (!nextResult.embedUrl) {
+        this.setPlaybackUnavailable(nextResult.reason);
         return;
       }
 
       this.selectedEpisode.set(nextEp.episode_number);
       this.activeEpisodeRef.set({ season, episode: nextEp.episode_number });
       this.resetPlayer();
-      const prepared = this.commitResolvedPlaybackUrl(nextUrl, resolveSeq);
+      const prepared = this.commitResolvedPlaybackUrl(nextResult.embedUrl, resolveSeq);
       if (!prepared) return;
       const seq = ++this.urlSeq;
       await this.applyResumeProgress(seq, item.id, 'tv', season, nextEp.episode_number);
