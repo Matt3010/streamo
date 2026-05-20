@@ -107,6 +107,11 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host $cdn_host;
         proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
     }
 
     # ---- Core playback: TV episodes now resolve directly to /embed/* ----
@@ -118,6 +123,11 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
         proxy_set_header Accept-Encoding "";
         proxy_hide_header Content-Security-Policy;
         proxy_hide_header Content-Security-Policy-Report-Only;
@@ -130,6 +140,7 @@ server {
         sub_filter_once off;
 
         add_header Content-Security-Policy "frame-ancestors 'self'" always;
+        add_header Referrer-Policy "no-referrer" always;
     }
 
     # ---- Core playback: playlist proxy rewrites downstream asset URLs ----
@@ -154,6 +165,11 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
     }
 
     # ---- Core playback: referenced by playlist rewrite rules ----
@@ -165,6 +181,11 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
     }
 
     # ---- Core playback: referenced by playlist rewrite rules ----
@@ -173,6 +194,11 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
     }
 
     # ---- VixSrc static asset fallback ----
@@ -185,6 +211,11 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;
         proxy_set_header Referer "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Proxy-Authorization "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
     }
 
     # ---- Frontend SPA ----
