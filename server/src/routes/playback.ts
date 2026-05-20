@@ -1,14 +1,17 @@
-import { Router, type Response as ExpressResponse } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { Router, type Request, type Response as ExpressResponse } from 'express';
+import { authenticateToken } from '../middleware/auth';
 import { playbackLogger } from '../services/playback-logs';
 
 const router = Router();
 
-router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
+router.get(/^\/playback\/playlist\/(.*)$/, async (req, res) => {
   const tail = req.params[0] ?? '';
   const query = req.url.indexOf('?');
   const search = query >= 0 ? req.url.slice(query) : '';
   const upstreamUrl = `https://vixcloud.co/playlist/${tail}${search}`;
+  const authed = await authorizePlaybackRequest(req, res, upstreamUrl);
+  if (!authed) return;
+
   playbackLogger.info('playlist start', {
     user: req.user?.email ?? '-',
     upstream: upstreamUrl
@@ -56,6 +59,25 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   res.status(upstream.status).send(rewritePlaylist(body));
 });
 
+async function authorizePlaybackRequest(req: Request, res: ExpressResponse, upstreamUrl: string): Promise<boolean> {
+  const result = await authenticateToken(req.cookies?.token);
+  if (!result.user) {
+    if (result.error === 'access_revoked') {
+      res.clearCookie('token', { path: '/' });
+    }
+    playbackLogger.warn('playlist auth denied', {
+      reason: result.error ?? 'unauthenticated',
+      upstream: upstreamUrl,
+      requestUri: req.originalUrl || req.url,
+      ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-'
+    });
+    res.status(401).json({ error: result.error ?? 'unauthenticated' });
+    return false;
+  }
+
+  req.user = result.user;
+  return true;
+}
 
 function rewritePlaylist(body: string): string {
   return body

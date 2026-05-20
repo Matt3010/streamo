@@ -1,12 +1,15 @@
-import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { Router, type Request, type Response } from 'express';
+import { authenticateToken } from '../middleware/auth';
 import { providerResolveLogger } from '../services/provider-resolve-logs';
 import { toInt } from '../utils/validation';
 import { resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
 
 const router = Router();
 
-router.post('/user/provider/resolve', requireAuth, async (req, res) => {
+router.post('/user/provider/resolve', async (req, res) => {
+  const authed = await authorizeProviderRequest(req, res, 'route resolve auth denied');
+  if (!authed) return;
+
   const body = req.body || {};
   const tmdbId = toInt(body.tmdb_id, { min: 1 });
   const mediaType = body.media_type === 'movie' || body.media_type === 'tv'
@@ -41,7 +44,10 @@ router.post('/user/provider/resolve', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/user/provider/resolve-episode', requireAuth, async (req, res) => {
+router.post('/user/provider/resolve-episode', async (req, res) => {
+  const authed = await authorizeProviderRequest(req, res, 'route resolve episode auth denied');
+  if (!authed) return;
+
   const body = req.body || {};
   const providerTitleId = toInt(body.provider_title_id, { min: 1 });
   const seasonNumber = toInt(body.season, { min: 1 });
@@ -76,7 +82,10 @@ router.post('/user/provider/resolve-episode', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/user/provider/resolve-movie', requireAuth, async (req, res) => {
+router.post('/user/provider/resolve-movie', async (req, res) => {
+  const authed = await authorizeProviderRequest(req, res, 'route resolve movie auth denied');
+  if (!authed) return;
+
   const body = req.body || {};
   const providerTitleId = toInt(body.provider_title_id, { min: 1 });
 
@@ -99,5 +108,24 @@ router.post('/user/provider/resolve-movie', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'provider_movie_resolve_failed' });
   }
 });
+
+async function authorizeProviderRequest(req: Request, res: Response, event: string): Promise<boolean> {
+  const result = await authenticateToken(req.cookies?.token);
+  if (!result.user) {
+    if (result.error === 'access_revoked') {
+      res.clearCookie('token', { path: '/' });
+    }
+    providerResolveLogger.warn(event, {
+      reason: result.error ?? 'unauthenticated',
+      requestUri: req.originalUrl || req.url,
+      ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-'
+    });
+    res.status(401).json({ error: result.error ?? 'unauthenticated' });
+    return false;
+  }
+
+  req.user = result.user;
+  return true;
+}
 
 export default router;
