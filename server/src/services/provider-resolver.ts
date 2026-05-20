@@ -6,7 +6,6 @@ import {
   PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS,
   PROVIDER_CATALOG_LOCALE,
   PROVIDER_RESOLVE_CACHE_TTL,
-  PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS,
   PROVIDER_RESOLVER_DEBUG
 } from '../config';
 import { providerResolveLogger } from './provider-resolve-logs';
@@ -45,10 +44,10 @@ export interface ProviderResolveOutcome<T> {
 }
 
 export interface ProviderManualRefreshState {
-  lastTriggeredAt: number | null;
-  nextAllowedAt: number;
+  // True when the user has explicitly clicked the manual refresh / picker
+  // refresh button at least once before — drives the confirmation modal
+  // on subsequent clicks. There's no actual rate limit any more.
   requiresConfirm: boolean;
-  cooldownSeconds: number;
 }
 
 export interface ProviderResolvedTitleCandidate {
@@ -915,18 +914,11 @@ async function readProviderManualRefreshState(args: ResolveArgs): Promise<Provid
   return buildProviderManualRefreshState(row?.last_manual_refresh_at ?? null);
 }
 
-function buildProviderManualRefreshState(lastTriggeredAt: number | null): ProviderManualRefreshState {
-  // `requiresConfirm` decouples from cooldown timing: once the user has
-  // manually triggered a refresh at least once, future clicks always go
-  // through the confirmation modal so accidental spam is filtered by an
-  // explicit "sei sicuro?" rather than an artificial wait.
-  const nextAllowedAt = lastTriggeredAt ? lastTriggeredAt + PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS : 0;
-  return {
-    lastTriggeredAt,
-    nextAllowedAt,
-    requiresConfirm: lastTriggeredAt !== null,
-    cooldownSeconds: PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS
-  };
+function buildProviderManualRefreshState(lastManualAt: number | null): ProviderManualRefreshState {
+  // Accidental spam is filtered by the confirmation modal, not by a wait.
+  // If the user has clicked manually before, subsequent clicks go through
+  // a "sei sicuro?" step.
+  return { requiresConfirm: lastManualAt !== null };
 }
 
 async function markProviderManualRefresh(args: ResolveArgs, now: number): Promise<void> {

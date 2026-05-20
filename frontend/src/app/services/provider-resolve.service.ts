@@ -21,10 +21,10 @@ interface ProviderResolvedMovie {
 type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
 
 export interface ProviderManualRefreshState {
-  lastTriggeredAt: number | null;
-  nextAllowedAt: number;
+  /** True after the user has clicked the manual refresh button at least
+   * once for this title — drives the confirmation modal on subsequent
+   * clicks. There's no rate limit. */
   requiresConfirm: boolean;
-  cooldownSeconds: number;
 }
 
 interface ProviderResolveResult<T> {
@@ -49,15 +49,8 @@ export interface ProviderResolvedTitleResult extends ProviderResolveResult<Provi
   matchStatus: ProviderMatchStatus | null;
 }
 
-const DEFAULT_MANUAL_REFRESH_COOLDOWN_SECONDS = 4 * 60 * 60;
-
 function fallbackManualRefreshState(): ProviderManualRefreshState {
-  return {
-    lastTriggeredAt: null,
-    nextAllowedAt: 0,
-    requiresConfirm: false,
-    cooldownSeconds: DEFAULT_MANUAL_REFRESH_COOLDOWN_SECONDS
-  };
+  return { requiresConfirm: false };
 }
 
 function fallbackTitleResult(
