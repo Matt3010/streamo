@@ -807,6 +807,11 @@ export class PlayerService {
     const ct = ev.currentTime;
     const dur = ev.duration;
 
+    if (evtName === 'next-episode') {
+      void this.playNextEpisode();
+      return;
+    }
+
     if (typeof ct === 'number' && ct >= 0) this.currentVideoTime = ct;
     if (typeof dur === 'number' && dur > 0) this.currentVideoDuration = dur;
 

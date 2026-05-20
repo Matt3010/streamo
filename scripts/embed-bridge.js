@@ -6,8 +6,10 @@
   var seekDone = !shouldSeek;
   var activeVideo = null;
   var activePlayer = null;
+  var activeNextButton = null;
   var videoCleanup = null;
   var playerCleanup = null;
+  var nextButtonCleanup = null;
   var syncTimer = null;
   var observer = null;
   var completionSent = false;
@@ -33,6 +35,14 @@
   function getVideo() {
     try {
       return document.querySelector('.jw-video, video');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getNextEpisodeButton() {
+    try {
+      return document.querySelector('.jw-icon-next, .jw-icon-next-episode');
     } catch (e) {
       return null;
     }
@@ -222,9 +232,40 @@
     };
   }
 
+  function attachNextEpisodeButton(button) {
+    if (!button || button === activeNextButton) return;
+    if (nextButtonCleanup) {
+      nextButtonCleanup();
+      nextButtonCleanup = null;
+    }
+
+    activeNextButton = button;
+
+    function onClick(event) {
+      try {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+          }
+        }
+      } catch (e) {}
+
+      emitToParent('next-episode');
+    }
+
+    button.addEventListener('click', onClick, true);
+
+    nextButtonCleanup = function() {
+      button.removeEventListener('click', onClick, true);
+    };
+  }
+
   function sync() {
     attachVideo(getVideo());
     attachPlayer(getPlayer());
+    attachNextEpisodeButton(getNextEpisodeButton());
   }
 
   function bootstrap() {
