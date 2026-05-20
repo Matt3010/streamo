@@ -3,7 +3,7 @@
   var CSS = [
     '@media (max-width: 640px) {',
     '  .jw-display-controls .jw-display-icon-container {',
-    '    transform: translateY(-0.65rem) scale(0.78);',
+    '    transform: translateY(-0.95rem) scale(0.72);',
     '    transform-origin: center center;',
     '  }',
     '}'
