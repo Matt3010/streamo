@@ -21,6 +21,8 @@ interface ProviderPlaybackTitle {
   mediaType: MediaType;
 }
 
+type PlaybackAvailability = 'idle' | 'resolving' | 'ready' | 'unavailable';
+
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private tmdb = inject(TmdbService);
@@ -55,6 +57,8 @@ export class PlayerService {
   private playbackTitle: ProviderPlaybackTitle | null = null;
   private urlSeq = 0;
   readonly iframeSrc = signal('');
+  readonly playbackAvailability = signal<PlaybackAvailability>('idle');
+  readonly playbackUnavailableMessage = signal<string | null>(null);
 
   // Playback tracking
   readonly resumeText = signal('');
@@ -150,7 +154,10 @@ export class PlayerService {
     this.currentItem.set(null);
     this.backdropUrl.set('');
     this.isInWatchlist.set(false);
+    this.pendingVideoUrl = '';
     this.playbackTitle = null;
+    this.playbackAvailability.set('resolving');
+    this.playbackUnavailableMessage.set(null);
     this.seasons.set([]);
     this.episodes.set([]);
     this.seriesProgress.set(new Map());
@@ -186,6 +193,7 @@ export class PlayerService {
     this.currentItem.set(item);
     this.currentItemType.set(type);
     this.playbackTitle = await this.resolvePlaybackTitle(item, type);
+    if (!this.playbackTitle) return;
 
     const backdrop = item.backdrop_path ?? item.poster_path;
     this.backdropUrl.set(backdrop ? `${BACKDROP_BASE}${backdrop}` : '');
@@ -252,6 +260,8 @@ export class PlayerService {
     this.iframeSrc.set('');
     this.pendingVideoUrl = '';
     this.playbackTitle = null;
+    this.playbackAvailability.set('idle');
+    this.playbackUnavailableMessage.set(null);
     // Invalidate any in-flight applyResumeProgress so it can't write to a
     // freshly-cleared pendingVideoUrl after the page is gone.
     this.urlSeq++;
@@ -279,7 +289,7 @@ export class PlayerService {
       this.toast.show(type === 'movie' ? 'Film non ancora disponibile' : 'Serie non ancora disponibile');
       return;
     }
-    if (!this.pendingVideoUrl) return;
+    if (!this.pendingVideoUrl || this.playbackAvailability() !== 'ready') return;
     this.iframeSrc.set(this.pendingVideoUrl);
     this.videoStartTime = Date.now();
     this.currentVideoTime = 0;
@@ -493,27 +503,34 @@ export class PlayerService {
     );
 
     if (!resolved) {
-      this.toast.show(`Episodio S${season} E${episode} non disponibile sul provider`);
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
       return false;
     }
 
     if (!resolved.embedUrl) {
-      this.toast.show(`Embed episodio S${season} E${episode} non disponibile sul provider`);
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
       return false;
     }
 
     this.pendingVideoUrl = resolved.embedUrl;
+    this.playbackAvailability.set('ready');
+    this.playbackUnavailableMessage.set(null);
     return true;
   }
 
   private async setMovieUrl(playback: ProviderPlaybackTitle): Promise<boolean> {
     const resolved = await this.providerResolve.resolveMovie(playback.id);
     if (!resolved?.embedUrl) {
-      this.toast.show('Embed film non disponibile sul provider');
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
       return false;
     }
 
     this.pendingVideoUrl = resolved.embedUrl;
+    this.playbackAvailability.set('ready');
+    this.playbackUnavailableMessage.set(null);
     return true;
   }
 
@@ -655,7 +672,8 @@ export class PlayerService {
   private async resolvePlaybackTitle(item: TmdbItem, type: MediaType): Promise<ProviderPlaybackTitle | null> {
     const title = (item.title ?? item.name ?? '').trim();
     if (!title) {
-      this.toast.show('Titolo non valido per il provider');
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
       return null;
     }
 
@@ -667,16 +685,18 @@ export class PlayerService {
     );
 
     if (!resolved) {
-      this.toast.show('Impossibile trovare l\'id del provider per questo titolo');
+      this.playbackAvailability.set('unavailable');
+      this.playbackUnavailableMessage.set('Titolo non disponibile');
       return null;
     }
 
+    this.playbackAvailability.set('resolving');
+    this.playbackUnavailableMessage.set(null);
     return resolved;
   }
 
   private requirePlaybackTitle(): ProviderPlaybackTitle | null {
     if (this.playbackTitle) return this.playbackTitle;
-    this.toast.show('Id provider non disponibile');
     return null;
   }
 

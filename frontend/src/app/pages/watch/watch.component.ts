@@ -107,11 +107,11 @@ type ConfirmAction =
           </div>
         } @else if (!player.iframeSrc()) {
           <div class="player-actions">
-            <button uiButton="primary" type="button" (click)="play()">
+            <button uiButton="primary" type="button" [disabled]="!canStartPlayback()" (click)="play()">
               <app-icon name="play"></app-icon>
-              <span>{{ playLabel() }}</span>
+              <span>{{ primaryPlayLabel() }}</span>
             </button>
-            @if (showNextButton()) {
+            @if (showNextButton() && canStartPlayback()) {
               <button uiButton type="button" (click)="playNext()">
                 <span>Vai al prossimo</span>
               </button>
@@ -404,6 +404,7 @@ export class WatchComponent {
     const item = this.player.currentItem();
     const type = this.player.currentItemType();
     if (!item || !type) return '';
+    if (this.player.playbackAvailability() === 'unavailable') return '';
     // When the user has caught up with all aired episodes (next-unwatched is
     // null for TV), suppress the "Nuovo episodio!" branch — the
     // message is meant for users who still have to watch the new release.
@@ -516,6 +517,15 @@ export class WatchComponent {
     const p = this.player.resumeProgress();
     if (!p || p.position <= 10) return 'Guarda';
     return `Riprendi da ${formatTime(p.position)}`;
+  });
+
+  protected readonly canStartPlayback = computed(() => this.player.playbackAvailability() === 'ready');
+
+  protected readonly primaryPlayLabel = computed(() => {
+    if (this.player.playbackAvailability() === 'unavailable') {
+      return this.player.playbackUnavailableMessage() ?? 'Titolo non disponibile';
+    }
+    return this.playLabel();
   });
 
   protected readonly tvSummaryStr = computed(() => {
