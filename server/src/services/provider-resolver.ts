@@ -90,6 +90,15 @@ type EpisodeCacheEntry = {
   value: ProviderLoadedSeason | null;
 };
 
+interface StoredProviderMappingRow {
+  provider: string;
+  provider_id: number | null;
+  provider_slug: string | null;
+  resolved_title: string | null;
+  match_status: MatchStatus;
+  last_checked_at: number;
+}
+
 const resolveCache = new Map<string, CacheEntry>();
 const seasonCache = new Map<string, EpisodeCacheEntry>();
 const PROVIDER_NAME = 'streamingcommunity';
@@ -539,20 +548,17 @@ async function readStoredMapping(
     .where('tmdb_id', '=', args.tmdbId)
     .where('media_type', '=', args.mediaType)
     .where('provider', '=', PROVIDER_NAME)
-    .executeTakeFirst();
+    .executeTakeFirst() as StoredProviderMappingRow | undefined;
 
   if (!row) return undefined;
 
-  if (row.match_status === 'manual_confirmed' || row.match_status === 'auto_confirmed') {
-    if (row.provider_id) {
-      return {
-        provider: 'streamingcommunity',
-        id: row.provider_id,
-        slug: row.provider_slug,
-        title: row.resolved_title ?? args.title,
-        mediaType: args.mediaType
-      };
-    }
+  // Once we have a confirmed provider title id, treat it as durable and
+  // never go back to the provider's search endpoint just to "re-find" it.
+  // Slug / season / embed lookups may still happen later, but title-id
+  // resolution itself is locked to the persisted mapping.
+  const confirmed = toConfirmedStoredMapping(row, args);
+  if (confirmed !== undefined) {
+    if (confirmed) return confirmed;
     return null;
   }
 
@@ -562,6 +568,27 @@ async function readStoredMapping(
   }
 
   return undefined;
+}
+
+function toConfirmedStoredMapping(
+  row: StoredProviderMappingRow,
+  args: ResolveArgs
+): ProviderResolvedTitle | null | undefined {
+  if (row.match_status !== 'manual_confirmed' && row.match_status !== 'auto_confirmed') {
+    return undefined;
+  }
+
+  if (!row.provider_id) {
+    return null;
+  }
+
+  return {
+    provider: 'streamingcommunity',
+    id: row.provider_id,
+    slug: row.provider_slug,
+    title: row.resolved_title ?? args.title,
+    mediaType: args.mediaType
+  };
 }
 
 async function upsertMapping(
