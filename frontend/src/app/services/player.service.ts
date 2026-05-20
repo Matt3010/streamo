@@ -12,6 +12,7 @@ import { HistoryService } from './history.service';
 import { AuthService } from './auth.service';
 import { ToastService } from './toast.service';
 import { isTitleUpcoming } from '../utils/media-release.util';
+import { isFutureDateStr } from '../utils/date.util';
 import { getEffectiveLastEpisode } from '../utils/aired-episodes.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
@@ -121,6 +122,29 @@ export class PlayerService {
       .filter(s => !last || s.season_number <= (last.season_number ?? Infinity))
       .sort((a, b) => a.season_number - b.season_number)[0];
     return future ? { season: future.season_number, episode: 1 } : null;
+  });
+  // True when the currently-selected season/episode hasn't aired yet. The
+  // series itself may have been airing for years, but the user could be
+  // pointing at a future episode (next week, next season, etc.). In that
+  // case "Titolo non disponibile" is a release-timing issue — picking a
+  // different provider version won't help.
+  readonly selectedEpisodeUpcoming = computed<boolean>(() => {
+    if (this.currentItemType() !== 'tv') return false;
+    const selectedSeason = this.selectedSeason();
+    const selectedEpisode = this.selectedEpisode();
+    const eps = this.episodes();
+    const ep = eps.find((e) => e.episode_number === selectedEpisode);
+    if (ep) {
+      if (!ep.air_date) return false;
+      return isFutureDateStr(ep.air_date);
+    }
+    // No episode entry: either the season hasn't been loaded yet (let the
+    // resolve cycle decide) or TMDB doesn't yet list this episode under the
+    // season. Fall back to the season-level air date.
+    const item = this.currentItem();
+    const season = item?.seasons?.find((s) => s.season_number === selectedSeason);
+    if (season?.air_date && isFutureDateStr(season.air_date)) return true;
+    return false;
   });
   readonly isInWatchlist = signal(false);
   private currentVideoTime = 0;

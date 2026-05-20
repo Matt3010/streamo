@@ -607,6 +607,7 @@ export class WatchComponent {
   protected readonly episodesPlayDisabled = computed(() => this.player.playbackAvailability() === 'unavailable');
   protected readonly showManualProviderRefresh = computed(() => (
     !this.isUpcomingTitle()
+    && !this.player.selectedEpisodeUpcoming()
     && this.player.playbackAvailability() === 'unavailable'
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.player.providerManualRefreshState() !== null
@@ -618,10 +619,12 @@ export class WatchComponent {
 
   protected readonly providerCandidates = computed(() => this.player.providerCandidates());
   protected readonly showProviderPicker = computed(() => {
-    // Hide the whole picker affordance for titles that haven't released
-    // yet — "Titolo non disponibile" there means "not out yet", not "no
-    // provider match", so offering to pick a version is misleading.
-    if (this.isUpcomingTitle()) return false;
+    // Hide the whole picker affordance for content that hasn't released
+    // yet — either the whole title (movie/series not out) or the specific
+    // episode/season the user is pointing at. In both cases "Titolo non
+    // disponibile" is a release-timing issue, not a provider matching
+    // issue, so offering to pick a version is misleading.
+    if (this.isUpcomingTitle() || this.player.selectedEpisodeUpcoming()) return false;
     const candidates = this.providerCandidates();
     if (candidates.length === 0) return false;
     const currentId = this.player.providerResolvedTitleId();
@@ -638,6 +641,7 @@ export class WatchComponent {
 
   protected readonly showUnavailableHint = computed(() => (
     !this.isUpcomingTitle()
+    && !this.player.selectedEpisodeUpcoming()
     && this.player.playbackAvailability() === 'unavailable'
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.providerCandidates().length > 0
