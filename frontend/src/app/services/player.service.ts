@@ -130,20 +130,38 @@ export class PlayerService {
   // different provider version won't help.
   readonly selectedEpisodeUpcoming = computed<boolean>(() => {
     if (this.currentItemType() !== 'tv') return false;
+    const item = this.currentItem();
+    if (!item) return false;
     const selectedSeason = this.selectedSeason();
     const selectedEpisode = this.selectedEpisode();
+
+    // 1. Direct check on the loaded episodes' air_date if available.
     const eps = this.episodes();
     const ep = eps.find((e) => e.episode_number === selectedEpisode);
-    if (ep) {
-      if (!ep.air_date) return false;
+    if (ep?.air_date) {
       return isFutureDateStr(ep.air_date);
     }
-    // No episode entry: either the season hasn't been loaded yet (let the
-    // resolve cycle decide) or TMDB doesn't yet list this episode under the
-    // season. Fall back to the season-level air date.
-    const item = this.currentItem();
-    const season = item?.seasons?.find((s) => s.season_number === selectedSeason);
+
+    // 2. If the series has NEVER aired an episode (TMDB often leaves
+    //    first_air_date null while populating next_episode_to_air for
+    //    unreleased shows) the whole thing is upcoming regardless of
+    //    which season/episode the user is pointing at.
+    const last = item.last_episode_to_air;
+    const hasAnyAired = !!(
+      last
+      && typeof last.season_number === 'number'
+      && typeof last.episode_number === 'number'
+    );
+    if (!hasAnyAired) return true;
+
+    // 3. Selected episode is past the latest aired one.
+    if (selectedSeason > last!.season_number!) return true;
+    if (selectedSeason === last!.season_number! && selectedEpisode > last!.episode_number!) return true;
+
+    // 4. Fallback: TMDB season metadata says the season hasn't aired yet.
+    const season = item.seasons?.find((s) => s.season_number === selectedSeason);
     if (season?.air_date && isFutureDateStr(season.air_date)) return true;
+
     return false;
   });
   readonly isInWatchlist = signal(false);
