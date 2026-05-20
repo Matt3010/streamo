@@ -160,10 +160,14 @@ router.get('/shared/:token', sharedLimiter, async (req, res) => {
   if (shouldTrack) {
     const viewer = (await authenticateToken(req.cookies?.token)).user;
     if (!viewer || viewer.id !== link.user_id) {
+      // Re-check status atomically: if an admin suspended the link
+      // between the SELECT above and this UPDATE, we don't want a
+      // spurious view to land on a now-suspended share.
       await kdb
         .updateTable('share_links')
         .set({ view_count: sql<number>`view_count + 1` })
         .where('token', '=', token)
+        .where('status', '=', 'active')
         .execute();
     }
   }
