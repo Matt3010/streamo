@@ -340,18 +340,18 @@ type ConfirmAction =
           <ul class="provider-picker-list">
             @for (c of providerCandidates(); track c.providerTitleId) {
               <li>
-                <button uiButton="panel" type="button"
+                <button uiSurface="row" type="button" class="provider-picker-row"
                         [class.is-current]="player.providerResolvedTitleId() === c.providerTitleId"
                         [disabled]="providerPickerPending() || providerRefreshPending()"
                         (click)="chooseProviderCandidate(c.providerTitleId)">
-                  <span class="provider-picker-thumb" aria-hidden="true">
-                    @if (c.posterUrl) {
-                      <img [src]="c.posterUrl" [alt]="c.title" loading="lazy">
-                    } @else {
-                      <app-icon name="film"></app-icon>
-                    }
-                  </span>
-                  <span class="provider-picker-stack">
+                  @if (c.posterUrl) {
+                    <img class="provider-picker-thumb" [src]="c.posterUrl" [alt]="c.title" loading="lazy">
+                  } @else {
+                    <span class="provider-picker-thumb provider-picker-thumb-fallback" aria-hidden="true">
+                      <app-icon [name]="player.currentItemType() === 'tv' ? 'tv' : 'film'"></app-icon>
+                    </span>
+                  }
+                  <span class="provider-picker-copy">
                     <span class="provider-picker-title">{{ c.title }}</span>
                     <span class="provider-picker-meta">
                       @if (c.year) { <span>{{ c.year }}</span> }
