@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import type {
   AdminTokenRow,
   AdminSession,
+  AuthLogEntry,
   PlaybackLogEntry,
   ProviderResolveLogEntry,
   TransportLogEntry,
@@ -31,6 +32,17 @@ interface PlaybackLogsResponse {
   capacity: number;
   path: string;
   logs: PlaybackLogEntry[];
+}
+
+interface AuthLogsResponse {
+  count: number;
+  capacity: number;
+  path: string;
+  logs: AuthLogEntry[];
+}
+
+interface AdminAuthLogsSocketMessage extends AuthLogsResponse {
+  type: 'auth-logs';
 }
 
 interface AdminPlaybackLogsSocketMessage extends PlaybackLogsResponse {
@@ -65,6 +77,9 @@ export class AdminService {
 
   readonly tokens = signal<AdminTokenRow[]>([]);
   readonly sessions = signal<AdminSession[]>([]);
+  readonly authLogs = signal<AuthLogEntry[]>([]);
+  readonly authLogCapacity = signal(500);
+  readonly authLogPath = signal('');
   readonly playbackLogs = signal<PlaybackLogEntry[]>([]);
   readonly playbackLogCapacity = signal(500);
   readonly playbackLogPath = signal('');
@@ -76,6 +91,7 @@ export class AdminService {
   readonly transportLogPath = signal('');
   readonly queueStatus = signal<AdminQueueStatus | null>(null);
   readonly sessionsLiveConnected = signal(false);
+  readonly authLogsLiveConnected = signal(false);
   readonly playbackLogsLiveConnected = signal(false);
   readonly providerResolveLogsLiveConnected = signal(false);
   readonly transportLogsLiveConnected = signal(false);
@@ -83,6 +99,7 @@ export class AdminService {
   readonly queueStatusLoading = signal(false);
 
   private readonly sessionsSocket: LiveSocketController;
+  private readonly authLogsSocket: LiveSocketController;
   private readonly playbackLogsSocket: LiveSocketController;
   private readonly providerResolveLogsSocket: LiveSocketController;
   private readonly transportLogsSocket: LiveSocketController;
@@ -96,6 +113,21 @@ export class AdminService {
           const message = JSON.parse(event.data as string) as AdminSessionsSocketMessage;
           if (message.type === 'sessions') {
             this.sessions.set(message.sessions);
+          }
+        } catch {}
+      }
+    });
+
+    this.authLogsSocket = this.liveSocket.create({
+      path: '/api/admin/auth-logs/ws',
+      onConnected: (connected) => this.authLogsLiveConnected.set(connected),
+      onMessage: (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as AdminAuthLogsSocketMessage;
+          if (message.type === 'auth-logs') {
+            this.authLogs.set(message.logs);
+            this.authLogCapacity.set(message.capacity);
+            this.authLogPath.set(message.path);
           }
         } catch {}
       }
@@ -245,6 +277,18 @@ export class AdminService {
     } catch {}
   }
 
+  async fetchAuthLogs(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/auth-logs');
+      if (res.ok) {
+        const data = await res.json() as AuthLogsResponse;
+        this.authLogs.set(data.logs);
+        this.authLogCapacity.set(data.capacity);
+        this.authLogPath.set(data.path);
+      }
+    } catch {}
+  }
+
   async fetchProviderResolveLogs(): Promise<void> {
     try {
       const res = await fetch('/api/admin/provider-resolve-logs');
@@ -292,6 +336,14 @@ export class AdminService {
 
   connectPlaybackLogsLive(): void {
     this.playbackLogsSocket.connect();
+  }
+
+  connectAuthLogsLive(): void {
+    this.authLogsSocket.connect();
+  }
+
+  disconnectAuthLogsLive(): void {
+    this.authLogsSocket.disconnect();
   }
 
   disconnectPlaybackLogsLive(): void {

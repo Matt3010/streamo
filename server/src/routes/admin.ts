@@ -5,6 +5,7 @@ import { kdb } from '../db';
 import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
 import { listLiveAdminSessions } from '../services/admin-sessions';
+import { getAuthLogCapacity, getAuthLogPath, listAuthLogs } from '../services/auth-logs';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs } from '../services/playback-logs';
 import {
   getProviderResolveLogCapacity,
@@ -179,6 +180,16 @@ router.get('/admin/playback-logs', requireSuperAdmin, (_req, res) => {
     count: logs.length,
     capacity: getPlaybackLogCapacity(),
     path: getPlaybackLogPath(),
+    logs
+  });
+});
+
+router.get('/admin/auth-logs', requireSuperAdmin, (_req, res) => {
+  const logs = listAuthLogs();
+  res.json({
+    count: logs.length,
+    capacity: getAuthLogCapacity(),
+    path: getAuthLogPath(),
     logs
   });
 });

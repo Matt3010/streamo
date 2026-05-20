@@ -168,6 +168,11 @@ export interface PlaybackLogEntry {
   message: string;
 }
 
+export interface AuthLogEntry {
+  ts: number;
+  message: string;
+}
+
 export interface ProviderResolveLogEntry {
   ts: number;
   message: string;

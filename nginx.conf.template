@@ -38,7 +38,7 @@ server {
     }
 
     # ---- Backend API (Node.js) ----
-    location ~ ^/api/admin/(sessions|playback-logs|provider-resolve-logs|transport-logs)/ws$ {
+    location ~ ^/api/admin/(sessions|auth-logs|playback-logs|provider-resolve-logs|transport-logs)/ws$ {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass http://backend;
         proxy_http_version 1.1;

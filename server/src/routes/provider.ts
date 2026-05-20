@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, respondAuthFailure } from '../middleware/auth';
 import { providerResolveLogger } from '../services/provider-resolve-logs';
 import { toInt } from '../utils/validation';
 import { resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
@@ -112,15 +112,12 @@ router.post('/user/provider/resolve-movie', async (req, res) => {
 async function authorizeProviderRequest(req: Request, res: Response, event: string): Promise<boolean> {
   const result = await authenticateToken(req.cookies?.token);
   if (!result.user) {
-    if (result.error === 'access_revoked') {
-      res.clearCookie('token', { path: '/' });
-    }
     providerResolveLogger.warn(event, {
       reason: result.error ?? 'unauthenticated',
       requestUri: req.originalUrl || req.url,
       ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-'
     });
-    res.status(401).json({ error: result.error ?? 'unauthenticated' });
+    respondAuthFailure(req, res, result.error ?? 'unauthenticated', 'provider request auth denied');
     return false;
   }
 

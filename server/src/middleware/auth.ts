@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { kdb, getJwtSecret } from '../db';
 import { COOKIE_SECURE, TOKEN_TTL, SUPER_ADMIN_EMAIL } from '../config';
+import { authLogger } from '../services/auth-logs';
 
 export interface AuthedUser {
   id: number;
@@ -72,10 +73,7 @@ export function readCookie(cookieHeader: string | undefined, name: string): stri
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const result = await authenticateToken(req.cookies?.token);
   if (!result.user) {
-    if (result.error === 'access_revoked') {
-      res.clearCookie('token', { path: '/' });
-    }
-    res.status(401).json({ error: result.error ?? 'unauthenticated' });
+    respondAuthFailure(req, res, result.error ?? 'unauthenticated');
     return;
   }
 
@@ -86,7 +84,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
   void requireAuth(req, res, () => {
     if (!isSuperAdminUser(req.user)) {
-      res.status(403).json({ error: 'forbidden' });
+      respondForbidden(req, res, 'super_admin_required');
       return;
     }
     next();
@@ -105,4 +103,28 @@ export function setAuthCookie(res: Response, user: AuthedUser): void {
     maxAge: TOKEN_TTL * 1000,
     path: '/'
   });
+}
+
+export function respondAuthFailure(req: Request, res: Response, reason: string, event = 'request auth denied'): void {
+  if (reason === 'access_revoked') {
+    res.clearCookie('token', { path: '/' });
+  }
+
+  authLogger.warn(event, buildAuthContext(req, reason));
+  res.status(401).json({ error: reason });
+}
+
+export function respondForbidden(req: Request, res: Response, reason = 'forbidden', event = 'request forbidden'): void {
+  authLogger.warn(event, buildAuthContext(req, reason));
+  res.status(403).json({ error: reason });
+}
+
+function buildAuthContext(req: Request, reason: string): Record<string, unknown> {
+  return {
+    reason,
+    method: req.method,
+    requestUri: req.originalUrl || req.url,
+    ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-',
+    userAgent: req.headers['user-agent'] ?? '-'
+  };
 }

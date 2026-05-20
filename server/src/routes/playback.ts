@@ -1,5 +1,5 @@
 import { Router, type Request, type Response as ExpressResponse } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, respondAuthFailure } from '../middleware/auth';
 import { playbackLogger } from '../services/playback-logs';
 
 const router = Router();
@@ -62,16 +62,13 @@ router.get(/^\/playback\/playlist\/(.*)$/, async (req, res) => {
 async function authorizePlaybackRequest(req: Request, res: ExpressResponse, upstreamUrl: string): Promise<boolean> {
   const result = await authenticateToken(req.cookies?.token);
   if (!result.user) {
-    if (result.error === 'access_revoked') {
-      res.clearCookie('token', { path: '/' });
-    }
     playbackLogger.warn('playlist auth denied', {
       reason: result.error ?? 'unauthenticated',
       upstream: upstreamUrl,
       requestUri: req.originalUrl || req.url,
       ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-'
     });
-    res.status(401).json({ error: result.error ?? 'unauthenticated' });
+    respondAuthFailure(req, res, result.error ?? 'unauthenticated', 'playback request auth denied');
     return false;
   }
 

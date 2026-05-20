@@ -2,6 +2,7 @@ import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, isSuperAdminUser, readCookie } from '../middleware/auth';
 import { listLiveAdminSessions, LIVE_SESSION_WINDOW_SECONDS } from './admin-sessions';
+import { authLogger, getAuthLogCapacity, getAuthLogPath, listAuthLogs, subscribeAuthLogs } from './auth-logs';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs, subscribePlaybackLogs } from './playback-logs';
 import {
   getProviderResolveLogCapacity,
@@ -12,12 +13,14 @@ import {
 import { getTransportLogCapacity, getTransportLogPath, listTransportLogs, subscribeTransportLogs } from './transport-logs';
 import type {
   AdminSession,
+  AuthLogEntry,
   PlaybackLogEntry,
   ProviderResolveLogEntry,
   TransportLogEntry
 } from '../../../shared/types';
 
 const ADMIN_SESSIONS_WS_PATH = '/admin/sessions/ws';
+const ADMIN_AUTH_LOGS_WS_PATH = '/admin/auth-logs/ws';
 const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
 const ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH = '/admin/provider-resolve-logs/ws';
 const ADMIN_TRANSPORT_LOGS_WS_PATH = '/admin/transport-logs/ws';
@@ -27,6 +30,14 @@ const HEARTBEAT_INTERVAL_MS = 30000;
 interface SessionsPayload {
   type: 'sessions';
   sessions: AdminSession[];
+}
+
+interface AuthLogsPayload {
+  type: 'auth-logs';
+  count: number;
+  capacity: number;
+  path: string;
+  logs: AuthLogEntry[];
 }
 
 interface PlaybackLogsPayload {
@@ -54,18 +65,21 @@ interface ProviderResolveLogsPayload {
 }
 
 let sessionClients = new Set<WebSocket>();
+let authLogClients = new Set<WebSocket>();
 let playbackLogClients = new Set<WebSocket>();
 let providerResolveLogClients = new Set<WebSocket>();
 let transportLogClients = new Set<WebSocket>();
 const heartbeatState = new WeakMap<WebSocket, boolean>();
 let expiryTimeout: NodeJS.Timeout | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
+let unsubscribeAuthLogs: (() => void) | null = null;
 let unsubscribePlaybackLogs: (() => void) | null = null;
 let unsubscribeProviderResolveLogs: (() => void) | null = null;
 let unsubscribeTransportLogs: (() => void) | null = null;
 
 export function attachAdminLiveSessions(server: HttpServer): void {
   const sessionsWss = new WebSocketServer({ noServer: true });
+  const authLogsWss = new WebSocketServer({ noServer: true });
   const playbackLogsWss = new WebSocketServer({ noServer: true });
   const providerResolveLogsWss = new WebSocketServer({ noServer: true });
   const transportLogsWss = new WebSocketServer({ noServer: true });
@@ -79,6 +93,20 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       sessionClients.delete(ws);
       if (sessionClients.size === 0) {
         clearExpiryTimeout();
+      }
+    });
+  });
+
+  authLogsWss.on('connection', (ws) => {
+    authLogClients.add(ws);
+    trackClient(ws);
+    ensureAuthLogSubscription();
+    broadcastAuthLogs();
+
+    ws.on('close', () => {
+      authLogClients.delete(ws);
+      if (authLogClients.size === 0) {
+        clearAuthLogSubscription();
       }
     });
   });
@@ -130,6 +158,7 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       const pathname = getPathname(req);
       if (
         pathname !== ADMIN_SESSIONS_WS_PATH &&
+        pathname !== ADMIN_AUTH_LOGS_WS_PATH &&
         pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
         pathname !== ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH &&
         pathname !== ADMIN_TRANSPORT_LOGS_WS_PATH
@@ -138,11 +167,24 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       const token = readCookie(req.headers.cookie, 'token');
       const auth = await authenticateToken(token);
       if (!auth.user) {
+        authLogger.warn('admin websocket auth denied', {
+          reason: auth.error ?? 'unauthenticated',
+          requestUri: pathname,
+          ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-',
+          userAgent: req.headers['user-agent'] ?? '-'
+        });
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
       if (!isSuperAdminUser(auth.user)) {
+        authLogger.warn('admin websocket forbidden', {
+          reason: 'super_admin_required',
+          requestUri: pathname,
+          ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-',
+          userAgent: req.headers['user-agent'] ?? '-',
+          user: auth.user.email
+        });
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         socket.destroy();
         return;
@@ -150,6 +192,8 @@ export function attachAdminLiveSessions(server: HttpServer): void {
 
       const target = pathname === ADMIN_SESSIONS_WS_PATH
         ? sessionsWss
+        : pathname === ADMIN_AUTH_LOGS_WS_PATH
+          ? authLogsWss
         : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
           ? playbackLogsWss
           : pathname === ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH
@@ -210,6 +254,41 @@ function clearExpiryTimeout(): void {
   if (!expiryTimeout) return;
   clearTimeout(expiryTimeout);
   expiryTimeout = null;
+}
+
+function broadcastAuthLogs(): void {
+  if (authLogClients.size === 0) {
+    clearAuthLogSubscription();
+    return;
+  }
+
+  const logs = listAuthLogs();
+  const payload = JSON.stringify({
+    type: 'auth-logs',
+    count: logs.length,
+    capacity: getAuthLogCapacity(),
+    path: getAuthLogPath(),
+    logs
+  } satisfies AuthLogsPayload);
+
+  for (const client of authLogClients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    client.send(payload);
+  }
+}
+
+function ensureAuthLogSubscription(): void {
+  if (unsubscribeAuthLogs) return;
+  unsubscribeAuthLogs = subscribeAuthLogs(() => {
+    if (authLogClients.size === 0) return;
+    broadcastAuthLogs();
+  });
+}
+
+function clearAuthLogSubscription(): void {
+  if (authLogClients.size > 0 || !unsubscribeAuthLogs) return;
+  unsubscribeAuthLogs();
+  unsubscribeAuthLogs = null;
 }
 
 function broadcastPlaybackLogs(): void {
@@ -338,6 +417,7 @@ function ensureHeartbeatInterval(): void {
 
   heartbeatInterval = setInterval(() => {
     heartbeatClients(sessionClients);
+    heartbeatClients(authLogClients);
     heartbeatClients(playbackLogClients);
     heartbeatClients(providerResolveLogClients);
     heartbeatClients(transportLogClients);
@@ -371,6 +451,7 @@ function heartbeatClients(clients: Set<WebSocket>): void {
 
 function hasAnyClients(): boolean {
   return sessionClients.size > 0 ||
+    authLogClients.size > 0 ||
     playbackLogClients.size > 0 ||
     providerResolveLogClients.size > 0 ||
     transportLogClients.size > 0;

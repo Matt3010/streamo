@@ -4,9 +4,9 @@ import { faFileLines } from '@fortawesome/free-solid-svg-icons';
 import { SectionHeaderComponent } from '../../../ui/section-header/section-header.component';
 import { UiButtonDirective } from '../../../ui/ui-button.directive';
 import { AdminService } from '../../../services/admin.service';
-import type { PlaybackLogEntry, ProviderResolveLogEntry, TransportLogEntry } from '../../../models';
+import type { AuthLogEntry, PlaybackLogEntry, ProviderResolveLogEntry, TransportLogEntry } from '../../../models';
 
-type LogSource = 'playback' | 'provider' | 'transport';
+type LogSource = 'auth' | 'playback' | 'provider' | 'transport';
 type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
 @Component({
@@ -26,6 +26,14 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
       <div class="logs-shell">
         <aside class="logs-sidebar" aria-label="Selezione log">
+          <button uiButton="panel"
+                  type="button"
+                  [attr.aria-pressed]="selectedSource() === 'auth'"
+                  (click)="selectSource('auth')">
+            <span class="logs-source-title">Auth</span>
+            <span class="logs-source-sub">{{ admin.authLogPath() || '/data/auth.log' }}</span>
+          </button>
+
           <button uiButton="panel"
                   type="button"
                   [attr.aria-pressed]="selectedSource() === 'playback'"
@@ -61,7 +69,9 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
             </div>
           </div>
 
-          @if (selectedSource() === 'playback' && playbackLogsDesc().length === 0) {
+          @if (selectedSource() === 'auth' && authLogsDesc().length === 0) {
+            <p class="empty">Nessun log auth presente</p>
+          } @else if (selectedSource() === 'playback' && playbackLogsDesc().length === 0) {
             <p class="empty">Nessun log playback presente</p>
           } @else if (selectedSource() === 'provider' && providerResolveLogsDesc().length === 0) {
             <p class="empty">Nessun log resolver provider presente</p>
@@ -70,7 +80,21 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
           } @else {
             <div class="logs-panel">
               <ul class="log-list">
-                @if (selectedSource() === 'playback') {
+                @if (selectedSource() === 'auth') {
+                  @for (log of authLogsDesc(); track trackAuthLog($index, log)) {
+                    <li class="log-row" [class.log-row-error]="authLogTone(log) === 'error'" [class.log-row-warn]="authLogTone(log) === 'warn'" [class.log-row-cancelled]="authLogTone(log) === 'cancelled'">
+                      <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
+                      <div class="log-stack">
+                        <div class="log-header">
+                          <span class="log-badge" [class.log-badge-ok]="authLogTone(log) === 'ok'" [class.log-badge-info]="authLogTone(log) === 'info'" [class.log-badge-warn]="authLogTone(log) === 'warn'" [class.log-badge-error]="authLogTone(log) === 'error'" [class.log-badge-cancelled]="authLogTone(log) === 'cancelled'">
+                            {{ authLogLabel(log) }}
+                          </span>
+                        </div>
+                        <pre class="log-message">{{ authLogPayload(log) | json }}</pre>
+                      </div>
+                    </li>
+                  }
+                } @else if (selectedSource() === 'playback') {
                   @for (log of playbackLogsDesc(); track trackPlaybackLog($index, log)) {
                     <li class="log-row" [class.log-row-error]="playbackLogTone(log) === 'error'" [class.log-row-warn]="playbackLogTone(log) === 'warn'" [class.log-row-cancelled]="playbackLogTone(log) === 'cancelled'">
                       <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
@@ -127,32 +151,41 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
   protected readonly logsIcon = faFileLines;
   protected readonly selectedSource = signal<LogSource>('playback');
   private readonly parsedDomainLogCache = new Map<string, unknown>();
+  protected readonly authLogsDesc = computed(() => [...this.admin.authLogs()].reverse());
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
   protected readonly providerResolveLogsDesc = computed(() => [...this.admin.providerResolveLogs()].reverse());
   protected readonly transportLogsDesc = computed(() => [...this.admin.transportLogs()].reverse());
   protected readonly selectedTitle = computed(() =>
-    this.selectedSource() === 'playback'
+    this.selectedSource() === 'auth'
+      ? 'Auth'
+      : this.selectedSource() === 'playback'
       ? 'Playback'
       : this.selectedSource() === 'provider'
         ? 'Provider Resolve'
         : 'Transport'
   );
   protected readonly selectedPath = computed(() =>
-    this.selectedSource() === 'playback'
+    this.selectedSource() === 'auth'
+      ? this.admin.authLogPath() || '/data/auth.log'
+      : this.selectedSource() === 'playback'
       ? this.admin.playbackLogPath() || '/data/playback.log'
       : this.selectedSource() === 'provider'
         ? this.admin.providerResolveLogPath() || '/data/provider-resolve.log'
         : this.admin.transportLogPath() || '/data/nginx-playback-access.log'
   );
   protected readonly selectedCapacity = computed(() =>
-    this.selectedSource() === 'playback'
+    this.selectedSource() === 'auth'
+      ? this.admin.authLogCapacity()
+      : this.selectedSource() === 'playback'
       ? this.admin.playbackLogCapacity()
       : this.selectedSource() === 'provider'
         ? this.admin.providerResolveLogCapacity()
         : this.admin.transportLogCapacity()
   );
   protected readonly selectedConnected = computed(() =>
-    this.selectedSource() === 'playback'
+    this.selectedSource() === 'auth'
+      ? this.admin.authLogsLiveConnected()
+      : this.selectedSource() === 'playback'
       ? this.admin.playbackLogsLiveConnected()
       : this.selectedSource() === 'provider'
         ? this.admin.providerResolveLogsLiveConnected()
@@ -160,15 +193,18 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
   );
 
   ngOnInit(): void {
+    void this.admin.fetchAuthLogs();
     void this.admin.fetchPlaybackLogs();
     void this.admin.fetchProviderResolveLogs();
     void this.admin.fetchTransportLogs();
+    this.admin.connectAuthLogsLive();
     this.admin.connectPlaybackLogsLive();
     this.admin.connectProviderResolveLogsLive();
     this.admin.connectTransportLogsLive();
   }
 
   ngOnDestroy(): void {
+    this.admin.disconnectAuthLogsLive();
     this.admin.disconnectPlaybackLogsLive();
     this.admin.disconnectProviderResolveLogsLive();
     this.admin.disconnectTransportLogsLive();
@@ -187,6 +223,35 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
       minute: '2-digit',
       second: '2-digit'
     });
+  }
+
+  protected trackAuthLog(_index: number, log: AuthLogEntry): string {
+    return `${log.ts}:${log.message}`;
+  }
+
+  protected authLogTone(log: AuthLogEntry): LogTone {
+    const message = log.message.toLowerCase();
+    if (message.includes('level=error')) return 'error';
+    if (message.includes('level=warn')) return 'warn';
+    if (
+      message.includes('access_revoked') ||
+      message.includes('super_admin_required') ||
+      message.includes('forbidden')
+    ) return 'error';
+    if (
+      message.includes('missing_token') ||
+      message.includes('invalid_token') ||
+      message.includes('unauthenticated')
+    ) return 'warn';
+    return 'info';
+  }
+
+  protected authLogLabel(log: AuthLogEntry): string {
+    return this.logLabel(this.authLogTone(log));
+  }
+
+  protected authLogPayload(log: AuthLogEntry): unknown {
+    return this.parseDomainLogPayload(log.message, log.ts);
   }
 
   protected trackPlaybackLog(_index: number, log: PlaybackLogEntry): string {
