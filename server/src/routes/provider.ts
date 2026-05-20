@@ -30,7 +30,7 @@ router.post('/user/provider/resolve', async (req, res) => {
       releaseDate
     });
 
-    return res.json({ resolved });
+    return res.json(resolved);
   } catch (error) {
     providerResolveLogger.error('route resolve failed', {
       user: req.user?.email ?? '-',
@@ -68,7 +68,7 @@ router.post('/user/provider/resolve-episode', async (req, res) => {
       episodeNumber
     });
 
-    return res.json({ resolved });
+    return res.json(resolved);
   } catch (error) {
     providerResolveLogger.error('route resolve episode failed', {
       user: req.user?.email ?? '-',
@@ -98,7 +98,7 @@ router.post('/user/provider/resolve-movie', async (req, res) => {
       providerTitleId
     });
 
-    return res.json({ resolved });
+    return res.json(resolved);
   } catch (error) {
     providerResolveLogger.error('route resolve movie failed', {
       user: req.user?.email ?? '-',

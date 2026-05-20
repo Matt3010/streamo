@@ -18,12 +18,12 @@ const HEARTBEAT_INTERVAL_MS = 30000;
  * reconnect backoff tops out at 15s, so even on flaky networks a real
  * user stays well below 30. Sized lower than the HTTP cap because WS
  * upgrades are slightly more expensive (TCP handshake + protocol
- * switch). Counter is per-process — that's fine in single-pod
- * deployments and acceptable in multi-pod ones since each replica
- * caps independently. */
+ * switch). The counter lives in Redis when available so the cap is
+ * shared across replicas; the local in-process map is only a fallback
+ * if Redis is temporarily unavailable. */
 const SHARED_UPGRADE_WINDOW_MS = 60 * 1000;
 const SHARED_UPGRADE_MAX = 30;
-const SHARED_UPGRADE_CLEANUP_MS = 5 * 60 * 1000;
+const SHARED_UPGRADE_RATE_LIMIT_REDIS_KEY_PREFIX = 'streamo:shared-ws-upgrade';
 
 interface WatchlistBroadcastEnvelope {
   userIds: number[];
@@ -39,7 +39,6 @@ const sharedTokenClients = new Map<string, Set<WebSocket>>();
 const sharedUpgradeAttempts = new Map<string, { count: number; windowStart: number }>();
 const heartbeatState = new WeakMap<WebSocket, boolean>();
 let heartbeatInterval: NodeJS.Timeout | null = null;
-let sharedUpgradeCleanupInterval: NodeJS.Timeout | null = null;
 let subscriberStarted = false;
 
 export function attachUserLiveSessions(server: HttpServer): void {
@@ -110,7 +109,7 @@ export function attachUserLiveSessions(server: HttpServer): void {
       const shareToken = extractShareToken(pathname);
       if (shareToken) {
         const ip = getClientIp(req);
-        if (!checkSharedUpgradeRate(ip)) {
+        if (!(await checkSharedUpgradeRate(ip))) {
           socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
           socket.destroy();
           return;
@@ -335,35 +334,29 @@ function getClientIp(req: IncomingMessage): string {
   return req.socket.remoteAddress ?? 'unknown';
 }
 
-function checkSharedUpgradeRate(ip: string): boolean {
+async function checkSharedUpgradeRate(ip: string): Promise<boolean> {
+  if (hasRedisConfig()) {
+    try {
+      const windowSlot = Math.floor(Date.now() / SHARED_UPGRADE_WINDOW_MS);
+      const key = `${SHARED_UPGRADE_RATE_LIMIT_REDIS_KEY_PREFIX}:${ip}:${windowSlot}`;
+      const redis = getRedisPublisher();
+      const count = await redis.incr(key);
+      if (count === 1) {
+        await redis.pexpire(key, SHARED_UPGRADE_WINDOW_MS);
+      }
+      return count <= SHARED_UPGRADE_MAX;
+    } catch {
+      // Fall back to the local in-process limiter if Redis is temporarily unavailable.
+    }
+  }
+
   const now = Date.now();
   const entry = sharedUpgradeAttempts.get(ip);
   if (!entry || now - entry.windowStart >= SHARED_UPGRADE_WINDOW_MS) {
     sharedUpgradeAttempts.set(ip, { count: 1, windowStart: now });
-    ensureSharedUpgradeCleanup();
     return true;
   }
   if (entry.count >= SHARED_UPGRADE_MAX) return false;
   entry.count += 1;
   return true;
-}
-
-/* Periodic sweep so a steady trickle of distinct IPs never bloats the
- * map. Started lazily on first attempt so idle deployments don't pay
- * for an unused timer. */
-function ensureSharedUpgradeCleanup(): void {
-  if (sharedUpgradeCleanupInterval) return;
-  sharedUpgradeCleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [ip, entry] of sharedUpgradeAttempts) {
-      if (now - entry.windowStart >= SHARED_UPGRADE_WINDOW_MS) {
-        sharedUpgradeAttempts.delete(ip);
-      }
-    }
-    if (sharedUpgradeAttempts.size === 0 && sharedUpgradeCleanupInterval) {
-      clearInterval(sharedUpgradeCleanupInterval);
-      sharedUpgradeCleanupInterval = null;
-    }
-  }, SHARED_UPGRADE_CLEANUP_MS);
-  sharedUpgradeCleanupInterval.unref();
 }

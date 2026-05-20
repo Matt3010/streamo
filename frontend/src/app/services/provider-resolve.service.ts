@@ -18,6 +18,13 @@ interface ProviderResolvedMovie {
   embedUrl: string | null;
 }
 
+type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
+
+interface ProviderResolveResult<T> {
+  resolved: T | null;
+  reason: ProviderResolveFailureReason | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProviderResolveService {
   private readonly titleCache = new Map<string, ProviderResolvedTitle | null>();
@@ -29,10 +36,13 @@ export class ProviderResolveService {
     mediaType: MediaType,
     title: string,
     releaseDate?: string | null
-  ): Promise<ProviderResolvedTitle | null> {
+  ): Promise<ProviderResolveResult<ProviderResolvedTitle>> {
     const key = `${mediaType}:${tmdbId}`;
     if (this.titleCache.has(key)) {
-      return this.titleCache.get(key) ?? null;
+      return {
+        resolved: this.titleCache.get(key) ?? null,
+        reason: null
+      };
     }
 
     try {
@@ -46,15 +56,20 @@ export class ProviderResolveService {
           release_date: releaseDate ?? null
         })
       });
-      if (!res.ok) return null;
-      const data = await res.json() as { resolved?: ProviderResolvedTitle | null };
+      if (!res.ok) {
+        return { resolved: null, reason: 'temporarily_unavailable' };
+      }
+      const data = await res.json() as ProviderResolveResult<ProviderResolvedTitle>;
       const resolved = data.resolved ?? null;
       if (resolved) {
         this.titleCache.set(key, resolved);
       }
-      return resolved;
+      return {
+        resolved,
+        reason: data.reason ?? null
+      };
     } catch {
-      return null;
+      return { resolved: null, reason: 'temporarily_unavailable' };
     }
   }
 
@@ -63,11 +78,14 @@ export class ProviderResolveService {
     providerSlug: string | null,
     season: number,
     episode: number
-  ): Promise<ProviderResolvedEpisode | null> {
+  ): Promise<ProviderResolveResult<ProviderResolvedEpisode>> {
     const slug = providerSlug?.trim() || null;
     const key = `${providerTitleId}:${slug ?? '-'}:${season}:${episode}`;
     if (this.episodeCache.has(key)) {
-      return this.episodeCache.get(key) ?? null;
+      return {
+        resolved: this.episodeCache.get(key) ?? null,
+        reason: null
+      };
     }
 
     try {
@@ -81,21 +99,29 @@ export class ProviderResolveService {
           episode
         })
       });
-      if (!res.ok) return null;
-      const data = await res.json() as { resolved?: ProviderResolvedEpisode | null };
+      if (!res.ok) {
+        return { resolved: null, reason: 'temporarily_unavailable' };
+      }
+      const data = await res.json() as ProviderResolveResult<ProviderResolvedEpisode>;
       const resolved = data.resolved ?? null;
       if (resolved) {
         this.episodeCache.set(key, resolved);
       }
-      return resolved;
+      return {
+        resolved,
+        reason: data.reason ?? null
+      };
     } catch {
-      return null;
+      return { resolved: null, reason: 'temporarily_unavailable' };
     }
   }
 
-  async resolveMovie(providerTitleId: number): Promise<ProviderResolvedMovie | null> {
+  async resolveMovie(providerTitleId: number): Promise<ProviderResolveResult<ProviderResolvedMovie>> {
     if (this.movieCache.has(providerTitleId)) {
-      return this.movieCache.get(providerTitleId) ?? null;
+      return {
+        resolved: this.movieCache.get(providerTitleId) ?? null,
+        reason: null
+      };
     }
 
     try {
@@ -106,15 +132,20 @@ export class ProviderResolveService {
           provider_title_id: providerTitleId
         })
       });
-      if (!res.ok) return null;
-      const data = await res.json() as { resolved?: ProviderResolvedMovie | null };
+      if (!res.ok) {
+        return { resolved: null, reason: 'temporarily_unavailable' };
+      }
+      const data = await res.json() as ProviderResolveResult<ProviderResolvedMovie>;
       const resolved = data.resolved ?? null;
       if (resolved) {
         this.movieCache.set(providerTitleId, resolved);
       }
-      return resolved;
+      return {
+        resolved,
+        reason: data.reason ?? null
+      };
     } catch {
-      return null;
+      return { resolved: null, reason: 'temporarily_unavailable' };
     }
   }
 }

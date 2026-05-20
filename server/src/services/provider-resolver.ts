@@ -1,7 +1,6 @@
 import type { MediaType } from '../../../shared/types';
 import { kdb } from '../db';
 import {
-  PROVIDER_CATALOG_BASE_URL_OVERRIDE,
   PROVIDER_CATALOG_LINK_SOURCE_URL,
   PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS,
   PROVIDER_CATALOG_LOCALE,
@@ -9,6 +8,7 @@ import {
   PROVIDER_RESOLVER_DEBUG
 } from '../config';
 import { providerResolveLogger } from './provider-resolve-logs';
+import { getRedisPublisher, hasRedisConfig } from './redis';
 
 interface ResolveArgs {
   tmdbId: number;
@@ -32,6 +32,13 @@ export interface ProviderResolvedEpisode {
 
 export interface ProviderResolvedMovie {
   embedUrl: string | null;
+}
+
+export type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
+
+export interface ProviderResolveOutcome<T> {
+  resolved: T | null;
+  reason: ProviderResolveFailureReason | null;
 }
 
 type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
@@ -108,10 +115,11 @@ type EpisodeCacheEntry = {
   value: ProviderLoadedSeason | null;
 };
 
-type ProviderCatalogBaseUrlCacheEntry = {
-  expiresAt: number;
-  value: string;
-};
+type ProviderCatalogBaseUrlChangeSource = 'telegraph' | 'persisted';
+
+type AttemptResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; retryable: boolean; log: () => void };
 
 interface StoredProviderMappingRow {
   provider: string;
@@ -124,24 +132,33 @@ interface StoredProviderMappingRow {
 
 const resolveCache = new Map<string, CacheEntry>();
 const seasonCache = new Map<string, EpisodeCacheEntry>();
-let providerCatalogBaseUrlCache: ProviderCatalogBaseUrlCacheEntry | null = null;
+let providerCatalogBaseUrlRefreshInFlight: Promise<string | null> | null = null;
 const PROVIDER_NAME = 'streamingcommunity';
 const PROVIDER_CATALOG_BASE_URL_META_KEY = 'provider_catalog_base_url';
 const STRONG_MATCH_THRESHOLD = 170;
 const REVIEW_MATCH_THRESHOLD = 120;
+const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_MS = 30 * 1000;
+const PROVIDER_CATALOG_BASE_URL_REDIS_KEY = 'streamo:provider:catalog-base-url';
+const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_REDIS_KEY = 'streamo:provider:catalog-base-url:refresh-cooldown';
 
-export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitle | null> {
+export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderResolveOutcome<ProviderResolvedTitle>> {
   const cacheKey = `${args.mediaType}:${args.tmdbId}`;
   const now = Date.now();
   const cached = resolveCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
-    return cached.value;
+    return {
+      resolved: cached.value,
+      reason: cached.value ? null : 'not_found'
+    };
   }
 
   const cachedMapping = await readStoredMapping(args, now);
   if (cachedMapping !== undefined) {
     cacheResolve(cacheKey, cachedMapping, now);
-    return cachedMapping;
+    return {
+      resolved: cachedMapping,
+      reason: cachedMapping ? null : 'not_found'
+    };
   }
 
   const query = args.title.trim();
@@ -153,12 +170,12 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
       candidate: null
     }, now);
     cacheResolve(cacheKey, null, now);
-    return null;
+    return { resolved: null, reason: 'not_found' };
   }
 
   const page = await fetchProviderSearchPage(query);
   if (!page) {
-    return null;
+    return { resolved: null, reason: 'temporarily_unavailable' };
   }
 
   const titles = extractProviderTitles(page);
@@ -178,7 +195,10 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
   });
   await upsertMapping(args, persistence, now);
   cacheResolve(cacheKey, match, now);
-  return match;
+  return {
+    resolved: match,
+    reason: match ? null : 'not_found'
+  };
 }
 
 export async function resolveProviderEpisode(args: {
@@ -186,7 +206,7 @@ export async function resolveProviderEpisode(args: {
   providerSlug: string | null;
   seasonNumber: number;
   episodeNumber: number;
-}): Promise<ProviderResolvedEpisode | null> {
+}): Promise<ProviderResolveOutcome<ProviderResolvedEpisode>> {
   const season = await fetchProviderSeason(args.providerTitleId, args.providerSlug, args.seasonNumber);
   const episodes = season?.episodes;
   if (!episodes?.length) {
@@ -198,7 +218,7 @@ export async function resolveProviderEpisode(args: {
       resolved: null,
       reason: 'missing_season_payload'
     });
-    return null;
+    return { resolved: null, reason: 'temporarily_unavailable' };
   }
 
   const match = episodes.find((episode) => episode.number === args.episodeNumber && episode.id);
@@ -214,7 +234,7 @@ export async function resolveProviderEpisode(args: {
         .slice(0, 20),
       reason: 'episode_not_found'
     });
-    return null;
+    return { resolved: null, reason: 'not_found' };
   }
 
   const embedUrl = await fetchProviderEmbedUrl(args.providerTitleId, match.id);
@@ -227,12 +247,19 @@ export async function resolveProviderEpisode(args: {
     resolved: { episodeId: match.id, embedUrl }
   });
 
-  return { episodeId: match.id, embedUrl };
+  if (!embedUrl) {
+    return { resolved: null, reason: 'temporarily_unavailable' };
+  }
+
+  return {
+    resolved: { episodeId: match.id, embedUrl },
+    reason: null
+  };
 }
 
 export async function resolveProviderMovie(args: {
   providerTitleId: number;
-}): Promise<ProviderResolvedMovie | null> {
+}): Promise<ProviderResolveOutcome<ProviderResolvedMovie>> {
   const embedUrl = await fetchProviderEmbedUrl(args.providerTitleId);
   providerResolveLogger.info('movie resolve decision', {
     providerTitleId: args.providerTitleId,
@@ -240,10 +267,13 @@ export async function resolveProviderMovie(args: {
   });
 
   if (!embedUrl) {
-    return null;
+    return { resolved: null, reason: 'temporarily_unavailable' };
   }
 
-  return { embedUrl };
+  return {
+    resolved: { embedUrl },
+    reason: null
+  };
 }
 
 function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: number): void {
@@ -254,54 +284,64 @@ function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: num
 }
 
 async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPage | null> {
-  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
-  if (!providerCatalogBaseUrl) {
-    providerResolveLogger.error('provider catalog base url unavailable', {
-      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL
-    });
-    return null;
-  }
-  const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/search`, providerCatalogBaseUrl);
-  url.searchParams.set('q', query);
+  return withProviderCatalogBaseUrlRetry('search', { query }, async (providerCatalogBaseUrl) => {
+    const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/search`, providerCatalogBaseUrl);
+    url.searchParams.set('q', query);
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      referrerPolicy: 'no-referrer',
-      headers: {
-        accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
-      }
-    });
-  } catch {
-    providerResolveLogger.error('search request failed', { query, url: url.toString() });
-    return null;
-  }
-
-  debug('search upstream response', {
-    query,
-    url: url.toString(),
-    status: res.status,
-    contentType: res.headers.get('content-type') ?? ''
-  });
-
-  if (!res.ok) return null;
-
-  const contentType = res.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
+    let res: Response;
     try {
-      const page = await res.json() as ProviderSearchPage;
-      logProviderPayloadShape(query, page, 'json');
-      return page;
+      res = await fetch(url, {
+        referrerPolicy: 'no-referrer',
+        headers: {
+          accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+        }
+      });
     } catch {
-      providerResolveLogger.error('search payload invalid', { query, url: url.toString() });
-      return null;
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('search request failed', { query, url: url.toString() });
+      });
     }
-  }
 
-  const html = await res.text();
-  const page = parseInertiaPageFromHtml(html);
-  logProviderPayloadShape(query, page, 'html');
-  return page;
+    debug('search upstream response', {
+      query,
+      url: url.toString(),
+      status: res.status,
+      contentType: res.headers.get('content-type') ?? ''
+    });
+
+    if (!res.ok) {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('search response invalid', {
+          query,
+          url: url.toString(),
+          status: res.status
+        });
+      });
+    }
+
+    const contentType = res.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      try {
+        const page = await res.json() as ProviderSearchPage;
+        logProviderPayloadShape(query, page, 'json');
+        return successAttempt(page);
+      } catch {
+        return failureAttempt(true, () => {
+          providerResolveLogger.error('search payload invalid', { query, url: url.toString() });
+        });
+      }
+    }
+
+    const html = await res.text();
+    const page = parseInertiaPageFromHtml(html);
+    if (!page) {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('search page payload missing', { query, url: url.toString() });
+      });
+    }
+    logProviderPayloadShape(query, page, 'html');
+    return successAttempt(page);
+  });
 }
 
 function parseInertiaPageFromHtml(html: string): ProviderSearchPage | null {
@@ -719,82 +759,104 @@ async function fetchProviderSeason(
     return cached.value;
   }
 
-  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
-  if (!providerCatalogBaseUrl) {
-    providerResolveLogger.error('provider catalog base url unavailable', {
-      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
-      providerTitleId,
-      seasonNumber
-    });
-    return null;
-  }
-  const url = new URL(
-    `/${PROVIDER_CATALOG_LOCALE}/titles/${providerTitleId}-${slug}/season-${seasonNumber}`,
-    providerCatalogBaseUrl
-  );
+  const loadedSeason = await withProviderCatalogBaseUrlRetry('season', {
+    providerTitleId,
+    slug,
+    seasonNumber
+  }, async (providerCatalogBaseUrl) => {
+    const url = new URL(
+      `/${PROVIDER_CATALOG_LOCALE}/titles/${providerTitleId}-${slug}/season-${seasonNumber}`,
+      providerCatalogBaseUrl
+    );
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      referrerPolicy: 'no-referrer',
-      headers: {
-        accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
-      }
-    });
-  } catch {
-    providerResolveLogger.error('season request failed', {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        referrerPolicy: 'no-referrer',
+        headers: {
+          accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+        }
+      });
+    } catch {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('season request failed', {
+          providerTitleId,
+          slug,
+          seasonNumber,
+          url: url.toString()
+        });
+      });
+    }
+
+    debug('season page upstream response', {
       providerTitleId,
       slug,
       seasonNumber,
-      url: url.toString()
+      url: url.toString(),
+      status: res.status,
+      contentType: res.headers.get('content-type') ?? ''
     });
-    return null;
-  }
 
-  debug('season page upstream response', {
-    providerTitleId,
-    slug,
-    seasonNumber,
-    url: url.toString(),
-    status: res.status,
-    contentType: res.headers.get('content-type') ?? ''
-  });
-
-  if (!res.ok) return null;
-
-  const contentType = res.headers.get('content-type') ?? '';
-  let page: ProviderTitlePage | null = null;
-  if (contentType.includes('application/json')) {
-    try {
-      page = await res.json() as ProviderTitlePage;
-    } catch {
-      providerResolveLogger.error('season payload invalid', {
-        providerTitleId,
-        slug,
-        seasonNumber,
-        url: url.toString()
+    if (!res.ok) {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('season response invalid', {
+          providerTitleId,
+          slug,
+          seasonNumber,
+          url: url.toString(),
+          status: res.status
+        });
       });
-      return null;
     }
-  } else {
-    const html = await res.text();
-    page = parseInertiaPageFromHtml(html) as ProviderTitlePage | null;
-  }
 
-  const loadedSeason = extractLoadedSeason(page);
-  debug('season episodes payload', {
-    providerTitleId,
-    slug,
-    seasonNumber,
-    loadedSeasonNumber: loadedSeason?.number ?? null,
-    episodesCount: loadedSeason?.episodes?.length ?? 0,
-    sampleEpisodes: (loadedSeason?.episodes ?? [])
-      .slice(0, 5)
-      .map((episode) => ({
-        id: episode.id ?? null,
-        number: episode.number ?? null,
-        scwsId: episode.scws_id ?? null
-      }))
+    const contentType = res.headers.get('content-type') ?? '';
+    let page: ProviderTitlePage | null = null;
+    if (contentType.includes('application/json')) {
+      try {
+        page = await res.json() as ProviderTitlePage;
+      } catch {
+        return failureAttempt(true, () => {
+          providerResolveLogger.error('season payload invalid', {
+            providerTitleId,
+            slug,
+            seasonNumber,
+            url: url.toString()
+          });
+        });
+      }
+    } else {
+      const html = await res.text();
+      page = parseInertiaPageFromHtml(html) as ProviderTitlePage | null;
+    }
+
+    const loaded = extractLoadedSeason(page);
+    if (!loaded) {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('season payload missing', {
+          providerTitleId,
+          slug,
+          seasonNumber,
+          url: url.toString()
+        });
+      });
+    }
+
+    debug('season episodes payload', {
+      providerTitleId,
+      slug,
+      seasonNumber,
+      loadedSeasonNumber: loaded.number ?? null,
+      episodesCount: loaded.episodes?.length ?? 0,
+      sampleEpisodes: (loaded.episodes ?? [])
+        .slice(0, 5)
+        .map((episode) => ({
+          id: episode.id ?? null,
+          number: episode.number ?? null,
+          scwsId: episode.scws_id ?? null
+        }))
+    });
+
+    return successAttempt(loaded);
   });
 
   seasonCache.set(cacheKey, {
@@ -823,123 +885,107 @@ async function fetchProviderEmbedUrl(
   providerTitleId: number,
   episodeId?: number
 ): Promise<string | null> {
-  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
-  if (!providerCatalogBaseUrl) {
-    providerResolveLogger.error('provider catalog base url unavailable', {
-      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
-      providerTitleId,
-      episodeId: episodeId ?? null
-    });
-    return null;
-  }
-  const url = new URL(
-    `/${PROVIDER_CATALOG_LOCALE}/iframe/${providerTitleId}`,
-    providerCatalogBaseUrl
-  );
-  if (episodeId) {
-    url.searchParams.set('episode_id', String(episodeId));
-    url.searchParams.set('next_episode', '1');
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      referrerPolicy: 'no-referrer',
-      headers: {
-        accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
-      }
-    });
-  } catch {
-    providerResolveLogger.error('embed request failed', {
-      providerTitleId,
-      episodeId: episodeId ?? null,
-      url: url.toString()
-    });
-    return null;
-  }
-
-  debug('embed page upstream response', {
+  return withProviderCatalogBaseUrlRetry('embed', {
     providerTitleId,
-    episodeId: episodeId ?? null,
-    url: url.toString(),
-    status: res.status,
-    contentType: res.headers.get('content-type') ?? ''
-  });
-
-  if (!res.ok) return null;
-
-  const html = await res.text();
-  const match = html.match(/<iframe[^>]+src="([^"]+)"/i) || html.match(/<iframe[^>]+src='([^']+)'/i);
-  if (!match?.[1]) {
-    providerResolveLogger.error('embed iframe src missing', {
-      providerTitleId,
-      episodeId: episodeId ?? null
-    });
-    return null;
-  }
-
-  const embedUrl = decodeHtmlEntities(match[1].trim());
-  try {
-    const parsed = new URL(embedUrl, providerCatalogBaseUrl);
-    const isVixEmbed = parsed.hostname === 'vixcloud.co' && parsed.pathname.startsWith('/embed/');
-    if (!isVixEmbed) {
-    providerResolveLogger.error('embed host unexpected', {
-        providerTitleId,
-        episodeId: episodeId ?? null,
-        embedUrl
-      });
-      return null;
+    episodeId: episodeId ?? null
+  }, async (providerCatalogBaseUrl) => {
+    const url = new URL(
+      `/${PROVIDER_CATALOG_LOCALE}/iframe/${providerTitleId}`,
+      providerCatalogBaseUrl
+    );
+    if (episodeId) {
+      url.searchParams.set('episode_id', String(episodeId));
+      url.searchParams.set('next_episode', '1');
     }
 
-    const relative = `/embed${parsed.pathname.slice('/embed'.length)}${parsed.search}`;
-    providerResolveLogger.info('embed url resolved', {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        referrerPolicy: 'no-referrer',
+        headers: {
+          accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+        }
+      });
+    } catch {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('embed request failed', {
+          providerTitleId,
+          episodeId: episodeId ?? null,
+          url: url.toString()
+        });
+      });
+    }
+
+    debug('embed page upstream response', {
       providerTitleId,
       episodeId: episodeId ?? null,
-      embedUrl: relative
+      url: url.toString(),
+      status: res.status,
+      contentType: res.headers.get('content-type') ?? ''
     });
-    return relative;
-  } catch {
-    providerResolveLogger.error('embed url invalid', {
-      providerTitleId,
-      episodeId: episodeId ?? null,
-      embedUrl
-    });
-    return null;
-  }
+
+    if (!res.ok) {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('embed response invalid', {
+          providerTitleId,
+          episodeId: episodeId ?? null,
+          url: url.toString(),
+          status: res.status
+        });
+      });
+    }
+
+    const html = await res.text();
+    const match = html.match(/<iframe[^>]+src="([^"]+)"/i) || html.match(/<iframe[^>]+src='([^']+)'/i);
+    if (!match?.[1]) {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('embed iframe src missing', {
+          providerTitleId,
+          episodeId: episodeId ?? null,
+          url: url.toString()
+        });
+      });
+    }
+
+    const embedUrl = decodeHtmlEntities(match[1].trim());
+    try {
+      const parsed = new URL(embedUrl, providerCatalogBaseUrl);
+      const isVixEmbed = parsed.hostname === 'vixcloud.co' && parsed.pathname.startsWith('/embed/');
+      if (!isVixEmbed) {
+        return failureAttempt(true, () => {
+          providerResolveLogger.error('embed host unexpected', {
+            providerTitleId,
+            episodeId: episodeId ?? null,
+            url: url.toString(),
+            embedUrl
+          });
+        });
+      }
+
+      const relative = `/embed${parsed.pathname.slice('/embed'.length)}${parsed.search}`;
+      providerResolveLogger.info('embed url resolved', {
+        providerTitleId,
+        episodeId: episodeId ?? null,
+        embedUrl: relative
+      });
+      return successAttempt(relative);
+    } catch {
+      return failureAttempt(true, () => {
+        providerResolveLogger.error('embed url invalid', {
+          providerTitleId,
+          episodeId: episodeId ?? null,
+          url: url.toString(),
+          embedUrl
+        });
+      });
+    }
+  });
 }
 
 async function getProviderCatalogBaseUrl(): Promise<string | null> {
-  const now = Date.now();
-  if (providerCatalogBaseUrlCache && providerCatalogBaseUrlCache.expiresAt > now) {
-    return providerCatalogBaseUrlCache.value;
-  }
-
-  const resolved = await fetchProviderCatalogBaseUrlFromTelegraph();
-  if (resolved) {
-    providerCatalogBaseUrlCache = {
-      value: resolved,
-      expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
-    };
-    try {
-      await persistProviderCatalogBaseUrl(resolved);
-    } catch {
-      providerResolveLogger.warn('provider catalog base url persist failed', {
-        key: PROVIDER_CATALOG_BASE_URL_META_KEY
-      });
-    }
-    return resolved;
-  }
-
-  if (PROVIDER_CATALOG_BASE_URL_OVERRIDE) {
-    providerResolveLogger.warn('provider catalog base url override used', {
-      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
-      providerCatalogBaseUrl: PROVIDER_CATALOG_BASE_URL_OVERRIDE
-    });
-    providerCatalogBaseUrlCache = {
-      value: PROVIDER_CATALOG_BASE_URL_OVERRIDE,
-      expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
-    };
-    return PROVIDER_CATALOG_BASE_URL_OVERRIDE;
+  const cachedBaseUrl = await readCachedProviderCatalogBaseUrl();
+  if (cachedBaseUrl) {
+    return cachedBaseUrl;
   }
 
   const persisted = await readPersistedProviderCatalogBaseUrl();
@@ -948,11 +994,21 @@ async function getProviderCatalogBaseUrl(): Promise<string | null> {
       sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
       providerCatalogBaseUrl: persisted
     });
-    providerCatalogBaseUrlCache = {
-      value: persisted,
-      expiresAt: now + (PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS * 1000)
-    };
+    await cacheProviderCatalogBaseUrl(persisted);
     return persisted;
+  }
+
+  const resolved = await fetchProviderCatalogBaseUrlFromTelegraph();
+  if (resolved) {
+    await cacheProviderCatalogBaseUrl(resolved);
+    try {
+      await persistProviderCatalogBaseUrl(resolved);
+    } catch {
+      providerResolveLogger.warn('provider catalog base url persist failed', {
+        key: PROVIDER_CATALOG_BASE_URL_META_KEY
+      });
+    }
+    return resolved;
   }
 
   providerResolveLogger.error('provider catalog base url resolution failed', {
@@ -1017,6 +1073,161 @@ async function fetchProviderCatalogBaseUrlFromTelegraph(): Promise<string | null
     });
     return null;
   }
+}
+
+async function cacheProviderCatalogBaseUrl(value: string): Promise<void> {
+  if (!hasRedisConfig()) {
+    return;
+  }
+
+  try {
+    await getRedisPublisher().set(
+      PROVIDER_CATALOG_BASE_URL_REDIS_KEY,
+      value,
+      'EX',
+      PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS
+    );
+  } catch {}
+}
+
+function successAttempt<T>(value: T): AttemptResult<T> {
+  return { ok: true, value };
+}
+
+function failureAttempt(retryable: boolean, log: () => void): AttemptResult<never> {
+  return { ok: false, retryable, log };
+}
+
+async function withProviderCatalogBaseUrlRetry<T>(
+  reason: string,
+  context: Record<string, unknown>,
+  attempt: (providerCatalogBaseUrl: string) => Promise<AttemptResult<T>>
+): Promise<T | null> {
+  const providerCatalogBaseUrl = await getProviderCatalogBaseUrl();
+  if (!providerCatalogBaseUrl) {
+    providerResolveLogger.error('provider catalog base url unavailable', {
+      sourceUrl: PROVIDER_CATALOG_LINK_SOURCE_URL,
+      reason,
+      ...context
+    });
+    return null;
+  }
+
+  const firstAttempt = await attempt(providerCatalogBaseUrl);
+  if (firstAttempt.ok) {
+    return firstAttempt.value;
+  }
+
+  if (firstAttempt.retryable) {
+    const refreshedBaseUrl = await refreshProviderCatalogBaseUrl(providerCatalogBaseUrl, reason, context);
+    if (refreshedBaseUrl && refreshedBaseUrl !== providerCatalogBaseUrl) {
+      const secondAttempt = await attempt(refreshedBaseUrl);
+      if (secondAttempt.ok) {
+        return secondAttempt.value;
+      }
+      secondAttempt.log();
+      return null;
+    }
+  }
+
+  firstAttempt.log();
+  return null;
+}
+
+async function refreshProviderCatalogBaseUrl(
+  previousBaseUrl: string,
+  reason: string,
+  context: Record<string, unknown>
+): Promise<string | null> {
+  if (providerCatalogBaseUrlRefreshInFlight) {
+    return providerCatalogBaseUrlRefreshInFlight;
+  }
+
+  const refreshAllowed = await tryBeginProviderCatalogBaseUrlRefreshCooldown();
+  if (!refreshAllowed) {
+    return null;
+  }
+
+  providerCatalogBaseUrlRefreshInFlight = (async () => {
+    const telegraphBaseUrl = await fetchProviderCatalogBaseUrlFromTelegraph();
+    if (telegraphBaseUrl) {
+      await cacheProviderCatalogBaseUrl(telegraphBaseUrl);
+      try {
+        await persistProviderCatalogBaseUrl(telegraphBaseUrl);
+      } catch {
+        providerResolveLogger.warn('provider catalog base url persist failed', {
+          key: PROVIDER_CATALOG_BASE_URL_META_KEY
+        });
+      }
+      if (telegraphBaseUrl !== previousBaseUrl) {
+        logProviderCatalogBaseUrlChanged(previousBaseUrl, telegraphBaseUrl, 'telegraph', reason, context);
+      }
+      return telegraphBaseUrl;
+    }
+
+    const persisted = await readPersistedProviderCatalogBaseUrl();
+    if (persisted && persisted !== previousBaseUrl) {
+      await cacheProviderCatalogBaseUrl(persisted);
+      logProviderCatalogBaseUrlChanged(previousBaseUrl, persisted, 'persisted', reason, context);
+      return persisted;
+    }
+
+    return null;
+  })();
+
+  try {
+    return await providerCatalogBaseUrlRefreshInFlight;
+  } finally {
+    providerCatalogBaseUrlRefreshInFlight = null;
+  }
+}
+
+async function readCachedProviderCatalogBaseUrl(): Promise<string | null> {
+  if (!hasRedisConfig()) {
+    return null;
+  }
+
+  try {
+    const cached = await getRedisPublisher().get(PROVIDER_CATALOG_BASE_URL_REDIS_KEY);
+    return cached?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function tryBeginProviderCatalogBaseUrlRefreshCooldown(): Promise<boolean> {
+  if (!hasRedisConfig()) {
+    return true;
+  }
+
+  try {
+    const result = await getRedisPublisher().set(
+      PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_REDIS_KEY,
+      String(Date.now()),
+      'PX',
+      PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_MS,
+      'NX'
+    );
+    return result === 'OK';
+  } catch {
+    return true;
+  }
+}
+
+function logProviderCatalogBaseUrlChanged(
+  previousBaseUrl: string,
+  nextBaseUrl: string,
+  source: ProviderCatalogBaseUrlChangeSource,
+  reason: string,
+  context: Record<string, unknown>
+): void {
+  providerResolveLogger.info('provider catalog base url changed', {
+    source,
+    reason,
+    previousBaseUrl,
+    nextBaseUrl,
+    ...context
+  });
 }
 
 function extractFirstHref(nodes: TelegraphPageNode[] | undefined): string | null {

@@ -11,11 +11,6 @@ export const REDIS_URL = (process.env.REDIS_URL || '').trim();
 export const WORKER_CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY) || 4);
 export const TMDB_JOB_RATE_LIMIT_MAX = Math.max(1, Number(process.env.TMDB_JOB_RATE_LIMIT_MAX) || 6);
 export const TMDB_JOB_RATE_LIMIT_DURATION_MS = Math.max(100, Number(process.env.TMDB_JOB_RATE_LIMIT_DURATION_MS) || 1000);
-export const PROVIDER_CATALOG_BASE_URL_OVERRIDE = (
-  process.env.PROVIDER_CATALOG_BASE_URL_OVERRIDE ||
-  process.env.PROVIDER_CATALOG_BASE_URL ||
-  ''
-).trim();
 export const PROVIDER_CATALOG_LINK_SOURCE_URL =
   'https://api.telegra.ph/getPage/Link-Aggiornato-StreamingCommunity-09-29?return_content=true';
 export const PROVIDER_CATALOG_LOCALE = (process.env.PROVIDER_CATALOG_LOCALE || 'it').trim() || 'it';
