@@ -637,11 +637,25 @@ export class WatchComponent {
       let seekDone = !(startTime && startTime > 0);
       let activeVideo: HTMLVideoElement | null = null;
       let detachVideoListeners: (() => void) | null = null;
+      let activePlayer: {
+        on: (eventName: string, handler: (...args: unknown[]) => void) => void;
+        off?: (eventName: string, handler: (...args: unknown[]) => void) => void;
+        getPosition?: () => number;
+        getDuration?: () => number;
+        seek?: (seconds: number) => void;
+      } | null = null;
+      let detachPlayerListeners: (() => void) | null = null;
       let syncTimer: number | null = null;
       let observer: MutationObserver | null = null;
 
       const attachVideo = (video: HTMLVideoElement): void => {
         activeVideo = video;
+        try {
+          video.playsInline = true;
+          video.setAttribute('playsinline', '');
+          video.setAttribute('webkit-playsinline', 'true');
+        } catch {}
+
         const emit = (eventName: string) => {
           this.player.ingestPlayerEvent({
             type: 'PLAYER_EVENT',
@@ -685,6 +699,9 @@ export class WatchComponent {
         const onError = () => emit('error');
 
         video.addEventListener('loadedmetadata', onLoadedMetadata);
+        video.addEventListener('loadeddata', onLoadedMetadata);
+        video.addEventListener('durationchange', onLoadedMetadata);
+        video.addEventListener('canplay', onLoadedMetadata);
         video.addEventListener('play', onPlay);
         video.addEventListener('playing', onPlaying);
         video.addEventListener('pause', onPause);
@@ -699,6 +716,9 @@ export class WatchComponent {
 
         detachVideoListeners = () => {
           video.removeEventListener('loadedmetadata', onLoadedMetadata);
+          video.removeEventListener('loadeddata', onLoadedMetadata);
+          video.removeEventListener('durationchange', onLoadedMetadata);
+          video.removeEventListener('canplay', onLoadedMetadata);
           video.removeEventListener('play', onPlay);
           video.removeEventListener('playing', onPlaying);
           video.removeEventListener('pause', onPause);
@@ -706,6 +726,85 @@ export class WatchComponent {
           video.removeEventListener('seeked', onSeeked);
           video.removeEventListener('ended', onEnded);
           video.removeEventListener('error', onError);
+        };
+      };
+
+      const attachPlayer = (player: {
+        on: (eventName: string, handler: (...args: unknown[]) => void) => void;
+        off?: (eventName: string, handler: (...args: unknown[]) => void) => void;
+        getPosition?: () => number;
+        getDuration?: () => number;
+        seek?: (seconds: number) => void;
+      }): void => {
+        activePlayer = player;
+
+        const emit = (eventName: string, payload?: { position?: number; duration?: number }) => {
+          let currentTime = payload?.position;
+          let duration = payload?.duration;
+          try {
+            if (currentTime === undefined && typeof player.getPosition === 'function') {
+              currentTime = player.getPosition();
+            }
+          } catch {}
+          try {
+            if (duration === undefined && typeof player.getDuration === 'function') {
+              duration = player.getDuration();
+            }
+          } catch {}
+
+          this.player.ingestPlayerEvent({
+            type: 'PLAYER_EVENT',
+            event: {
+              event: eventName,
+              currentTime: typeof currentTime === 'number' && Number.isFinite(currentTime) ? currentTime : undefined,
+              duration: typeof duration === 'number' && Number.isFinite(duration) ? duration : undefined
+            }
+          });
+        };
+
+        const maybeSeek = () => {
+          if (seekDone || !(startTime && startTime > 0) || typeof player.seek !== 'function') return;
+          try {
+            const duration = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+            if (Number.isFinite(duration) && duration > 0 && startTime < duration - 5) {
+              player.seek(startTime);
+              seekDone = true;
+            }
+          } catch {}
+        };
+
+        const listeners: Array<[string, (...args: unknown[]) => void]> = [
+          ['ready', () => { maybeSeek(); emit('ready'); }],
+          ['firstFrame', () => { maybeSeek(); emit('playing'); }],
+          ['play', () => { maybeSeek(); emit('play'); }],
+          ['pause', () => emit('pause')],
+          ['time', (...args: unknown[]) => {
+            const payload = (args[0] as { position?: number; duration?: number } | undefined);
+            maybeSeek();
+            emit('time', payload);
+          }],
+          ['seek', (...args: unknown[]) => {
+            const payload = (args[0] as { position?: number; duration?: number } | undefined);
+            emit('seek', payload);
+          }],
+          ['complete', () => emit('complete')],
+          ['error', () => emit('error')]
+        ];
+
+        for (const [eventName, handler] of listeners) {
+          try {
+            player.on(eventName, handler);
+          } catch {}
+        }
+
+        maybeSeek();
+
+        detachPlayerListeners = () => {
+          for (const [eventName, handler] of listeners) {
+            try {
+              player.off?.(eventName, handler);
+            } catch {}
+          }
         };
       };
 
@@ -720,15 +819,40 @@ export class WatchComponent {
         attachVideo(nextVideo);
       };
 
+      const syncPlayer = () => {
+        const currentWindow = iframe.contentWindow as (Window & {
+          jwplayer?: (() => {
+            on: (eventName: string, handler: (...args: unknown[]) => void) => void;
+            off?: (eventName: string, handler: (...args: unknown[]) => void) => void;
+            getPosition?: () => number;
+            getDuration?: () => number;
+            seek?: (seconds: number) => void;
+          }) | undefined;
+        }) | null;
+        const nextPlayer = currentWindow?.jwplayer?.();
+        if (!nextPlayer) return;
+        if (nextPlayer === activePlayer) return;
+        detachPlayerListeners?.();
+        detachPlayerListeners = null;
+        attachPlayer(nextPlayer);
+      };
+
       syncVideo();
-      if (!activeVideo) return null;
+      syncPlayer();
+      if (!activeVideo && !activePlayer) return null;
 
       if (typeof MutationObserver !== 'undefined') {
-        observer = new MutationObserver(() => syncVideo());
+        observer = new MutationObserver(() => {
+          syncVideo();
+          syncPlayer();
+        });
         observer.observe(doc.documentElement, { childList: true, subtree: true });
       }
 
-      syncTimer = window.setInterval(syncVideo, 1000);
+      syncTimer = window.setInterval(() => {
+        syncVideo();
+        syncPlayer();
+      }, 1000);
 
       return () => {
         if (syncTimer !== null) {
@@ -736,8 +860,11 @@ export class WatchComponent {
         }
         observer?.disconnect();
         detachVideoListeners?.();
+        detachPlayerListeners?.();
         detachVideoListeners = null;
+        detachPlayerListeners = null;
         activeVideo = null;
+        activePlayer = null;
       };
     } catch {
       return null;
