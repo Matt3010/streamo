@@ -115,6 +115,7 @@ type ConfirmAction =
             </button>
             @if (showManualProviderRefresh()) {
               <button uiButton type="button"
+                      [disabled]="!canManualRefreshProvider()"
                       [uiPending]="providerRefreshPending()"
                       (click)="triggerManualProviderRefresh()">
                 <span>{{ manualProviderRefreshLabel() }}</span>
@@ -352,6 +353,8 @@ export class WatchComponent {
   protected readonly watchlistPending = signal(false);
   protected readonly clearProgressPendingKey = signal<string | null>(null);
   protected readonly providerRefreshPending = signal(false);
+  private readonly manualRefreshNow = signal(Math.floor(Date.now() / 1000));
+  private manualRefreshTimer: number | null = null;
   private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
@@ -553,8 +556,20 @@ export class WatchComponent {
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.player.providerManualRefreshState() !== null
   ));
+  protected readonly manualProviderRefreshRemaining = computed(() => {
+    if (!this.showManualProviderRefresh()) return 0;
+    const state = this.player.providerManualRefreshState();
+    if (!state) return 0;
+    return Math.max(0, state.nextAllowedAt - this.manualRefreshNow());
+  });
+  protected readonly canManualRefreshProvider = computed(() => (
+    this.showManualProviderRefresh() && this.manualProviderRefreshRemaining() === 0
+  ));
   protected readonly manualProviderRefreshLabel = computed(() => {
-    return this.showManualProviderRefresh() ? 'Riprova ricerca provider' : '';
+    if (!this.showManualProviderRefresh()) return '';
+    const remaining = this.manualProviderRefreshRemaining();
+    if (remaining === 0) return 'Riprova ricerca provider';
+    return `Riprova tra ${formatCooldownLabel(remaining)}`;
   });
 
   protected readonly primaryPlayLabel = computed(() => {
@@ -628,7 +643,27 @@ export class WatchComponent {
       void this.loadReviews(id, type);
     });
 
+    // Tick once per second only while the manual-refresh button is visible
+    // AND a cooldown is active, so the countdown label updates in real time.
+    effect(() => {
+      const needsTimer = this.showManualProviderRefresh() && this.manualProviderRefreshRemaining() > 0;
+      if (needsTimer) {
+        if (this.manualRefreshTimer === null) {
+          this.manualRefreshTimer = window.setInterval(() => {
+            this.manualRefreshNow.set(Math.floor(Date.now() / 1000));
+          }, 1000);
+        }
+      } else if (this.manualRefreshTimer !== null) {
+        clearInterval(this.manualRefreshTimer);
+        this.manualRefreshTimer = null;
+      }
+    });
+
     this.destroyRef.onDestroy(() => {
+      if (this.manualRefreshTimer !== null) {
+        clearInterval(this.manualRefreshTimer);
+        this.manualRefreshTimer = null;
+      }
       this.player.cleanup();
       this.background.clear();
     });
@@ -703,7 +738,7 @@ export class WatchComponent {
   }
 
   protected triggerManualProviderRefresh(): void {
-    if (!this.showManualProviderRefresh()) {
+    if (!this.canManualRefreshProvider()) {
       return;
     }
     if (this.player.providerManualRefreshState()?.requiresConfirm) {
@@ -855,6 +890,16 @@ function formatTimeCompact(seconds: number): string {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function formatCooldownLabel(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const totalMinutes = Math.ceil(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
 }
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {
