@@ -812,11 +812,16 @@ export class WatchComponent {
 
   protected chooseProviderCandidate(providerTitleId: number): void {
     if (this.providerPickerPending()) return;
-    if (this.player.providerResolvedTitleId() === providerTitleId) {
-      // Already this one — just close.
+    const sameAsCurrent = this.player.providerResolvedTitleId() === providerTitleId;
+    const playable = this.player.playbackAvailability() === 'ready';
+    if (sameAsCurrent && playable) {
+      // Already confirmed and working — nothing to do, close modal.
       this.providerPickerOpen.set(false);
       return;
     }
+    // Same candidate but playback was broken last time: let the click
+    // retry, in case the upstream issue (e.g., transient missing season
+    // payload) has cleared.
     void runWithPending(this.providerPickerPending, async () => {
       const ok = await this.player.manuallyConfirmProvider(providerTitleId);
       if (ok) this.providerPickerOpen.set(false);

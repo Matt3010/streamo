@@ -849,9 +849,11 @@ export class PlayerService {
       return false;
     }
 
-    const prepared = await this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
+    const prepared = await this.tryApplyResolvedTitle(item.id, type, result.resolved);
     if (prepared) {
       this.toast.show(candidatesChanged ? 'Lista versioni aggiornata' : 'Versione confermata');
+    } else {
+      this.toast.show('Questa versione non ha contenuto disponibile.');
     }
     return prepared;
   }
@@ -873,8 +875,12 @@ export class PlayerService {
       return false;
     }
 
-    const prepared = await this.applyResolvedTitleAndPrepare(item.id, type, result.resolved);
-    if (prepared) this.toast.show('Versione aggiornata');
+    const prepared = await this.tryApplyResolvedTitle(item.id, type, result.resolved);
+    if (prepared) {
+      this.toast.show('Versione aggiornata');
+    } else {
+      this.toast.show('Questa versione non ha contenuto disponibile. Provane un\'altra.');
+    }
     return prepared;
   }
 
@@ -901,6 +907,38 @@ export class PlayerService {
     const seq = ++this.urlSeq;
     await this.applyResumeProgress(seq, tmdbId, 'movie');
     return true;
+  }
+
+  // Wraps applyResolvedTitleAndPrepare with a rollback for the case where
+  // a newly-confirmed provider title turns out to be unplayable (e.g., the
+  // catalog lists it but the season/movie payload is missing). Without the
+  // rollback the page jumps to "Riproduzione temporaneamente non
+  // disponibile" right after a user-initiated pick, even though the picker
+  // is still open and they can immediately try a different candidate.
+  // Server-driven signals (candidates, matchStatus, resolvedTitleId) are
+  // NOT reverted — they reflect persisted DB state which the caller owns.
+  private async tryApplyResolvedTitle(
+    tmdbId: number,
+    type: MediaType,
+    resolved: ProviderPlaybackTitle
+  ): Promise<boolean> {
+    const prev = {
+      availability: this.playbackAvailability(),
+      message: this.playbackUnavailableMessage(),
+      reason: this.playbackUnavailableReason(),
+      title: this.playbackTitle,
+      pendingVideoUrl: this.pendingVideoUrl
+    };
+
+    const prepared = await this.applyResolvedTitleAndPrepare(tmdbId, type, resolved);
+    if (prepared) return true;
+
+    this.playbackAvailability.set(prev.availability);
+    this.playbackUnavailableMessage.set(prev.message);
+    this.playbackUnavailableReason.set(prev.reason);
+    this.playbackTitle = prev.title;
+    this.pendingVideoUrl = prev.pendingVideoUrl;
+    return false;
   }
 
   private requirePlaybackTitle(): ProviderPlaybackTitle | null {
