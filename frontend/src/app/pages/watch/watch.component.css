@@ -172,6 +172,16 @@
   align-self: stretch;
 }
 
+/* On mobile, the bookmark wraps onto its own row — let it span 100%
+ * just like the text CTAs (same `flex: 1 1 auto` they use). */
+@media (max-width: 640px) {
+  .player-actions > .ui-button-icon {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+  }
+}
+
 .release-inline-note {
   flex: 1 1 auto;
   min-width: 0;
