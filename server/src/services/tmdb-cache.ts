@@ -198,3 +198,68 @@ export async function getTmdbTvSummary(
     return null;
   }
 }
+
+// TMDB search by name+year to look up a poster path. Used by the provider
+// candidate picker, where we need a thumbnail for each match the algorithm
+// surfaces (otherwise the picker is just a list of titles with no visual
+// disambiguation). Aggressively cached because the same query repeats across
+// users and resolves.
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w92';
+
+export async function searchTmdbPosterUrl(
+  query: string,
+  mediaType: 'movie' | 'tv',
+  year: number | null
+): Promise<string | null> {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return null;
+  const cacheKey = `search-poster:${mediaType}:${normalized}:${year ?? '-'}`;
+  const now = Math.floor(Date.now() / 1000);
+
+  const cached = await kdb
+    .selectFrom('tmdb_cache')
+    .select(['data', 'fetched_at'])
+    .where('cache_key', '=', cacheKey)
+    .executeTakeFirst();
+  if (cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
+    try {
+      const parsed = JSON.parse(cached.data) as { posterUrl: string | null };
+      return parsed.posterUrl;
+    } catch {
+      // fall through and refetch
+    }
+  }
+
+  if (!TMDB_API_KEY) return null;
+
+  const yearParam = mediaType === 'movie' ? 'primary_release_year' : 'first_air_date_year';
+  const params = new URLSearchParams({
+    api_key: TMDB_API_KEY,
+    query,
+    language: 'it-IT'
+  });
+  if (year !== null) params.set(yearParam, String(year));
+
+  let posterUrl: string | null = null;
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/search/${mediaType}?${params.toString()}`);
+    if (res.ok) {
+      const body = await res.json() as { results?: Array<{ poster_path?: string | null }> };
+      const path = body.results?.find((r) => typeof r.poster_path === 'string' && r.poster_path)?.poster_path;
+      posterUrl = path ? `${TMDB_IMAGE_BASE}${path}` : null;
+    }
+  } catch {
+    posterUrl = null;
+  }
+
+  await kdb
+    .insertInto('tmdb_cache')
+    .values({ cache_key: cacheKey, data: JSON.stringify({ posterUrl }), fetched_at: now })
+    .onConflict((oc) => oc.column('cache_key').doUpdateSet({
+      data: (eb) => eb.ref('excluded.data'),
+      fetched_at: (eb) => eb.ref('excluded.fetched_at')
+    }))
+    .execute();
+
+  return posterUrl;
+}

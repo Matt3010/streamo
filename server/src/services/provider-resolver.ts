@@ -11,6 +11,7 @@ import {
 } from '../config';
 import { providerResolveLogger } from './provider-resolve-logs';
 import { getRedisPublisher, hasRedisConfig } from './redis';
+import { searchTmdbPosterUrl } from './tmdb-cache';
 
 interface ResolveArgs {
   tmdbId: number;
@@ -56,6 +57,7 @@ export interface ProviderResolvedTitleCandidate {
   title: string;
   year: number | null;
   score: number;
+  posterUrl: string | null;
 }
 
 export interface ProviderResolvedTitleOutcome extends ProviderResolveOutcome<ProviderResolvedTitle> {
@@ -212,7 +214,7 @@ export async function resolveProviderTitle(
   const titles = extractProviderTitles(page);
   logCandidateSummary(args, titles);
   const best = pickBestMatch(titles, args);
-  const candidates = buildCandidateList(titles, args);
+  const candidates = await buildCandidateList(titles, args);
   const { match, persistence } = finalizeMatch(best, candidates);
   providerResolveLogger.info('title match decision', {
     query: args.title,
@@ -729,24 +731,37 @@ function finalizeMatch(
   };
 }
 
-function buildCandidateList(
+async function buildCandidateList(
   titles: ProviderSearchTitle[],
   args: ResolveArgs
-): ProviderResolvedTitleCandidate[] {
+): Promise<ProviderResolvedTitleCandidate[]> {
   const wantedYear = extractYear(args.releaseDate ?? null);
-  return titles
+  const top = titles
     .filter((title) => title.id && normalizeProviderType(title.type) === args.mediaType)
     .map((title) => ({ title, score: scoreCandidate(title, args.title, wantedYear) }))
     .filter(({ score }) => score >= MIN_CANDIDATE_SCORE)
     .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_STORED_CANDIDATES)
-    .map(({ title, score }) => ({
+    .slice(0, MAX_STORED_CANDIDATES);
+
+  // Enrich each candidate with a TMDB poster (the streamingcommunity search
+  // payload doesn't include reliable image URLs, but TMDB does and we have
+  // it cached anyway). Lookups run in parallel; failures fall back to null
+  // posters which the UI handles gracefully.
+  const candidates = await Promise.all(top.map(async ({ title, score }) => {
+    const providerName = title.name?.trim() || args.title;
+    const year = extractYear(getProviderReleaseDate(title));
+    const posterUrl = await searchTmdbPosterUrl(providerName, args.mediaType, year);
+    return {
       providerTitleId: title.id as number,
       providerSlug: title.slug ?? null,
-      title: title.name?.trim() || args.title,
-      year: extractYear(getProviderReleaseDate(title)),
-      score
-    }));
+      title: providerName,
+      year,
+      score,
+      posterUrl
+    };
+  }));
+
+  return candidates;
 }
 
 async function finalizeTitleResolveOutcome(

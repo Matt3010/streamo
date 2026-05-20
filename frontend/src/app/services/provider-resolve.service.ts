@@ -38,6 +38,7 @@ export interface ProviderResolvedTitleCandidate {
   title: string;
   year: number | null;
   score: number;
+  posterUrl: string | null;
 }
 
 export type ProviderMatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'failed';

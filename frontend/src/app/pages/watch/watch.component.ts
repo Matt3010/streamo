@@ -332,15 +332,6 @@ type ConfirmAction =
           (cardClick)="openRecommendation($event)" />
       }
 
-      <ui-confirm-modal
-        [(open)]="confirmModalOpen"
-        [title]="confirmModalTitle()"
-        [message]="confirmModalMessage()"
-        [warning]="confirmModalWarning()"
-        [actionLabel]="confirmModalActionLabel()"
-        (cancelled)="cancelConfirmedAction()"
-        (confirmed)="executeConfirmedAction()" />
-
       <ui-modal [(open)]="providerPickerOpen" title="Scegli la versione" size="sm">
         <div class="provider-picker">
           <p class="provider-picker-hint">
@@ -353,12 +344,21 @@ type ConfirmAction =
                         [class.is-current]="player.providerResolvedTitleId() === c.providerTitleId"
                         [disabled]="providerPickerPending() || providerRefreshPending()"
                         (click)="chooseProviderCandidate(c.providerTitleId)">
-                  <span class="provider-picker-title">{{ c.title }}</span>
-                  <span class="provider-picker-meta">
-                    @if (c.year) { <span>{{ c.year }}</span> }
-                    @if (player.providerResolvedTitleId() === c.providerTitleId) {
-                      <span class="provider-picker-current">attuale</span>
+                  <span class="provider-picker-thumb" aria-hidden="true">
+                    @if (c.posterUrl) {
+                      <img [src]="c.posterUrl" [alt]="c.title" loading="lazy">
+                    } @else {
+                      <app-icon name="film"></app-icon>
                     }
+                  </span>
+                  <span class="provider-picker-stack">
+                    <span class="provider-picker-title">{{ c.title }}</span>
+                    <span class="provider-picker-meta">
+                      @if (c.year) { <span>{{ c.year }}</span> }
+                      @if (player.providerResolvedTitleId() === c.providerTitleId) {
+                        <span class="provider-picker-current">attuale</span>
+                      }
+                    </span>
                   </span>
                 </button>
               </li>
@@ -375,6 +375,15 @@ type ConfirmAction =
           </div>
         </div>
       </ui-modal>
+
+      <ui-confirm-modal
+        [(open)]="confirmModalOpen"
+        [title]="confirmModalTitle()"
+        [message]="confirmModalMessage()"
+        [warning]="confirmModalWarning()"
+        [actionLabel]="confirmModalActionLabel()"
+        (cancelled)="cancelConfirmedAction()"
+        (confirmed)="executeConfirmedAction()" />
     </div>
   `,
   styleUrl: './watch.component.css'
