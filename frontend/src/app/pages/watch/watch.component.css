@@ -153,19 +153,21 @@
 }
 
 /* Watchlist toggle sits flush to the right edge. The global
- * .ui-button-icon locks width/height to 40px (+ aspect-ratio: 1),
- * which would override .player-actions' align-items: stretch and
- * leave the bookmark visibly shorter than the text CTAs. Override
- * those constraints here so the toggle stretches vertically to
- * match the row's tallest sibling; min-width keeps the tap target
- * comfortably wide. */
+ * .ui-button-icon locks width/height to 40px (+ aspect-ratio: 1).
+ * Override here so the toggle stretches vertically to match the row's
+ * tallest sibling (so it's not visibly shorter than the text CTAs)
+ * while keeping its width fixed — without explicitly clearing
+ * aspect-ratio, the stretched vertical size feeds back into the width
+ * and the button explodes into a huge square when it wraps onto its
+ * own row on narrow viewports. */
 .player-actions > .ui-button-icon {
   padding: 0;
   min-width: var(--player-action-size);
-  min-height: var(--player-action-size);
   width: var(--player-action-size);
-  height: var(--player-action-size);
-  aspect-ratio: 1;
+  max-width: var(--player-action-size);
+  min-height: var(--player-action-size);
+  height: auto;
+  aspect-ratio: auto;
   justify-content: center;
   align-self: stretch;
 }
