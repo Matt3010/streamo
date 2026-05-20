@@ -900,37 +900,19 @@ function parseCandidatesJson(value: string | null): ProviderResolvedTitleCandida
 }
 
 async function readProviderManualRefreshState(args: ResolveArgs): Promise<ProviderManualRefreshState> {
-  const anchor = await readManualRefreshCooldownAnchor(args);
-  return buildProviderManualRefreshState(anchor);
-}
-
-async function readManualRefreshCooldownAnchor(args: ResolveArgs): Promise<number | null> {
-  // The manual cooldown is gated by the most recent *check* of any kind:
-  // an auto-resolve that just ran (last_checked_at) blocks the manual
-  // button just like a recent manual click would, since both produce the
-  // same provider query.
-  const [cooldownRow, titleRow] = await Promise.all([
-    kdb
-      .selectFrom('provider_manual_refresh_cooldowns')
-      .select('last_manual_refresh_at')
-      .where('tmdb_id', '=', args.tmdbId)
-      .where('media_type', '=', args.mediaType)
-      .where('provider', '=', PROVIDER_NAME)
-      .executeTakeFirst(),
-    kdb
-      .selectFrom('provider_title_map')
-      .select('last_checked_at')
-      .where('tmdb_id', '=', args.tmdbId)
-      .where('media_type', '=', args.mediaType)
-      .where('provider', '=', PROVIDER_NAME)
-      .executeTakeFirst()
-  ]);
-
-  const lastManual = cooldownRow?.last_manual_refresh_at ?? null;
-  const lastChecked = titleRow && titleRow.last_checked_at > 0 ? titleRow.last_checked_at : null;
-  if (lastManual === null) return lastChecked;
-  if (lastChecked === null) return lastManual;
-  return Math.max(lastManual, lastChecked);
+  // requiresConfirm only triggers after the user has explicitly clicked the
+  // manual refresh / picker buttons at least once. Auto-resolves don't
+  // count: with the cooldown gate removed, conflating them would surface
+  // the confirmation modal on the first manual click of any title that's
+  // ever been auto-resolved, which is annoying.
+  const row = await kdb
+    .selectFrom('provider_manual_refresh_cooldowns')
+    .select('last_manual_refresh_at')
+    .where('tmdb_id', '=', args.tmdbId)
+    .where('media_type', '=', args.mediaType)
+    .where('provider', '=', PROVIDER_NAME)
+    .executeTakeFirst();
+  return buildProviderManualRefreshState(row?.last_manual_refresh_at ?? null);
 }
 
 function buildProviderManualRefreshState(lastTriggeredAt: number | null): ProviderManualRefreshState {
