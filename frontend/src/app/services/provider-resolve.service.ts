@@ -49,7 +49,9 @@ export class ProviderResolveService {
       if (!res.ok) return null;
       const data = await res.json() as { resolved?: ProviderResolvedTitle | null };
       const resolved = data.resolved ?? null;
-      this.titleCache.set(key, resolved);
+      if (resolved) {
+        this.titleCache.set(key, resolved);
+      }
       return resolved;
     } catch {
       return null;
@@ -82,7 +84,9 @@ export class ProviderResolveService {
       if (!res.ok) return null;
       const data = await res.json() as { resolved?: ProviderResolvedEpisode | null };
       const resolved = data.resolved ?? null;
-      this.episodeCache.set(key, resolved);
+      if (resolved) {
+        this.episodeCache.set(key, resolved);
+      }
       return resolved;
     } catch {
       return null;
@@ -105,7 +109,9 @@ export class ProviderResolveService {
       if (!res.ok) return null;
       const data = await res.json() as { resolved?: ProviderResolvedMovie | null };
       const resolved = data.resolved ?? null;
-      this.movieCache.set(providerTitleId, resolved);
+      if (resolved) {
+        this.movieCache.set(providerTitleId, resolved);
+      }
       return resolved;
     } catch {
       return null;

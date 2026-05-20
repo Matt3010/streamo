@@ -194,8 +194,6 @@ export class PlayerService {
 
     this.currentItem.set(item);
     this.currentItemType.set(type);
-    this.playbackTitle = await this.resolvePlaybackTitle(item, type);
-    if (!this.playbackTitle) return;
 
     const backdrop = item.backdrop_path ?? item.poster_path;
     this.backdropUrl.set(backdrop ? `${BACKDROP_BASE}${backdrop}` : '');
@@ -209,6 +207,8 @@ export class PlayerService {
 
     // Watchlist status (fire and forget)
     void this.refreshWatchlistStatus(tmdbId, type);
+
+    this.playbackTitle = await this.resolvePlaybackTitle(item, type);
 
     if (type === 'tv') {
       // Run the two progress fetches in parallel — one drives the CTA target
@@ -236,15 +236,14 @@ export class PlayerService {
         resumeSeason = next.season;
         resumeEpisode = next.episode;
       }
-      await this.setupTVPlayer(tmdbId, item, resumeSeason, resumeEpisode);
+      await this.setupTVPlayer(tmdbId, item, resumeSeason, resumeEpisode, this.playbackTitle);
     } else {
       this.seasons.set([]);
       this.episodes.set([]);
-      const playback = this.requirePlaybackTitle();
-      if (!playback) return;
-      const prepared = await this.setMovieUrl(playback);
-      if (!prepared) return;
       const seq = ++this.urlSeq;
+      if (this.playbackTitle) {
+        await this.setMovieUrl(this.playbackTitle);
+      }
       await this.applyResumeProgress(seq, tmdbId, 'movie');
     }
   }
@@ -321,8 +320,6 @@ export class PlayerService {
     const item = this.currentItem();
     if (!item) return;
     if (!this.seasons().includes(season)) return;
-    const playback = this.requirePlaybackTitle();
-    if (!playback) return;
     this.saveCurrentEpisodeProgress();
 
     this.selectedSeason.set(season);
@@ -333,26 +330,28 @@ export class PlayerService {
     this.selectedEpisode.set(1);
 
     this.resetPlayer();
-    const prepared = await this.setEpisodeUrl(playback, season, 1);
-    if (!prepared) return;
     const seq = ++this.urlSeq;
+    const playback = this.requirePlaybackTitle();
+    if (playback) {
+      await this.setEpisodeUrl(playback, season, 1);
+    }
     await this.applyResumeProgress(seq, item.id, 'tv', season, 1);
   }
 
   async changeEpisode(episode: number): Promise<void> {
     const item = this.currentItem();
     if (!item) return;
-    const playback = this.requirePlaybackTitle();
-    if (!playback) return;
     this.saveCurrentEpisodeProgress();
 
     this.selectedEpisode.set(episode);
     const season = this.selectedSeason();
     this.activeEpisodeRef.set({ season, episode });
     this.resetPlayer();
-    const prepared = await this.setEpisodeUrl(playback, season, episode);
-    if (!prepared) return;
     const seq = ++this.urlSeq;
+    const playback = this.requirePlaybackTitle();
+    if (playback) {
+      await this.setEpisodeUrl(playback, season, episode);
+    }
     await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
   }
 
@@ -395,15 +394,15 @@ export class PlayerService {
     if (!item || !type) return;
 
     if (type === 'movie') {
-      const playback = this.requirePlaybackTitle();
-      if (!playback) return;
       this.resetPlayer();
-      const prepared = await this.setMovieUrl(playback);
-      if (!prepared) return;
       this.urlSeq++;
       this.resumeProgress.set(null);
       this.resumeText.set('');
       await this.progress.remove(item.id, 'movie');
+      const playback = this.requirePlaybackTitle();
+      if (playback) {
+        void this.setMovieUrl(playback);
+      }
       this.progressTick.update(n => n + 1);
       this.toast.show('Progresso film azzerato');
       return;
@@ -411,12 +410,7 @@ export class PlayerService {
 
     const season = this.selectedSeason();
     const episode = this.selectedEpisode();
-    const playback = this.requirePlaybackTitle();
-    if (!playback) return;
-
     this.resetPlayer();
-    const prepared = await this.setEpisodeUrl(playback, season, episode);
-    if (!prepared) return;
     this.urlSeq++;
     this.resumeProgress.set(null);
     this.resumeText.set('');
@@ -428,6 +422,10 @@ export class PlayerService {
 
     await this.progress.remove(item.id, 'tv', season, episode);
     await this.refreshNextUnwatchedRef();
+    const playback = this.requirePlaybackTitle();
+    if (playback) {
+      void this.setEpisodeUrl(playback, season, episode);
+    }
     this.progressTick.update(n => n + 1);
     this.toast.show(`Progresso S${season} E${episode} azzerato`);
   }
@@ -440,14 +438,9 @@ export class PlayerService {
 
     const item = this.currentItem();
     if (!item || this.currentItemType() !== 'tv') return;
-    const playback = this.requirePlaybackTitle();
-    if (!playback) return;
-
     const isCurrentEpisode = season === this.selectedSeason() && episode === this.selectedEpisode();
     if (isCurrentEpisode) {
       this.resetPlayer();
-      const prepared = await this.setEpisodeUrl(playback, season, episode);
-      if (!prepared) return;
       this.urlSeq++;
       this.resumeProgress.set(null);
       this.resumeText.set('');
@@ -461,15 +454,24 @@ export class PlayerService {
 
     await this.progress.remove(item.id, 'tv', season, episode);
     await this.refreshNextUnwatchedRef();
+    if (isCurrentEpisode) {
+      const playback = this.requirePlaybackTitle();
+      if (playback) {
+        void this.setEpisodeUrl(playback, season, episode);
+      }
+    }
     this.progressTick.update(n => n + 1);
     this.toast.show(`Progresso S${season} E${episode} azzerato`);
   }
 
   // ===== PRIVATE =====
-  private async setupTVPlayer(tmdbId: string | number, item: TmdbItem, resumeSeason: number, resumeEpisode: number): Promise<void> {
-    const playback = this.requirePlaybackTitle();
-    if (!playback) return;
-
+  private async setupTVPlayer(
+    tmdbId: string | number,
+    item: TmdbItem,
+    resumeSeason: number,
+    resumeEpisode: number,
+    playback: ProviderPlaybackTitle | null
+  ): Promise<void> {
     const seasonsList = availableSeasons(item);
     const seasonNumbers = seasonsList.length ? seasonsList.map(s => s.season_number) : [1];
     this.seasons.set(seasonNumbers);
@@ -488,9 +490,10 @@ export class PlayerService {
     this.selectedEpisode.set(targetEpisode);
     this.activeEpisodeRef.set({ season: targetSeason, episode: targetEpisode });
 
-    const prepared = await this.setEpisodeUrl(playback, targetSeason, targetEpisode);
-    if (!prepared) return;
     const seq = ++this.urlSeq;
+    if (playback) {
+      await this.setEpisodeUrl(playback, targetSeason, targetEpisode);
+    }
     await this.applyResumeProgress(seq, tmdbId, 'tv', targetSeason, targetEpisode);
   }
 
@@ -551,9 +554,11 @@ export class PlayerService {
     if (progress && progress.position > 10) {
       this.resumeProgress.set({ position: progress.position, duration: progress.duration });
       this.resumeText.set(`Riprendi da ${formatTime(progress.position)}`);
-      const startTime = Math.floor(progress.position);
-      const sep = this.pendingVideoUrl.includes('?') ? '&' : '?';
-      this.pendingVideoUrl += `${sep}start=${startTime}`;
+      if (this.pendingVideoUrl) {
+        const startTime = Math.floor(progress.position);
+        const sep = this.pendingVideoUrl.includes('?') ? '&' : '?';
+        this.pendingVideoUrl += `${sep}start=${startTime}`;
+      }
     } else {
       this.resumeProgress.set(null);
       this.resumeText.set('');

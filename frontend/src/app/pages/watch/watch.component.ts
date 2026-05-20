@@ -174,12 +174,19 @@ type ConfirmAction =
           </div>
         } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0) {
           <div class="episode-grid-section">
-            <h3 class="episode-grid-title">Episodi</h3>
+            <div class="episode-grid-heading">
+              <h3 class="episode-grid-title">Episodi</h3>
+              @if (episodesPlayDisabled()) {
+                <p class="episode-grid-note">Riproduzione non disponibile per questo titolo.</p>
+              }
+            </div>
             <div class="episode-grid ui-scroll-row ui-scroll-row-thin">
               @for (ep of player.episodes(); track ep.episode_number) {
                 <article uiSurface="card"
-                         role="button"
-                         tabindex="0"
+                         [class.is-disabled]="episodesPlayDisabled()"
+                         [attr.role]="episodesPlayDisabled() ? null : 'button'"
+                         [attr.tabindex]="episodesPlayDisabled() ? -1 : 0"
+                         [attr.aria-disabled]="episodesPlayDisabled()"
                          [class.selected]="ep.episode_number === activeInThisSeason()"
                          [attr.aria-pressed]="ep.episode_number === activeInThisSeason()"
                          (click)="selectEpisode(ep.episode_number)"
@@ -520,6 +527,7 @@ export class WatchComponent {
   });
 
   protected readonly canStartPlayback = computed(() => this.player.playbackAvailability() === 'ready');
+  protected readonly episodesPlayDisabled = computed(() => this.player.playbackAvailability() === 'unavailable');
 
   protected readonly primaryPlayLabel = computed(() => {
     if (this.player.playbackAvailability() === 'unavailable') {
@@ -743,6 +751,7 @@ export class WatchComponent {
   }
 
   protected selectEpisode(episodeNumber: number): void {
+    if (this.episodesPlayDisabled()) return;
     // Card click is a "play" action, not a "select" action — clicking a
     // card and then having to find the CTA again would be a wasted tap.
     // playEpisodeFromCard switches the player and starts the episode in
