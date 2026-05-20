@@ -155,7 +155,7 @@ server {
 
         sub_filter 'https://vixcloud.co/playlist/' 'https://$host/playlist/';
         sub_filter '//vixcloud.co/playlist/' '//$host/playlist/';
-        sub_filter '</head>' '<script src="/scripts/adblock.js"></script><script src="/scripts/embed-bridge.js"></script><script src="/scripts/mobile-player-controls.js"></script></head>';
+        sub_filter '</head>' '<script src="/scripts/adblock.js?v=__ADBLOCK_HASH__"></script><script src="/scripts/embed-bridge.js?v=__EMBED_BRIDGE_HASH__"></script><script src="/scripts/mobile-player-controls.js?v=__MOBILE_PLAYER_CONTROLS_HASH__"></script></head>';
         sub_filter_types text/html;
         sub_filter_once off;
 
