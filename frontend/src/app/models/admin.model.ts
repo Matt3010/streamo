@@ -3,6 +3,7 @@ export type {
   AdminTokenRow,
   AdminSession,
   PlaybackLogEntry,
+  ProviderResolveLogEntry,
   TransportLogEntry,
   AdminQueueStatus,
   AdminQueueWorkerHeartbeat

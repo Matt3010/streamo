@@ -102,6 +102,7 @@ function parseTransportLogLine(line: string): TransportLogEntry | null {
       typeof parsed.status !== 'number' ||
       typeof parsed.upstream_status !== 'string' ||
       typeof parsed.upstream_host !== 'string' ||
+      typeof parsed.denied_by !== 'string' ||
       typeof parsed.request_time !== 'number' ||
       typeof parsed.upstream_response_time !== 'string'
     ) {
@@ -115,6 +116,7 @@ function parseTransportLogLine(line: string): TransportLogEntry | null {
       status: parsed.status,
       upstream_status: parsed.upstream_status,
       upstream_host: parsed.upstream_host,
+      denied_by: parsed.denied_by,
       request_time: parsed.request_time,
       upstream_response_time: parsed.upstream_response_time
     };

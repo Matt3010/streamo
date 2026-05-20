@@ -1,6 +1,6 @@
 import { Router, type Response as ExpressResponse } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { logPlayback } from '../services/playback-logs';
+import { playbackLogger } from '../services/playback-logs';
 
 const router = Router();
 
@@ -9,7 +9,10 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
   const query = req.url.indexOf('?');
   const search = query >= 0 ? req.url.slice(query) : '';
   const upstreamUrl = `https://vixcloud.co/playlist/${tail}${search}`;
-  logPlayback(`[playlist-proxy] start user=${req.user?.email ?? '-'} upstream=${upstreamUrl}`);
+  playbackLogger.info('playlist start', {
+    user: req.user?.email ?? '-',
+    upstream: upstreamUrl
+  });
 
   let upstream: Response;
   try {
@@ -23,16 +26,23 @@ router.get(/^\/playback\/playlist\/(.*)$/, requireAuth, async (req, res) => {
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'upstream_fetch_failed';
-    logPlayback(`[playlist-proxy] fetch-error user=${req.user?.email ?? '-'} upstream=${upstreamUrl} detail=${detail}`);
+    playbackLogger.error('playlist fetch failed', {
+      user: req.user?.email ?? '-',
+      upstream: upstreamUrl,
+      detail
+    });
     res.status(502).json({ error: 'playlist_proxy_failed', detail });
     return;
   }
 
   const contentType = upstream.headers.get('content-type') ?? '';
   const isPlaylist = contentType.includes('mpegurl') || contentType.includes('m3u8');
-  logPlayback(
-    `[playlist-proxy] upstream user=${req.user?.email ?? '-'} status=${upstream.status} content_type=${contentType || '-'} playlist=${isPlaylist ? 'yes' : 'no'}`
-  );
+  playbackLogger.info('playlist upstream response', {
+    user: req.user?.email ?? '-',
+    status: upstream.status,
+    contentType: contentType || '-',
+    playlist: isPlaylist
+  });
 
   if (!isPlaylist) {
     copyHeaders(upstream, res, false);
@@ -117,9 +127,11 @@ function logPlaylistDetails(user: string, upstreamUrl: string, body: string): vo
 
   if (body.includes('#EXT-X-STREAM-INF')) {
     const variants = collectMasterVariants(body);
-    logPlayback(
-      `[playlist-proxy] master user=${user} upstream=${upstreamUrl} variants=${variants.length > 0 ? variants.join('|') : '-'}`
-    );
+    playbackLogger.info('playlist master', {
+      user,
+      upstream: upstreamUrl,
+      variants
+    });
     return;
   }
 
@@ -129,9 +141,13 @@ function logPlaylistDetails(user: string, upstreamUrl: string, body: string): vo
     .split(/\r?\n/)
     .find((line) => line.length > 0 && !line.startsWith('#'));
 
-  logPlayback(
-    `[playlist-proxy] media user=${user} upstream=${upstreamUrl} segments=${segmentCount} key=${keyMatch?.[1] ?? '-'} first_segment=${firstSegment ?? '-'}`
-  );
+  playbackLogger.info('playlist media', {
+    user,
+    upstream: upstreamUrl,
+    segments: segmentCount,
+    key: keyMatch?.[1] ?? '-',
+    firstSegment: firstSegment ?? '-'
+  });
 }
 
 function collectMasterVariants(body: string): string[] {

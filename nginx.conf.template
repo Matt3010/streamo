@@ -5,6 +5,7 @@ log_format playback_transport escape=json
   '"status":$status,'
   '"upstream_status":"$upstream_status",'
   '"upstream_host":"$playback_upstream_host",'
+  '"denied_by":"$playback_denied_by",'
   '"request_time":$request_time,'
   '"upstream_response_time":"$upstream_response_time"}';
 
@@ -17,6 +18,7 @@ server {
     server_name localhost;
     set $playback_log_kind "-";
     set $playback_upstream_host "-";
+    set $playback_denied_by "-";
 
     root /usr/share/nginx/html;
     index index.html;
@@ -36,7 +38,7 @@ server {
     }
 
     # ---- Backend API (Node.js) ----
-    location ~ ^/api/admin/(sessions|playback-logs|transport-logs)/ws$ {
+    location ~ ^/api/admin/(sessions|playback-logs|provider-resolve-logs|transport-logs)/ws$ {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass http://backend;
         proxy_http_version 1.1;
@@ -75,6 +77,10 @@ server {
     }
 
     location @auth_required {
+        set $playback_log_kind "auth-denied";
+        set $playback_upstream_host "auth-check";
+        set $playback_denied_by "auth-check";
+        access_log /data/nginx-playback-access.log playback_transport;
         return 302 /;
     }
 
@@ -90,6 +96,9 @@ server {
 
     # ---- Core playback: segment/asset CDN targets rewritten by playlist proxy ----
     location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
         set $cdn_host "$1.vix-content.net";
         set $playback_log_kind "cdn";
         set $playback_upstream_host $cdn_host;
@@ -135,6 +144,9 @@ server {
 
     # ---- Core playback: referenced by playlist rewrite rules ----
     location ^~ /storage/ {
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
         set $playback_log_kind "storage";
         set $playback_upstream_host "vixcloud.co";
         access_log /data/nginx-playback-access.log playback_transport;
@@ -146,6 +158,9 @@ server {
 
     # ---- Core playback: referenced by playlist rewrite rules ----
     location ~ ^/jwplayer- {
+        auth_request /auth-check;
+        error_page 401 = @auth_required;
+
         proxy_pass https://vixcloud.co$request_uri;
         proxy_ssl_server_name on;
         proxy_set_header Host vixcloud.co;

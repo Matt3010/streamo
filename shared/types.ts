@@ -168,6 +168,11 @@ export interface PlaybackLogEntry {
   message: string;
 }
 
+export interface ProviderResolveLogEntry {
+  ts: number;
+  message: string;
+}
+
 export interface TransportLogEntry {
   ts: string;
   kind: string;
@@ -175,6 +180,7 @@ export interface TransportLogEntry {
   status: number;
   upstream_status: string;
   upstream_host: string;
+  denied_by: string;
   request_time: number;
   upstream_response_time: string;
 }

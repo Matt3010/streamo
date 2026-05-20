@@ -3,11 +3,23 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, isSuperAdminUser, readCookie } from '../middleware/auth';
 import { listLiveAdminSessions, LIVE_SESSION_WINDOW_SECONDS } from './admin-sessions';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs, subscribePlaybackLogs } from './playback-logs';
+import {
+  getProviderResolveLogCapacity,
+  getProviderResolveLogPath,
+  listProviderResolveLogs,
+  subscribeProviderResolveLogs
+} from './provider-resolve-logs';
 import { getTransportLogCapacity, getTransportLogPath, listTransportLogs, subscribeTransportLogs } from './transport-logs';
-import type { AdminSession, PlaybackLogEntry, TransportLogEntry } from '../../../shared/types';
+import type {
+  AdminSession,
+  PlaybackLogEntry,
+  ProviderResolveLogEntry,
+  TransportLogEntry
+} from '../../../shared/types';
 
 const ADMIN_SESSIONS_WS_PATH = '/admin/sessions/ws';
 const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
+const ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH = '/admin/provider-resolve-logs/ws';
 const ADMIN_TRANSPORT_LOGS_WS_PATH = '/admin/transport-logs/ws';
 const EXPIRY_FUZZ_MS = 150;
 const HEARTBEAT_INTERVAL_MS = 30000;
@@ -33,18 +45,29 @@ interface TransportLogsPayload {
   logs: TransportLogEntry[];
 }
 
+interface ProviderResolveLogsPayload {
+  type: 'provider-resolve-logs';
+  count: number;
+  capacity: number;
+  path: string;
+  logs: ProviderResolveLogEntry[];
+}
+
 let sessionClients = new Set<WebSocket>();
 let playbackLogClients = new Set<WebSocket>();
+let providerResolveLogClients = new Set<WebSocket>();
 let transportLogClients = new Set<WebSocket>();
 const heartbeatState = new WeakMap<WebSocket, boolean>();
 let expiryTimeout: NodeJS.Timeout | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
 let unsubscribePlaybackLogs: (() => void) | null = null;
+let unsubscribeProviderResolveLogs: (() => void) | null = null;
 let unsubscribeTransportLogs: (() => void) | null = null;
 
 export function attachAdminLiveSessions(server: HttpServer): void {
   const sessionsWss = new WebSocketServer({ noServer: true });
   const playbackLogsWss = new WebSocketServer({ noServer: true });
+  const providerResolveLogsWss = new WebSocketServer({ noServer: true });
   const transportLogsWss = new WebSocketServer({ noServer: true });
 
   sessionsWss.on('connection', (ws) => {
@@ -74,6 +97,20 @@ export function attachAdminLiveSessions(server: HttpServer): void {
     });
   });
 
+  providerResolveLogsWss.on('connection', (ws) => {
+    providerResolveLogClients.add(ws);
+    trackClient(ws);
+    ensureProviderResolveLogSubscription();
+    broadcastProviderResolveLogs();
+
+    ws.on('close', () => {
+      providerResolveLogClients.delete(ws);
+      if (providerResolveLogClients.size === 0) {
+        clearProviderResolveLogSubscription();
+      }
+    });
+  });
+
   transportLogsWss.on('connection', (ws) => {
     transportLogClients.add(ws);
     trackClient(ws);
@@ -94,6 +131,7 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       if (
         pathname !== ADMIN_SESSIONS_WS_PATH &&
         pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
+        pathname !== ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH &&
         pathname !== ADMIN_TRANSPORT_LOGS_WS_PATH
       ) return;
 
@@ -114,7 +152,9 @@ export function attachAdminLiveSessions(server: HttpServer): void {
         ? sessionsWss
         : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
           ? playbackLogsWss
-          : transportLogsWss;
+          : pathname === ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH
+            ? providerResolveLogsWss
+            : transportLogsWss;
       target.handleUpgrade(req, socket, head, (ws) => {
         target.emit('connection', ws, req);
       });
@@ -228,6 +268,41 @@ function broadcastTransportLogs(): void {
   }
 }
 
+function broadcastProviderResolveLogs(): void {
+  if (providerResolveLogClients.size === 0) {
+    clearProviderResolveLogSubscription();
+    return;
+  }
+
+  const logs = listProviderResolveLogs();
+  const payload = JSON.stringify({
+    type: 'provider-resolve-logs',
+    count: logs.length,
+    capacity: getProviderResolveLogCapacity(),
+    path: getProviderResolveLogPath(),
+    logs
+  } satisfies ProviderResolveLogsPayload);
+
+  for (const client of providerResolveLogClients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    client.send(payload);
+  }
+}
+
+function ensureProviderResolveLogSubscription(): void {
+  if (unsubscribeProviderResolveLogs) return;
+  unsubscribeProviderResolveLogs = subscribeProviderResolveLogs(() => {
+    if (providerResolveLogClients.size === 0) return;
+    broadcastProviderResolveLogs();
+  });
+}
+
+function clearProviderResolveLogSubscription(): void {
+  if (providerResolveLogClients.size > 0 || !unsubscribeProviderResolveLogs) return;
+  unsubscribeProviderResolveLogs();
+  unsubscribeProviderResolveLogs = null;
+}
+
 function ensureTransportLogSubscription(): void {
   if (unsubscribeTransportLogs) return;
   unsubscribeTransportLogs = subscribeTransportLogs(() => {
@@ -264,6 +339,7 @@ function ensureHeartbeatInterval(): void {
   heartbeatInterval = setInterval(() => {
     heartbeatClients(sessionClients);
     heartbeatClients(playbackLogClients);
+    heartbeatClients(providerResolveLogClients);
     heartbeatClients(transportLogClients);
     clearHeartbeatIntervalIfIdle();
   }, HEARTBEAT_INTERVAL_MS);
@@ -294,7 +370,10 @@ function heartbeatClients(clients: Set<WebSocket>): void {
 }
 
 function hasAnyClients(): boolean {
-  return sessionClients.size > 0 || playbackLogClients.size > 0 || transportLogClients.size > 0;
+  return sessionClients.size > 0 ||
+    playbackLogClients.size > 0 ||
+    providerResolveLogClients.size > 0 ||
+    transportLogClients.size > 0;
 }
 
 function getPathname(req: IncomingMessage): string {

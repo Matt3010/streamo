@@ -3,6 +3,7 @@ import type {
   AdminTokenRow,
   AdminSession,
   PlaybackLogEntry,
+  ProviderResolveLogEntry,
   TransportLogEntry,
   AdminQueueStatus
 } from '../models';
@@ -36,6 +37,17 @@ interface AdminPlaybackLogsSocketMessage extends PlaybackLogsResponse {
   type: 'playback-logs';
 }
 
+interface ProviderResolveLogsResponse {
+  count: number;
+  capacity: number;
+  path: string;
+  logs: ProviderResolveLogEntry[];
+}
+
+interface AdminProviderResolveLogsSocketMessage extends ProviderResolveLogsResponse {
+  type: 'provider-resolve-logs';
+}
+
 interface TransportLogsResponse {
   count: number;
   capacity: number;
@@ -56,18 +68,23 @@ export class AdminService {
   readonly playbackLogs = signal<PlaybackLogEntry[]>([]);
   readonly playbackLogCapacity = signal(500);
   readonly playbackLogPath = signal('');
+  readonly providerResolveLogs = signal<ProviderResolveLogEntry[]>([]);
+  readonly providerResolveLogCapacity = signal(500);
+  readonly providerResolveLogPath = signal('');
   readonly transportLogs = signal<TransportLogEntry[]>([]);
   readonly transportLogCapacity = signal(500);
   readonly transportLogPath = signal('');
   readonly queueStatus = signal<AdminQueueStatus | null>(null);
   readonly sessionsLiveConnected = signal(false);
   readonly playbackLogsLiveConnected = signal(false);
+  readonly providerResolveLogsLiveConnected = signal(false);
   readonly transportLogsLiveConnected = signal(false);
   readonly loading = signal(false);
   readonly queueStatusLoading = signal(false);
 
   private readonly sessionsSocket: LiveSocketController;
   private readonly playbackLogsSocket: LiveSocketController;
+  private readonly providerResolveLogsSocket: LiveSocketController;
   private readonly transportLogsSocket: LiveSocketController;
 
   constructor() {
@@ -94,6 +111,21 @@ export class AdminService {
             this.playbackLogs.set(message.logs);
             this.playbackLogCapacity.set(message.capacity);
             this.playbackLogPath.set(message.path);
+          }
+        } catch {}
+      }
+    });
+
+    this.providerResolveLogsSocket = this.liveSocket.create({
+      path: '/api/admin/provider-resolve-logs/ws',
+      onConnected: (connected) => this.providerResolveLogsLiveConnected.set(connected),
+      onMessage: (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as AdminProviderResolveLogsSocketMessage;
+          if (message.type === 'provider-resolve-logs') {
+            this.providerResolveLogs.set(message.logs);
+            this.providerResolveLogCapacity.set(message.capacity);
+            this.providerResolveLogPath.set(message.path);
           }
         } catch {}
       }
@@ -213,6 +245,18 @@ export class AdminService {
     } catch {}
   }
 
+  async fetchProviderResolveLogs(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/provider-resolve-logs');
+      if (res.ok) {
+        const data = await res.json() as ProviderResolveLogsResponse;
+        this.providerResolveLogs.set(data.logs);
+        this.providerResolveLogCapacity.set(data.capacity);
+        this.providerResolveLogPath.set(data.path);
+      }
+    } catch {}
+  }
+
   async fetchTransportLogs(): Promise<void> {
     try {
       const res = await fetch('/api/admin/transport-logs');
@@ -252,6 +296,14 @@ export class AdminService {
 
   disconnectPlaybackLogsLive(): void {
     this.playbackLogsSocket.disconnect();
+  }
+
+  connectProviderResolveLogsLive(): void {
+    this.providerResolveLogsSocket.connect();
+  }
+
+  disconnectProviderResolveLogsLive(): void {
+    this.providerResolveLogsSocket.disconnect();
   }
 
   connectTransportLogsLive(): void {

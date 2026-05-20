@@ -3,8 +3,10 @@ import { kdb } from '../db';
 import {
   PROVIDER_CATALOG_BASE_URL,
   PROVIDER_CATALOG_LOCALE,
-  PROVIDER_RESOLVE_CACHE_TTL
+  PROVIDER_RESOLVE_CACHE_TTL,
+  PROVIDER_RESOLVER_DEBUG
 } from '../config';
+import { providerResolveLogger } from './provider-resolve-logs';
 
 interface ResolveArgs {
   tmdbId: number;
@@ -129,7 +131,7 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
   logCandidateSummary(args, titles);
   const best = pickBestMatch(titles, args);
   const { match, persistence } = finalizeMatch(best);
-  console.log('[provider-resolver] match decision', {
+  providerResolveLogger.info('title match decision', {
     query: args.title,
     mediaType: args.mediaType,
     tmdbId: args.tmdbId,
@@ -154,7 +156,7 @@ export async function resolveProviderEpisode(args: {
   const season = await fetchProviderSeason(args.providerTitleId, args.providerSlug, args.seasonNumber);
   const episodes = season?.episodes;
   if (!episodes?.length) {
-    console.log('[provider-resolver] episode decision', {
+    providerResolveLogger.warn('episode resolve decision', {
       providerTitleId: args.providerTitleId,
       providerSlug: args.providerSlug,
       seasonNumber: args.seasonNumber,
@@ -167,7 +169,7 @@ export async function resolveProviderEpisode(args: {
 
   const match = episodes.find((episode) => episode.number === args.episodeNumber && episode.id);
   if (!match?.id) {
-    console.log('[provider-resolver] episode decision', {
+    providerResolveLogger.warn('episode resolve decision', {
       providerTitleId: args.providerTitleId,
       providerSlug: args.providerSlug,
       seasonNumber: args.seasonNumber,
@@ -183,7 +185,7 @@ export async function resolveProviderEpisode(args: {
 
   const embedUrl = await fetchProviderEmbedUrl(args.providerTitleId, match.id);
 
-  console.log('[provider-resolver] episode decision', {
+  providerResolveLogger.info('episode resolve decision', {
     providerTitleId: args.providerTitleId,
     providerSlug: args.providerSlug,
     seasonNumber: args.seasonNumber,
@@ -198,7 +200,7 @@ export async function resolveProviderMovie(args: {
   providerTitleId: number;
 }): Promise<ProviderResolvedMovie | null> {
   const embedUrl = await fetchProviderEmbedUrl(args.providerTitleId);
-  console.log('[provider-resolver] movie decision', {
+  providerResolveLogger.info('movie resolve decision', {
     providerTitleId: args.providerTitleId,
     resolved: embedUrl ? { embedUrl } : null
   });
@@ -229,11 +231,11 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
       }
     });
   } catch {
-    console.error('[provider-resolver] fetch failed', { query, url: url.toString() });
+    providerResolveLogger.error('search request failed', { query, url: url.toString() });
     return null;
   }
 
-  console.log('[provider-resolver] upstream response', {
+  debug('search upstream response', {
     query,
     url: url.toString(),
     status: res.status,
@@ -249,7 +251,7 @@ async function fetchProviderSearchPage(query: string): Promise<ProviderSearchPag
       logProviderPayloadShape(query, page, 'json');
       return page;
     } catch {
-      console.error('[provider-resolver] invalid json payload', { query, url: url.toString() });
+      providerResolveLogger.error('search payload invalid', { query, url: url.toString() });
       return null;
     }
   }
@@ -410,6 +412,14 @@ function extractYear(value: string | null): number | null {
   return Number.isInteger(year) ? year : null;
 }
 
+function debug(event: string, context: unknown): void {
+  if (!PROVIDER_RESOLVER_DEBUG) {
+    return;
+  }
+
+  providerResolveLogger.info(event, context);
+}
+
 function logProviderPayloadShape(
   query: string,
   page: ProviderSearchPage | null,
@@ -425,7 +435,7 @@ function logProviderPayloadShape(
     translationKeys: (title.translations ?? []).map((entry) => entry.key ?? null).slice(0, 8)
   }));
 
-  console.log('[provider-resolver] payload shape', {
+  debug('search results payload', {
     query,
     source,
     titlesCount: titles.length,
@@ -447,7 +457,7 @@ function logCandidateSummary(args: ResolveArgs, titles: ProviderSearchTitle[]): 
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  console.log('[provider-resolver] candidate summary', {
+  debug('search candidate ranking', {
     query: args.title,
     mediaType: args.mediaType,
     tmdbId: args.tmdbId,
@@ -609,7 +619,7 @@ async function fetchProviderSeason(
 ): Promise<ProviderLoadedSeason | null> {
   const slug = providerSlug?.trim() || await fetchProviderSlug(providerTitleId);
   if (!slug) {
-    console.error('[provider-resolver] missing slug for season lookup', {
+    providerResolveLogger.error('season slug missing', {
       providerTitleId,
       seasonNumber
     });
@@ -636,7 +646,7 @@ async function fetchProviderSeason(
       }
     });
   } catch {
-    console.error('[provider-resolver] season fetch failed', {
+    providerResolveLogger.error('season request failed', {
       providerTitleId,
       slug,
       seasonNumber,
@@ -645,7 +655,7 @@ async function fetchProviderSeason(
     return null;
   }
 
-  console.log('[provider-resolver] season upstream response', {
+  debug('season page upstream response', {
     providerTitleId,
     slug,
     seasonNumber,
@@ -662,7 +672,7 @@ async function fetchProviderSeason(
     try {
       page = await res.json() as ProviderTitlePage;
     } catch {
-      console.error('[provider-resolver] invalid season json payload', {
+      providerResolveLogger.error('season payload invalid', {
         providerTitleId,
         slug,
         seasonNumber,
@@ -676,7 +686,7 @@ async function fetchProviderSeason(
   }
 
   const loadedSeason = extractLoadedSeason(page);
-  console.log('[provider-resolver] season payload shape', {
+  debug('season episodes payload', {
     providerTitleId,
     slug,
     seasonNumber,
@@ -734,7 +744,7 @@ async function fetchProviderEmbedUrl(
       }
     });
   } catch {
-    console.error('[provider-resolver] embed fetch failed', {
+    providerResolveLogger.error('embed request failed', {
       providerTitleId,
       episodeId: episodeId ?? null,
       url: url.toString()
@@ -742,7 +752,7 @@ async function fetchProviderEmbedUrl(
     return null;
   }
 
-  console.log('[provider-resolver] embed upstream response', {
+  debug('embed page upstream response', {
     providerTitleId,
     episodeId: episodeId ?? null,
     url: url.toString(),
@@ -755,7 +765,7 @@ async function fetchProviderEmbedUrl(
   const html = await res.text();
   const match = html.match(/<iframe[^>]+src="([^"]+)"/i) || html.match(/<iframe[^>]+src='([^']+)'/i);
   if (!match?.[1]) {
-    console.error('[provider-resolver] embed iframe src missing', {
+    providerResolveLogger.error('embed iframe src missing', {
       providerTitleId,
       episodeId: episodeId ?? null
     });
@@ -767,7 +777,7 @@ async function fetchProviderEmbedUrl(
     const parsed = new URL(embedUrl, PROVIDER_CATALOG_BASE_URL);
     const isVixEmbed = parsed.hostname === 'vixcloud.co' && parsed.pathname.startsWith('/embed/');
     if (!isVixEmbed) {
-      console.error('[provider-resolver] unexpected embed host', {
+    providerResolveLogger.error('embed host unexpected', {
         providerTitleId,
         episodeId: episodeId ?? null,
         embedUrl
@@ -776,14 +786,14 @@ async function fetchProviderEmbedUrl(
     }
 
     const relative = `/embed${parsed.pathname.slice('/embed'.length)}${parsed.search}`;
-    console.log('[provider-resolver] embed url resolved', {
+    providerResolveLogger.info('embed url resolved', {
       providerTitleId,
       episodeId: episodeId ?? null,
       embedUrl: relative
     });
     return relative;
   } catch {
-    console.error('[provider-resolver] invalid embed url', {
+    providerResolveLogger.error('embed url invalid', {
       providerTitleId,
       episodeId: episodeId ?? null,
       embedUrl

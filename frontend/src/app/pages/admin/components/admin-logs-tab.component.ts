@@ -3,9 +3,9 @@ import { faFileLines } from '@fortawesome/free-solid-svg-icons';
 import { SectionHeaderComponent } from '../../../ui/section-header/section-header.component';
 import { UiButtonDirective } from '../../../ui/ui-button.directive';
 import { AdminService } from '../../../services/admin.service';
-import type { PlaybackLogEntry, TransportLogEntry } from '../../../models';
+import type { PlaybackLogEntry, ProviderResolveLogEntry, TransportLogEntry } from '../../../models';
 
-type LogSource = 'playback' | 'transport';
+type LogSource = 'playback' | 'provider' | 'transport';
 type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
 @Component({
@@ -35,6 +35,14 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
           <button uiButton="panel"
                   type="button"
+                  [attr.aria-pressed]="selectedSource() === 'provider'"
+                  (click)="selectSource('provider')">
+            <span class="logs-source-title">Provider Resolve</span>
+            <span class="logs-source-sub">{{ admin.providerResolveLogPath() || '/data/provider-resolve.log' }}</span>
+          </button>
+
+          <button uiButton="panel"
+                  type="button"
                   [attr.aria-pressed]="selectedSource() === 'transport'"
                   (click)="selectSource('transport')">
             <span class="logs-source-title">Transport</span>
@@ -54,6 +62,8 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
           @if (selectedSource() === 'playback' && playbackLogsDesc().length === 0) {
             <p class="empty">Nessun log playback presente</p>
+          } @else if (selectedSource() === 'provider' && providerResolveLogsDesc().length === 0) {
+            <p class="empty">Nessun log resolver provider presente</p>
           } @else if (selectedSource() === 'transport' && transportLogsDesc().length === 0) {
             <p class="empty">Nessun log cdn/storage presente</p>
           } @else {
@@ -67,6 +77,20 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                         <div class="log-header">
                           <span class="log-badge" [class.log-badge-ok]="playbackLogTone(log) === 'ok'" [class.log-badge-info]="playbackLogTone(log) === 'info'" [class.log-badge-warn]="playbackLogTone(log) === 'warn'" [class.log-badge-error]="playbackLogTone(log) === 'error'" [class.log-badge-cancelled]="playbackLogTone(log) === 'cancelled'">
                             {{ playbackLogLabel(log) }}
+                          </span>
+                        </div>
+                        <code class="log-message">{{ log.message }}</code>
+                      </div>
+                    </li>
+                  }
+                } @else if (selectedSource() === 'provider') {
+                  @for (log of providerResolveLogsDesc(); track trackProviderResolveLog($index, log)) {
+                    <li class="log-row" [class.log-row-error]="providerResolveLogTone(log) === 'error'" [class.log-row-warn]="providerResolveLogTone(log) === 'warn'" [class.log-row-cancelled]="providerResolveLogTone(log) === 'cancelled'">
+                      <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
+                      <div class="log-stack">
+                        <div class="log-header">
+                          <span class="log-badge" [class.log-badge-ok]="providerResolveLogTone(log) === 'ok'" [class.log-badge-info]="providerResolveLogTone(log) === 'info'" [class.log-badge-warn]="providerResolveLogTone(log) === 'warn'" [class.log-badge-error]="providerResolveLogTone(log) === 'error'" [class.log-badge-cancelled]="providerResolveLogTone(log) === 'cancelled'">
+                            {{ providerResolveLogLabel(log) }}
                           </span>
                         </div>
                         <code class="log-message">{{ log.message }}</code>
@@ -103,29 +127,49 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
   protected readonly logsIcon = faFileLines;
   protected readonly selectedSource = signal<LogSource>('playback');
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
+  protected readonly providerResolveLogsDesc = computed(() => [...this.admin.providerResolveLogs()].reverse());
   protected readonly transportLogsDesc = computed(() => [...this.admin.transportLogs()].reverse());
-  protected readonly selectedTitle = computed(() => this.selectedSource() === 'playback' ? 'Playback' : 'Transport');
+  protected readonly selectedTitle = computed(() =>
+    this.selectedSource() === 'playback'
+      ? 'Playback'
+      : this.selectedSource() === 'provider'
+        ? 'Provider Resolve'
+        : 'Transport'
+  );
   protected readonly selectedPath = computed(() =>
     this.selectedSource() === 'playback'
       ? this.admin.playbackLogPath() || '/data/playback.log'
-      : this.admin.transportLogPath() || '/data/nginx-playback-access.log'
+      : this.selectedSource() === 'provider'
+        ? this.admin.providerResolveLogPath() || '/data/provider-resolve.log'
+        : this.admin.transportLogPath() || '/data/nginx-playback-access.log'
   );
   protected readonly selectedCapacity = computed(() =>
-    this.selectedSource() === 'playback' ? this.admin.playbackLogCapacity() : this.admin.transportLogCapacity()
+    this.selectedSource() === 'playback'
+      ? this.admin.playbackLogCapacity()
+      : this.selectedSource() === 'provider'
+        ? this.admin.providerResolveLogCapacity()
+        : this.admin.transportLogCapacity()
   );
   protected readonly selectedConnected = computed(() =>
-    this.selectedSource() === 'playback' ? this.admin.playbackLogsLiveConnected() : this.admin.transportLogsLiveConnected()
+    this.selectedSource() === 'playback'
+      ? this.admin.playbackLogsLiveConnected()
+      : this.selectedSource() === 'provider'
+        ? this.admin.providerResolveLogsLiveConnected()
+        : this.admin.transportLogsLiveConnected()
   );
 
   ngOnInit(): void {
     void this.admin.fetchPlaybackLogs();
+    void this.admin.fetchProviderResolveLogs();
     void this.admin.fetchTransportLogs();
     this.admin.connectPlaybackLogsLive();
+    this.admin.connectProviderResolveLogsLive();
     this.admin.connectTransportLogsLive();
   }
 
   ngOnDestroy(): void {
     this.admin.disconnectPlaybackLogsLive();
+    this.admin.disconnectProviderResolveLogsLive();
     this.admin.disconnectTransportLogsLive();
   }
 
@@ -150,10 +194,20 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
 
   protected playbackLogTone(log: PlaybackLogEntry): LogTone {
     const message = log.message.toLowerCase();
+    if (message.includes('level=error')) return 'error';
+    if (message.includes('level=warn')) return 'warn';
     if (message.includes(' status=499')) return 'cancelled';
     if (message.includes('fetch-error') || message.includes('write-error') || message.includes('read-error') || message.includes(' status=5')) return 'error';
     if (message.includes(' status=4')) return 'warn';
-    if (message.includes('status=200') || message.includes(' playlist=yes') || message.includes(' master ') || message.includes(' media ')) return 'ok';
+    if (
+      message.includes('level=info event=playlist upstream response') ||
+      message.includes('level=info event=playlist master') ||
+      message.includes('level=info event=playlist media') ||
+      message.includes('status=200') ||
+      message.includes(' playlist=yes') ||
+      message.includes(' master ') ||
+      message.includes(' media ')
+    ) return 'ok';
     return 'info';
   }
 
@@ -161,12 +215,47 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     return this.logLabel(this.playbackLogTone(log));
   }
 
+  protected trackProviderResolveLog(_index: number, log: ProviderResolveLogEntry): string {
+    return `${log.ts}:${log.message}`;
+  }
+
+  protected providerResolveLogTone(log: ProviderResolveLogEntry): LogTone {
+    const message = log.message.toLowerCase();
+    if (message.includes('level=error')) return 'error';
+    if (message.includes('level=warn')) return 'warn';
+    if (message.includes('status=499')) return 'cancelled';
+    if (
+      message.includes('fetch failed') ||
+      message.includes('invalid') ||
+      message.includes('missing ') ||
+      message.includes('unexpected ') ||
+      message.includes(' status=5')
+    ) return 'error';
+    if (
+      message.includes('failed') ||
+      message.includes('low_confidence') ||
+      message.includes('no_match') ||
+      message.includes(' status=4')
+    ) return 'warn';
+    if (
+      message.includes('resolved') ||
+      message.includes('auto_confirmed') ||
+      message.includes('status=200')
+    ) return 'ok';
+    return 'info';
+  }
+
+  protected providerResolveLogLabel(log: ProviderResolveLogEntry): string {
+    return this.logLabel(this.providerResolveLogTone(log));
+  }
+
   protected trackTransportLog(_index: number, log: TransportLogEntry): string {
-    return `${log.ts}:${log.kind}:${log.request_uri}:${log.status}:${log.upstream_status}`;
+    return `${log.ts}:${log.kind}:${log.request_uri}:${log.status}:${log.upstream_status}:${log.denied_by}`;
   }
 
   protected transportLogSummary(log: TransportLogEntry): string {
-    return `${log.kind.toUpperCase()} ${log.status} upstream=${log.upstream_status} host=${log.upstream_host} rt=${log.request_time}s urt=${log.upstream_response_time}s`;
+    const denied = log.denied_by && log.denied_by !== '-' ? ` denied_by=${log.denied_by}` : '';
+    return `${log.kind.toUpperCase()} ${log.status} upstream=${log.upstream_status} host=${log.upstream_host}${denied} rt=${log.request_time}s urt=${log.upstream_response_time}s`;
   }
 
   protected transportLogTone(log: TransportLogEntry): LogTone {

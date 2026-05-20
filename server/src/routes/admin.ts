@@ -6,6 +6,11 @@ import { SUPER_ADMIN_EMAIL } from '../config';
 import { requireSuperAdmin } from '../middleware/auth';
 import { listLiveAdminSessions } from '../services/admin-sessions';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs } from '../services/playback-logs';
+import {
+  getProviderResolveLogCapacity,
+  getProviderResolveLogPath,
+  listProviderResolveLogs
+} from '../services/provider-resolve-logs';
 import { getAdminQueueStatus } from '../services/queue-status';
 import { getTransportLogCapacity, getTransportLogPath, listTransportLogs } from '../services/transport-logs';
 import type { AdminQueueStatus, AdminTokenRow } from '../../../shared/types';
@@ -174,6 +179,16 @@ router.get('/admin/playback-logs', requireSuperAdmin, (_req, res) => {
     count: logs.length,
     capacity: getPlaybackLogCapacity(),
     path: getPlaybackLogPath(),
+    logs
+  });
+});
+
+router.get('/admin/provider-resolve-logs', requireSuperAdmin, (_req, res) => {
+  const logs = listProviderResolveLogs();
+  res.json({
+    count: logs.length,
+    capacity: getProviderResolveLogCapacity(),
+    path: getProviderResolveLogPath(),
     logs
   });
 });

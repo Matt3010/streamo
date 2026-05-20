@@ -14,6 +14,7 @@ export const TMDB_JOB_RATE_LIMIT_DURATION_MS = Math.max(100, Number(process.env.
 export const PROVIDER_CATALOG_BASE_URL = (process.env.PROVIDER_CATALOG_BASE_URL || 'https://streamingcommunityz.associates').trim();
 export const PROVIDER_CATALOG_LOCALE = (process.env.PROVIDER_CATALOG_LOCALE || 'it').trim() || 'it';
 export const PROVIDER_RESOLVE_CACHE_TTL = Math.max(60, Number(process.env.PROVIDER_RESOLVE_CACHE_TTL) || (6 * 60 * 60));
+export const PROVIDER_RESOLVER_DEBUG = process.env.PROVIDER_RESOLVER_DEBUG !== '0';
 
 // Episodes/movies count as "watched" once you've seen at least this fraction.
 export const WATCHED_THRESHOLD = 0.8;

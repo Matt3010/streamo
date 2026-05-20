@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
+import { providerResolveLogger } from '../services/provider-resolve-logs';
 import { toInt } from '../utils/validation';
 import { resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
 
@@ -28,6 +29,13 @@ router.post('/user/provider/resolve', requireAuth, async (req, res) => {
 
     return res.json({ resolved });
   } catch (error) {
+    providerResolveLogger.error('route resolve failed', {
+      user: req.user?.email ?? '-',
+      tmdbId,
+      mediaType,
+      title,
+      releaseDate
+    });
     console.error('[provider/resolve]', error);
     return res.status(500).json({ error: 'provider_resolve_failed' });
   }
@@ -56,6 +64,13 @@ router.post('/user/provider/resolve-episode', requireAuth, async (req, res) => {
 
     return res.json({ resolved });
   } catch (error) {
+    providerResolveLogger.error('route resolve episode failed', {
+      user: req.user?.email ?? '-',
+      providerTitleId,
+      providerSlug,
+      seasonNumber,
+      episodeNumber
+    });
     console.error('[provider/resolve-episode]', error);
     return res.status(500).json({ error: 'provider_episode_resolve_failed' });
   }
@@ -76,6 +91,10 @@ router.post('/user/provider/resolve-movie', requireAuth, async (req, res) => {
 
     return res.json({ resolved });
   } catch (error) {
+    providerResolveLogger.error('route resolve movie failed', {
+      user: req.user?.email ?? '-',
+      providerTitleId
+    });
     console.error('[provider/resolve-movie]', error);
     return res.status(500).json({ error: 'provider_movie_resolve_failed' });
   }
