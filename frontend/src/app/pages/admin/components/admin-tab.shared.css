@@ -225,13 +225,18 @@
 }
 
 .log-message {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
   color: var(--text);
   font-size: 0.78rem;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  overflow-x: auto;
 }
 
 .log-stack {

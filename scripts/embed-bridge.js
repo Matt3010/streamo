@@ -10,6 +10,7 @@
   var playerCleanup = null;
   var syncTimer = null;
   var observer = null;
+  var completionSent = false;
   var attempts = 0;
   var maxAttempts = 240; // ~120s
 
@@ -49,6 +50,16 @@
         }
       }, '*');
     } catch (e) {}
+  }
+
+  function resetCompletion() {
+    completionSent = false;
+  }
+
+  function emitComplete(currentTime, duration) {
+    if (completionSent) return;
+    completionSent = true;
+    emitToParent('complete', currentTime, duration);
   }
 
   function maybeSeekVideo(video) {
@@ -96,10 +107,12 @@
       emit('ready');
     }
     function onPlay() {
+      resetCompletion();
       maybeSeekVideo(video);
       emit('play');
     }
     function onPlaying() {
+      resetCompletion();
       maybeSeekVideo(video);
       emit('playing');
     }
@@ -109,7 +122,7 @@
       emit('time');
     }
     function onSeeked() { emit('seek'); }
-    function onEnded() { emitToParent('complete', video.duration, video.duration); }
+    function onEnded() { emitComplete(video.duration, video.duration); }
     function onError() { emit('error'); }
 
     video.addEventListener('loadedmetadata', onReady);
@@ -175,13 +188,17 @@
     var listeners = [
       ['ready', function() { maybeSeekPlayer(player); emit('ready'); }],
       ['firstFrame', function() { maybeSeekPlayer(player); emit('playing'); }],
-      ['play', function() { maybeSeekPlayer(player); emit('play'); }],
+      ['play', function() {
+        resetCompletion();
+        maybeSeekPlayer(player);
+        emit('play');
+      }],
       ['pause', function() { emit('pause'); }],
       ['time', function(payload) { maybeSeekPlayer(player); emit('time', payload); }],
       ['seek', function(payload) { emit('seek', payload); }],
       ['complete', function() {
         var dur = readDuration();
-        emitToParent('complete', dur, dur);
+        emitComplete(dur, dur);
       }],
       ['error', function() { emit('error'); }]
     ];

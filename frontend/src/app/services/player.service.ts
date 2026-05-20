@@ -117,6 +117,8 @@ export class PlayerService {
   private currentVideoDuration = 0;
   private lastSavedTime = 0;
   private videoStartTime: number | null = null;
+  private playbackInstanceId = 0;
+  private handledCompletionPlaybackId = 0;
   private playingSeason = 0;
   private playingEpisode = 0;
   private progressSaveInterval: number | null = null;
@@ -292,6 +294,8 @@ export class PlayerService {
     if (!this.pendingVideoUrl || this.playbackAvailability() !== 'ready') return;
     this.iframeSrc.set(this.pendingVideoUrl);
     this.videoStartTime = Date.now();
+    this.playbackInstanceId += 1;
+    this.handledCompletionPlaybackId = 0;
     this.currentVideoTime = 0;
     this.currentVideoDuration = 0;
     this.lastSavedTime = 0;
@@ -710,6 +714,7 @@ export class PlayerService {
     this.currentVideoTime = 0;
     this.currentVideoDuration = 0;
     this.lastSavedTime = 0;
+    this.handledCompletionPlaybackId = 0;
   }
 
   private saveCurrentEpisodeProgress(): void {
@@ -809,6 +814,10 @@ export class PlayerService {
         this.lastSavedTime = this.currentVideoTime;
       }
     } else if (evtName === 'ended' || evtName === 'complete') {
+      if (this.playbackInstanceId !== 0 && this.handledCompletionPlaybackId === this.playbackInstanceId) {
+        return;
+      }
+      this.handledCompletionPlaybackId = this.playbackInstanceId;
       if (this.currentVideoDuration > 0) {
         void this.persistProgress(this.currentVideoDuration, this.currentVideoDuration, this.playingSeason, this.playingEpisode);
       }

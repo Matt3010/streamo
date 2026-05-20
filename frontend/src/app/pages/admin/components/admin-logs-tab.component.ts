@@ -1,3 +1,4 @@
+import { JsonPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { faFileLines } from '@fortawesome/free-solid-svg-icons';
 import { SectionHeaderComponent } from '../../../ui/section-header/section-header.component';
@@ -11,7 +12,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 @Component({
   selector: 'app-admin-logs-tab',
   standalone: true,
-  imports: [SectionHeaderComponent, UiButtonDirective],
+  imports: [JsonPipe, SectionHeaderComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="admin-section">
@@ -79,7 +80,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                             {{ playbackLogLabel(log) }}
                           </span>
                         </div>
-                        <code class="log-message">{{ log.message }}</code>
+                        <pre class="log-message">{{ log | json }}</pre>
                       </div>
                     </li>
                   }
@@ -93,7 +94,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                             {{ providerResolveLogLabel(log) }}
                           </span>
                         </div>
-                        <code class="log-message">{{ log.message }}</code>
+                        <pre class="log-message">{{ log | json }}</pre>
                       </div>
                     </li>
                   }
@@ -107,8 +108,7 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
                             {{ transportLogLabel(log) }}
                           </span>
                         </div>
-                        <code class="log-message">{{ transportLogSummary(log) }}</code>
-                        <code class="log-detail">{{ log.request_uri }}</code>
+                        <pre class="log-message">{{ log | json }}</pre>
                       </div>
                     </li>
                   }
