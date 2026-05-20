@@ -606,7 +606,8 @@ export class WatchComponent {
   protected readonly canStartPlayback = computed(() => this.player.playbackAvailability() === 'ready');
   protected readonly episodesPlayDisabled = computed(() => this.player.playbackAvailability() === 'unavailable');
   protected readonly showManualProviderRefresh = computed(() => (
-    this.player.playbackAvailability() === 'unavailable'
+    !this.isUpcomingTitle()
+    && this.player.playbackAvailability() === 'unavailable'
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.player.providerManualRefreshState() !== null
     && this.player.providerCandidates().length === 0
@@ -617,6 +618,10 @@ export class WatchComponent {
 
   protected readonly providerCandidates = computed(() => this.player.providerCandidates());
   protected readonly showProviderPicker = computed(() => {
+    // Hide the whole picker affordance for titles that haven't released
+    // yet — "Titolo non disponibile" there means "not out yet", not "no
+    // provider match", so offering to pick a version is misleading.
+    if (this.isUpcomingTitle()) return false;
     const candidates = this.providerCandidates();
     if (candidates.length === 0) return false;
     const currentId = this.player.providerResolvedTitleId();
@@ -632,7 +637,8 @@ export class WatchComponent {
   protected readonly pickerRefreshLabel = computed(() => 'Aggiorna lista versioni');
 
   protected readonly showUnavailableHint = computed(() => (
-    this.player.playbackAvailability() === 'unavailable'
+    !this.isUpcomingTitle()
+    && this.player.playbackAvailability() === 'unavailable'
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.providerCandidates().length > 0
   ));
