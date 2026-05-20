@@ -8,14 +8,14 @@
 }
 
 .view-toggle .ui-button-toggle-icon {
-  /* Match .ui-button-icon-outline (36×36) so the toggle group has the same
-   * footprint as the share button next to it — both read as "icon controls"
-   * at the same visual weight. Square corners because the group wrapper
-   * already has the rounded container. */
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  min-height: 36px;
+  /* The .view-toggle wrapper has a 1px border that adds 2px to its outer
+   * box. Set inner buttons to 34×34 so the wrapper ends up 36×36 outer,
+   * matching the sibling .view-share-button. Square corners because the
+   * wrapper already provides the rounded container. */
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
   border-radius: 0;
 }
 
