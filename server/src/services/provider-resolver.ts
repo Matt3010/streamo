@@ -377,6 +377,43 @@ export async function manuallyConfirmProviderTitle(args: {
     mediaType: args.mediaType
   };
 
+  // A provider title id can only be claimed by one TMDB title at a time
+  // (enforced by the unique index on (provider, media_type, provider_id)
+  // WHERE provider_id IS NOT NULL). If another row already owns this
+  // provider_id, the user's explicit pick wins — clear the old row's
+  // mapping so the upsert below doesn't trip the constraint. The
+  // displaced TMDB title will be re-resolved from scratch the next time
+  // anyone visits its page.
+  const evicted = await kdb
+    .updateTable('provider_title_map')
+    .set({
+      provider_id: null,
+      provider_slug: null,
+      match_status: 'failed',
+      match_confidence: 0,
+      resolved_title: null,
+      failure_reason: 'displaced_by_manual_confirm',
+      resolved_at: null,
+      last_checked_at: 0
+    })
+    .where('provider', '=', PROVIDER_NAME)
+    .where('media_type', '=', args.mediaType)
+    .where('provider_id', '=', chosen.providerTitleId)
+    .where('tmdb_id', '!=', args.tmdbId)
+    .returning('tmdb_id')
+    .execute();
+
+  for (const row of evicted) {
+    resolveCache.delete(`${args.mediaType}:${row.tmdb_id}`);
+  }
+  if (evicted.length > 0) {
+    providerResolveLogger.info('manual confirm displaced existing mapping', {
+      mediaType: args.mediaType,
+      providerTitleId: chosen.providerTitleId,
+      displacedTmdbIds: evicted.map((r) => r.tmdb_id)
+    });
+  }
+
   await upsertMapping(resolveArgs, {
     matchStatus: 'manual_confirmed',
     matchConfidence: chosen.score,
