@@ -1,5 +1,6 @@
 import { kdb } from '../db';
 import { TMDB_API_KEY, TMDB_CACHE_TTL } from '../config';
+import { fetchWithTimeout } from '../utils/fetch';
 import type { WatchlistSeasonInfo } from '../../../shared/types';
 import {
   getAiredEpisodesCount as sharedGetAiredEpisodesCount,
@@ -121,7 +122,7 @@ export async function getTmdbMovieSummary(
   if (!TMDB_API_KEY) return null;
 
   try {
-    const res = await fetch(`https://api.themoviedb.org/3/movie/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
+    const res = await fetchWithTimeout(`https://api.themoviedb.org/3/movie/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
     if (!res.ok) return null;
 
     const data = await res.json() as RawTmdbMovie;
@@ -165,7 +166,7 @@ export async function getTmdbTvSummary(
   if (!TMDB_API_KEY) return null;
 
   try {
-    const res = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
+    const res = await fetchWithTimeout(`https://api.themoviedb.org/3/tv/${tmdbId}?language=it-IT&api_key=${TMDB_API_KEY}`);
     if (!res.ok) return null;
 
     const data = await res.json() as RawTmdbTv;
@@ -242,7 +243,7 @@ export async function searchTmdbPosterUrl(
 
   let posterUrl: string | null = null;
   try {
-    const res = await fetch(`https://api.themoviedb.org/3/search/${mediaType}?${params.toString()}`);
+    const res = await fetchWithTimeout(`https://api.themoviedb.org/3/search/${mediaType}?${params.toString()}`);
     if (res.ok) {
       const body = await res.json() as { results?: Array<{ poster_path?: string | null }> };
       const path = body.results?.find((r) => typeof r.poster_path === 'string' && r.poster_path)?.poster_path;

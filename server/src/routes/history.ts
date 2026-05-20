@@ -3,7 +3,7 @@ import { sql } from 'kysely';
 import { kdb } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
-import { WATCHED_THRESHOLD } from '../config';
+import { WATCHED_THRESHOLD, isMediaType } from '../config';
 import { resolveNextPlayable } from '../services/next-episode';
 import type { HistoryItem } from '../../../shared/types';
 
@@ -39,7 +39,7 @@ router.post('/user/history', requireAuth, async (req, res) => {
   const episode = toInt(body.episode ?? 0, { min: 0 }) ?? 0;
 
   if (!tmdb_id || !media_type) return res.status(400).json({ error: 'missing_fields' });
-  if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
+  if (!isMediaType(media_type)) return res.status(400).json({ error: 'invalid_type' });
 
   await kdb
     .insertInto('history')
@@ -67,7 +67,7 @@ router.post('/user/history', requireAuth, async (req, res) => {
 
 router.get('/user/history', requireAuth, async (req, res) => {
   const mediaFilter = typeof req.query.media_type === 'string' ? req.query.media_type : '';
-  if (mediaFilter && !['movie', 'tv'].includes(mediaFilter)) {
+  if (mediaFilter && !isMediaType(mediaFilter)) {
     return res.status(400).json({ error: 'invalid_type' });
   }
 
@@ -147,7 +147,7 @@ router.delete('/user/history/:type/:tmdb_id', requireAuth, async (req, res) => {
   const type = req.params.type;
   const season = toInt(req.query.season, { min: 0 });
   const episode = toInt(req.query.episode, { min: 0 });
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
 
   if (season !== null && season !== undefined && episode !== null && episode !== undefined) {
     await kdb

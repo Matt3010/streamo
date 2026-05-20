@@ -1,5 +1,11 @@
 // Centralized constants and env-derived config.
 
+import type { MediaType } from '../../shared/types';
+
+export function isMediaType(value: unknown): value is MediaType {
+  return value === 'movie' || value === 'tv';
+}
+
 export const PORT = Number(process.env.PORT) || 3000;
 export const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
 export const COOKIE_SECURE =

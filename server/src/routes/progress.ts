@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { sql } from 'kysely';
-import { kdb } from '../db';
+import { kdb, withTx } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
-import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
+import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD, isMediaType } from '../config';
 import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { notifyAdminSessionsChanged } from '../services/admin-live';
@@ -36,38 +36,46 @@ router.post('/user/progress', requireAuth, async (req, res) => {
   const duration = Number.isFinite(durationRaw) ? durationRaw : 0;
 
   if (!tmdb_id || !media_type || !Number.isFinite(position)) return res.status(400).json({ error: 'missing_fields' });
-  if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
+  if (!isMediaType(media_type)) return res.status(400).json({ error: 'invalid_type' });
 
-  await kdb
-    .insertInto('progress')
-    .values({
-      user_id: req.user!.id,
-      tmdb_id, media_type, season, episode, position, duration, synthetic: 0,
-      title: body.title || null,
-      poster: body.poster || null,
-      backdrop: body.backdrop || null,
-      updated_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`
-    })
-    .onConflict((oc) => oc
-      .columns(['user_id', 'tmdb_id', 'media_type', 'season', 'episode'])
-      .doUpdateSet({
-        position: (eb) => eb.ref('excluded.position'),
-        duration: (eb) => eb.ref('excluded.duration'),
-        synthetic: 0,
-        title: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.title')}, ${eb.ref('progress.title')})`,
-        poster: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.poster')}, ${eb.ref('progress.poster')})`,
-        backdrop: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.backdrop')}, ${eb.ref('progress.backdrop')})`,
+  // Wrap insert + delete in a single transaction so a crash in the middle
+  // can't leave the user with a fresh "Continua a guardare" entry that's
+  // still hidden by an old hidden_continue row. maybeAutoCompleteWatchlist
+  // is intentionally OUT of the tx — it does a TMDB fetch and its own
+  // UPDATE, which is safe to run independently (the watchlist UPDATE is
+  // idempotent and best-effort).
+  await withTx(async (trx) => {
+    await trx
+      .insertInto('progress')
+      .values({
+        user_id: req.user!.id,
+        tmdb_id, media_type, season, episode, position, duration, synthetic: 0,
+        title: body.title || null,
+        poster: body.poster || null,
+        backdrop: body.backdrop || null,
         updated_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`
       })
-    )
-    .execute();
+      .onConflict((oc) => oc
+        .columns(['user_id', 'tmdb_id', 'media_type', 'season', 'episode'])
+        .doUpdateSet({
+          position: (eb) => eb.ref('excluded.position'),
+          duration: (eb) => eb.ref('excluded.duration'),
+          synthetic: 0,
+          title: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.title')}, ${eb.ref('progress.title')})`,
+          poster: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.poster')}, ${eb.ref('progress.poster')})`,
+          backdrop: (eb) => sql<string | null>`COALESCE(${eb.ref('excluded.backdrop')}, ${eb.ref('progress.backdrop')})`,
+          updated_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`
+        })
+      )
+      .execute();
 
-  await kdb
-    .deleteFrom('hidden_continue')
-    .where('user_id', '=', req.user!.id)
-    .where('tmdb_id', '=', tmdb_id)
-    .where('media_type', '=', media_type)
-    .execute();
+    await trx
+      .deleteFrom('hidden_continue')
+      .where('user_id', '=', req.user!.id)
+      .where('tmdb_id', '=', tmdb_id)
+      .where('media_type', '=', media_type)
+      .execute();
+  });
 
   const watchlistChanged = await maybeAutoCompleteWatchlist(req.user!.id, tmdb_id, media_type);
   if (watchlistChanged) {
@@ -251,7 +259,7 @@ router.get('/user/progress/series/:tmdb_id', requireAuth, async (req, res) => {
 router.delete('/user/progress/title/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
 
   await kdb
     .insertInto('hidden_continue')
@@ -274,7 +282,7 @@ router.get('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, asyn
   const season = toInt(req.params.season ?? 0, { min: 0 }) ?? 0;
   const episode = toInt(req.params.episode ?? 0, { min: 0 }) ?? 0;
   const type = req.params.type;
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
 
   const row = await kdb
     .selectFrom('progress')
@@ -294,7 +302,7 @@ router.delete('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, a
   const season = toInt(req.params.season ?? 0, { min: 0 }) ?? 0;
   const episode = toInt(req.params.episode ?? 0, { min: 0 }) ?? 0;
   const type = req.params.type;
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
 
   await kdb
     .deleteFrom('progress')

@@ -14,7 +14,7 @@ import { BannerComponent } from '../../ui/banner/banner.component';
         message="Alcune funzioni potrebbero non essere disponibili finche la connessione non torna." />
     }
   `,
-  styles: [':host { display: contents; }']
+  styleUrl: './offline-banner.component.css'
 })
 export class OfflineBannerComponent {
   private readonly destroyRef = inject(DestroyRef);

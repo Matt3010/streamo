@@ -71,8 +71,6 @@ export function createMessageLogStore<T extends MessageLogEntry>(
         const detail = error instanceof Error ? error.message : 'unknown_write_error';
         console.error(`[${options.name}] write-error path=${options.logPath} detail=${detail}`);
       }
-
-      console.log(message);
     },
 
     list(): T[] {

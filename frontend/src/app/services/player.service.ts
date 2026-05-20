@@ -14,6 +14,7 @@ import { ToastService } from './toast.service';
 import { isTitleUpcoming } from '../utils/media-release.util';
 import { isFutureDateStr } from '../utils/date.util';
 import { getEffectiveLastEpisode } from '../utils/aired-episodes.util';
+import { formatTime, progressKey } from '../utils/time.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
 const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
@@ -1172,15 +1173,6 @@ export class PlayerService {
   }
 }
 
-function formatTime(seconds: number): string {
-  const total = Math.floor(seconds);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
 // Returns the episodes from a TMDB season-details payload that have already
 // aired.
 //
@@ -1237,13 +1229,6 @@ function availableSeasons(item: TmdbItem): Array<NonNullable<TmdbItem['seasons']
     const date = new Date(season.air_date);
     return !Number.isNaN(date.getTime()) && date <= cutoff;
   });
-}
-
-// Cheap stable key for the seriesProgress map. Keeps the lookup branch
-// inside the watch component template trivial (one .get) without having
-// to materialise nested objects per (season, episode) pair.
-function progressKey(season: number, episode: number): string {
-  return `s${season}e${episode}`;
 }
 
 // Stub episode list for when the season-details fetch fails — keeps the

@@ -74,8 +74,11 @@ async function processWatchlistJob(job: Job<WatchlistJobData, void, string>): Pr
   }
 
   if (job.name === WATCHLIST_REFRESH_JOB) {
-    const { tmdbId } = job.data as { tmdbId: number };
-    await refreshWatchlistTitle(tmdbId);
+    const data = job.data as unknown;
+    if (typeof data !== 'object' || data === null || typeof (data as { tmdbId?: unknown }).tmdbId !== 'number') {
+      throw new Error(`invalid watchlist refresh payload: ${JSON.stringify(data)}`);
+    }
+    await refreshWatchlistTitle((data as { tmdbId: number }).tmdbId);
     return;
   }
 

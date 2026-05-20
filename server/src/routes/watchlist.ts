@@ -3,7 +3,7 @@ import { sql } from 'kysely';
 import { kdb } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
-import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD } from '../config';
+import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD, isMediaType } from '../config';
 import {
   getAiredEpisodesCount,
   getBaseAiredEpisodesCount,
@@ -103,7 +103,7 @@ router.post('/user/watchlist', requireAuth, async (req, res) => {
   const tmdb_id = toInt(body.tmdb_id, { min: 1 });
   const media_type = body.media_type;
   if (!tmdb_id || !media_type) return res.status(400).json({ error: 'missing_fields' });
-  if (!['movie', 'tv'].includes(media_type)) return res.status(400).json({ error: 'invalid_type' });
+  if (!isMediaType(media_type)) return res.status(400).json({ error: 'invalid_type' });
 
   await kdb
     .insertInto('watchlist')
@@ -134,7 +134,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
   if (statusFilter && !['todo', 'in_progress', 'done', 'unreleased'].includes(statusFilter)) {
     return res.status(400).json({ error: 'invalid_status' });
   }
-  if (mediaFilter && !['movie', 'tv'].includes(mediaFilter)) {
+  if (mediaFilter && !isMediaType(mediaFilter)) {
     return res.status(400).json({ error: 'invalid_type' });
   }
 
@@ -176,36 +176,50 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
   const progressByTmdb = new Map<number, ProgressAggregate>();
   const latestTvProgressByTmdb = new Map<number, LatestTvProgressRow>();
   if (tvIds.length > 0) {
-    const seasons = await kdb
-      .selectFrom('progress')
-      .select((eb) => [
-        'tmdb_id',
-        eb.fn.max('season').as('max_season'),
-        eb.fn
-          .sum<number>(sql<number>`CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END`)
-          .as('watched_count')
-      ])
-      .where('user_id', '=', req.user!.id)
-      .where('media_type', '=', 'tv')
-      .where('synthetic', '=', 0)
-      .where('tmdb_id', 'in', tvIds)
-      .groupBy('tmdb_id')
-      .execute();
+    // Single-pass aggregate: per-series watched_count + the (season, episode)
+    // pair with the highest season (and within that season the highest
+    // episode). Replaces the previous N+1 that fired one max(episode) query
+    // per series.
+    const aggregates = await sql<{
+      tmdb_id: number;
+      last_season: number;
+      last_episode: number;
+      watched_count: number;
+    }>`
+      WITH ranked AS (
+        SELECT
+          tmdb_id,
+          season,
+          episode,
+          ROW_NUMBER() OVER (PARTITION BY tmdb_id ORDER BY season DESC, episode DESC) AS rn
+        FROM progress
+        WHERE user_id = ${req.user!.id}
+          AND media_type = 'tv'
+          AND synthetic = 0
+          AND tmdb_id = ANY(${tvIds}::int[])
+      ),
+      counts AS (
+        SELECT
+          tmdb_id,
+          SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END)::int AS watched_count
+        FROM progress
+        WHERE user_id = ${req.user!.id}
+          AND media_type = 'tv'
+          AND synthetic = 0
+          AND tmdb_id = ANY(${tvIds}::int[])
+        GROUP BY tmdb_id
+      )
+      SELECT r.tmdb_id, r.season AS last_season, r.episode AS last_episode, c.watched_count
+      FROM ranked r
+      JOIN counts c ON c.tmdb_id = r.tmdb_id
+      WHERE r.rn = 1
+    `.execute(kdb).then((r) => r.rows);
 
-    for (const s of seasons) {
-      const ep = await kdb
-        .selectFrom('progress')
-        .select((eb) => eb.fn.max('episode').as('max_episode'))
-        .where('user_id', '=', req.user!.id)
-        .where('media_type', '=', 'tv')
-        .where('synthetic', '=', 0)
-        .where('tmdb_id', '=', s.tmdb_id)
-        .where('season', '=', Number(s.max_season))
-        .executeTakeFirst();
-      progressByTmdb.set(s.tmdb_id, {
-        last_season: Number(s.max_season),
-        last_episode: Number(ep?.max_episode ?? 0),
-        watched_count: Number(s.watched_count)
+    for (const a of aggregates) {
+      progressByTmdb.set(a.tmdb_id, {
+        last_season: Number(a.last_season),
+        last_episode: Number(a.last_episode),
+        watched_count: Number(a.watched_count)
       });
     }
 
@@ -319,7 +333,7 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
   const body = req.body || {};
   const status = body.status;
   const folderName = normalizeFolderName(body.folder_name);
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
   if (status !== undefined && !['todo', 'in_progress', 'done'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
   if (body.folder_name !== undefined && folderName === undefined) {
     return res.status(400).json({ error: 'invalid_folder_name' });
@@ -379,7 +393,7 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
 router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
   await kdb
     .deleteFrom('watchlist')
     .where('user_id', '=', req.user!.id)
@@ -397,7 +411,7 @@ router.delete('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) =>
 router.get('/user/watchlist/check/:type/:tmdb_id', requireAuth, async (req, res) => {
   const tmdb_id = toInt(req.params.tmdb_id, { min: 1 });
   const type = req.params.type;
-  if (!tmdb_id || !['movie', 'tv'].includes(type)) return res.status(400).json({ error: 'invalid_params' });
+  if (!tmdb_id || !isMediaType(type)) return res.status(400).json({ error: 'invalid_params' });
   const row = await kdb
     .selectFrom('watchlist')
     .select(sql<number>`1`.as('in_list'))

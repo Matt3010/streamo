@@ -1,6 +1,7 @@
 import { kdb } from '../db';
 import { getAiredEpisodesCount, getTmdbTvSummary, readCachedTmdbTvSummary } from './tmdb-cache';
 import { publishUserWatchlistChanged } from './user-live';
+import { providerResolveLogger } from './provider-resolve-logs';
 
 export async function listTrackedWatchlistTvIds(): Promise<number[]> {
   const rows = await kdb
@@ -8,6 +9,7 @@ export async function listTrackedWatchlistTvIds(): Promise<number[]> {
     .select('tmdb_id')
     .where('media_type', '=', 'tv')
     .distinct()
+    .orderBy('tmdb_id', 'asc')
     .execute();
   return rows.map((row) => row.tmdb_id);
 }
@@ -15,7 +17,10 @@ export async function listTrackedWatchlistTvIds(): Promise<number[]> {
 export async function refreshWatchlistTitle(tmdbId: number): Promise<void> {
   const previousSummary = await readCachedTmdbTvSummary(tmdbId);
   const nextSummary = await getTmdbTvSummary(tmdbId, { forceRefresh: true });
-  if (!nextSummary) return;
+  if (!nextSummary) {
+    providerResolveLogger.warn('watchlist-refresh-skip-no-summary', { tmdbId });
+    return;
+  }
 
   const previousAired = getAiredEpisodesCount(previousSummary);
   const nextAired = getAiredEpisodesCount(nextSummary);

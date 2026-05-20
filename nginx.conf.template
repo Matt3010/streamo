@@ -26,9 +26,20 @@ server {
     resolver 8.8.8.8 ipv6=off valid=30s;
 
     gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
     gzip_types text/plain text/css application/javascript application/json text/html;
 
     client_max_body_size 1m;
+
+    # Baseline security headers. `always` so they're applied even on
+    # error responses. CSP is set per-location for /embed/ (which needs
+    # frame-ancestors to itself); the SPA inherits the default-src 'self'
+    # implicitly via the lack of inline scripts in the Angular build.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
 
     # ---- Injected scripts (served from local files) ----
     location ^~ /scripts/ {
@@ -85,13 +96,16 @@ server {
     }
 
     # ---- TMDB API ----
+    # Same-origin proxy: the frontend calls /api/tmdb/... from the same
+    # streamo origin, so CORS isn't required here. Strip TMDB's own
+    # wildcard CORS header rather than re-emitting it to avoid handing
+    # third-party sites a free pass on the user's TMDB API key.
     location ~ ^/api/tmdb/(.*)$ {
         set $tmdb "api.themoviedb.org";
         proxy_pass https://$tmdb/3/$1?$args&api_key=${TMDB_API_KEY};
         proxy_ssl_server_name on;
         proxy_set_header Host api.themoviedb.org;
         proxy_hide_header Access-Control-Allow-Origin;
-        add_header Access-Control-Allow-Origin * always;
     }
 
     # ---- Core playback: segment/asset CDN targets rewritten by playlist proxy ----

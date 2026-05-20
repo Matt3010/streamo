@@ -53,6 +53,10 @@
   function emitToParent(eventName, currentTime, duration) {
     try {
       if (!window.parent || window.parent === window) return;
+      // The iframe is served through nginx with sub_filter rewrites, so its
+      // origin matches the parent's origin. Targeting that explicitly (rather
+      // than '*') prevents the message from being delivered if the iframe
+      // ever ends up on a different origin (e.g. direct vixcloud.co load).
       window.parent.postMessage({
         type: 'PLAYER_EVENT',
         event: {
@@ -60,7 +64,7 @@
           currentTime: typeof currentTime === 'number' && isFinite(currentTime) ? currentTime : undefined,
           duration: typeof duration === 'number' && isFinite(duration) ? duration : undefined
         }
-      }, '*');
+      }, window.location.origin);
     } catch (e) {}
   }
 

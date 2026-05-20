@@ -41,6 +41,19 @@ export class LiveSocketService {
       }, delayMs);
     };
 
+    /* When the tab returns to foreground after sleep, the backoff counter
+     * may have grown to the 15s ceiling. Reset it and re-attempt immediately
+     * so the user sees fresh data instead of waiting out the old delay. */
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState !== 'visible') return;
+      if (!shouldReconnect) return;
+      if (socket && socket.readyState === WebSocket.OPEN) return;
+      reconnectAttempts = 0;
+      clearReconnectTimer();
+      connect();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     const connect = (): void => {
       clearReconnectTimer();
 
@@ -84,6 +97,7 @@ export class LiveSocketService {
         shouldReconnect = false;
         reconnectAttempts = 0;
         clearReconnectTimer();
+        document.removeEventListener('visibilitychange', onVisibilityChange);
         options.onConnected(false);
         if (!socket) return;
         const current = socket;

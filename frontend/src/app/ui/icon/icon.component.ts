@@ -51,7 +51,7 @@ const REGISTRY: Record<IconName, IconDefinition> = {
   imports: [FaIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<fa-icon [icon]="def()"></fa-icon>`,
-  styles: [`:host { display: inline-flex; line-height: 0; }`]
+  styleUrl: './icon.component.css'
 })
 export class IconComponent {
   readonly name = input.required<IconName>();

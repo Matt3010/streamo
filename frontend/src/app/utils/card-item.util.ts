@@ -68,11 +68,31 @@ export function historyToCardItem(item: HistoryItem): CardItem {
   };
 }
 
+/* Concurrency cap. Bigger lists (e.g. a 100-item watchlist) would otherwise
+ * fire 100 parallel TMDB requests through the backend cache, hitting the
+ * upstream limiter and spiking the event loop. 10-at-a-time is enough to
+ * keep the row above the fold populated quickly without burst behavior. */
+const ENRICH_CONCURRENCY = 10;
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 export async function enrichTmdbCards(
   items: CardItem[],
   tmdb: TmdbService
 ): Promise<CardItem[]> {
-  return Promise.all(items.map(async (item) => {
+  return mapWithConcurrency(items, ENRICH_CONCURRENCY, async (item) => {
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
     if (!details) return item;
     const upcoming = isTitleUpcoming(details, item.media_type);
@@ -81,16 +101,16 @@ export async function enrichTmdbCards(
       isUpcoming: upcoming,
       nextReleaseText: getCompactReleaseStatusText(details, item.media_type) || undefined
     };
-  }));
+  });
 }
 
 export async function enrichLibraryCardsWithTmdb(
   items: CardItem[],
   tmdb: TmdbService
 ): Promise<CardItem[]> {
-  return Promise.all(items.map(async (item) => {
+  return mapWithConcurrency(items, ENRICH_CONCURRENCY, async (item) => {
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
     if (!details) return item;
     return enrichCardBase(item, details);
-  }));
+  });
 }

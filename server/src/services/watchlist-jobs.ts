@@ -25,8 +25,11 @@ export function getWatchlistQueue(): Queue<WatchlistJobData, void, string> | nul
     queue = new Queue<WatchlistJobData, void, string>(WATCHLIST_QUEUE_NAME, {
       connection: getBullMqConnection(),
       defaultJobOptions: {
-        removeOnComplete: 50,
-        removeOnFail: 100
+        // Retain by age so successful jobs disappear after 1h and failed
+        // ones stay around for 24h for debugging, but bounded by count to
+        // avoid unbounded growth if the queue is busy.
+        removeOnComplete: { age: 3600, count: 200 },
+        removeOnFail: { age: 86400, count: 500 }
       }
     });
   }

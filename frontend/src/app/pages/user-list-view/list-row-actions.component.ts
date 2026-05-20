@@ -20,7 +20,7 @@ export interface FolderClickEvent {
   standalone: true,
   imports: [IconComponent, UiButtonDirective, PendingButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [':host { display: contents; }'],
+  styleUrl: './list-row-actions.component.css',
   template: `
     @if (kind() === 'watchlist' && !item().isUpcoming) {
       <button uiButton="icon-outline" uiButtonSize="action" type="button" uiButtonHover="success"

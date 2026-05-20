@@ -20,6 +20,7 @@ import { tmdbToCardItem } from '../../utils/card-item.util';
 import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-release.util';
 import { getAiredEpisodesCount } from '../../utils/aired-episodes.util';
 import { runWithPending } from '../../utils/pending.util';
+import { formatTime, formatRuntime, progressKey } from '../../utils/time.util';
 import type { CardItem, MediaType, TmdbReview } from '../../models';
 
 type ConfirmAction =
@@ -566,7 +567,7 @@ export class WatchComponent {
     if (this.player.currentItemType() !== 'movie') return '';
     const progress = this.player.resumeProgress();
     if (!progress || progress.duration <= 0) return '';
-    return `${formatTimeCompact(progress.position)}/${formatTimeCompact(progress.duration)}`;
+    return `${formatTime(progress.position)}/${formatTime(progress.duration)}`;
   });
 
   // Episode number to highlight on the card grid for the season currently
@@ -861,7 +862,7 @@ export class WatchComponent {
     }
     if (action?.type === 'clear-progress') {
       const key = this.player.currentItemType() === 'tv' && action.episode
-        ? `s${action.season ?? this.player.selectedSeason()}e${action.episode}`
+        ? progressKey(action.season ?? this.player.selectedSeason(), action.episode)
         : 'movie';
       this.clearProgressPendingKey.set(key);
       void (async () => {
@@ -938,70 +939,28 @@ export class WatchComponent {
   // currently-selected season. Returns 0 when there's no progress, which
   // the template uses to skip rendering the bar entirely.
   protected episodeProgress(episodeNumber: number): number {
-    const map = this.player.seriesProgress();
-    const key = `s${this.player.selectedSeason()}e${episodeNumber}`;
-    const p = map.get(key);
+    const p = this.player.seriesProgress().get(progressKey(this.player.selectedSeason(), episodeNumber));
     if (!p || p.duration <= 0) return 0;
     return Math.min(100, Math.max(0, (p.position / p.duration) * 100));
   }
 
   protected episodeProgressLabel(ep: { episode_number: number; runtime?: number | null }): string {
-    const map = this.player.seriesProgress();
-    const key = `s${this.player.selectedSeason()}e${ep.episode_number}`;
-    const progress = map.get(key);
+    const progress = this.player.seriesProgress().get(progressKey(this.player.selectedSeason(), ep.episode_number));
     const totalSeconds = progress?.duration && progress.duration > 0
       ? progress.duration
       : (ep.runtime && ep.runtime > 0 ? ep.runtime * 60 : 0);
     if (totalSeconds <= 0) return '';
     const watchedSeconds = progress?.position && progress.position > 0 ? progress.position : 0;
-    return `${formatTimeCompact(watchedSeconds)}/${formatTimeCompact(totalSeconds)}`;
+    return `${formatTime(watchedSeconds)}/${formatTime(totalSeconds)}`;
   }
 
   protected canClearEpisodeProgress(episodeNumber: number): boolean {
-    const map = this.player.seriesProgress();
-    const key = `s${this.player.selectedSeason()}e${episodeNumber}`;
-    const progress = map.get(key);
+    const progress = this.player.seriesProgress().get(progressKey(this.player.selectedSeason(), episodeNumber));
     return !!progress && progress.position > 0;
   }
 
   protected episodeProgressKey(episodeNumber: number): string {
-    return `s${this.player.selectedSeason()}e${episodeNumber}`;
+    return progressKey(this.player.selectedSeason(), episodeNumber);
   }
 }
 
-function formatTime(seconds: number): string {
-  const total = Math.floor(seconds);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
-function formatTimeCompact(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
-
-function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {
-  if (type === 'movie') {
-    const r = item.runtime;
-    if (!r) return '';
-    const h = Math.floor(r / 60);
-    const m = r % 60;
-    if (h && m) return `${h}h ${m}min`;
-    if (h) return `${h}h`;
-    return `${m}min`;
-  }
-  if (type === 'tv') {
-    const arr = item.episode_run_time ?? [];
-    const first = arr[0];
-    return first ? `${first} min/episodio` : '';
-  }
-  return '';
-}

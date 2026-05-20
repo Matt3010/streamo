@@ -197,6 +197,7 @@ export function startUserWatchlistEventsSubscription(): void {
 
   void subscriber.subscribe(USER_WATCHLIST_CHANNEL, SHARE_LINK_REVOKED_CHANNEL).catch((error) => {
     console.error('[user-live-subscriber] subscribe failed', error);
+    subscriber.disconnect();
     subscriberStarted = false;
   });
 }

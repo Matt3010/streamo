@@ -1,6 +1,13 @@
 import { Router, type Request, type Response as ExpressResponse } from 'express';
 import { authenticateToken, respondAuthFailure } from '../middleware/auth';
 import { playbackLogger } from '../services/playback-logs';
+import { fetchWithTimeout } from '../utils/fetch';
+
+/* Higher than the 8s default used for TMDB / provider search because the
+ * playlist proxy sits on the playback critical path — a slow vixcloud
+ * response is still preferable to a 502 here. 30s matches the upper end of
+ * what users will tolerate before retrying anyway. */
+const PLAYLIST_FETCH_TIMEOUT_MS = 30000;
 
 const router = Router();
 
@@ -19,14 +26,14 @@ router.get(/^\/playback\/playlist\/(.*)$/, async (req, res) => {
 
   let upstream: Response;
   try {
-    upstream = await fetch(upstreamUrl, {
+    upstream = await fetchWithTimeout(upstreamUrl, {
       referrerPolicy: 'no-referrer',
       headers: {
         accept: req.headers.accept ?? '*/*',
         'accept-encoding': 'identity',
         origin: 'https://vixcloud.co'
       }
-    });
+    }, PLAYLIST_FETCH_TIMEOUT_MS);
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'upstream_fetch_failed';
     playbackLogger.error('playlist fetch failed', {

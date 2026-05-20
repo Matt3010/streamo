@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { kdb } from '../db';
 import { authenticateToken, requireAuth } from '../middleware/auth';
 import { publishShareLinkRevoked } from '../services/user-live';
+import { toInt } from '../utils/validation';
 import type {
   ShareLink,
   ShareLinkStatus,
@@ -62,8 +63,8 @@ router.post('/user/share-links', requireAuth, async (req, res) => {
 });
 
 router.patch('/user/share-links/:id', requireAuth, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  const id = toInt(req.params.id, { min: 1 });
+  if (!id) {
     return res.status(400).json({ error: 'invalid_id' });
   }
 
@@ -112,8 +113,8 @@ router.patch('/user/share-links/:id', requireAuth, async (req, res) => {
 });
 
 router.delete('/user/share-links/:id', requireAuth, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  const id = toInt(req.params.id, { min: 1 });
+  if (!id) {
     return res.status(400).json({ error: 'invalid_id' });
   }
 
