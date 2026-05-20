@@ -173,13 +173,10 @@ type ConfirmAction =
               }
             </div>
           </div>
-        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0) {
+        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0 && !episodesPlayDisabled()) {
           <div class="episode-grid-section">
             <div class="episode-grid-heading">
               <h3 class="episode-grid-title">Episodi</h3>
-              @if (episodesPlayDisabled()) {
-                <p class="episode-grid-note">Riproduzione non disponibile per questo titolo.</p>
-              }
             </div>
             <div class="episode-grid ui-scroll-row ui-scroll-row-thin">
               @for (ep of player.episodes(); track ep.episode_number) {

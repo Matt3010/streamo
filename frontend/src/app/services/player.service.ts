@@ -246,12 +246,12 @@ export class PlayerService {
     } else {
       this.seasons.set([]);
       this.episodes.set([]);
-      const seq = ++this.urlSeq;
-      const resolveSeq = this.beginPlaybackResolve();
       if (this.playbackTitle) {
+        const seq = ++this.urlSeq;
+        const resolveSeq = this.beginPlaybackResolve();
         await this.setMovieUrl(this.playbackTitle, resolveSeq);
+        await this.applyResumeProgress(seq, tmdbId, 'movie');
       }
-      await this.applyResumeProgress(seq, tmdbId, 'movie');
     }
   }
 
@@ -503,12 +503,12 @@ export class PlayerService {
     this.selectedEpisode.set(targetEpisode);
     this.activeEpisodeRef.set({ season: targetSeason, episode: targetEpisode });
 
-    const seq = ++this.urlSeq;
-    const resolveSeq = this.beginPlaybackResolve();
     if (playback) {
+      const seq = ++this.urlSeq;
+      const resolveSeq = this.beginPlaybackResolve();
       await this.setEpisodeUrl(playback, targetSeason, targetEpisode, resolveSeq);
+      await this.applyResumeProgress(seq, tmdbId, 'tv', targetSeason, targetEpisode);
     }
-    await this.applyResumeProgress(seq, tmdbId, 'tv', targetSeason, targetEpisode);
   }
 
   private async setEpisodeUrl(

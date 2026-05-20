@@ -14,7 +14,7 @@ export const TMDB_JOB_RATE_LIMIT_DURATION_MS = Math.max(100, Number(process.env.
 export const PROVIDER_CATALOG_LINK_SOURCE_URL =
   'https://api.telegra.ph/getPage/Link-Aggiornato-StreamingCommunity-09-29?return_content=true';
 export const PROVIDER_CATALOG_LOCALE = (process.env.PROVIDER_CATALOG_LOCALE || 'it').trim() || 'it';
-export const PROVIDER_RESOLVE_CACHE_TTL = Math.max(60, Number(process.env.PROVIDER_RESOLVE_CACHE_TTL) || (6 * 60 * 60));
+export const PROVIDER_RESOLVE_CACHE_TTL = Math.max(60, Number(process.env.PROVIDER_RESOLVE_CACHE_TTL) || (24 * 60 * 60));
 export const PROVIDER_RESOLVER_DEBUG = process.env.PROVIDER_RESOLVER_DEBUG !== '0';
 export const PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS = Math.max(
   60,
