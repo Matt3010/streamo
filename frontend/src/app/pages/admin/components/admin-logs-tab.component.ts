@@ -8,6 +8,78 @@ import type { AuthLogEntry, PlaybackLogEntry, ProviderResolveLogEntry, Transport
 
 type LogSource = 'auth' | 'playback' | 'provider' | 'transport';
 type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
+type DomainLogEntry = AuthLogEntry | PlaybackLogEntry | ProviderResolveLogEntry;
+
+interface ToneRule {
+  keywords: readonly string[];
+  tone: LogTone;
+}
+
+interface LogSourceConfig {
+  source: LogSource;
+  title: string;
+  defaultPath: string;
+}
+
+const AUTH_TONE_RULES: readonly ToneRule[] = [
+  { keywords: ['level=error'], tone: 'error' },
+  { keywords: ['level=warn'], tone: 'warn' },
+  { keywords: ['access_revoked', 'super_admin_required', 'forbidden'], tone: 'error' },
+  { keywords: ['missing_token', 'invalid_token', 'unauthenticated'], tone: 'warn' }
+];
+
+const PLAYBACK_TONE_RULES: readonly ToneRule[] = [
+  { keywords: ['level=error'], tone: 'error' },
+  { keywords: ['level=warn'], tone: 'warn' },
+  { keywords: [' status=499'], tone: 'cancelled' },
+  { keywords: ['fetch-error', 'write-error', 'read-error', ' status=5'], tone: 'error' },
+  { keywords: [' status=4'], tone: 'warn' },
+  {
+    keywords: [
+      'level=info event=playlist upstream response',
+      'level=info event=playlist master',
+      'level=info event=playlist media',
+      'status=200',
+      ' playlist=yes',
+      ' master ',
+      ' media '
+    ],
+    tone: 'ok'
+  }
+];
+
+const PROVIDER_TONE_RULES: readonly ToneRule[] = [
+  { keywords: ['level=error'], tone: 'error' },
+  { keywords: ['level=warn'], tone: 'warn' },
+  { keywords: ['status=499'], tone: 'cancelled' },
+  { keywords: ['fetch failed', 'invalid', 'missing ', 'unexpected ', ' status=5'], tone: 'error' },
+  { keywords: ['failed', 'low_confidence', 'no_match', ' status=4'], tone: 'warn' },
+  { keywords: ['resolved', 'auto_confirmed', 'status=200'], tone: 'ok' }
+];
+
+const LOG_SOURCES: readonly LogSourceConfig[] = [
+  { source: 'auth', title: 'Auth', defaultPath: '/data/auth.log' },
+  { source: 'playback', title: 'Playback', defaultPath: '/data/playback.log' },
+  { source: 'provider', title: 'Provider Resolve', defaultPath: '/data/provider-resolve.log' },
+  { source: 'transport', title: 'Transport', defaultPath: '/data/nginx-playback-access.log' }
+];
+
+const EMPTY_MESSAGES: Record<LogSource, string> = {
+  auth: 'Nessun log auth presente',
+  playback: 'Nessun log playback presente',
+  provider: 'Nessun log resolver provider presente',
+  transport: 'Nessun log cdn/storage presente'
+};
+
+function matchTone(message: string, rules: readonly ToneRule[]): LogTone {
+  const lower = message.toLowerCase();
+  for (const rule of rules) {
+    if (rule.keywords.some((keyword) => lower.includes(keyword))) {
+      return rule.tone;
+    }
+  }
+  return 'info';
+}
 
 @Component({
   selector: 'app-admin-logs-tab',
@@ -26,37 +98,15 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 
       <div class="logs-shell">
         <aside class="logs-sidebar" aria-label="Selezione log">
-          <button uiButton="panel"
-                  type="button"
-                  [attr.aria-pressed]="selectedSource() === 'auth'"
-                  (click)="selectSource('auth')">
-            <span class="logs-source-title">Auth</span>
-            <span class="logs-source-sub">{{ admin.authLogPath() || '/data/auth.log' }}</span>
-          </button>
-
-          <button uiButton="panel"
-                  type="button"
-                  [attr.aria-pressed]="selectedSource() === 'playback'"
-                  (click)="selectSource('playback')">
-            <span class="logs-source-title">Playback</span>
-            <span class="logs-source-sub">{{ admin.playbackLogPath() || '/data/playback.log' }}</span>
-          </button>
-
-          <button uiButton="panel"
-                  type="button"
-                  [attr.aria-pressed]="selectedSource() === 'provider'"
-                  (click)="selectSource('provider')">
-            <span class="logs-source-title">Provider Resolve</span>
-            <span class="logs-source-sub">{{ admin.providerResolveLogPath() || '/data/provider-resolve.log' }}</span>
-          </button>
-
-          <button uiButton="panel"
-                  type="button"
-                  [attr.aria-pressed]="selectedSource() === 'transport'"
-                  (click)="selectSource('transport')">
-            <span class="logs-source-title">Transport</span>
-            <span class="logs-source-sub">{{ admin.transportLogPath() || '/data/nginx-playback-access.log' }}</span>
-          </button>
+          @for (src of sources; track src.source) {
+            <button uiButton="panel"
+                    type="button"
+                    [attr.aria-pressed]="selectedSource() === src.source"
+                    (click)="selectSource(src.source)">
+              <span class="logs-source-title">{{ src.title }}</span>
+              <span class="logs-source-sub">{{ sourcePath(src) }}</span>
+            </button>
+          }
         </aside>
 
         <div class="logs-view">
@@ -69,70 +119,52 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
             </div>
           </div>
 
-          @if (selectedSource() === 'auth' && authLogsDesc().length === 0) {
-            <p class="empty">Nessun log auth presente</p>
-          } @else if (selectedSource() === 'playback' && playbackLogsDesc().length === 0) {
-            <p class="empty">Nessun log playback presente</p>
-          } @else if (selectedSource() === 'provider' && providerResolveLogsDesc().length === 0) {
-            <p class="empty">Nessun log resolver provider presente</p>
-          } @else if (selectedSource() === 'transport' && transportLogsDesc().length === 0) {
-            <p class="empty">Nessun log cdn/storage presente</p>
+          @if (isEmpty()) {
+            <p class="empty">{{ emptyMessage() }}</p>
           } @else {
             <div class="logs-panel">
               <ul class="log-list">
-                @if (selectedSource() === 'auth') {
-                  @for (log of authLogsDesc(); track trackAuthLog($index, log)) {
-                    <li class="log-row" [class.log-row-error]="authLogTone(log) === 'error'" [class.log-row-warn]="authLogTone(log) === 'warn'" [class.log-row-cancelled]="authLogTone(log) === 'cancelled'">
-                      <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
+                @if (selectedSource() === 'transport') {
+                  @for (log of transportLogsDesc(); track trackTransportLog($index, log)) {
+                    <li class="log-row"
+                        [class.log-row-error]="transportLogTone(log) === 'error'"
+                        [class.log-row-warn]="transportLogTone(log) === 'warn'"
+                        [class.log-row-cancelled]="transportLogTone(log) === 'cancelled'">
+                      <span class="log-time">{{ formatLogTime(log.ts) }}</span>
                       <div class="log-stack">
                         <div class="log-header">
-                          <span class="log-badge" [class.log-badge-ok]="authLogTone(log) === 'ok'" [class.log-badge-info]="authLogTone(log) === 'info'" [class.log-badge-warn]="authLogTone(log) === 'warn'" [class.log-badge-error]="authLogTone(log) === 'error'" [class.log-badge-cancelled]="authLogTone(log) === 'cancelled'">
-                            {{ authLogLabel(log) }}
+                          <span class="log-badge"
+                                [class.log-badge-ok]="transportLogTone(log) === 'ok'"
+                                [class.log-badge-info]="transportLogTone(log) === 'info'"
+                                [class.log-badge-warn]="transportLogTone(log) === 'warn'"
+                                [class.log-badge-error]="transportLogTone(log) === 'error'"
+                                [class.log-badge-cancelled]="transportLogTone(log) === 'cancelled'">
+                            {{ logLabel(transportLogTone(log)) }}
                           </span>
                         </div>
-                        <pre class="log-message">{{ authLogPayload(log) | json }}</pre>
-                      </div>
-                    </li>
-                  }
-                } @else if (selectedSource() === 'playback') {
-                  @for (log of playbackLogsDesc(); track trackPlaybackLog($index, log)) {
-                    <li class="log-row" [class.log-row-error]="playbackLogTone(log) === 'error'" [class.log-row-warn]="playbackLogTone(log) === 'warn'" [class.log-row-cancelled]="playbackLogTone(log) === 'cancelled'">
-                      <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
-                      <div class="log-stack">
-                        <div class="log-header">
-                          <span class="log-badge" [class.log-badge-ok]="playbackLogTone(log) === 'ok'" [class.log-badge-info]="playbackLogTone(log) === 'info'" [class.log-badge-warn]="playbackLogTone(log) === 'warn'" [class.log-badge-error]="playbackLogTone(log) === 'error'" [class.log-badge-cancelled]="playbackLogTone(log) === 'cancelled'">
-                            {{ playbackLogLabel(log) }}
-                          </span>
-                        </div>
-                        <pre class="log-message">{{ playbackLogPayload(log) | json }}</pre>
-                      </div>
-                    </li>
-                  }
-                } @else if (selectedSource() === 'provider') {
-                  @for (log of providerResolveLogsDesc(); track trackProviderResolveLog($index, log)) {
-                    <li class="log-row" [class.log-row-error]="providerResolveLogTone(log) === 'error'" [class.log-row-warn]="providerResolveLogTone(log) === 'warn'" [class.log-row-cancelled]="providerResolveLogTone(log) === 'cancelled'">
-                      <span class="log-time">{{ formatPlaybackLogTime(log.ts) }}</span>
-                      <div class="log-stack">
-                        <div class="log-header">
-                          <span class="log-badge" [class.log-badge-ok]="providerResolveLogTone(log) === 'ok'" [class.log-badge-info]="providerResolveLogTone(log) === 'info'" [class.log-badge-warn]="providerResolveLogTone(log) === 'warn'" [class.log-badge-error]="providerResolveLogTone(log) === 'error'" [class.log-badge-cancelled]="providerResolveLogTone(log) === 'cancelled'">
-                            {{ providerResolveLogLabel(log) }}
-                          </span>
-                        </div>
-                        <pre class="log-message">{{ providerResolveLogPayload(log) | json }}</pre>
+                        <pre class="log-message">{{ log | json }}</pre>
                       </div>
                     </li>
                   }
                 } @else {
-                  @for (log of transportLogsDesc(); track trackTransportLog($index, log)) {
-                    <li class="log-row" [class.log-row-error]="transportLogTone(log) === 'error'" [class.log-row-warn]="transportLogTone(log) === 'warn'" [class.log-row-cancelled]="transportLogTone(log) === 'cancelled'">
-                      <span class="log-time">{{ log.ts }}</span>
+                  @for (log of domainEntries(); track trackDomainLog($index, log)) {
+                    <li class="log-row"
+                        [class.log-row-error]="domainLogTone(log) === 'error'"
+                        [class.log-row-warn]="domainLogTone(log) === 'warn'"
+                        [class.log-row-cancelled]="domainLogTone(log) === 'cancelled'">
+                      <span class="log-time">{{ formatLogTime(log.ts) }}</span>
                       <div class="log-stack">
                         <div class="log-header">
-                          <span class="log-badge" [class.log-badge-ok]="transportLogTone(log) === 'ok'" [class.log-badge-info]="transportLogTone(log) === 'info'" [class.log-badge-warn]="transportLogTone(log) === 'warn'" [class.log-badge-error]="transportLogTone(log) === 'error'" [class.log-badge-cancelled]="transportLogTone(log) === 'cancelled'">
-                            {{ transportLogLabel(log) }}
+                          <span class="log-badge"
+                                [class.log-badge-ok]="domainLogTone(log) === 'ok'"
+                                [class.log-badge-info]="domainLogTone(log) === 'info'"
+                                [class.log-badge-warn]="domainLogTone(log) === 'warn'"
+                                [class.log-badge-error]="domainLogTone(log) === 'error'"
+                                [class.log-badge-cancelled]="domainLogTone(log) === 'cancelled'">
+                            {{ logLabel(domainLogTone(log)) }}
                           </span>
                         </div>
-                        <pre class="log-message">{{ transportLogPayload(log) | json }}</pre>
+                        <pre class="log-message">{{ domainLogPayload(log) | json }}</pre>
                       </div>
                     </li>
                   }
@@ -149,48 +181,68 @@ type LogTone = 'ok' | 'info' | 'warn' | 'error' | 'cancelled';
 export class AdminLogsTabComponent implements OnInit, OnDestroy {
   protected readonly admin = inject(AdminService);
   protected readonly logsIcon = faFileLines;
+  protected readonly sources = LOG_SOURCES;
   protected readonly selectedSource = signal<LogSource>('playback');
   private readonly parsedDomainLogCache = new Map<string, unknown>();
+
   protected readonly authLogsDesc = computed(() => [...this.admin.authLogs()].reverse());
   protected readonly playbackLogsDesc = computed(() => [...this.admin.playbackLogs()].reverse());
   protected readonly providerResolveLogsDesc = computed(() => [...this.admin.providerResolveLogs()].reverse());
   protected readonly transportLogsDesc = computed(() => [...this.admin.transportLogs()].reverse());
+
+  protected readonly domainEntries = computed<DomainLogEntry[]>(() => {
+    switch (this.selectedSource()) {
+      case 'auth': return this.authLogsDesc();
+      case 'playback': return this.playbackLogsDesc();
+      case 'provider': return this.providerResolveLogsDesc();
+      default: return [];
+    }
+  });
+
+  protected readonly isEmpty = computed(() =>
+    this.selectedSource() === 'transport'
+      ? this.transportLogsDesc().length === 0
+      : this.domainEntries().length === 0
+  );
+
+  protected readonly emptyMessage = computed(() => EMPTY_MESSAGES[this.selectedSource()]);
+
   protected readonly selectedTitle = computed(() =>
-    this.selectedSource() === 'auth'
-      ? 'Auth'
-      : this.selectedSource() === 'playback'
-      ? 'Playback'
-      : this.selectedSource() === 'provider'
-        ? 'Provider Resolve'
-        : 'Transport'
+    LOG_SOURCES.find((cfg) => cfg.source === this.selectedSource())?.title ?? ''
   );
-  protected readonly selectedPath = computed(() =>
-    this.selectedSource() === 'auth'
-      ? this.admin.authLogPath() || '/data/auth.log'
-      : this.selectedSource() === 'playback'
-      ? this.admin.playbackLogPath() || '/data/playback.log'
-      : this.selectedSource() === 'provider'
-        ? this.admin.providerResolveLogPath() || '/data/provider-resolve.log'
-        : this.admin.transportLogPath() || '/data/nginx-playback-access.log'
-  );
-  protected readonly selectedCapacity = computed(() =>
-    this.selectedSource() === 'auth'
-      ? this.admin.authLogCapacity()
-      : this.selectedSource() === 'playback'
-      ? this.admin.playbackLogCapacity()
-      : this.selectedSource() === 'provider'
-        ? this.admin.providerResolveLogCapacity()
-        : this.admin.transportLogCapacity()
-  );
-  protected readonly selectedConnected = computed(() =>
-    this.selectedSource() === 'auth'
-      ? this.admin.authLogsLiveConnected()
-      : this.selectedSource() === 'playback'
-      ? this.admin.playbackLogsLiveConnected()
-      : this.selectedSource() === 'provider'
-        ? this.admin.providerResolveLogsLiveConnected()
-        : this.admin.transportLogsLiveConnected()
-  );
+
+  protected readonly selectedPath = computed(() => {
+    const src = this.selectedSource();
+    const defaultPath = LOG_SOURCES.find((cfg) => cfg.source === src)?.defaultPath ?? '';
+    return this.adminLogPath(src) || defaultPath;
+  });
+
+  protected readonly selectedCapacity = computed(() => {
+    switch (this.selectedSource()) {
+      case 'auth': return this.admin.authLogCapacity();
+      case 'playback': return this.admin.playbackLogCapacity();
+      case 'provider': return this.admin.providerResolveLogCapacity();
+      default: return this.admin.transportLogCapacity();
+    }
+  });
+
+  protected readonly selectedConnected = computed(() => {
+    switch (this.selectedSource()) {
+      case 'auth': return this.admin.authLogsLiveConnected();
+      case 'playback': return this.admin.playbackLogsLiveConnected();
+      case 'provider': return this.admin.providerResolveLogsLiveConnected();
+      default: return this.admin.transportLogsLiveConnected();
+    }
+  });
+
+  private readonly domainToneRules = computed<readonly ToneRule[]>(() => {
+    switch (this.selectedSource()) {
+      case 'auth': return AUTH_TONE_RULES;
+      case 'playback': return PLAYBACK_TONE_RULES;
+      case 'provider': return PROVIDER_TONE_RULES;
+      default: return [];
+    }
+  });
 
   ngOnInit(): void {
     void this.admin.fetchAuthLogs();
@@ -214,8 +266,12 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     this.selectedSource.set(source);
   }
 
-  protected formatPlaybackLogTime(timestampMs: number): string {
-    return new Date(timestampMs).toLocaleString('it-IT', {
+  protected sourcePath(src: LogSourceConfig): string {
+    return this.adminLogPath(src.source) || src.defaultPath;
+  }
+
+  protected formatLogTime(ts: number | string): string {
+    return new Date(ts).toLocaleString('it-IT', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -225,111 +281,16 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected trackAuthLog(_index: number, log: AuthLogEntry): string {
+  protected trackDomainLog(_index: number, log: DomainLogEntry): string {
     return `${log.ts}:${log.message}`;
-  }
-
-  protected authLogTone(log: AuthLogEntry): LogTone {
-    const message = log.message.toLowerCase();
-    if (message.includes('level=error')) return 'error';
-    if (message.includes('level=warn')) return 'warn';
-    if (
-      message.includes('access_revoked') ||
-      message.includes('super_admin_required') ||
-      message.includes('forbidden')
-    ) return 'error';
-    if (
-      message.includes('missing_token') ||
-      message.includes('invalid_token') ||
-      message.includes('unauthenticated')
-    ) return 'warn';
-    return 'info';
-  }
-
-  protected authLogLabel(log: AuthLogEntry): string {
-    return this.logLabel(this.authLogTone(log));
-  }
-
-  protected authLogPayload(log: AuthLogEntry): unknown {
-    return this.parseDomainLogPayload(log.message, log.ts);
-  }
-
-  protected trackPlaybackLog(_index: number, log: PlaybackLogEntry): string {
-    return `${log.ts}:${log.message}`;
-  }
-
-  protected playbackLogTone(log: PlaybackLogEntry): LogTone {
-    const message = log.message.toLowerCase();
-    if (message.includes('level=error')) return 'error';
-    if (message.includes('level=warn')) return 'warn';
-    if (message.includes(' status=499')) return 'cancelled';
-    if (message.includes('fetch-error') || message.includes('write-error') || message.includes('read-error') || message.includes(' status=5')) return 'error';
-    if (message.includes(' status=4')) return 'warn';
-    if (
-      message.includes('level=info event=playlist upstream response') ||
-      message.includes('level=info event=playlist master') ||
-      message.includes('level=info event=playlist media') ||
-      message.includes('status=200') ||
-      message.includes(' playlist=yes') ||
-      message.includes(' master ') ||
-      message.includes(' media ')
-    ) return 'ok';
-    return 'info';
-  }
-
-  protected playbackLogLabel(log: PlaybackLogEntry): string {
-    return this.logLabel(this.playbackLogTone(log));
-  }
-
-  protected playbackLogPayload(log: PlaybackLogEntry): unknown {
-    return this.parseDomainLogPayload(log.message, log.ts);
-  }
-
-  protected trackProviderResolveLog(_index: number, log: ProviderResolveLogEntry): string {
-    return `${log.ts}:${log.message}`;
-  }
-
-  protected providerResolveLogTone(log: ProviderResolveLogEntry): LogTone {
-    const message = log.message.toLowerCase();
-    if (message.includes('level=error')) return 'error';
-    if (message.includes('level=warn')) return 'warn';
-    if (message.includes('status=499')) return 'cancelled';
-    if (
-      message.includes('fetch failed') ||
-      message.includes('invalid') ||
-      message.includes('missing ') ||
-      message.includes('unexpected ') ||
-      message.includes(' status=5')
-    ) return 'error';
-    if (
-      message.includes('failed') ||
-      message.includes('low_confidence') ||
-      message.includes('no_match') ||
-      message.includes(' status=4')
-    ) return 'warn';
-    if (
-      message.includes('resolved') ||
-      message.includes('auto_confirmed') ||
-      message.includes('status=200')
-    ) return 'ok';
-    return 'info';
-  }
-
-  protected providerResolveLogLabel(log: ProviderResolveLogEntry): string {
-    return this.logLabel(this.providerResolveLogTone(log));
-  }
-
-  protected providerResolveLogPayload(log: ProviderResolveLogEntry): unknown {
-    return this.parseDomainLogPayload(log.message, log.ts);
   }
 
   protected trackTransportLog(_index: number, log: TransportLogEntry): string {
     return `${log.ts}:${log.kind}:${log.request_uri}:${log.status}:${log.upstream_status}:${log.denied_by}`;
   }
 
-  protected transportLogSummary(log: TransportLogEntry): string {
-    const denied = log.denied_by && log.denied_by !== '-' ? ` denied_by=${log.denied_by}` : '';
-    return `${log.kind.toUpperCase()} ${log.status} upstream=${log.upstream_status} host=${log.upstream_host}${denied} rt=${log.request_time}s urt=${log.upstream_response_time}s`;
+  protected domainLogTone(log: DomainLogEntry): LogTone {
+    return matchTone(log.message, this.domainToneRules());
   }
 
   protected transportLogTone(log: TransportLogEntry): LogTone {
@@ -342,34 +303,38 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     return 'info';
   }
 
-  protected transportLogLabel(log: TransportLogEntry): string {
-    return this.logLabel(this.transportLogTone(log));
-  }
-
-  protected transportLogPayload(log: TransportLogEntry): unknown {
-    return log;
-  }
-
-  private logLabel(tone: LogTone): string {
-    return tone === 'ok' ? 'OK' : tone === 'warn' ? 'WARN' : tone === 'error' ? 'ERR' : tone === 'cancelled' ? 'CANCELLED' : 'INFO';
-  }
-
-  private parseDomainLogPayload(message: string, timestampMs: number): unknown {
-    const cached = this.parsedDomainLogCache.get(message);
+  protected domainLogPayload(log: DomainLogEntry): unknown {
+    const cached = this.parsedDomainLogCache.get(log.message);
     if (cached !== undefined) return cached;
 
-    const parsed = this.parseDomainLogMessage(message, timestampMs);
-    this.parsedDomainLogCache.set(message, parsed);
+    const parsed = this.parseDomainLogMessage(log.message);
+    this.parsedDomainLogCache.set(log.message, parsed);
     return parsed;
   }
 
-  private parseDomainLogMessage(message: string, timestampMs: number): unknown {
+  protected logLabel(tone: LogTone): string {
+    switch (tone) {
+      case 'ok': return 'OK';
+      case 'warn': return 'WARN';
+      case 'error': return 'ERR';
+      case 'cancelled': return 'CANCELLED';
+      default: return 'INFO';
+    }
+  }
+
+  private adminLogPath(src: LogSource): string {
+    switch (src) {
+      case 'auth': return this.admin.authLogPath();
+      case 'playback': return this.admin.playbackLogPath();
+      case 'provider': return this.admin.providerResolveLogPath();
+      default: return this.admin.transportLogPath();
+    }
+  }
+
+  private parseDomainLogMessage(message: string): unknown {
     const prefixMatch = /^\[([^\]]+)\]\s+(.*)$/.exec(message);
     if (!prefixMatch) {
-      return {
-        ts: timestampMs,
-        message
-      };
+      return { message };
     }
 
     const [, domain, rest0] = prefixMatch;
@@ -402,7 +367,6 @@ export class AdminLogsTabComponent implements OnInit, OnDestroy {
     }
 
     return {
-      ts: timestampMs,
       domain,
       ...(level ? { level } : {}),
       event,
