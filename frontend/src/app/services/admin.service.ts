@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, type WritableSignal } from '@angular/core';
 import type {
   AdminTokenRow,
   AdminSession,
@@ -9,6 +9,23 @@ import type {
   AdminQueueStatus
 } from '../models';
 import { LiveSocketService, type LiveSocketController } from './live-socket.service';
+
+interface LogStreamConfig<T> {
+  wsPath: string;
+  fetchPath: string;
+  messageType: string;
+  logsSignal: WritableSignal<T[]>;
+  capacitySignal: WritableSignal<number>;
+  pathSignal: WritableSignal<string>;
+  connectedSignal: WritableSignal<boolean>;
+}
+
+interface LogsPayload<T> {
+  count: number;
+  capacity: number;
+  path: string;
+  logs: T[];
+}
 
 interface TokenCreateResponse {
   token: string;
@@ -25,50 +42,6 @@ interface RevokeResponse {
 interface AdminSessionsSocketMessage {
   type: 'sessions';
   sessions: AdminSession[];
-}
-
-interface PlaybackLogsResponse {
-  count: number;
-  capacity: number;
-  path: string;
-  logs: PlaybackLogEntry[];
-}
-
-interface AuthLogsResponse {
-  count: number;
-  capacity: number;
-  path: string;
-  logs: AuthLogEntry[];
-}
-
-interface AdminAuthLogsSocketMessage extends AuthLogsResponse {
-  type: 'auth-logs';
-}
-
-interface AdminPlaybackLogsSocketMessage extends PlaybackLogsResponse {
-  type: 'playback-logs';
-}
-
-interface ProviderResolveLogsResponse {
-  count: number;
-  capacity: number;
-  path: string;
-  logs: ProviderResolveLogEntry[];
-}
-
-interface AdminProviderResolveLogsSocketMessage extends ProviderResolveLogsResponse {
-  type: 'provider-resolve-logs';
-}
-
-interface TransportLogsResponse {
-  count: number;
-  capacity: number;
-  path: string;
-  logs: TransportLogEntry[];
-}
-
-interface AdminTransportLogsSocketMessage extends TransportLogsResponse {
-  type: 'transport-logs';
 }
 
 @Injectable({ providedIn: 'root' })
@@ -118,65 +91,87 @@ export class AdminService {
       }
     });
 
-    this.authLogsSocket = this.liveSocket.create({
-      path: '/api/admin/auth-logs/ws',
-      onConnected: (connected) => this.authLogsLiveConnected.set(connected),
-      onMessage: (event) => {
-        try {
-          const message = JSON.parse(event.data as string) as AdminAuthLogsSocketMessage;
-          if (message.type === 'auth-logs') {
-            this.authLogs.set(message.logs);
-            this.authLogCapacity.set(message.capacity);
-            this.authLogPath.set(message.path);
-          }
-        } catch {}
-      }
-    });
+    this.authLogsSocket = this.createLogStreamSocket(this.authLogStreamConfig);
+    this.playbackLogsSocket = this.createLogStreamSocket(this.playbackLogStreamConfig);
+    this.providerResolveLogsSocket = this.createLogStreamSocket(this.providerResolveLogStreamConfig);
+    this.transportLogsSocket = this.createLogStreamSocket(this.transportLogStreamConfig);
+  }
 
-    this.playbackLogsSocket = this.liveSocket.create({
-      path: '/api/admin/playback-logs/ws',
-      onConnected: (connected) => this.playbackLogsLiveConnected.set(connected),
-      onMessage: (event) => {
-        try {
-          const message = JSON.parse(event.data as string) as AdminPlaybackLogsSocketMessage;
-          if (message.type === 'playback-logs') {
-            this.playbackLogs.set(message.logs);
-            this.playbackLogCapacity.set(message.capacity);
-            this.playbackLogPath.set(message.path);
-          }
-        } catch {}
-      }
-    });
+  private get authLogStreamConfig(): LogStreamConfig<AuthLogEntry> {
+    return {
+      wsPath: '/api/admin/auth-logs/ws',
+      fetchPath: '/api/admin/auth-logs',
+      messageType: 'auth-logs',
+      logsSignal: this.authLogs,
+      capacitySignal: this.authLogCapacity,
+      pathSignal: this.authLogPath,
+      connectedSignal: this.authLogsLiveConnected
+    };
+  }
 
-    this.providerResolveLogsSocket = this.liveSocket.create({
-      path: '/api/admin/provider-resolve-logs/ws',
-      onConnected: (connected) => this.providerResolveLogsLiveConnected.set(connected),
-      onMessage: (event) => {
-        try {
-          const message = JSON.parse(event.data as string) as AdminProviderResolveLogsSocketMessage;
-          if (message.type === 'provider-resolve-logs') {
-            this.providerResolveLogs.set(message.logs);
-            this.providerResolveLogCapacity.set(message.capacity);
-            this.providerResolveLogPath.set(message.path);
-          }
-        } catch {}
-      }
-    });
+  private get playbackLogStreamConfig(): LogStreamConfig<PlaybackLogEntry> {
+    return {
+      wsPath: '/api/admin/playback-logs/ws',
+      fetchPath: '/api/admin/playback-logs',
+      messageType: 'playback-logs',
+      logsSignal: this.playbackLogs,
+      capacitySignal: this.playbackLogCapacity,
+      pathSignal: this.playbackLogPath,
+      connectedSignal: this.playbackLogsLiveConnected
+    };
+  }
 
-    this.transportLogsSocket = this.liveSocket.create({
-      path: '/api/admin/transport-logs/ws',
-      onConnected: (connected) => this.transportLogsLiveConnected.set(connected),
+  private get providerResolveLogStreamConfig(): LogStreamConfig<ProviderResolveLogEntry> {
+    return {
+      wsPath: '/api/admin/provider-resolve-logs/ws',
+      fetchPath: '/api/admin/provider-resolve-logs',
+      messageType: 'provider-resolve-logs',
+      logsSignal: this.providerResolveLogs,
+      capacitySignal: this.providerResolveLogCapacity,
+      pathSignal: this.providerResolveLogPath,
+      connectedSignal: this.providerResolveLogsLiveConnected
+    };
+  }
+
+  private get transportLogStreamConfig(): LogStreamConfig<TransportLogEntry> {
+    return {
+      wsPath: '/api/admin/transport-logs/ws',
+      fetchPath: '/api/admin/transport-logs',
+      messageType: 'transport-logs',
+      logsSignal: this.transportLogs,
+      capacitySignal: this.transportLogCapacity,
+      pathSignal: this.transportLogPath,
+      connectedSignal: this.transportLogsLiveConnected
+    };
+  }
+
+  private createLogStreamSocket<T>(cfg: LogStreamConfig<T>): LiveSocketController {
+    return this.liveSocket.create({
+      path: cfg.wsPath,
+      onConnected: (connected) => cfg.connectedSignal.set(connected),
       onMessage: (event) => {
         try {
-          const message = JSON.parse(event.data as string) as AdminTransportLogsSocketMessage;
-          if (message.type === 'transport-logs') {
-            this.transportLogs.set(message.logs);
-            this.transportLogCapacity.set(message.capacity);
-            this.transportLogPath.set(message.path);
+          const message = JSON.parse(event.data as string) as LogsPayload<T> & { type: string };
+          if (message.type === cfg.messageType) {
+            cfg.logsSignal.set(message.logs);
+            cfg.capacitySignal.set(message.capacity);
+            cfg.pathSignal.set(message.path);
           }
         } catch {}
       }
     });
+  }
+
+  private async fetchLogStream<T>(cfg: LogStreamConfig<T>): Promise<void> {
+    try {
+      const res = await fetch(cfg.fetchPath);
+      if (res.ok) {
+        const data = await res.json() as LogsPayload<T>;
+        cfg.logsSignal.set(data.logs);
+        cfg.capacitySignal.set(data.capacity);
+        cfg.pathSignal.set(data.path);
+      }
+    } catch {}
   }
 
   async fetchTokens(): Promise<void> {
@@ -266,51 +261,19 @@ export class AdminService {
   }
 
   async fetchPlaybackLogs(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/playback-logs');
-      if (res.ok) {
-        const data = await res.json() as PlaybackLogsResponse;
-        this.playbackLogs.set(data.logs);
-        this.playbackLogCapacity.set(data.capacity);
-        this.playbackLogPath.set(data.path);
-      }
-    } catch {}
+    return this.fetchLogStream(this.playbackLogStreamConfig);
   }
 
   async fetchAuthLogs(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/auth-logs');
-      if (res.ok) {
-        const data = await res.json() as AuthLogsResponse;
-        this.authLogs.set(data.logs);
-        this.authLogCapacity.set(data.capacity);
-        this.authLogPath.set(data.path);
-      }
-    } catch {}
+    return this.fetchLogStream(this.authLogStreamConfig);
   }
 
   async fetchProviderResolveLogs(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/provider-resolve-logs');
-      if (res.ok) {
-        const data = await res.json() as ProviderResolveLogsResponse;
-        this.providerResolveLogs.set(data.logs);
-        this.providerResolveLogCapacity.set(data.capacity);
-        this.providerResolveLogPath.set(data.path);
-      }
-    } catch {}
+    return this.fetchLogStream(this.providerResolveLogStreamConfig);
   }
 
   async fetchTransportLogs(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/transport-logs');
-      if (res.ok) {
-        const data = await res.json() as TransportLogsResponse;
-        this.transportLogs.set(data.logs);
-        this.transportLogCapacity.set(data.capacity);
-        this.transportLogPath.set(data.path);
-      }
-    } catch {}
+    return this.fetchLogStream(this.transportLogStreamConfig);
   }
 
   async fetchQueueStatus(): Promise<void> {

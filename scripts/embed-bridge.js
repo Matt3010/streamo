@@ -81,7 +81,8 @@
   }
 
   function handleBridgeAck(event) {
-    var data = event && event.data;
+    if (!event || event.source !== window.parent) return;
+    var data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type !== 'PLAYER_BRIDGE_ACK' || data.event !== 'next-episode') return;
     clearNextEpisodeAckTimer();
