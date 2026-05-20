@@ -7,15 +7,15 @@
   overflow: hidden;
 }
 
-.view-share-button.ui-button-icon-outline,
 .view-toggle .ui-button-toggle-icon {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
-}
-
-.view-toggle .ui-button-toggle-icon {
+  /* Match .ui-button-icon-outline (36×36) so the toggle group has the same
+   * footprint as the share button next to it — both read as "icon controls"
+   * at the same visual weight. Square corners because the group wrapper
+   * already has the rounded container. */
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
   border-radius: 0;
 }
 
