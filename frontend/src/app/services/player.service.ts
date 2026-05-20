@@ -1,6 +1,6 @@
 import { Injectable, signal, computed, inject, untracked } from '@angular/core';
 import { TmdbService } from './tmdb.service';
-import { ProviderResolveService } from './provider-resolve.service';
+import { ProviderResolveService, type ProviderManualRefreshState } from './provider-resolve.service';
 import { ProgressService } from './progress.service';
 import { WatchlistService } from './watchlist.service';
 import { HistoryService } from './history.service';
@@ -59,6 +59,8 @@ export class PlayerService {
   readonly iframeSrc = signal('');
   readonly playbackAvailability = signal<PlaybackAvailability>('idle');
   readonly playbackUnavailableMessage = signal<string | null>(null);
+  readonly playbackUnavailableReason = signal<ProviderResolveFailureReason | null>(null);
+  readonly providerManualRefreshState = signal<ProviderManualRefreshState | null>(null);
 
   // Playback tracking
   readonly resumeText = signal('');
@@ -166,6 +168,8 @@ export class PlayerService {
     this.playbackResolveSeq += 1;
     this.playbackAvailability.set('resolving');
     this.playbackUnavailableMessage.set(null);
+    this.playbackUnavailableReason.set(null);
+    this.providerManualRefreshState.set(null);
     this.seasons.set([]);
     this.episodes.set([]);
     this.seriesProgress.set(new Map());
@@ -271,6 +275,8 @@ export class PlayerService {
     this.playbackResolveSeq += 1;
     this.playbackAvailability.set('idle');
     this.playbackUnavailableMessage.set(null);
+    this.playbackUnavailableReason.set(null);
+    this.providerManualRefreshState.set(null);
     // Invalidate any in-flight applyResumeProgress so it can't write to a
     // freshly-cleared pendingVideoUrl after the page is gone.
     this.urlSeq++;
@@ -576,6 +582,7 @@ export class PlayerService {
     this.playbackResolveSeq += 1;
     this.playbackAvailability.set('resolving');
     this.playbackUnavailableMessage.set(null);
+    this.playbackUnavailableReason.set(null);
     return this.playbackResolveSeq;
   }
 
@@ -591,11 +598,13 @@ export class PlayerService {
     this.pendingVideoUrl = embedUrl;
     this.playbackAvailability.set('ready');
     this.playbackUnavailableMessage.set(null);
+    this.playbackUnavailableReason.set(null);
     return true;
   }
 
   private setPlaybackUnavailable(reason: ProviderResolveFailureReason | null): void {
     this.playbackAvailability.set('unavailable');
+    this.playbackUnavailableReason.set(reason ?? 'not_found');
     this.playbackUnavailableMessage.set(
       reason === 'temporarily_unavailable'
         ? 'Riproduzione temporaneamente non disponibile'
@@ -762,8 +771,8 @@ export class PlayerService {
   private async resolvePlaybackTitle(item: TmdbItem, type: MediaType): Promise<ProviderPlaybackTitle | null> {
     const title = (item.title ?? item.name ?? '').trim();
     if (!title) {
-      this.playbackAvailability.set('unavailable');
-      this.playbackUnavailableMessage.set('Titolo non disponibile');
+      this.providerManualRefreshState.set(null);
+      this.setPlaybackUnavailable('not_found');
       return null;
     }
 
@@ -773,6 +782,7 @@ export class PlayerService {
       title,
       item.release_date ?? item.first_air_date ?? null
     );
+    this.providerManualRefreshState.set(result.manualRefresh);
 
     if (!result.resolved) {
       this.setPlaybackUnavailable(result.reason);
@@ -781,7 +791,56 @@ export class PlayerService {
 
     this.playbackAvailability.set('resolving');
     this.playbackUnavailableMessage.set(null);
+    this.playbackUnavailableReason.set(null);
     return result.resolved;
+  }
+
+  async refreshProviderTitleResolution(): Promise<boolean> {
+    const item = this.currentItem();
+    const type = this.currentItemType();
+    if (!item || !type) return false;
+
+    const title = (item.title ?? item.name ?? '').trim();
+    if (!title) {
+      this.setPlaybackUnavailable('not_found');
+      return false;
+    }
+
+    const result = await this.providerResolve.refreshResolve(
+      item.id,
+      type,
+      title,
+      item.release_date ?? item.first_air_date ?? null
+    );
+    this.providerManualRefreshState.set(result.manualRefresh);
+
+    if (result.refreshBlocked) {
+      return false;
+    }
+
+    if (!result.resolved) {
+      this.setPlaybackUnavailable(result.reason);
+      return false;
+    }
+
+    this.playbackTitle = result.resolved;
+    if (type === 'tv') {
+      const season = this.selectedSeason();
+      const episode = this.selectedEpisode();
+      const resolveSeq = this.beginPlaybackResolve();
+      const prepared = await this.setEpisodeUrl(result.resolved, season, episode, resolveSeq);
+      if (!prepared) return false;
+      const seq = ++this.urlSeq;
+      await this.applyResumeProgress(seq, item.id, 'tv', season, episode);
+      return true;
+    }
+
+    const resolveSeq = this.beginPlaybackResolve();
+    const prepared = await this.setMovieUrl(result.resolved, resolveSeq);
+    if (!prepared) return false;
+    const seq = ++this.urlSeq;
+    await this.applyResumeProgress(seq, item.id, 'movie');
+    return true;
   }
 
   private requirePlaybackTitle(): ProviderPlaybackTitle | null {

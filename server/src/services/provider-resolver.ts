@@ -5,6 +5,7 @@ import {
   PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS,
   PROVIDER_CATALOG_LOCALE,
   PROVIDER_RESOLVE_CACHE_TTL,
+  PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS,
   PROVIDER_RESOLVER_DEBUG
 } from '../config';
 import { providerResolveLogger } from './provider-resolve-logs';
@@ -39,6 +40,18 @@ export type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailabl
 export interface ProviderResolveOutcome<T> {
   resolved: T | null;
   reason: ProviderResolveFailureReason | null;
+}
+
+export interface ProviderManualRefreshState {
+  lastTriggeredAt: number | null;
+  nextAllowedAt: number;
+  requiresConfirm: boolean;
+  cooldownSeconds: number;
+}
+
+export interface ProviderResolvedTitleOutcome extends ProviderResolveOutcome<ProviderResolvedTitle> {
+  manualRefresh: ProviderManualRefreshState;
+  refreshBlocked?: boolean;
 }
 
 type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
@@ -128,6 +141,7 @@ interface StoredProviderMappingRow {
   resolved_title: string | null;
   match_status: MatchStatus;
   last_checked_at: number;
+  last_manual_refresh_at: number | null;
 }
 
 const resolveCache = new Map<string, CacheEntry>();
@@ -141,24 +155,25 @@ const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_MS = 30 * 1000;
 const PROVIDER_CATALOG_BASE_URL_REDIS_KEY = 'streamo:provider:catalog-base-url';
 const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_REDIS_KEY = 'streamo:provider:catalog-base-url:refresh-cooldown';
 
-export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderResolveOutcome<ProviderResolvedTitle>> {
+export async function resolveProviderTitle(
+  args: ResolveArgs,
+  options?: { forceRefresh?: boolean }
+): Promise<ProviderResolvedTitleOutcome> {
   const cacheKey = `${args.mediaType}:${args.tmdbId}`;
   const now = Date.now();
-  const cached = resolveCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return {
-      resolved: cached.value,
-      reason: cached.value ? null : 'not_found'
-    };
+  if (!options?.forceRefresh) {
+    const cached = resolveCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return finalizeTitleResolveOutcome(args, cached.value, cached.value ? null : 'not_found');
+    }
   }
 
-  const cachedMapping = await readStoredMapping(args, now);
-  if (cachedMapping !== undefined) {
-    cacheResolve(cacheKey, cachedMapping, now);
-    return {
-      resolved: cachedMapping,
-      reason: cachedMapping ? null : 'not_found'
-    };
+  if (!options?.forceRefresh) {
+    const cachedMapping = await readStoredMapping(args, now);
+    if (cachedMapping !== undefined) {
+      cacheResolve(cacheKey, cachedMapping, now);
+      return finalizeTitleResolveOutcome(args, cachedMapping, cachedMapping ? null : 'not_found');
+    }
   }
 
   const query = args.title.trim();
@@ -170,12 +185,12 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
       candidate: null
     }, now);
     cacheResolve(cacheKey, null, now);
-    return { resolved: null, reason: 'not_found' };
+    return finalizeTitleResolveOutcome(args, null, 'not_found');
   }
 
   const page = await fetchProviderSearchPage(query);
   if (!page) {
-    return { resolved: null, reason: 'temporarily_unavailable' };
+    return finalizeTitleResolveOutcome(args, null, 'temporarily_unavailable');
   }
 
   const titles = extractProviderTitles(page);
@@ -195,10 +210,7 @@ export async function resolveProviderTitle(args: ResolveArgs): Promise<ProviderR
   });
   await upsertMapping(args, persistence, now);
   cacheResolve(cacheKey, match, now);
-  return {
-    resolved: match,
-    reason: match ? null : 'not_found'
-  };
+  return finalizeTitleResolveOutcome(args, match, match ? null : 'not_found');
 }
 
 export async function resolveProviderEpisode(args: {
@@ -273,6 +285,26 @@ export async function resolveProviderMovie(args: {
   return {
     resolved: { embedUrl },
     reason: null
+  };
+}
+
+export async function refreshProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitleOutcome> {
+  const manualRefresh = await readProviderManualRefreshState(args);
+  const now = Math.floor(Date.now() / 1000);
+  if (manualRefresh.nextAllowedAt > now) {
+    return {
+      resolved: null,
+      reason: 'not_found',
+      manualRefresh,
+      refreshBlocked: true
+    };
+  }
+
+  await markProviderManualRefreshTriggered(args, now);
+  const outcome = await resolveProviderTitle(args, { forceRefresh: true });
+  return {
+    ...outcome,
+    manualRefresh: buildProviderManualRefreshState(now)
   };
 }
 
@@ -606,6 +638,18 @@ function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number }
   };
 }
 
+async function finalizeTitleResolveOutcome(
+  args: ResolveArgs,
+  resolved: ProviderResolvedTitle | null,
+  reason: ProviderResolveFailureReason | null
+): Promise<ProviderResolvedTitleOutcome> {
+  return {
+    resolved,
+    reason,
+    manualRefresh: await readProviderManualRefreshState(args)
+  };
+}
+
 async function readStoredMapping(
   args: ResolveArgs,
   nowMs: number
@@ -618,7 +662,8 @@ async function readStoredMapping(
       'provider_slug',
       'resolved_title',
       'match_status',
-      'last_checked_at'
+      'last_checked_at',
+      'last_manual_refresh_at'
     ])
     .where('tmdb_id', '=', args.tmdbId)
     .where('media_type', '=', args.mediaType)
@@ -688,6 +733,52 @@ function toStoredMappingCandidate(
     title: row.resolved_title ?? args.title,
     mediaType: args.mediaType
   };
+}
+
+async function readProviderManualRefreshState(args: ResolveArgs): Promise<ProviderManualRefreshState> {
+  const row = await kdb
+    .selectFrom('provider_title_map')
+    .select('last_manual_refresh_at')
+    .where('tmdb_id', '=', args.tmdbId)
+    .where('media_type', '=', args.mediaType)
+    .where('provider', '=', PROVIDER_NAME)
+    .executeTakeFirst();
+
+  return buildProviderManualRefreshState(row?.last_manual_refresh_at ?? null);
+}
+
+function buildProviderManualRefreshState(lastTriggeredAt: number | null): ProviderManualRefreshState {
+  return {
+    lastTriggeredAt,
+    nextAllowedAt: lastTriggeredAt ? lastTriggeredAt + PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS : 0,
+    requiresConfirm: lastTriggeredAt !== null,
+    cooldownSeconds: PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS
+  };
+}
+
+async function markProviderManualRefreshTriggered(args: ResolveArgs, now: number): Promise<void> {
+  await kdb
+    .insertInto('provider_title_map')
+    .values({
+      tmdb_id: args.tmdbId,
+      media_type: args.mediaType,
+      provider: PROVIDER_NAME,
+      provider_id: null,
+      provider_slug: null,
+      match_status: 'failed',
+      match_confidence: 0,
+      source_title: args.title,
+      resolved_title: null,
+      release_year: extractYear(args.releaseDate ?? null),
+      failure_reason: 'manual_refresh_requested',
+      resolved_at: null,
+      last_checked_at: 0,
+      last_manual_refresh_at: now
+    })
+    .onConflict((oc) => oc.columns(['tmdb_id', 'media_type', 'provider']).doUpdateSet({
+      last_manual_refresh_at: now
+    }))
+    .execute();
 }
 
 async function upsertMapping(

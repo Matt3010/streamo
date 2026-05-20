@@ -105,6 +105,7 @@ interface ProviderTitleMapTable {
   failure_reason: string | null;
   resolved_at: Epoch | null;
   last_checked_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+  last_manual_refresh_at: ColumnType<Epoch | null, Epoch | undefined, Epoch | null>;
 }
 
 export interface Database {

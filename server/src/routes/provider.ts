@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { authenticateToken, respondAuthFailure } from '../middleware/auth';
 import { providerResolveLogger } from '../services/provider-resolve-logs';
 import { toInt } from '../utils/validation';
-import { resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
+import { refreshProviderTitle, resolveProviderEpisode, resolveProviderMovie, resolveProviderTitle } from '../services/provider-resolver';
 
 const router = Router();
 
@@ -41,6 +41,44 @@ router.post('/user/provider/resolve', async (req, res) => {
     });
     console.error('[provider/resolve]', error);
     return res.status(500).json({ error: 'provider_resolve_failed' });
+  }
+});
+
+router.post('/user/provider/refresh-resolve', async (req, res) => {
+  const authed = await authorizeProviderRequest(req, res, 'route refresh resolve auth denied');
+  if (!authed) return;
+
+  const body = req.body || {};
+  const tmdbId = toInt(body.tmdb_id, { min: 1 });
+  const mediaType = body.media_type === 'movie' || body.media_type === 'tv'
+    ? body.media_type
+    : null;
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const releaseDate = typeof body.release_date === 'string' ? body.release_date : null;
+
+  if (!tmdbId || !mediaType || !title) {
+    return res.status(400).json({ error: 'invalid_params' });
+  }
+
+  try {
+    const resolved = await refreshProviderTitle({
+      tmdbId,
+      mediaType,
+      title,
+      releaseDate
+    });
+
+    return res.json(resolved);
+  } catch (error) {
+    providerResolveLogger.error('route refresh resolve failed', {
+      user: req.user?.email ?? '-',
+      tmdbId,
+      mediaType,
+      title,
+      releaseDate
+    });
+    console.error('[provider/refresh-resolve]', error);
+    return res.status(500).json({ error: 'provider_refresh_resolve_failed' });
   }
 });
 

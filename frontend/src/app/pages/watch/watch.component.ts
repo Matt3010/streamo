@@ -23,7 +23,8 @@ import type { CardItem, MediaType, TmdbReview } from '../../models';
 
 type ConfirmAction =
   | { type: 'remove-watchlist' }
-  | { type: 'clear-progress'; season?: number; episode?: number };
+  | { type: 'clear-progress'; season?: number; episode?: number }
+  | { type: 'refresh-provider' };
 
 @Component({
   selector: 'app-watch',
@@ -112,6 +113,14 @@ type ConfirmAction =
               <app-icon name="play"></app-icon>
               <span>{{ primaryPlayLabel() }}</span>
             </button>
+            @if (showManualProviderRefresh()) {
+              <button uiButton type="button"
+                      [disabled]="!canManualRefreshProvider()"
+                      [uiPending]="providerRefreshPending()"
+                      (click)="triggerManualProviderRefresh()">
+                <span>{{ manualProviderRefreshLabel() }}</span>
+              </button>
+            }
             @if (showNextButton() && canStartPlayback()) {
               <button uiButton type="button" (click)="playNext()">
                 <span>Vai al prossimo</span>
@@ -343,7 +352,9 @@ export class WatchComponent {
   protected readonly confirmModalOpen = signal(false);
   protected readonly watchlistPending = signal(false);
   protected readonly clearProgressPendingKey = signal<string | null>(null);
+  protected readonly providerRefreshPending = signal(false);
   private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
+  private readonly manualRefreshNow = signal(Date.now());
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -447,6 +458,7 @@ export class WatchComponent {
   protected readonly confirmModalTitle = computed(() => {
     const action = this.pendingConfirmAction();
     if (action?.type === 'remove-watchlist') return 'Rimuovi Dalla Lista';
+    if (action?.type === 'refresh-provider') return 'Riprova Ricerca Provider';
     return 'Riparti Dall\'Inizio';
   });
 
@@ -454,6 +466,9 @@ export class WatchComponent {
     const action = this.pendingConfirmAction();
     if (action?.type === 'remove-watchlist') {
       return `Vuoi rimuovere ${this.title()} dalla tua lista?`;
+    }
+    if (action?.type === 'refresh-provider') {
+      return 'Vuoi rilanciare manualmente la ricerca del provider per questo titolo?';
     }
     if (this.player.currentItemType() === 'tv') {
       const season = action?.type === 'clear-progress' ? (action.season ?? this.player.selectedSeason()) : this.player.selectedSeason();
@@ -464,13 +479,21 @@ export class WatchComponent {
   });
 
   protected readonly confirmModalWarning = computed(() => {
-    return this.pendingConfirmAction()?.type === 'remove-watchlist'
-      ? 'Potrai sempre riaggiungerlo più tardi.'
-      : 'Ripartirai dall’inizio al prossimo play.';
+    const action = this.pendingConfirmAction()?.type;
+    if (action === 'remove-watchlist') {
+      return 'Potrai sempre riaggiungerlo più tardi.';
+    }
+    if (action === 'refresh-provider') {
+      return 'Usalo solo se pensi che il titolo sia appena comparso sul provider.';
+    }
+    return 'Ripartirai dall’inizio al prossimo play.';
   });
 
   protected readonly confirmModalActionLabel = computed(() => {
-    return this.pendingConfirmAction()?.type === 'remove-watchlist' ? 'Rimuovi' : 'Resetta';
+    const action = this.pendingConfirmAction()?.type;
+    if (action === 'remove-watchlist') return 'Rimuovi';
+    if (action === 'refresh-provider') return 'Riprova';
+    return 'Resetta';
   });
 
   protected readonly clearProgressButtonLabel = computed(() => {
@@ -527,6 +550,25 @@ export class WatchComponent {
 
   protected readonly canStartPlayback = computed(() => this.player.playbackAvailability() === 'ready');
   protected readonly episodesPlayDisabled = computed(() => this.player.playbackAvailability() === 'unavailable');
+  protected readonly showManualProviderRefresh = computed(() => (
+    this.player.playbackAvailability() === 'unavailable'
+    && this.player.playbackUnavailableReason() === 'not_found'
+    && this.player.providerManualRefreshState() !== null
+  ));
+  protected readonly canManualRefreshProvider = computed(() => {
+    if (!this.showManualProviderRefresh()) return false;
+    const state = this.player.providerManualRefreshState();
+    return !state || state.nextAllowedAt <= Math.floor(this.manualRefreshNow() / 1000);
+  });
+  protected readonly manualProviderRefreshLabel = computed(() => {
+    if (!this.showManualProviderRefresh()) return '';
+    const state = this.player.providerManualRefreshState();
+    const now = Math.floor(this.manualRefreshNow() / 1000);
+    if (!state || state.nextAllowedAt <= now) {
+      return 'Riprova ricerca provider';
+    }
+    return `Riprova tra ${formatCooldownLabel(state.nextAllowedAt - now)}`;
+  });
 
   protected readonly primaryPlayLabel = computed(() => {
     if (this.player.playbackAvailability() === 'unavailable') {
@@ -603,6 +645,13 @@ export class WatchComponent {
       this.player.cleanup();
       this.background.clear();
     });
+
+    const refreshTimer = window.setInterval(() => {
+      this.manualRefreshNow.set(Date.now());
+    }, 30_000);
+    this.destroyRef.onDestroy(() => {
+      clearInterval(refreshTimer);
+    });
   }
 
   private async loadRecommendations(id: string, type: MediaType): Promise<void> {
@@ -672,6 +721,18 @@ export class WatchComponent {
     this.confirmModalOpen.set(true);
   }
 
+  protected triggerManualProviderRefresh(): void {
+    if (!this.canManualRefreshProvider()) {
+      return;
+    }
+    if (this.player.providerManualRefreshState()?.requiresConfirm) {
+      this.pendingConfirmAction.set({ type: 'refresh-provider' });
+      this.confirmModalOpen.set(true);
+      return;
+    }
+    void runWithPending(this.providerRefreshPending, () => this.player.refreshProviderTitleResolution());
+  }
+
   protected cancelConfirmedAction(): void {
     this.pendingConfirmAction.set(null);
   }
@@ -681,6 +742,10 @@ export class WatchComponent {
     this.pendingConfirmAction.set(null);
     if (action?.type === 'remove-watchlist') {
       void runWithPending(this.watchlistPending, () => this.player.toggleWatchlist());
+      return;
+    }
+    if (action?.type === 'refresh-provider') {
+      void runWithPending(this.providerRefreshPending, () => this.player.refreshProviderTitleResolution());
       return;
     }
     if (action?.type === 'clear-progress') {
@@ -809,6 +874,15 @@ function formatTimeCompact(seconds: number): string {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function formatCooldownLabel(seconds: number): string {
+  const totalMinutes = Math.max(1, Math.ceil(seconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
 }
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {

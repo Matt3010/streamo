@@ -20,9 +20,21 @@ interface ProviderResolvedMovie {
 
 type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
 
+export interface ProviderManualRefreshState {
+  lastTriggeredAt: number | null;
+  nextAllowedAt: number;
+  requiresConfirm: boolean;
+  cooldownSeconds: number;
+}
+
 interface ProviderResolveResult<T> {
   resolved: T | null;
   reason: ProviderResolveFailureReason | null;
+}
+
+export interface ProviderResolvedTitleResult extends ProviderResolveResult<ProviderResolvedTitle> {
+  manualRefresh: ProviderManualRefreshState;
+  refreshBlocked?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -36,12 +48,18 @@ export class ProviderResolveService {
     mediaType: MediaType,
     title: string,
     releaseDate?: string | null
-  ): Promise<ProviderResolveResult<ProviderResolvedTitle>> {
+  ): Promise<ProviderResolvedTitleResult> {
     const key = `${mediaType}:${tmdbId}`;
     if (this.titleCache.has(key)) {
       return {
         resolved: this.titleCache.get(key) ?? null,
-        reason: null
+        reason: null,
+        manualRefresh: {
+          lastTriggeredAt: null,
+          nextAllowedAt: 0,
+          requiresConfirm: false,
+          cooldownSeconds: 30 * 60
+        }
       };
     }
 
@@ -57,19 +75,96 @@ export class ProviderResolveService {
         })
       });
       if (!res.ok) {
-        return { resolved: null, reason: 'temporarily_unavailable' };
+        return {
+          resolved: null,
+          reason: 'temporarily_unavailable',
+          manualRefresh: {
+            lastTriggeredAt: null,
+            nextAllowedAt: 0,
+            requiresConfirm: false,
+            cooldownSeconds: 30 * 60
+          }
+        };
       }
-      const data = await res.json() as ProviderResolveResult<ProviderResolvedTitle>;
+      const data = await res.json() as ProviderResolvedTitleResult;
       const resolved = data.resolved ?? null;
       if (resolved) {
         this.titleCache.set(key, resolved);
       }
       return {
         resolved,
-        reason: data.reason ?? null
+        reason: data.reason ?? null,
+        manualRefresh: data.manualRefresh
       };
     } catch {
-      return { resolved: null, reason: 'temporarily_unavailable' };
+      return {
+        resolved: null,
+        reason: 'temporarily_unavailable',
+        manualRefresh: {
+          lastTriggeredAt: null,
+          nextAllowedAt: 0,
+          requiresConfirm: false,
+          cooldownSeconds: 30 * 60
+        }
+      };
+    }
+  }
+
+  async refreshResolve(
+    tmdbId: number,
+    mediaType: MediaType,
+    title: string,
+    releaseDate?: string | null
+  ): Promise<ProviderResolvedTitleResult> {
+    const key = `${mediaType}:${tmdbId}`;
+
+    try {
+      const res = await fetch('/api/user/provider/refresh-resolve', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          tmdb_id: tmdbId,
+          media_type: mediaType,
+          title,
+          release_date: releaseDate ?? null
+        })
+      });
+      if (!res.ok) {
+        return {
+          resolved: null,
+          reason: 'temporarily_unavailable',
+          manualRefresh: {
+            lastTriggeredAt: null,
+            nextAllowedAt: 0,
+            requiresConfirm: true,
+            cooldownSeconds: 30 * 60
+          }
+        };
+      }
+      const data = await res.json() as ProviderResolvedTitleResult;
+      const resolved = data.resolved ?? null;
+      if (resolved) {
+        this.titleCache.set(key, resolved);
+      } else {
+        this.titleCache.delete(key);
+      }
+      return {
+        resolved,
+        reason: data.reason ?? null,
+        manualRefresh: data.manualRefresh,
+        refreshBlocked: data.refreshBlocked === true
+      };
+    } catch {
+      return {
+        resolved: null,
+        reason: 'temporarily_unavailable',
+        manualRefresh: {
+          lastTriggeredAt: null,
+          nextAllowedAt: 0,
+          requiresConfirm: true,
+          cooldownSeconds: 30 * 60
+        }
+      };
     }
   }
 
