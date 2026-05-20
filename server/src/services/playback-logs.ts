@@ -1,32 +1,18 @@
 import path from 'path';
 import type { PlaybackLogEntry } from '../../../shared/types';
-import { createDomainLogger } from './domain-logger';
-import { createMessageLogStore } from './message-log-store';
+import { DEFAULT_LOG_DIR, createTypedLogService } from './message-log-store';
 
-const MAX_PLAYBACK_LOGS = 500;
-const LOG_DIR = process.env.DB_DIR || '/data';
-const LOG_PATH = process.env.PLAYBACK_LOG_PATH || path.join(LOG_DIR, 'playback.log');
+const LOG_PATH = process.env.PLAYBACK_LOG_PATH || path.join(DEFAULT_LOG_DIR, 'playback.log');
 
-const playbackLogStore = createMessageLogStore<PlaybackLogEntry>({
-  maxEntries: MAX_PLAYBACK_LOGS,
+const service = createTypedLogService<PlaybackLogEntry>({
+  domain: 'playback',
+  storeName: 'playback-log',
   logPath: LOG_PATH,
-  name: 'playback-log'
+  maxEntries: 500
 });
 
-export const playbackLogger = createDomainLogger('playback', playbackLogStore.log);
-
-export function listPlaybackLogs(): PlaybackLogEntry[] {
-  return playbackLogStore.list();
-}
-
-export function getPlaybackLogCapacity(): number {
-  return playbackLogStore.getCapacity();
-}
-
-export function getPlaybackLogPath(): string {
-  return playbackLogStore.getPath();
-}
-
-export function subscribePlaybackLogs(listener: () => void): () => void {
-  return playbackLogStore.subscribe(listener);
-}
+export const playbackLogger = service.logger;
+export const listPlaybackLogs = service.list;
+export const getPlaybackLogCapacity = service.getCapacity;
+export const getPlaybackLogPath = service.getPath;
+export const subscribePlaybackLogs = service.subscribe;

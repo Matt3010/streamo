@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import type { MediaType } from '../../../shared/types';
 import { kdb } from '../db';
 import {
@@ -140,7 +141,6 @@ interface StoredProviderMappingRow {
   resolved_title: string | null;
   match_status: MatchStatus;
   last_checked_at: number;
-  last_manual_refresh_at: number | null;
 }
 
 const resolveCache = new Map<string, CacheEntry>();
@@ -156,14 +156,15 @@ const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_REDIS_KEY = 'streamo:provider:c
 
 export async function resolveProviderTitle(
   args: ResolveArgs,
-  options?: { forceRefresh?: boolean }
+  options?: { forceRefresh?: boolean; manualRefreshOverride?: ProviderManualRefreshState }
 ): Promise<ProviderResolvedTitleOutcome> {
   const cacheKey = `${args.mediaType}:${args.tmdbId}`;
   const now = Date.now();
+  const override = options?.manualRefreshOverride;
   if (!options?.forceRefresh) {
     const cached = resolveCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
-      return finalizeTitleResolveOutcome(args, cached.value, cached.value ? null : 'not_found');
+      return finalizeTitleResolveOutcome(args, cached.value, cached.value ? null : 'not_found', override);
     }
   }
 
@@ -171,7 +172,7 @@ export async function resolveProviderTitle(
     const cachedMapping = await readStoredMapping(args, now);
     if (cachedMapping !== undefined) {
       cacheResolve(cacheKey, cachedMapping, now);
-      return finalizeTitleResolveOutcome(args, cachedMapping, cachedMapping ? null : 'not_found');
+      return finalizeTitleResolveOutcome(args, cachedMapping, cachedMapping ? null : 'not_found', override);
     }
   }
 
@@ -184,12 +185,12 @@ export async function resolveProviderTitle(
       candidate: null
     }, now);
     cacheResolve(cacheKey, null, now);
-    return finalizeTitleResolveOutcome(args, null, 'not_found');
+    return finalizeTitleResolveOutcome(args, null, 'not_found', override);
   }
 
   const page = await fetchProviderSearchPage(query);
   if (!page) {
-    return finalizeTitleResolveOutcome(args, null, 'temporarily_unavailable');
+    return finalizeTitleResolveOutcome(args, null, 'temporarily_unavailable', override);
   }
 
   const titles = extractProviderTitles(page);
@@ -209,7 +210,7 @@ export async function resolveProviderTitle(
   });
   await upsertMapping(args, persistence, now);
   cacheResolve(cacheKey, match, now);
-  return finalizeTitleResolveOutcome(args, match, match ? null : 'not_found');
+  return finalizeTitleResolveOutcome(args, match, match ? null : 'not_found', override);
 }
 
 export async function resolveProviderEpisode(args: {
@@ -289,12 +290,24 @@ export async function resolveProviderMovie(args: {
 
 export async function refreshProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitleOutcome> {
   const now = Math.floor(Date.now() / 1000);
-  await markProviderManualRefreshTriggered(args, now);
-  const outcome = await resolveProviderTitle(args, { forceRefresh: true });
-  return {
-    ...outcome,
-    manualRefresh: buildProviderManualRefreshState(now)
-  };
+  const claimed = await tryClaimProviderManualRefreshSlot(args, now);
+  if (!claimed) {
+    // Cooldown still active. Return current cached state without hitting the
+    // provider so concurrent / repeated clicks can't bypass the rate limit.
+    const cacheKey = `${args.mediaType}:${args.tmdbId}`;
+    const cached = resolveCache.get(cacheKey);
+    const resolved = cached && cached.expiresAt > Date.now() ? cached.value : null;
+    return {
+      resolved,
+      reason: resolved ? null : 'not_found',
+      manualRefresh: await readProviderManualRefreshState(args)
+    };
+  }
+
+  return resolveProviderTitle(args, {
+    forceRefresh: true,
+    manualRefreshOverride: buildProviderManualRefreshState(now)
+  });
 }
 
 function cacheResolve(key: string, value: ProviderResolvedTitle | null, now: number): void {
@@ -630,12 +643,13 @@ function finalizeMatch(best: { candidate: ProviderResolvedTitle; score: number }
 async function finalizeTitleResolveOutcome(
   args: ResolveArgs,
   resolved: ProviderResolvedTitle | null,
-  reason: ProviderResolveFailureReason | null
+  reason: ProviderResolveFailureReason | null,
+  manualRefreshOverride?: ProviderManualRefreshState
 ): Promise<ProviderResolvedTitleOutcome> {
   return {
     resolved,
     reason,
-    manualRefresh: await readProviderManualRefreshState(args)
+    manualRefresh: manualRefreshOverride ?? await readProviderManualRefreshState(args)
   };
 }
 
@@ -651,8 +665,7 @@ async function readStoredMapping(
       'provider_slug',
       'resolved_title',
       'match_status',
-      'last_checked_at',
-      'last_manual_refresh_at'
+      'last_checked_at'
     ])
     .where('tmdb_id', '=', args.tmdbId)
     .where('media_type', '=', args.mediaType)
@@ -726,7 +739,7 @@ function toStoredMappingCandidate(
 
 async function readProviderManualRefreshState(args: ResolveArgs): Promise<ProviderManualRefreshState> {
   const row = await kdb
-    .selectFrom('provider_title_map')
+    .selectFrom('provider_manual_refresh_cooldowns')
     .select('last_manual_refresh_at')
     .where('tmdb_id', '=', args.tmdbId)
     .where('media_type', '=', args.mediaType)
@@ -747,29 +760,27 @@ function buildProviderManualRefreshState(lastTriggeredAt: number | null): Provid
   };
 }
 
-async function markProviderManualRefreshTriggered(args: ResolveArgs, now: number): Promise<void> {
-  await kdb
-    .insertInto('provider_title_map')
+async function tryClaimProviderManualRefreshSlot(args: ResolveArgs, now: number): Promise<boolean> {
+  // Atomic: INSERT if no row exists, otherwise UPDATE only if the previous
+  // refresh is older than the cooldown. Concurrent callers race on the same
+  // row and exactly one wins; losers see 0 affected rows.
+  const cutoff = now - PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS;
+  const result = await kdb
+    .insertInto('provider_manual_refresh_cooldowns')
     .values({
       tmdb_id: args.tmdbId,
       media_type: args.mediaType,
       provider: PROVIDER_NAME,
-      provider_id: null,
-      provider_slug: null,
-      match_status: 'failed',
-      match_confidence: 0,
-      source_title: args.title,
-      resolved_title: null,
-      release_year: extractYear(args.releaseDate ?? null),
-      failure_reason: 'manual_refresh_requested',
-      resolved_at: null,
-      last_checked_at: 0,
       last_manual_refresh_at: now
     })
-    .onConflict((oc) => oc.columns(['tmdb_id', 'media_type', 'provider']).doUpdateSet({
-      last_manual_refresh_at: now
-    }))
-    .execute();
+    .onConflict((oc) => oc
+      .columns(['tmdb_id', 'media_type', 'provider'])
+      .doUpdateSet({ last_manual_refresh_at: now })
+      .where(sql<boolean>`provider_manual_refresh_cooldowns.last_manual_refresh_at <= ${cutoff}`)
+    )
+    .executeTakeFirst();
+
+  return (result.numInsertedOrUpdatedRows ?? 0n) > 0n;
 }
 
 async function upsertMapping(
@@ -1225,12 +1236,16 @@ async function refreshProviderCatalogBaseUrl(
     return providerCatalogBaseUrlRefreshInFlight;
   }
 
-  const refreshAllowed = await tryBeginProviderCatalogBaseUrlRefreshCooldown();
-  if (!refreshAllowed) {
-    return null;
-  }
-
+  // Assign the promise synchronously before any await so concurrent callers
+  // see the in-flight promise and share its result. The cooldown gate lives
+  // inside the IIFE: without Redis it always succeeds (single-process dedup
+  // happens via this in-flight promise); with Redis it cross-process-dedups.
   providerCatalogBaseUrlRefreshInFlight = (async () => {
+    const refreshAllowed = await tryBeginProviderCatalogBaseUrlRefreshCooldown();
+    if (!refreshAllowed) {
+      return null;
+    }
+
     const telegraphBaseUrl = await fetchProviderCatalogBaseUrlFromTelegraph();
     if (telegraphBaseUrl) {
       await cacheProviderCatalogBaseUrl(telegraphBaseUrl);

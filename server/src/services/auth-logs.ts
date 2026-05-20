@@ -1,32 +1,18 @@
 import path from 'path';
 import type { AuthLogEntry } from '../../../shared/types';
-import { createDomainLogger } from './domain-logger';
-import { createMessageLogStore } from './message-log-store';
+import { DEFAULT_LOG_DIR, createTypedLogService } from './message-log-store';
 
-const MAX_AUTH_LOGS = 500;
-const LOG_DIR = process.env.DB_DIR || '/data';
-const LOG_PATH = process.env.AUTH_LOG_PATH || path.join(LOG_DIR, 'auth.log');
+const LOG_PATH = process.env.AUTH_LOG_PATH || path.join(DEFAULT_LOG_DIR, 'auth.log');
 
-const authLogStore = createMessageLogStore<AuthLogEntry>({
-  maxEntries: MAX_AUTH_LOGS,
+const service = createTypedLogService<AuthLogEntry>({
+  domain: 'auth',
+  storeName: 'auth-log',
   logPath: LOG_PATH,
-  name: 'auth-log'
+  maxEntries: 500
 });
 
-export const authLogger = createDomainLogger('auth', authLogStore.log);
-
-export function listAuthLogs(): AuthLogEntry[] {
-  return authLogStore.list();
-}
-
-export function getAuthLogCapacity(): number {
-  return authLogStore.getCapacity();
-}
-
-export function getAuthLogPath(): string {
-  return authLogStore.getPath();
-}
-
-export function subscribeAuthLogs(listener: () => void): () => void {
-  return authLogStore.subscribe(listener);
-}
+export const authLogger = service.logger;
+export const listAuthLogs = service.list;
+export const getAuthLogCapacity = service.getCapacity;
+export const getAuthLogPath = service.getPath;
+export const subscribeAuthLogs = service.subscribe;

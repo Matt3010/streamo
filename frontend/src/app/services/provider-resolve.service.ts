@@ -36,6 +36,17 @@ export interface ProviderResolvedTitleResult extends ProviderResolveResult<Provi
   manualRefresh: ProviderManualRefreshState;
 }
 
+const DEFAULT_MANUAL_REFRESH_COOLDOWN_SECONDS = 4 * 60 * 60;
+
+function fallbackManualRefreshState(): ProviderManualRefreshState {
+  return {
+    lastTriggeredAt: null,
+    nextAllowedAt: 0,
+    requiresConfirm: false,
+    cooldownSeconds: DEFAULT_MANUAL_REFRESH_COOLDOWN_SECONDS
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProviderResolveService {
   private readonly titleCache = new Map<string, ProviderResolvedTitle | null>();
@@ -53,12 +64,7 @@ export class ProviderResolveService {
       return {
         resolved: this.titleCache.get(key) ?? null,
         reason: null,
-        manualRefresh: {
-          lastTriggeredAt: null,
-          nextAllowedAt: 0,
-          requiresConfirm: false,
-          cooldownSeconds: 4 * 60 * 60
-        }
+        manualRefresh: fallbackManualRefreshState()
       };
     }
 
@@ -77,12 +83,7 @@ export class ProviderResolveService {
         return {
           resolved: null,
           reason: 'temporarily_unavailable',
-          manualRefresh: {
-            lastTriggeredAt: null,
-            nextAllowedAt: 0,
-            requiresConfirm: false,
-            cooldownSeconds: 4 * 60 * 60
-          }
+          manualRefresh: fallbackManualRefreshState()
         };
       }
       const data = await res.json() as ProviderResolvedTitleResult;
@@ -99,12 +100,7 @@ export class ProviderResolveService {
       return {
         resolved: null,
         reason: 'temporarily_unavailable',
-        manualRefresh: {
-          lastTriggeredAt: null,
-          nextAllowedAt: 0,
-          requiresConfirm: false,
-          cooldownSeconds: 4 * 60 * 60
-        }
+        manualRefresh: fallbackManualRefreshState()
       };
     }
   }
@@ -132,12 +128,7 @@ export class ProviderResolveService {
         return {
           resolved: null,
           reason: 'temporarily_unavailable',
-          manualRefresh: {
-            lastTriggeredAt: null,
-            nextAllowedAt: 0,
-            requiresConfirm: false,
-            cooldownSeconds: 4 * 60 * 60
-          }
+          manualRefresh: fallbackManualRefreshState()
         };
       }
       const data = await res.json() as ProviderResolvedTitleResult;
@@ -156,12 +147,7 @@ export class ProviderResolveService {
       return {
         resolved: null,
         reason: 'temporarily_unavailable',
-        manualRefresh: {
-          lastTriggeredAt: null,
-          nextAllowedAt: 0,
-          requiresConfirm: false,
-          cooldownSeconds: 4 * 60 * 60
-        }
+        manualRefresh: fallbackManualRefreshState()
       };
     }
   }

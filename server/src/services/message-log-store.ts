@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { createDomainLogger, type DomainLogger } from './domain-logger';
+
+export const DEFAULT_LOG_DIR = process.env.DB_DIR || '/data';
 
 export interface MessageLogEntry {
   ts: number;
@@ -19,6 +22,34 @@ export interface MessageLogStore<T extends MessageLogEntry> {
   getCapacity: () => number;
   getPath: () => string;
   subscribe: (listener: () => void) => () => void;
+}
+
+export interface TypedLogService<T extends MessageLogEntry> {
+  logger: DomainLogger;
+  list: () => T[];
+  getCapacity: () => number;
+  getPath: () => string;
+  subscribe: (listener: () => void) => () => void;
+}
+
+export function createTypedLogService<T extends MessageLogEntry>(options: {
+  domain: string;
+  storeName: string;
+  logPath: string;
+  maxEntries: number;
+}): TypedLogService<T> {
+  const store = createMessageLogStore<T>({
+    maxEntries: options.maxEntries,
+    logPath: options.logPath,
+    name: options.storeName
+  });
+  return {
+    logger: createDomainLogger(options.domain, store.log),
+    list: () => store.list(),
+    getCapacity: () => store.getCapacity(),
+    getPath: () => store.getPath(),
+    subscribe: (listener) => store.subscribe(listener)
+  };
 }
 
 export function createMessageLogStore<T extends MessageLogEntry>(

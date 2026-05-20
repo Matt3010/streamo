@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import type { TransportLogEntry } from '../../../shared/types';
+import { DEFAULT_LOG_DIR } from './message-log-store';
 
 const MAX_TRANSPORT_LOGS = 500;
-const LOG_DIR = process.env.DB_DIR || '/data';
-const LOG_PATH = process.env.TRANSPORT_LOG_PATH || path.join(LOG_DIR, 'nginx-playback-access.log');
+const LOG_PATH = process.env.TRANSPORT_LOG_PATH || path.join(DEFAULT_LOG_DIR, 'nginx-playback-access.log');
 const listeners = new Set<() => void>();
 let watching = false;
 
