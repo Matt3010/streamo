@@ -105,7 +105,13 @@ interface ProviderTitleMapTable {
   failure_reason: string | null;
   resolved_at: Epoch | null;
   last_checked_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
-  last_manual_refresh_at: ColumnType<Epoch | null, Epoch | undefined, Epoch | null>;
+}
+
+interface ProviderManualRefreshCooldownsTable {
+  tmdb_id: number;
+  media_type: string;
+  provider: string;
+  last_manual_refresh_at: Epoch;
 }
 
 export interface Database {
@@ -119,4 +125,5 @@ export interface Database {
   invite_tokens: InviteTokensTable;
   share_links: ShareLinksTable;
   provider_title_map: ProviderTitleMapTable;
+  provider_manual_refresh_cooldowns: ProviderManualRefreshCooldownsTable;
 }
