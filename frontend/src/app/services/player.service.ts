@@ -814,10 +814,6 @@ export class PlayerService {
     );
     this.providerManualRefreshState.set(result.manualRefresh);
 
-    if (result.refreshBlocked) {
-      return false;
-    }
-
     if (!result.resolved) {
       this.setPlaybackUnavailable(result.reason);
       return false;

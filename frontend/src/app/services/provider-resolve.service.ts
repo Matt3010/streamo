@@ -34,7 +34,6 @@ interface ProviderResolveResult<T> {
 
 export interface ProviderResolvedTitleResult extends ProviderResolveResult<ProviderResolvedTitle> {
   manualRefresh: ProviderManualRefreshState;
-  refreshBlocked?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -58,7 +57,7 @@ export class ProviderResolveService {
           lastTriggeredAt: null,
           nextAllowedAt: 0,
           requiresConfirm: false,
-          cooldownSeconds: 30 * 60
+          cooldownSeconds: 4 * 60 * 60
         }
       };
     }
@@ -82,7 +81,7 @@ export class ProviderResolveService {
             lastTriggeredAt: null,
             nextAllowedAt: 0,
             requiresConfirm: false,
-            cooldownSeconds: 30 * 60
+            cooldownSeconds: 4 * 60 * 60
           }
         };
       }
@@ -104,7 +103,7 @@ export class ProviderResolveService {
           lastTriggeredAt: null,
           nextAllowedAt: 0,
           requiresConfirm: false,
-          cooldownSeconds: 30 * 60
+          cooldownSeconds: 4 * 60 * 60
         }
       };
     }
@@ -136,8 +135,8 @@ export class ProviderResolveService {
           manualRefresh: {
             lastTriggeredAt: null,
             nextAllowedAt: 0,
-            requiresConfirm: true,
-            cooldownSeconds: 30 * 60
+            requiresConfirm: false,
+            cooldownSeconds: 4 * 60 * 60
           }
         };
       }
@@ -151,8 +150,7 @@ export class ProviderResolveService {
       return {
         resolved,
         reason: data.reason ?? null,
-        manualRefresh: data.manualRefresh,
-        refreshBlocked: data.refreshBlocked === true
+        manualRefresh: data.manualRefresh
       };
     } catch {
       return {
@@ -161,8 +159,8 @@ export class ProviderResolveService {
         manualRefresh: {
           lastTriggeredAt: null,
           nextAllowedAt: 0,
-          requiresConfirm: true,
-          cooldownSeconds: 30 * 60
+          requiresConfirm: false,
+          cooldownSeconds: 4 * 60 * 60
         }
       };
     }

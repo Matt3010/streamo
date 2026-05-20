@@ -115,7 +115,6 @@ type ConfirmAction =
             </button>
             @if (showManualProviderRefresh()) {
               <button uiButton type="button"
-                      [disabled]="!canManualRefreshProvider()"
                       [uiPending]="providerRefreshPending()"
                       (click)="triggerManualProviderRefresh()">
                 <span>{{ manualProviderRefreshLabel() }}</span>
@@ -354,7 +353,6 @@ export class WatchComponent {
   protected readonly clearProgressPendingKey = signal<string | null>(null);
   protected readonly providerRefreshPending = signal(false);
   private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
-  private readonly manualRefreshNow = signal(Date.now());
 
   // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
   // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
@@ -555,19 +553,8 @@ export class WatchComponent {
     && this.player.playbackUnavailableReason() === 'not_found'
     && this.player.providerManualRefreshState() !== null
   ));
-  protected readonly canManualRefreshProvider = computed(() => {
-    if (!this.showManualProviderRefresh()) return false;
-    const state = this.player.providerManualRefreshState();
-    return !state || state.nextAllowedAt <= Math.floor(this.manualRefreshNow() / 1000);
-  });
   protected readonly manualProviderRefreshLabel = computed(() => {
-    if (!this.showManualProviderRefresh()) return '';
-    const state = this.player.providerManualRefreshState();
-    const now = Math.floor(this.manualRefreshNow() / 1000);
-    if (!state || state.nextAllowedAt <= now) {
-      return 'Riprova ricerca provider';
-    }
-    return `Riprova tra ${formatCooldownLabel(state.nextAllowedAt - now)}`;
+    return this.showManualProviderRefresh() ? 'Riprova ricerca provider' : '';
   });
 
   protected readonly primaryPlayLabel = computed(() => {
@@ -646,12 +633,6 @@ export class WatchComponent {
       this.background.clear();
     });
 
-    const refreshTimer = window.setInterval(() => {
-      this.manualRefreshNow.set(Date.now());
-    }, 30_000);
-    this.destroyRef.onDestroy(() => {
-      clearInterval(refreshTimer);
-    });
   }
 
   private async loadRecommendations(id: string, type: MediaType): Promise<void> {
@@ -722,7 +703,7 @@ export class WatchComponent {
   }
 
   protected triggerManualProviderRefresh(): void {
-    if (!this.canManualRefreshProvider()) {
+    if (!this.showManualProviderRefresh()) {
       return;
     }
     if (this.player.providerManualRefreshState()?.requiresConfirm) {
@@ -874,15 +855,6 @@ function formatTimeCompact(seconds: number): string {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
-function formatCooldownLabel(seconds: number): string {
-  const totalMinutes = Math.max(1, Math.ceil(seconds / 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h`;
-  return `${minutes}m`;
 }
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {

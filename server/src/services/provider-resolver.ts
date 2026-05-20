@@ -51,7 +51,6 @@ export interface ProviderManualRefreshState {
 
 export interface ProviderResolvedTitleOutcome extends ProviderResolveOutcome<ProviderResolvedTitle> {
   manualRefresh: ProviderManualRefreshState;
-  refreshBlocked?: boolean;
 }
 
 type MatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'pending_review' | 'failed';
@@ -289,17 +288,7 @@ export async function resolveProviderMovie(args: {
 }
 
 export async function refreshProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitleOutcome> {
-  const manualRefresh = await readProviderManualRefreshState(args);
   const now = Math.floor(Date.now() / 1000);
-  if (manualRefresh.nextAllowedAt > now) {
-    return {
-      resolved: null,
-      reason: 'not_found',
-      manualRefresh,
-      refreshBlocked: true
-    };
-  }
-
   await markProviderManualRefreshTriggered(args, now);
   const outcome = await resolveProviderTitle(args, { forceRefresh: true });
   return {
@@ -748,10 +737,12 @@ async function readProviderManualRefreshState(args: ResolveArgs): Promise<Provid
 }
 
 function buildProviderManualRefreshState(lastTriggeredAt: number | null): ProviderManualRefreshState {
+  const now = Math.floor(Date.now() / 1000);
+  const nextAllowedAt = lastTriggeredAt ? lastTriggeredAt + PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS : 0;
   return {
     lastTriggeredAt,
-    nextAllowedAt: lastTriggeredAt ? lastTriggeredAt + PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS : 0,
-    requiresConfirm: lastTriggeredAt !== null,
+    nextAllowedAt,
+    requiresConfirm: lastTriggeredAt !== null && nextAllowedAt > now,
     cooldownSeconds: PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS
   };
 }
