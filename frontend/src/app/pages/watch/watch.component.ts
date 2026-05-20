@@ -116,7 +116,6 @@ type ConfirmAction =
             </button>
             @if (showManualProviderRefresh()) {
               <button uiButton type="button"
-                      [disabled]="!canManualRefreshProvider()"
                       [uiPending]="providerRefreshPending()"
                       (click)="triggerManualProviderRefresh()">
                 <app-icon name="rotate-left"></app-icon>
@@ -368,7 +367,6 @@ type ConfirmAction =
           <div class="provider-picker-footer">
             <span class="provider-picker-footer-hint">Nessuno è quello giusto?</span>
             <button uiButton="ghost" type="button"
-                    [disabled]="!canRefreshFromPicker()"
                     [uiPending]="providerRefreshPending()"
                     (click)="refreshFromPicker()">
               <app-icon name="rotate-left"></app-icon>
@@ -400,8 +398,6 @@ export class WatchComponent {
   protected readonly watchlistPending = signal(false);
   protected readonly clearProgressPendingKey = signal<string | null>(null);
   protected readonly providerRefreshPending = signal(false);
-  private readonly manualRefreshNow = signal(Math.floor(Date.now() / 1000));
-  private manualRefreshTimer: number | null = null;
   protected readonly providerPickerOpen = signal(false);
   protected readonly providerPickerPending = signal(false);
   private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
@@ -606,23 +602,9 @@ export class WatchComponent {
     && this.player.providerManualRefreshState() !== null
     && this.player.providerCandidates().length === 0
   ));
-  // Cooldown remaining is computed without UI gating so the modal "Rilancia
-  // ricerca" link can show the same countdown even when the outer button is
-  // hidden by the picker-takes-priority rule above.
-  protected readonly providerRefreshCooldownRemaining = computed(() => {
-    const state = this.player.providerManualRefreshState();
-    if (!state) return 0;
-    return Math.max(0, state.nextAllowedAt - this.manualRefreshNow());
-  });
-  protected readonly canManualRefreshProvider = computed(() => (
-    this.showManualProviderRefresh() && this.providerRefreshCooldownRemaining() === 0
+  protected readonly manualProviderRefreshLabel = computed(() => (
+    this.showManualProviderRefresh() ? 'Cerca versioni' : ''
   ));
-  protected readonly manualProviderRefreshLabel = computed(() => {
-    if (!this.showManualProviderRefresh()) return '';
-    const remaining = this.providerRefreshCooldownRemaining();
-    if (remaining === 0) return 'Cerca versioni';
-    return `Cerca tra ${formatCooldownLabel(remaining)}`;
-  });
 
   protected readonly providerCandidates = computed(() => this.player.providerCandidates());
   protected readonly showProviderPicker = computed(() => {
@@ -638,15 +620,7 @@ export class WatchComponent {
   protected readonly providerPickerButtonLabel = computed(() => (
     this.player.providerMatchStatus() === 'failed' ? 'Scegli versione' : 'Cambia versione'
   ));
-  protected readonly canRefreshFromPicker = computed(() => (
-    this.player.providerManualRefreshState() !== null
-    && this.providerRefreshCooldownRemaining() === 0
-  ));
-  protected readonly pickerRefreshLabel = computed(() => {
-    const remaining = this.providerRefreshCooldownRemaining();
-    if (remaining === 0) return 'Aggiorna lista versioni';
-    return `Aggiorna tra ${formatCooldownLabel(remaining)}`;
-  });
+  protected readonly pickerRefreshLabel = computed(() => 'Aggiorna lista versioni');
 
   protected readonly showUnavailableHint = computed(() => (
     this.player.playbackAvailability() === 'unavailable'
@@ -728,29 +702,7 @@ export class WatchComponent {
       void this.loadReviews(id, type);
     });
 
-    // Tick once per second only while the manual-refresh button is visible
-    // OR the picker modal is open (which also shows a countdown on its
-    // "Rilancia ricerca completa" link) AND a cooldown is active.
-    effect(() => {
-      const visibleCountdown = this.showManualProviderRefresh() || this.providerPickerOpen();
-      const needsTimer = visibleCountdown && this.providerRefreshCooldownRemaining() > 0;
-      if (needsTimer) {
-        if (this.manualRefreshTimer === null) {
-          this.manualRefreshTimer = window.setInterval(() => {
-            this.manualRefreshNow.set(Math.floor(Date.now() / 1000));
-          }, 1000);
-        }
-      } else if (this.manualRefreshTimer !== null) {
-        clearInterval(this.manualRefreshTimer);
-        this.manualRefreshTimer = null;
-      }
-    });
-
     this.destroyRef.onDestroy(() => {
-      if (this.manualRefreshTimer !== null) {
-        clearInterval(this.manualRefreshTimer);
-        this.manualRefreshTimer = null;
-      }
       this.player.cleanup();
       this.background.clear();
     });
@@ -825,9 +777,7 @@ export class WatchComponent {
   }
 
   protected triggerManualProviderRefresh(): void {
-    if (!this.canManualRefreshProvider()) {
-      return;
-    }
+    if (this.providerRefreshPending()) return;
     if (this.player.providerManualRefreshState()?.requiresConfirm) {
       this.pendingConfirmAction.set({ type: 'refresh-provider' });
       this.confirmModalOpen.set(true);
@@ -859,7 +809,12 @@ export class WatchComponent {
   }
 
   protected refreshFromPicker(): void {
-    if (!this.canRefreshFromPicker() || this.providerRefreshPending()) return;
+    if (this.providerRefreshPending()) return;
+    if (this.player.providerManualRefreshState()?.requiresConfirm) {
+      this.pendingConfirmAction.set({ type: 'refresh-provider' });
+      this.confirmModalOpen.set(true);
+      return;
+    }
     // Stay in the modal — the candidates signal will repopulate from the
     // refresh response and the list updates in place.
     void runWithPending(this.providerRefreshPending, () => this.player.refreshProviderTitleResolution());
@@ -1008,15 +963,6 @@ function formatTimeCompact(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-function formatCooldownLabel(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const totalMinutes = Math.ceil(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h`;
-  return `${minutes}m`;
-}
 
 function formatRuntime(item: { runtime?: number; episode_run_time?: number[] }, type: MediaType | null): string {
   if (type === 'movie') {

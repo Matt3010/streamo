@@ -307,23 +307,12 @@ export async function resolveProviderMovie(args: {
 }
 
 export async function refreshProviderTitle(args: ResolveArgs): Promise<ProviderResolvedTitleOutcome> {
+  // No server-side cooldown gate: every manual click triggers a fresh
+  // provider query. The frontend confirmation modal is the only friction
+  // against accidental spam. We still record the timestamp so the UI can
+  // show "you tried X minutes ago" if it wants to.
   const now = Math.floor(Date.now() / 1000);
-  const claimed = await tryClaimProviderManualRefreshSlot(args, now);
-  if (!claimed) {
-    // Cooldown still active. Return current cached state without hitting the
-    // provider so concurrent / repeated clicks can't bypass the rate limit.
-    const cacheKey = `${args.mediaType}:${args.tmdbId}`;
-    const cached = resolveCache.get(cacheKey);
-    const fresh = cached && cached.expiresAt > Date.now();
-    const resolved = fresh ? cached.value : null;
-    return {
-      resolved,
-      reason: resolved ? null : 'not_found',
-      manualRefresh: await readProviderManualRefreshState(args),
-      candidates: fresh ? cached.candidates : [],
-      matchStatus: fresh ? cached.matchStatus : null
-    };
-  }
+  await markProviderManualRefresh(args, now);
 
   return resolveProviderTitle(args, {
     forceRefresh: true,
@@ -893,35 +882,23 @@ async function readManualRefreshCooldownAnchor(args: ResolveArgs): Promise<numbe
 }
 
 function buildProviderManualRefreshState(lastTriggeredAt: number | null): ProviderManualRefreshState {
-  const now = Math.floor(Date.now() / 1000);
+  // `requiresConfirm` decouples from cooldown timing: once the user has
+  // manually triggered a refresh at least once, future clicks always go
+  // through the confirmation modal so accidental spam is filtered by an
+  // explicit "sei sicuro?" rather than an artificial wait.
   const nextAllowedAt = lastTriggeredAt ? lastTriggeredAt + PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS : 0;
   return {
     lastTriggeredAt,
     nextAllowedAt,
-    requiresConfirm: lastTriggeredAt !== null && nextAllowedAt > now,
+    requiresConfirm: lastTriggeredAt !== null,
     cooldownSeconds: PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS
   };
 }
 
-async function tryClaimProviderManualRefreshSlot(args: ResolveArgs, now: number): Promise<boolean> {
-  const cutoff = now - PROVIDER_MANUAL_REFRESH_COOLDOWN_SECONDS;
-
-  // Auto-resolve attempts (tracked via provider_title_map.last_checked_at)
-  // also count toward the manual cooldown: there's no point clicking
-  // "Riprova" right after the system has just queried the provider.
-  const titleRow = await kdb
-    .selectFrom('provider_title_map')
-    .select('last_checked_at')
-    .where('tmdb_id', '=', args.tmdbId)
-    .where('media_type', '=', args.mediaType)
-    .where('provider', '=', PROVIDER_NAME)
-    .executeTakeFirst();
-  if (titleRow && titleRow.last_checked_at > cutoff) return false;
-
-  // Atomic: INSERT if no row exists, otherwise UPDATE only if the previous
-  // manual refresh is older than the cooldown. Concurrent manual callers
-  // race on the same row and exactly one wins; losers see 0 affected rows.
-  const result = await kdb
+async function markProviderManualRefresh(args: ResolveArgs, now: number): Promise<void> {
+  // Unconditional upsert — no rate limit, no race-gate. Records when the
+  // user last manually retried so the frontend can drive `requiresConfirm`.
+  await kdb
     .insertInto('provider_manual_refresh_cooldowns')
     .values({
       tmdb_id: args.tmdbId,
@@ -932,11 +909,8 @@ async function tryClaimProviderManualRefreshSlot(args: ResolveArgs, now: number)
     .onConflict((oc) => oc
       .columns(['tmdb_id', 'media_type', 'provider'])
       .doUpdateSet({ last_manual_refresh_at: now })
-      .where(sql<boolean>`provider_manual_refresh_cooldowns.last_manual_refresh_at <= ${cutoff}`)
     )
-    .executeTakeFirst();
-
-  return (result.numInsertedOrUpdatedRows ?? 0n) > 0n;
+    .execute();
 }
 
 async function upsertMapping(
