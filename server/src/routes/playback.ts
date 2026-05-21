@@ -2,6 +2,7 @@ import { Router, type Request, type Response as ExpressResponse } from 'express'
 import { authenticateToken, respondAuthFailure } from '../middleware/auth';
 import { playbackLogger } from '../services/playback-logs';
 import { fetchWithTimeout } from '../utils/fetch';
+import { hasValidVixcloudSignature } from '../utils/vix-token';
 
 /* Higher than the 8s default used for TMDB / provider search because the
  * playlist proxy sits on the playback critical path — a slow vixcloud
@@ -68,19 +69,26 @@ router.get(/^\/playback\/playlist\/(.*)$/, async (req, res) => {
 
 async function authorizePlaybackRequest(req: Request, res: ExpressResponse, upstreamUrl: string): Promise<boolean> {
   const result = await authenticateToken(req.cookies?.token);
-  if (!result.user) {
-    playbackLogger.warn('playlist auth denied', {
-      reason: result.error ?? 'unauthenticated',
-      upstream: upstreamUrl,
-      requestUri: req.originalUrl || req.url,
-      ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-'
-    });
-    respondAuthFailure(req, res, result.error ?? 'unauthenticated', 'playback request auth denied');
-    return false;
+  if (result.user) {
+    req.user = result.user;
+    return true;
   }
 
-  req.user = result.user;
-  return true;
+  // Bypass for AirPlay/Cast: vixcloud-signed URLs with non-expired
+  // `token=&expires=` are accepted in lieu of the session cookie since the
+  // remote device fetches the stream directly and can't carry our cookie.
+  if (hasValidVixcloudSignature(req.originalUrl || req.url)) {
+    return true;
+  }
+
+  playbackLogger.warn('playlist auth denied', {
+    reason: result.error ?? 'unauthenticated',
+    upstream: upstreamUrl,
+    requestUri: req.originalUrl || req.url,
+    ip: req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '-'
+  });
+  respondAuthFailure(req, res, result.error ?? 'unauthenticated', 'playback request auth denied');
+  return false;
 }
 
 function rewritePlaylist(body: string): string {

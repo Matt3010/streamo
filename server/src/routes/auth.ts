@@ -5,7 +5,8 @@ import rateLimit from 'express-rate-limit';
 import { sql } from 'kysely';
 import { kdb, withTx } from '../db';
 import { EMAIL_RE, SUPER_ADMIN_EMAIL } from '../config';
-import { requireAuth, setAuthCookie } from '../middleware/auth';
+import { authenticateToken, requireAuth, respondAuthFailure, setAuthCookie } from '../middleware/auth';
+import { hasValidVixcloudSignature } from '../utils/vix-token';
 import type { User } from '../../../shared/types';
 
 const router = Router();
@@ -154,8 +155,24 @@ router.get('/auth/me', requireAuth, async (req, res) => {
   res.json({ user });
 });
 
-router.get('/auth/check', requireAuth, (_req, res) => {
-  res.status(200).end();
+router.get('/auth/check', async (req, res) => {
+  // Cookie path: standard browser session.
+  const cookieResult = await authenticateToken(req.cookies?.token);
+  if (cookieResult.user) {
+    res.status(200).end();
+    return;
+  }
+
+  // Bypass for short-lived vixcloud-signed URLs (AirPlay/Cast). nginx
+  // forwards the parent request URI via X-Original-Uri so we can read
+  // `token=&expires=` here even though the subrequest itself is `/auth/check`.
+  const originalUri = req.headers['x-original-uri'];
+  if (typeof originalUri === 'string' && hasValidVixcloudSignature(originalUri)) {
+    res.status(200).end();
+    return;
+  }
+
+  respondAuthFailure(req, res, cookieResult.error ?? 'unauthenticated');
 });
 
 export default router;

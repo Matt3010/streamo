@@ -85,6 +85,10 @@ server {
         proxy_set_header      X-Real-IP        $remote_addr;
         proxy_set_header      X-Forwarded-For  $remote_addr;
         proxy_set_header      X-Forwarded-Proto $scheme;
+        # Forward the parent request's full URI so the backend can apply
+        # short-lived signed-URL bypass (AirPlay/Cast) by reading
+        # ?token=&expires= without seeing only "/auth-check" in this subrequest.
+        proxy_set_header      X-Original-Uri   $request_uri;
     }
 
     location @auth_required {
