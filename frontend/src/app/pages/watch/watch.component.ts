@@ -496,15 +496,7 @@ export class WatchComponent {
     return status ? `Disponibile: ${status}` : 'Disponibile dopo l\'uscita';
   });
 
-  // 80% mirrors WATCHED_THRESHOLD on the backend — past that point we
-  // assume the user is "done enough" with this episode that they'd plausibly
-  // want to skip straight to the next one.
-  protected readonly showNextButton = computed(() => {
-    if (!this.player.nextEpisode()) return false;
-    const p = this.player.resumeProgress();
-    if (!p || p.duration <= 0) return false;
-    return p.position / p.duration >= 0.8;
-  });
+  protected readonly showNextButton = computed(() => this.player.nextEpisode() !== null);
 
   protected readonly canClearProgress = computed(() => {
     if (this.loading() || this.isUpcomingTitle()) return false;

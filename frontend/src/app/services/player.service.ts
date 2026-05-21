@@ -184,14 +184,6 @@ export class PlayerService {
     window.addEventListener('message', (event: MessageEvent) => this.handlePlayerMessage(event));
   }
 
-  ingestPlayerEvent(event: PlayerEventMessage): void {
-    if (event.event.event === 'next-episode') {
-      void this.playNextEpisode();
-      return;
-    }
-    this.applyPlayerEvent(event.event);
-  }
-
   // ===== OPEN / CLEANUP =====
   async open(tmdbId: string | number, type: MediaType, resumeSeason = 0, resumeEpisode = 0): Promise<void> {
     // open() is called from the WatchComponent's effect — any signal *read*
@@ -771,7 +763,7 @@ export class PlayerService {
   // Switch the player to the next episode and start it from the beginning.
   // Used by the preview "Vai al prossimo" button to skip past the tail-end
   // of the current episode (≥80%) instead of resuming it.
-  async playNextEpisode(bridgeSource: MessageEventSource | null = null): Promise<boolean> {
+  async playNextEpisode(): Promise<boolean> {
     const next = untracked(() => this.nextEpisode());
     const item = untracked(() => this.currentItem());
     if (!next || !item) return false;
@@ -794,10 +786,6 @@ export class PlayerService {
     if (!nextResult.embedUrl) {
       this.setPlaybackUnavailable(nextResult.reason);
       return false;
-    }
-
-    if (bridgeSource) {
-      this.postBridgeAck(bridgeSource, 'next-episode');
     }
 
     this.saveCurrentEpisodeProgress();
@@ -992,19 +980,6 @@ export class PlayerService {
     return null;
   }
 
-  private postBridgeAck(source: MessageEventSource | null, eventName: string): void {
-    if (!source || typeof (source as { postMessage?: unknown }).postMessage !== 'function') {
-      return;
-    }
-
-    try {
-      (source as { postMessage: (message: unknown, targetOrigin: string) => void }).postMessage({
-        type: 'PLAYER_BRIDGE_ACK',
-        event: eventName
-      }, '*');
-    } catch {}
-  }
-
   private resetPlayer(): void {
     if (this.progressSaveInterval !== null) {
       clearInterval(this.progressSaveInterval);
@@ -1096,12 +1071,7 @@ export class PlayerService {
   private handlePlayerMessage(event: MessageEvent): void {
     const data = event.data;
     if (!data || typeof data !== 'object' || (data as { type?: unknown }).type !== 'PLAYER_EVENT') return;
-    const playerEvent = (data as PlayerEventMessage).event;
-    if (playerEvent.event === 'next-episode') {
-      void this.playNextEpisode(event.source);
-      return;
-    }
-    this.applyPlayerEvent(playerEvent);
+    this.applyPlayerEvent((data as PlayerEventMessage).event);
   }
 
   private applyPlayerEvent(ev: PlayerEventMessage['event']): void {

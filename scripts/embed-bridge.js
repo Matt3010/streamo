@@ -6,15 +6,11 @@
   var seekDone = !shouldSeek;
   var activeVideo = null;
   var activePlayer = null;
-  var activeNextButton = null;
   var videoCleanup = null;
   var playerCleanup = null;
-  var nextButtonCleanup = null;
   var syncTimer = null;
   var observer = null;
   var completionSent = false;
-  var nativeNextEpisodeFallback = false;
-  var nextEpisodeAckTimer = null;
   var attempts = 0;
   var maxAttempts = 240; // ~120s
 
@@ -37,14 +33,6 @@
   function getVideo() {
     try {
       return document.querySelector('.jw-video, video');
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function getNextEpisodeButton() {
-    try {
-      return document.querySelector('.jw-icon-next, .jw-icon-next-episode');
     } catch (e) {
       return null;
     }
@@ -76,21 +64,6 @@
     if (completionSent) return;
     completionSent = true;
     emitToParent('complete', currentTime, duration);
-  }
-
-  function clearNextEpisodeAckTimer() {
-    if (!nextEpisodeAckTimer) return;
-    clearTimeout(nextEpisodeAckTimer);
-    nextEpisodeAckTimer = null;
-  }
-
-  function handleBridgeAck(event) {
-    if (!event || event.source !== window.parent) return;
-    var data = event.data;
-    if (!data || typeof data !== 'object') return;
-    if (data.type !== 'PLAYER_BRIDGE_ACK' || data.event !== 'next-episode') return;
-    clearNextEpisodeAckTimer();
-    nativeNextEpisodeFallback = false;
   }
 
   function maybeSeekVideo(video) {
@@ -253,56 +226,9 @@
     };
   }
 
-  function attachNextEpisodeButton(button) {
-    if (!button || button === activeNextButton) return;
-    if (nextButtonCleanup) {
-      nextButtonCleanup();
-      nextButtonCleanup = null;
-    }
-
-    activeNextButton = button;
-
-    function onClick(event) {
-      if (nativeNextEpisodeFallback) {
-        nativeNextEpisodeFallback = false;
-        return;
-      }
-
-      try {
-        if (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (typeof event.stopImmediatePropagation === 'function') {
-            event.stopImmediatePropagation();
-          }
-        }
-      } catch (e) {}
-
-      clearNextEpisodeAckTimer();
-      emitToParent('next-episode');
-      nextEpisodeAckTimer = window.setTimeout(function() {
-        nextEpisodeAckTimer = null;
-        if (!button.isConnected) return;
-        nativeNextEpisodeFallback = true;
-        try {
-          button.click();
-        } catch (e) {
-          nativeNextEpisodeFallback = false;
-        }
-      }, 1500);
-    }
-
-    button.addEventListener('click', onClick, true);
-
-    nextButtonCleanup = function() {
-      button.removeEventListener('click', onClick, true);
-    };
-  }
-
   function sync() {
     attachVideo(getVideo());
     attachPlayer(getPlayer());
-    attachNextEpisodeButton(getNextEpisodeButton());
   }
 
   function bootstrap() {
@@ -329,6 +255,4 @@
   } else {
     bootstrap();
   }
-
-  window.addEventListener('message', handleBridgeAck);
 })();
