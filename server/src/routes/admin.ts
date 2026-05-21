@@ -57,12 +57,16 @@ router.get('/admin/tokens', requireSuperAdmin, async (_req, res) => {
 });
 
 router.post('/admin/tokens', requireSuperAdmin, async (req, res) => {
-  const { label } = req.body || {};
+  const body = req.body ?? {};
+  // Same defensive string check as the other label-accepting endpoints —
+  // an array/object payload would otherwise reach Kysely and return 500.
+  const rawLabel = typeof body.label === 'string' ? body.label.trim() : '';
+  const label = rawLabel ? rawLabel.slice(0, 60) : null;
   const token = crypto.randomBytes(18).toString('base64url');
 
   await kdb
     .insertInto('invite_tokens')
-    .values({ token, label: label || null })
+    .values({ token, label })
     .execute();
 
   const row = await kdb

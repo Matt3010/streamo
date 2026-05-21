@@ -106,7 +106,12 @@ export function setAuthCookie(res: Response, user: AuthedUser): void {
 }
 
 export function respondAuthFailure(req: Request, res: Response, reason: string, event = 'request auth denied'): void {
-  if (reason === 'access_revoked') {
+  // Clear the cookie when the token itself is bad (expired/malformed/
+  // unknown signature) or the user's access was revoked — otherwise the
+  // browser keeps sending the dead token until maxAge (30 days), spamming
+  // 401s. `missing_token` doesn't need clearing because there was no
+  // cookie to begin with.
+  if (reason === 'access_revoked' || reason === 'invalid_token') {
     res.clearCookie('token', { path: '/' });
   }
 

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
-import { CardComponent, CardFolderClickEvent } from '../../components/card/card.component';
+import { CardComponent } from '../../components/card/card.component';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
@@ -31,12 +31,10 @@ import {
   persistExpandedFolders
 } from './user-list-storage.util';
 import {
-  type HistorySection,
   buildHistorySections,
   isSameHistoryEntry
 } from './history-sections.util';
 import {
-  type DisplayEntry,
   buildDisplayEntries,
   cardKey,
   folderIdFromName

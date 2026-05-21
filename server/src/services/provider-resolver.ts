@@ -1,4 +1,3 @@
-import { sql } from 'kysely';
 import type { MediaType } from '../../../shared/types';
 import { kdb } from '../db';
 import {

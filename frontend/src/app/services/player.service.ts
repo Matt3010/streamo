@@ -704,12 +704,11 @@ export class PlayerService {
   async playPrimary(): Promise<void> {
     const ref = untracked(() => this.nextUnwatchedRef());
     if (this.currentItemType() === 'tv' && ref) {
-      const curS = untracked(() => this.selectedSeason());
-      const curE = untracked(() => this.selectedEpisode());
       // Re-align the loaded URL with the CTA target only when they differ.
       // changeSeason resets the episode list & defaults to E1, so we
-      // sequence it before changeEpisode when the season changes.
-      if (ref.season !== curS) {
+      // sequence it before changeEpisode and re-read selectedEpisode()
+      // afterwards to skip a redundant changeEpisode(1) call.
+      if (ref.season !== untracked(() => this.selectedSeason())) {
         await this.changeSeason(ref.season);
       }
       if (ref.episode !== untracked(() => this.selectedEpisode())) {
