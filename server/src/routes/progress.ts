@@ -8,6 +8,7 @@ import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache'
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { notifyAdminSessionsChanged } from '../services/admin-live';
 import { publishUserWatchlistChanged } from '../services/user-live';
+import { formatMovieRemaining, formatTvStatusText } from '../services/watch-status';
 import type { MediaType } from '../../../shared/types';
 
 const router = Router();
@@ -23,6 +24,7 @@ interface ProgressRow {
   poster: string | null;
   backdrop: string | null;
   updated_at: number;
+  watch_status_text?: string;
 }
 
 router.post('/user/progress', requireAuth, async (req, res) => {
@@ -218,17 +220,50 @@ router.get('/user/progress', requireAuth, async (req, res) => {
     LIMIT 30
   `.execute(kdb).then((r) => r.rows);
 
+  const tvTmdbIds = rows.filter(r => r.media_type === 'tv').map(r => r.tmdb_id);
+  const watchedByTmdb = new Map<number, number>();
+  if (tvTmdbIds.length > 0) {
+    const counts = await sql<{ tmdb_id: number; watched_count: number }>`
+      SELECT tmdb_id,
+             SUM(CASE WHEN duration > 0 AND position >= duration * ${WATCHED_THRESHOLD} THEN 1 ELSE 0 END)::int AS watched_count
+      FROM progress
+      WHERE user_id = ${req.user!.id}
+        AND media_type = 'tv'
+        AND synthetic = 0
+        AND tmdb_id = ANY(${tvTmdbIds}::int[])
+      GROUP BY tmdb_id
+    `.execute(kdb).then((r) => r.rows);
+    for (const c of counts) {
+      watchedByTmdb.set(Number(c.tmdb_id), Number(c.watched_count));
+    }
+  }
+
   const items = await Promise.all(rows.map(async (row): Promise<ProgressRow | null> => {
     if (row.media_type === 'movie') {
       const movieNearEnd = row.duration > 0 && row.position >= row.duration * CONTINUE_HIDE_THRESHOLD;
-      return movieNearEnd ? null : row;
+      if (movieNearEnd) return null;
+      return { ...row, watch_status_text: formatMovieRemaining(row.position, row.duration) };
     }
-    const ended = row.duration > 0 && row.position >= row.duration;
-    if (!ended) return row;
 
-    const next = await findNextEpisode(row.tmdb_id, row.season, row.episode);
-    if (!next) return null;
-    return { ...row, season: next.season, episode: next.episode, position: 0, duration: 0 };
+    // Tolerate float imprecision: a saved position 0.25s shy of duration
+    // still means the episode is done. WATCHED_THRESHOLD lines this up with
+    // the same cutoff used for watched_count aggregation above.
+    const ended = row.duration > 0 && row.position >= row.duration * WATCHED_THRESHOLD;
+    let resolvedRow: ProgressRow = row;
+    if (ended) {
+      const next = await findNextEpisode(row.tmdb_id, row.season, row.episode);
+      if (!next) return null;
+      resolvedRow = { ...row, season: next.season, episode: next.episode, position: 0, duration: 0 };
+    }
+
+    const tmdb = await getTmdbTvSummary(resolvedRow.tmdb_id);
+    const noLaterAiredEpisode = (await findNextEpisode(resolvedRow.tmdb_id, resolvedRow.season, resolvedRow.episode)) === null;
+    const caughtUp = resolvedRow.duration > 0
+      && resolvedRow.position >= resolvedRow.duration * WATCHED_THRESHOLD
+      && noLaterAiredEpisode;
+    const watchedCount = watchedByTmdb.get(resolvedRow.tmdb_id) ?? 0;
+    const statusText = formatTvStatusText(tmdb, watchedCount, 0, caughtUp);
+    return statusText ? { ...resolvedRow, watch_status_text: statusText } : resolvedRow;
   }));
 
   res.json({ items: items.filter((x): x is ProgressRow => x !== null) });

@@ -1,11 +1,6 @@
 import type { CardItem, HistoryItem, MediaType, TmdbItem, WatchlistItem } from '../models';
 import type { TmdbService } from '../services/tmdb.service';
-import {
-  getCompactReleaseStatusText,
-  getResumeAwareReleaseStatusText,
-  getUpcomingBadgeText,
-  isTitleUpcoming
-} from './media-release.util';
+import { getCompactReleaseStatusText, getUpcomingBadgeText, isTitleUpcoming } from './media-release.util';
 
 function enrichCardBase(item: CardItem, details: TmdbItem): CardItem {
   return {
@@ -101,22 +96,15 @@ export async function enrichTmdbCards(
     const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
     if (!details) return item;
     const upcoming = isTitleUpcoming(details, item.media_type);
-    // For "Continua a guardare" rows the CardItem carries the user's
-    // next-to-watch season/episode — feed that into the release-text logic
-    // so the "Nuovo episodio!" count reflects what's unwatched for THIS
-    // user instead of TMDB's lagging last_episode_to_air diff.
-    const releaseText = getResumeAwareReleaseStatusText(
-      details,
-      item.media_type,
-      item.season,
-      item.episode,
-      item.position,
-      item.duration
-    );
+    // Respect a server-provided release text (e.g. "Continua a guardare"
+    // rows that arrive with watch_status_text already computed against the
+    // user's actual watched count). Only fall back to the TMDB-only string
+    // when the caller didn't pre-populate one.
+    const releaseText = item.nextReleaseText ?? (getCompactReleaseStatusText(details, item.media_type) || undefined);
     return {
       ...enrichCardBase(item, details),
       isUpcoming: upcoming,
-      nextReleaseText: releaseText || undefined
+      nextReleaseText: releaseText
     };
   });
 }

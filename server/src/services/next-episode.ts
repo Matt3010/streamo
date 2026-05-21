@@ -1,4 +1,5 @@
 import { kdb } from '../db';
+import { WATCHED_THRESHOLD } from '../config';
 import { getTmdbTvSummary, isFutureDate } from './tmdb-cache';
 
 function getEffectiveLastEpisode(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): { season_number: number; episode_number: number } | null {
@@ -41,9 +42,12 @@ export async function findNextEpisode(tmdbId: number, season: number, episode: n
 }
 
 // "Where to play next" for a TV show given a user's progress: returns the
-// latest touched episode, pivoted forward if the player saved that episode
-// at exactly position == duration (the 'ended' event handler signature).
-// Falls back to the last touched episode if there is no following one.
+// latest touched episode, pivoted forward when the user is effectively done
+// with that episode. The threshold (WATCHED_THRESHOLD = 0.8) matches the
+// "watched" cutoff used everywhere else and absorbs the float drift between
+// what the player reports as position and what the source says is duration
+// (e.g. position 3086 vs duration 3086.249822 would have failed a strict
+// `>=` check and pinned the user to the already-finished episode).
 export async function resolveNextPlayable(userId: number, tmdbId: number): Promise<{ season: number; episode: number } | null> {
   const last = await kdb
     .selectFrom('progress')
@@ -59,7 +63,7 @@ export async function resolveNextPlayable(userId: number, tmdbId: number): Promi
     .executeTakeFirst();
   if (!last) return null;
 
-  const ended = last.duration > 0 && last.position >= last.duration;
+  const ended = last.duration > 0 && last.position >= last.duration * WATCHED_THRESHOLD;
   if (!ended) return { season: last.season, episode: last.episode };
 
   const next = await findNextEpisode(tmdbId, last.season, last.episode);

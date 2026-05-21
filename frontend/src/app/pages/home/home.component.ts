@@ -361,7 +361,8 @@ export class HomeComponent {
       season: p.season,
       episode: p.episode,
       position: p.position,
-      duration: p.duration
+      duration: p.duration,
+      nextReleaseText: p.watch_status_text
     })), this.tmdb);
     if (seq !== this.userSeq) return;
 

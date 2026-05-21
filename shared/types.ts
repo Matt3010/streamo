@@ -24,6 +24,7 @@ export interface ProgressItem {
   poster: string | null;
   backdrop: string | null;
   updated_at: number;
+  watch_status_text?: string;
 }
 
 export interface HistoryItem {

@@ -6,12 +6,11 @@ import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD, isMediaType } from '../config';
 import {
   getAiredEpisodesCount,
-  getBaseAiredEpisodesCount,
   getTmdbMovieSummary,
-  getTmdbTvSummary,
-  type TmdbTvSummary
+  getTmdbTvSummary
 } from '../services/tmdb-cache';
-import { formatNewEpisodesMessage, getWatchlistReleaseMeta } from '../../../shared/release-format';
+import { getWatchlistReleaseMeta } from '../../../shared/release-format';
+import { formatMovieRemaining, formatTvStatusText } from '../services/watch-status';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { publishUserWatchlistChanged } from '../services/user-live';
 import { enqueueWatchlistTitleRefresh } from '../services/watchlist-jobs';
@@ -52,50 +51,6 @@ function normalizeFolderName(value: unknown): string | null | undefined {
   if (!trimmed) return null;
   if (trimmed.length > 60) return undefined;
   return trimmed;
-}
-
-function formatMovieRemaining(position: number | undefined, duration: number | undefined): string | undefined {
-  const pos = position ?? 0;
-  const dur = duration ?? 0;
-  if (dur <= 0 || pos <= 0 || pos >= dur) return undefined;
-
-  const remainingMinutes = Math.ceil((dur - pos) / 60);
-  if (remainingMinutes <= 0) return undefined;
-  if (remainingMinutes < 60) {
-    return remainingMinutes === 1 ? 'Manca 1 min' : `Mancano ${remainingMinutes} min`;
-  }
-
-  const hours = Math.floor(remainingMinutes / 60);
-  const minutes = remainingMinutes % 60;
-  const timeLeft = minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
-  return hours === 1 && minutes === 0 ? `Manca ${timeLeft}` : `Mancano ${timeLeft}`;
-}
-
-function formatTvStatusText(
-  tmdb: TmdbTvSummary | null,
-  watchedCount: number,
-  doneAiredEpisodes: number,
-  caughtUp: boolean
-): string | undefined {
-  const airedEpisodes = getAiredEpisodesCount(tmdb);
-  const baseAiredEpisodes = getBaseAiredEpisodesCount(tmdb);
-
-  if (airedEpisodes <= 0) return undefined;
-
-  const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
-  const remaining = Math.max(0, airedEpisodes - watchedBaseline);
-
-  const newEpisodes = Math.max(0, airedEpisodes - baseAiredEpisodes);
-  if (newEpisodes > 0 && remaining > 0) {
-    return formatNewEpisodesMessage(Math.min(newEpisodes, remaining));
-  }
-
-  if (caughtUp) return 'Sei al passo';
-
-  if (watchedBaseline <= 0) return undefined;
-
-  if (remaining === 0) return 'Sei al passo';
-  return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }
 
 router.post('/user/watchlist', requireAuth, async (req, res) => {

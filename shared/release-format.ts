@@ -102,22 +102,6 @@ export function getBaseAiredEpisodesCount(tv: TvLike | null | undefined): number
   return countEpisodesUpTo(tv, tv.last_episode_to_air ?? null);
 }
 
-/** Counts how many episodes precede (season, episode) — i.e. the cumulative
- * episode index for the END of the episode just before this one. Useful when
- * a caller knows the user's resume position and wants to count episodes from
- * there forward. */
-export function getEpisodesBefore(
-  tv: TvLike | null | undefined,
-  season: number,
-  episode: number
-): number {
-  if (!tv || season <= 0 || episode <= 0) return 0;
-  return countEpisodesUpTo(tv, {
-    season_number: season,
-    episode_number: Math.max(0, episode - 1)
-  });
-}
-
 // --- Italian message formatters ---
 
 /**
