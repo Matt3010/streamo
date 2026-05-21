@@ -9,9 +9,9 @@
 
 .view-toggle .ui-button-toggle-icon {
   /* The .view-toggle wrapper has a 1px border that adds 2px to its outer
-   * box. Set inner buttons to 34×34 so the wrapper ends up 36×36 outer,
-   * matching the sibling .view-share-button. Square corners because the
-   * wrapper already provides the rounded container. */
+   * box. Set inner buttons to 34×34 so the wrapper ends up 36×36 outer.
+   * Square corners because the wrapper already provides the rounded
+   * container. */
   width: 34px;
   min-width: 34px;
   height: 34px;

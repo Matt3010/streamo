@@ -1,10 +1,8 @@
-import { ChangeDetectionStrategy, Component, effect, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { faCirclePlay, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
-import { ShareLinksPopoverComponent } from '../../components/share-links-popover/share-links-popover.component';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
-import { IconComponent } from '../../ui/icon/icon.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { TmdbService } from '../../services/tmdb.service';
@@ -33,7 +31,7 @@ type HomeConfirmAction =
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [SectionRowComponent, SectionHeaderComponent, ConfirmModalComponent, UiButtonDirective, IconComponent, ShareLinksPopoverComponent],
+  imports: [SectionRowComponent, SectionHeaderComponent, ConfirmModalComponent, UiButtonDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (auth.isLoggedIn() && (continueItems().length > 0 || userLoading())) {
@@ -74,15 +72,7 @@ type HomeConfirmAction =
         [showStatusToggle]="true"
         (cardClick)="open($event)"
         (statusToggleClick)="toggleWatchlistStatus($event)"
-        (removeClick)="removeFromHomeWatchlist($event)">
-        <button headerActions
-                uiButton="icon-outline" uiButtonSize="action" type="button"
-                aria-label="Condividi la lista"
-                title="Condividi"
-                (click)="toggleShareLinks($event)">
-          <app-icon name="share"></app-icon>
-        </button>
-      </app-section-row>
+        (removeClick)="removeFromHomeWatchlist($event)" />
     } @else if (auth.isLoggedIn() && !userLoading()) {
       <section class="content-section">
         <app-section-header title="La mia lista" [icon]="watchlistIcon" />
@@ -94,12 +84,6 @@ type HomeConfirmAction =
           </div>
         </div>
       </section>
-    }
-
-    @if (auth.isLoggedIn()) {
-      <app-share-links-popover #sharePopover
-        [(open)]="shareLinksOpen"
-        [anchor]="shareAnchor()" />
     }
 
     @for (s of sectionStates(); track s.config.id) {
@@ -138,9 +122,6 @@ export class HomeComponent {
   protected readonly watchlistItems = signal<CardItem[]>([]);
   protected readonly userLoading = signal(false);
   protected readonly sectionStates = signal<SectionState[]>([]);
-  protected readonly shareLinksOpen = signal(false);
-  protected readonly shareAnchor = signal<HTMLElement | null>(null);
-  private readonly sharePopover = viewChild<ShareLinksPopoverComponent>('sharePopover');
   protected readonly confirmModalOpen = signal(false);
   private readonly pendingAction = signal<HomeConfirmAction | null>(null);
   protected readonly confirmModalTitle = signal('Conferma');
@@ -175,19 +156,6 @@ export class HomeComponent {
 
   protected goToBrowse(): void {
     void this.router.navigate(['/browse']);
-  }
-
-  protected toggleShareLinks(event: MouseEvent): void {
-    event.stopPropagation();
-    if (this.shareLinksOpen()) {
-      this.shareLinksOpen.set(false);
-      this.shareAnchor.set(null);
-      return;
-    }
-    const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    this.shareAnchor.set(trigger);
-    this.shareLinksOpen.set(true);
-    void this.sharePopover()?.load();
   }
 
   private openConfirmModal(config: {

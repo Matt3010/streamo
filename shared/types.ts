@@ -94,39 +94,6 @@ export interface WatchlistUpdatedEvent {
   media_type?: MediaType;
 }
 
-// Share-link types
-
-export type ShareLinkStatus = 'active' | 'suspended';
-
-export interface ShareLink {
-  id: number;
-  token: string;
-  label: string | null;
-  status: ShareLinkStatus;
-  view_count: number;
-  created_at: number;
-}
-
-/* Public read-only view of someone's watchlist. Items are the raw DB
- * rows (no per-user progress enrichment) — the consuming UI is
- * read-only so server-side resume / next-episode hints are
- * irrelevant. */
-export interface SharedWatchlistResponse {
-  owner: { name: string };
-  items: SharedWatchlistItem[];
-}
-
-export interface SharedWatchlistItem {
-  tmdb_id: number;
-  media_type: MediaType;
-  title: string | null;
-  poster: string | null;
-  status: WatchlistStatus;
-  folder_name: string | null;
-  done_aired_episodes: number;
-  added_at: number;
-}
-
 // Admin types
 
 export interface AdminUserRow {

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CardComponent } from '../../components/card/card.component';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
@@ -13,7 +13,6 @@ import { ListItemInfoComponent } from './list-item-info.component';
 import { ListRowActionsComponent } from './list-row-actions.component';
 import { FolderCardComponent } from './folder-card.component';
 import { FolderRowComponent } from './folder-row.component';
-import { ShareLinksPopoverComponent } from '../../components/share-links-popover/share-links-popover.component';
 import { FolderPopoverController } from './folder-popover.controller';
 import { DragDropController } from './drag-drop.controller';
 import { ConfirmActionController } from './confirm-action.controller';
@@ -83,21 +82,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
     ListRowActionsComponent,
     FolderCardComponent,
     FolderRowComponent,
-    ShareLinksPopoverComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header [title]="title()" (back)="back()">
-      @if (kind() === 'watchlist' && !readonly()) {
-        <button #shareTrigger
-                class="view-share-button"
-                uiButton="icon-outline" type="button"
-                aria-label="Condividi la lista"
-                title="Condividi"
-                (click)="toggleShareLinks($event)">
-          <app-icon name="share"></app-icon>
-        </button>
-      }
       <div class="view-toggle" role="group" aria-label="Modalita visualizzazione">
         <button uiButton="toggle-icon" type="button" [attr.aria-pressed]="viewMode() === 'grid'"
                 aria-label="Griglia" (click)="setViewMode('grid')">
@@ -110,14 +98,8 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       </div>
     </app-page-header>
 
-    @if (kind() === 'watchlist' && !readonly()) {
-      <app-share-links-popover #sharePopover
-        [(open)]="shareLinksOpen"
-        [anchor]="shareAnchor()" />
-    }
-
     <div class="filter-bar">
-      @if (kind() === 'watchlist' && !readonly()) {
+      @if (kind() === 'watchlist') {
         <ui-tabs [tabs]="statusTabs" [(value)]="statusFilter" />
       }
       <ui-tabs [tabs]="mediaTabs" [(value)]="mediaFilter" />
@@ -129,15 +111,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       <div class="empty-state">
         <p class="empty-state-title">{{ emptyTitle() }}</p>
         <p class="empty-state-hint">{{ emptyHint() }}</p>
-        @if (!readonly()) {
-          <div class="empty-state-actions">
-            @if (kind() === 'watchlist') {
-              <button uiButton="primary" type="button" (click)="goToSearch()">Vai a cercare</button>
-            } @else {
-              <button uiButton="primary" type="button" (click)="goToBrowse()">Scopri film popolari</button>
-            }
-          </div>
-        }
+        <div class="empty-state-actions">
+          @if (kind() === 'watchlist') {
+            <button uiButton="primary" type="button" (click)="goToSearch()">Vai a cercare</button>
+          } @else {
+            <button uiButton="primary" type="button" (click)="goToBrowse()">Scopri film popolari</button>
+          }
+        </div>
       </div>
     } @else if (kind() === 'history') {
       <div class="history-sections">
@@ -157,10 +137,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 @for (item of section.items; track cardKey(item)) {
                   <app-card
                     [item]="item"
-                    [showRemove]="!readonly()"
+                    [showRemove]="true"
                     removeTitle="Rimuovi dalla cronologia"
                     [showProgress]="true"
-                    [showWatchlistToggle]="!readonly() && auth.isLoggedIn()"
+                    [showWatchlistToggle]="auth.isLoggedIn()"
                     (cardClick)="onCardClick($event)"
                     (watchlistToggleClick)="onWatchlistToggle($event)"
                     (removeClick)="onRemoveClick($event)" />
@@ -172,17 +152,15 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                   <li class="item-row"
                       (click)="onCardClick(item)">
                     <app-list-item-info [item]="item" />
-                    @if (!readonly()) {
-                      <app-list-row-actions
-                        [item]="item"
-                        [kind]="kind()"
-                        [folderEnabled]="folderFeatureEnabled()"
-                        [isLoggedIn]="auth.isLoggedIn()"
-                        (statusToggle)="onStatusToggle($event)"
-                        (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
-                        (watchlistToggle)="onWatchlistToggle($event)"
-                        (removeClick)="onRemoveClick($event)" />
-                    }
+                    <app-list-row-actions
+                      [item]="item"
+                      [kind]="kind()"
+                      [folderEnabled]="folderFeatureEnabled()"
+                      [isLoggedIn]="auth.isLoggedIn()"
+                      (statusToggle)="onStatusToggle($event)"
+                      (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
+                      (watchlistToggle)="onWatchlistToggle($event)"
+                      (removeClick)="onRemoveClick($event)" />
                   </li>
                 }
               </ul>
@@ -206,13 +184,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 @for (child of entry.group.items; track child.tmdb_id + '-' + child.media_type) {
                   <app-card
                     [item]="child"
-                    [showRemove]="!readonly()"
+                    [showRemove]="true"
                     [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
                     [showProgress]="true"
-                    [showStatusToggle]="!readonly() && kind() === 'watchlist'"
-                    [showWatchlistToggle]="!readonly() && kind() === 'history' && auth.isLoggedIn()"
-                    [showFolderAction]="!readonly() && folderFeatureEnabled()"
-                    [draggable]="!readonly() && dragDrop.canDragItem(child)"
+                    [showStatusToggle]="kind() === 'watchlist'"
+                    [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
+                    [showFolderAction]="folderFeatureEnabled()"
+                    [draggable]="dragDrop.canDragItem(child)"
                     [dragging]="dragDrop.isDraggingItem(child)"
                     (cardClick)="onCardClick($event)"
                     (dragStarted)="dragDrop.onItemDragStart($event, child)"
@@ -227,13 +205,13 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
           } @else if (entry.item) {
             <app-card
               [item]="entry.item"
-              [showRemove]="!readonly()"
+              [showRemove]="true"
               [removeTitle]="kind() === 'watchlist' ? 'Rimuovi dalla lista' : 'Rimuovi dalla cronologia'"
               [showProgress]="true"
-              [showStatusToggle]="!readonly() && kind() === 'watchlist'"
-              [showWatchlistToggle]="!readonly() && kind() === 'history' && auth.isLoggedIn()"
-              [showFolderAction]="!readonly() && folderFeatureEnabled()"
-              [draggable]="!readonly() && dragDrop.canDragItem(entry.item)"
+              [showStatusToggle]="kind() === 'watchlist'"
+              [showWatchlistToggle]="kind() === 'history' && auth.isLoggedIn()"
+              [showFolderAction]="folderFeatureEnabled()"
+              [draggable]="dragDrop.canDragItem(entry.item)"
               [dragging]="dragDrop.isDraggingItem(entry.item)"
               (cardClick)="onCardClick($event)"
               (dragStarted)="dragDrop.onItemDragStart($event, entry.item)"
@@ -261,24 +239,22 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
                 @if (entry.expanded) {
                   @for (it of entry.group.items; track it.tmdb_id + '-' + it.media_type) {
                     <li class="item-row folder-child-row"
-                        [class.item-row-draggable]="!readonly() && dragDrop.canDragItem(it)"
+                        [class.item-row-draggable]="dragDrop.canDragItem(it)"
                         [class.item-row-dragging]="dragDrop.isDraggingItem(it)"
-                        [attr.draggable]="!readonly() && dragDrop.canDragItem(it) ? 'true' : null"
+                        [attr.draggable]="dragDrop.canDragItem(it) ? 'true' : null"
                         (click)="onCardClick(it)"
                         (dragstart)="dragDrop.onItemDragStart($event, it)"
                         (dragend)="dragDrop.onItemDragEnd()">
                       <app-list-item-info [item]="it" />
-                      @if (!readonly()) {
-                        <app-list-row-actions
-                          [item]="it"
-                          [kind]="kind()"
-                          [folderEnabled]="folderFeatureEnabled()"
-                          [isLoggedIn]="auth.isLoggedIn()"
-                          (statusToggle)="onStatusToggle($event)"
-                          (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
-                          (watchlistToggle)="onWatchlistToggle($event)"
-                          (removeClick)="onRemoveClick($event)" />
-                      }
+                      <app-list-row-actions
+                        [item]="it"
+                        [kind]="kind()"
+                        [folderEnabled]="folderFeatureEnabled()"
+                        [isLoggedIn]="auth.isLoggedIn()"
+                        (statusToggle)="onStatusToggle($event)"
+                        (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
+                        (watchlistToggle)="onWatchlistToggle($event)"
+                        (removeClick)="onRemoveClick($event)" />
                     </li>
                   }
                 }
@@ -286,24 +262,22 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
             </li>
           } @else if (entry.item) {
             <li class="item-row"
-                [class.item-row-draggable]="!readonly() && dragDrop.canDragItem(entry.item)"
+                [class.item-row-draggable]="dragDrop.canDragItem(entry.item)"
                 [class.item-row-dragging]="dragDrop.isDraggingItem(entry.item)"
-                [attr.draggable]="!readonly() && dragDrop.canDragItem(entry.item) ? 'true' : null"
+                [attr.draggable]="dragDrop.canDragItem(entry.item) ? 'true' : null"
                 (click)="onCardClick(entry.item)"
                 (dragstart)="dragDrop.onItemDragStart($event, entry.item)"
                 (dragend)="dragDrop.onItemDragEnd()">
               <app-list-item-info [item]="entry.item" />
-              @if (!readonly()) {
-                <app-list-row-actions
-                  [item]="entry.item"
-                  [kind]="kind()"
-                  [folderEnabled]="folderFeatureEnabled()"
-                  [isLoggedIn]="auth.isLoggedIn()"
-                  (statusToggle)="onStatusToggle($event)"
-                  (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
-                  (watchlistToggle)="onWatchlistToggle($event)"
-                  (removeClick)="onRemoveClick($event)" />
-              }
+              <app-list-row-actions
+                [item]="entry.item"
+                [kind]="kind()"
+                [folderEnabled]="folderFeatureEnabled()"
+                [isLoggedIn]="auth.isLoggedIn()"
+                (statusToggle)="onStatusToggle($event)"
+                (folderClick)="folderPopover.openFromButton($event.item, $event.event)"
+                (watchlistToggle)="onWatchlistToggle($event)"
+                (removeClick)="onRemoveClick($event)" />
             </li>
           }
         }
@@ -319,7 +293,6 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
       (cancelled)="confirmAction.cancel()"
       (confirmed)="confirmPendingAction()" />
 
-    @if (!readonly()) {
     <ui-popover [(open)]="folderPopover.open"
                 [anchor]="folderPopover.anchor()"
                 [width]="folderPopover.targetHasFolder() ? 430 : 350"
@@ -362,7 +335,6 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </div>
       </div>
     </ui-popover>
-    }
   `,
   styleUrl: './user-list-view.component.css'
 })
@@ -376,21 +348,6 @@ export class UserListViewComponent {
   private readonly navSource = inject(NavigationSourceService);
 
   readonly kind = input.required<UserListType>();
-  /* Read-only mode used by the public /shared/:token view: hides all
-   * mutation buttons (remove, status, watchlist toggle, folder), the
-   * share trigger, and the per-row drag affordances. The component
-   * does NOT try to gate the auth-coupled service calls — when
-   * readonly is true, externalItems must be set so load() is
-   * skipped entirely (otherwise the request would 401 anyway). */
-  readonly readonly = input(false);
-  /* When set, this overrides the load() pipeline: the component uses
-   * the provided list directly instead of calling watchlist/history
-   * services. Combined with readonly it enables the public shared
-   * view without dragging the auth-coupled load into shared mode. */
-  readonly externalItems = input<CardItem[] | null>(null);
-  /* Replaces the default "La mia lista" / "Cronologia" with "Lista
-   * di <name>" when present (shared view). */
-  readonly ownerNameOverride = input<string | null>(null);
 
   protected readonly statusTabs = STATUS_TABS;
   protected readonly mediaTabs = MEDIA_TABS;
@@ -400,22 +357,12 @@ export class UserListViewComponent {
 
   protected readonly items = signal<CardItem[]>([]);
   protected readonly loading = signal(false);
-  protected readonly shareLinksOpen = signal(false);
-  protected readonly shareAnchor = signal<HTMLElement | null>(null);
-  private readonly sharePopover = viewChild<ShareLinksPopoverComponent>('sharePopover');
   protected readonly expandedFolders = signal<Record<string, boolean>>(loadExpandedFolders());
-  protected readonly title = computed(() => {
-    const override = this.ownerNameOverride();
-    if (override) return `Lista di ${override}`;
-    return this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia';
-  });
-  /* Folders are an owner-only organization tool. In readonly mode the
-   * visitor shouldn't have to navigate the owner's folder taxonomy,
-   * and (more importantly) the visitor's own folders_enabled
-   * preference must not control how a shared list is rendered — so
-   * shared views are always flat. */
+  protected readonly title = computed(() => (
+    this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia'
+  ));
   protected readonly folderFeatureEnabled = computed(
-    () => !this.readonly() && this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
+    () => this.kind() === 'watchlist' && this.auth.currentUser()?.folders_enabled === 1
   );
   protected readonly displayEntries = computed(() => (
     buildDisplayEntries(this.items(), this.folderFeatureEnabled(), this.expandedFolders())
@@ -440,11 +387,6 @@ export class UserListViewComponent {
   protected readonly emptyTitle = computed(() => {
     const media = this.mediaFilter();
     const status = this.statusFilter();
-    if (this.ownerNameOverride()) {
-      return media === 'all'
-        ? 'La lista è vuota'
-        : `Nessun ${mediaLabel(media)} nella lista`;
-    }
     if (this.kind() !== 'watchlist') {
       return media === 'all'
         ? 'La cronologia è vuota'
@@ -473,9 +415,6 @@ export class UserListViewComponent {
   protected readonly emptyHint = computed(() => {
     const media = this.mediaFilter();
     const status = this.statusFilter();
-    if (this.ownerNameOverride()) {
-      return 'Il proprietario della lista non ha ancora aggiunto nulla.';
-    }
     if (this.kind() !== 'watchlist') {
       return media === 'all'
         ? 'Qui troverai episodi e film che hai iniziato o completato.'
@@ -496,22 +435,8 @@ export class UserListViewComponent {
   private seq = 0;
 
   constructor() {
-    /* Either consume the externally-provided list (shared view) or
-     * load from the user's own watchlist/history services. The two
-     * branches are mutually exclusive — only one drives `items`. */
     effect(() => {
-      const external = this.externalItems();
       const media = this.mediaFilter();
-      if (external) {
-        /* External payload (shared view) never round-trips to the
-         * backend, so media filtering happens client-side. */
-        const filtered = media === 'all'
-          ? external
-          : external.filter((item) => item.media_type === media);
-        this.items.set(filtered);
-        this.loading.set(false);
-        return;
-      }
       const kind = this.kind();
       const status = kind === 'watchlist' ? this.statusFilter() : undefined;
       this.auth.currentUser();
@@ -519,19 +444,13 @@ export class UserListViewComponent {
       void this.load(kind, media, status);
     });
 
-    /* Filter persistence is owner-only: the shared visitor's filter
-     * picks must not leak into the owner's preferences when they
-     * later open the app on the same browser. */
     effect(() => {
-      if (this.readonly()) return;
       persistMediaFilter(this.mediaFilter());
     });
     effect(() => {
-      if (this.readonly()) return;
       persistStatusFilter(this.statusFilter());
     });
     effect(() => {
-      if (this.readonly()) return;
       persistExpandedFolders(this.expandedFolders());
     });
 
@@ -544,25 +463,11 @@ export class UserListViewComponent {
 
   protected setViewMode(mode: ViewMode): void {
     this.viewMode.set(mode);
-    if (!this.readonly()) persistViewMode(mode);
+    persistViewMode(mode);
   }
 
   protected back(): void {
     this.navSource.goBack('/browse');
-  }
-
-  protected toggleShareLinks(event: MouseEvent): void {
-    if (this.shareLinksOpen()) {
-      this.shareLinksOpen.set(false);
-      this.shareAnchor.set(null);
-      return;
-    }
-    const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    this.shareAnchor.set(trigger);
-    this.shareLinksOpen.set(true);
-    /* The popover stores its own state — refresh from the API every
-     * time the user opens it so cross-tab edits show up. */
-    void this.sharePopover()?.load();
   }
 
   protected goToSearch(): void {
@@ -581,14 +486,6 @@ export class UserListViewComponent {
   protected readonly cardKey = cardKey;
 
   protected onCardClick(item: CardItem): void {
-    if (this.readonly() && !this.auth.isLoggedIn()) {
-      /* /watch is auth-gated, so a click from an unauthenticated
-       * visitor would just bounce them to the login screen. Surface
-       * a friendly toast instead. Authenticated visitors can navigate
-       * to /watch normally even from a shared list. */
-      this.toast.show('Accedi per vedere il dettaglio del titolo');
-      return;
-    }
     const queryParams: Record<string, number> = {};
     const season = this.kind() === 'history'
       ? item.season

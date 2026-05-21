@@ -81,16 +81,6 @@ interface InviteTokensTable {
   revoked_at: Epoch | null;
 }
 
-interface ShareLinksTable {
-  id: Generated<number>;
-  token: string;
-  user_id: number;
-  label: string | null;
-  status: ColumnType<'active' | 'suspended', 'active' | 'suspended' | undefined, 'active' | 'suspended'>;
-  view_count: ColumnType<number, number | undefined, number>;
-  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
-}
-
 interface ProviderTitleMapTable {
   tmdb_id: number;
   media_type: string;
@@ -124,7 +114,6 @@ export interface Database {
   _meta: MetaTable;
   tmdb_cache: TmdbCacheTable;
   invite_tokens: InviteTokensTable;
-  share_links: ShareLinksTable;
   provider_title_map: ProviderTitleMapTable;
   provider_manual_refresh_cooldowns: ProviderManualRefreshCooldownsTable;
 }

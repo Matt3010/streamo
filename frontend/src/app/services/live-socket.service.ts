@@ -9,9 +9,9 @@ export interface LiveSocketController {
   disconnect(): void;
   /** Permanent teardown — closes the socket and unregisters listeners.
    *  After `destroy()`, `connect()` is a no-op. Components that own
-   *  per-instance controllers (e.g. shared-list-view) should call this
-   *  from `DestroyRef.onDestroy` to avoid leaking visibilitychange
-   *  listeners across navigations. */
+   *  per-instance controllers should call this from
+   *  `DestroyRef.onDestroy` to avoid leaking visibilitychange listeners
+   *  across navigations. */
   destroy(): void;
 }
 

@@ -60,18 +60,5 @@ export const routes: Routes = [
       }
     ]
   },
-  /* Public read-only shared list. No auth guard — anyone with the
-   * token URL can open this. The component handles its own 404 state
-   * when the backend returns no link (unknown token OR suspended). */
-  {
-    path: 'shared/:token',
-    component: ListLayoutComponent,
-    children: [
-      {
-        path: '',
-        loadComponent: () => import('./pages/shared-list-view/shared-list-view.component').then(m => m.SharedListViewComponent)
-      }
-    ]
-  },
   { path: '**', redirectTo: 'browse' }
 ];
