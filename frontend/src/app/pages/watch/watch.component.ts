@@ -153,6 +153,11 @@ type ConfirmAction =
               <app-icon name="close"></app-icon>
               <span>Chiudi player</span>
             </button>
+            @if (showNextButton()) {
+              <button uiButton type="button" (click)="playNext()">
+                <span>Vai al prossimo</span>
+              </button>
+            }
             <button uiButton="icon" type="button"
                     uiButtonHover="accent"
                     [uiButtonTone]="player.isInWatchlist() ? 'accent' : 'default'"
