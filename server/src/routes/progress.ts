@@ -25,6 +25,7 @@ interface ProgressRow {
   backdrop: string | null;
   updated_at: number;
   watch_status_text?: string;
+  has_new_aired_episodes?: boolean;
 }
 
 router.post('/user/progress', requireAuth, async (req, res) => {
@@ -261,9 +262,16 @@ router.get('/user/progress', requireAuth, async (req, res) => {
     const caughtUp = resolvedRow.duration > 0
       && resolvedRow.position >= resolvedRow.duration * WATCHED_THRESHOLD
       && noLaterAiredEpisode;
-    const watchedCount = watchedByTmdb.get(resolvedRow.tmdb_id) ?? 0;
-    const statusText = formatTvStatusText(tmdb, watchedCount, 0, caughtUp);
-    return statusText ? { ...resolvedRow, watch_status_text: statusText } : resolvedRow;
+    const actualWatched = watchedByTmdb.get(resolvedRow.tmdb_id) ?? 0;
+    const status = formatTvStatusText(tmdb, actualWatched, 0, caughtUp, {
+      season: resolvedRow.season,
+      episode: resolvedRow.episode
+    });
+    return {
+      ...resolvedRow,
+      watch_status_text: status.text,
+      has_new_aired_episodes: status.hasNewAired || undefined
+    };
   }));
 
   res.json({ items: items.filter((x): x is ProgressRow => x !== null) });

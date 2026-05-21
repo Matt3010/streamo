@@ -1,4 +1,4 @@
-import { formatNewEpisodesMessage } from '../../../shared/release-format';
+import { formatNewEpisodesMessage, getEpisodesBefore } from '../../../shared/release-format';
 import {
   getAiredEpisodesCount,
   getBaseAiredEpisodesCount,
@@ -28,37 +28,54 @@ export function formatMovieRemaining(
   return hours === 1 && minutes === 0 ? `Manca ${timeLeft}` : `Mancano ${timeLeft}`;
 }
 
+export interface TvWatchStatus {
+  /** User-facing copy for the card meta line. */
+  text?: string;
+  /** True iff `text` announces freshly-aired unwatched episodes
+   *  ("Nuovo episodio!" / "N nuovi episodi!"). Lets the UI hide the
+   *  progress bar (which would refer to the previously-finished episode
+   *  and be misleading) without doing fragile string matching. */
+  hasNewAired: boolean;
+}
+
 /** TV "what's the user's status" copy used both by /user/watchlist and
- *  /user/progress. `remaining` is the count of unwatched aired episodes
- *  from the user's perspective; `newEpisodes` is the TMDB-only diff
- *  (aired vs last_episode_to_air) — used only as a trigger to switch
- *  between "Nuovo episodio!" wording and the plain "Mancano N episodi"
- *  copy. The actual displayed count is always `remaining`, so e.g. a
- *  user 2 episodes behind with 1 newly-aired today sees "2 nuovi
- *  episodi!" (not "Nuovo episodio!" capped at the daily delta). */
+ *  /user/progress. The displayed count is always `remaining` (aired minus
+ *  watched baseline); `newEpisodes` (TMDB-only delta) only flips the
+ *  wording between "Nuovo episodio!" and "Mancano N episodi".
+ *
+ *  `resume` is the user's next-to-watch coordinate (post-advancement). When
+ *  passed, every episode strictly before it is treated as watched — this
+ *  rescues linear watchers whose per-episode progress rows are sparse
+ *  (e.g. only saved the latest episode, watched the rest elsewhere). The
+ *  max(watchedCount, doneAiredEpisodes, impliedFromResume) never undercounts
+ *  and never overcounts a non-linear watcher whose actual watchedCount is
+ *  already higher than the implied floor. */
 export function formatTvStatusText(
   tmdb: TmdbTvSummary | null,
   watchedCount: number,
   doneAiredEpisodes: number,
-  caughtUp: boolean
-): string | undefined {
+  caughtUp: boolean,
+  resume?: { season: number; episode: number } | null
+): TvWatchStatus {
   const airedEpisodes = getAiredEpisodesCount(tmdb);
   const baseAiredEpisodes = getBaseAiredEpisodesCount(tmdb);
 
-  if (airedEpisodes <= 0) return undefined;
+  if (airedEpisodes <= 0) return { hasNewAired: false };
 
-  const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes);
+  const impliedWatched = resume ? getEpisodesBefore(tmdb, resume.season, resume.episode) : 0;
+  const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes, impliedWatched);
   const remaining = Math.max(0, airedEpisodes - watchedBaseline);
 
   const newEpisodes = Math.max(0, airedEpisodes - baseAiredEpisodes);
   if (newEpisodes > 0 && remaining > 0) {
-    return formatNewEpisodesMessage(remaining);
+    return { text: formatNewEpisodesMessage(remaining), hasNewAired: true };
   }
 
-  if (caughtUp) return 'Sei al passo';
+  if (caughtUp) return { text: 'Sei al passo', hasNewAired: false };
 
-  if (watchedBaseline <= 0) return undefined;
+  if (watchedBaseline <= 0) return { hasNewAired: false };
 
-  if (remaining === 0) return 'Sei al passo';
-  return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
+  if (remaining === 0) return { text: 'Sei al passo', hasNewAired: false };
+  const text = remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
+  return { text, hasNewAired: false };
 }

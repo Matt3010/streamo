@@ -102,6 +102,23 @@ export function getBaseAiredEpisodesCount(tv: TvLike | null | undefined): number
   return countEpisodesUpTo(tv, tv.last_episode_to_air ?? null);
 }
 
+/** Cumulative episode index for everything BEFORE (season, episode) — i.e.
+ *  treats every earlier episode as watched. Useful for inferring a watched
+ *  baseline from a resume position when the per-episode progress rows are
+ *  sparse (e.g. the user watched the early seasons on another device and
+ *  only started saving rows midway through). */
+export function getEpisodesBefore(
+  tv: TvLike | null | undefined,
+  season: number,
+  episode: number
+): number {
+  if (!tv || season <= 0) return 0;
+  return countEpisodesUpTo(tv, {
+    season_number: season,
+    episode_number: Math.max(0, episode - 1)
+  });
+}
+
 // --- Italian message formatters ---
 
 /**

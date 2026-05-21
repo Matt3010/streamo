@@ -25,6 +25,9 @@ export interface ProgressItem {
   backdrop: string | null;
   updated_at: number;
   watch_status_text?: string;
+  /** Set when the show has freshly-aired unwatched episodes — lets the UI
+   *  hide a stale 100% progress bar that refers to the previous episode. */
+  has_new_aired_episodes?: boolean;
 }
 
 export interface HistoryItem {
@@ -74,6 +77,8 @@ export interface WatchlistItem {
   aired_episodes?: number;
   seasons?: WatchlistSeasonInfo[];
   watch_status_text?: string;
+  /** See ProgressItem.has_new_aired_episodes — same flag, same purpose. */
+  has_new_aired_episodes?: boolean;
   next_release_text?: string;
   is_upcoming?: boolean;
   caught_up?: boolean;
