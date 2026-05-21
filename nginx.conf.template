@@ -10,7 +10,9 @@ log_format playback_transport escape=json
   '"upstream_response_time":"$upstream_response_time"}';
 
 upstream backend {
-    server backend:3000;
+    # Backend shares this container's network namespace (via the `warp` egress
+    # gateway), so it's reachable on loopback, not by service name.
+    server 127.0.0.1:3000;
 }
 
 server {
