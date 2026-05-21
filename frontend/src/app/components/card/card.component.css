@@ -117,16 +117,18 @@
   text-overflow: ellipsis;
 }
 
-/* Percentage label sits just above the progress bar, right-aligned. Lives
- * on z-index 3 like the bar so it sits over the gradient overlay. */
-.card-progress-pct {
+/* Progress row pins to the bottom and lays out the bar + percentage label
+ * inline so the label sits to the right of the bar with the bar shrinking
+ * to make room. Keeps the label readable on narrow (mobile) cards where
+ * stacking the label above would overflow the title area. */
+.card-progress-row {
   position: absolute;
-  right: 8px;
-  bottom: 14px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   z-index: 3;
   pointer-events: none;
 }
@@ -135,20 +137,26 @@
  * into a stub. Track is light grey (visible against the dark gradient) so
  * the unfilled portion communicates "how much is left" at a glance. */
 .card-progress {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 4px;
   background: rgba(255, 255, 255, 0.28);
   border-radius: 2px;
   overflow: hidden;
-  z-index: 3;
 }
 .card-progress > span {
   display: block;
   height: 100%;
   background: var(--accent);
+}
+
+.card-progress-pct {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
 }
 
 /* Top-right action buttons (status / remove) */

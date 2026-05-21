@@ -34,10 +34,12 @@ export interface CardFolderClickEvent {
       }
 
       @if (showProgress() && progressPct() !== null) {
-        @if (progressPctRounded() > 0) {
-          <div class="card-progress-pct">{{ progressPctRounded() }}%</div>
-        }
-        <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
+        <div class="card-progress-row">
+          <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
+          @if (progressPctRounded() > 0) {
+            <span class="card-progress-pct">{{ progressPctRounded() }}%</span>
+          }
+        </div>
       }
 
       @if (hasActions()) {
