@@ -18,6 +18,9 @@ import type { CardItem } from '../../models';
           @if (item().season && item().episode) {
             <span class="item-meta">S{{ item().season }} E{{ item().episode }}</span>
           }
+          @if (progressPct() !== null) {
+            <span class="item-progress-pct">{{ progressPct() }}%</span>
+          }
           @if (item().watchStatus) {
             <span class="item-watch-status">{{ item().watchStatus }}</span>
           }
@@ -34,6 +37,13 @@ export class ListItemInfoComponent {
 
   protected showSub(): boolean {
     const it = this.item();
-    return !!((it.season && it.episode) || it.watchStatus || it.nextReleaseText);
+    return !!((it.season && it.episode) || it.watchStatus || it.nextReleaseText || this.progressPct() !== null);
+  }
+
+  protected progressPct(): number | null {
+    const it = this.item();
+    if (typeof it.duration !== 'number' || typeof it.position !== 'number') return null;
+    if (it.duration <= 0 || it.position <= 0) return null;
+    return Math.min(100, Math.max(0, Math.round((it.position / it.duration) * 100)));
   }
 }

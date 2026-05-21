@@ -117,6 +117,20 @@
   text-overflow: ellipsis;
 }
 
+/* Percentage label sits just above the progress bar, right-aligned. Lives
+ * on z-index 3 like the bar so it sits over the gradient overlay. */
+.card-progress-pct {
+  position: absolute;
+  right: 8px;
+  bottom: 14px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+  z-index: 3;
+  pointer-events: none;
+}
+
 /* Progress bar inset from the edges so the rounded corners don't clip it
  * into a stub. Track is light grey (visible against the dark gradient) so
  * the unfilled portion communicates "how much is left" at a glance. */

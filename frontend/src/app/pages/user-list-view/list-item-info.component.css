@@ -52,6 +52,12 @@
   flex-shrink: 0;
 }
 
+.item-progress-pct {
+  color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .item-watch-status {
   color: var(--accent);
   font-weight: 600;

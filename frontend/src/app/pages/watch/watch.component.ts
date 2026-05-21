@@ -567,7 +567,10 @@ export class WatchComponent {
     if (this.player.currentItemType() !== 'movie') return '';
     const progress = this.player.resumeProgress();
     if (!progress || progress.duration <= 0) return '';
-    return `${formatTime(progress.position)}/${formatTime(progress.duration)}`;
+    const base = `${formatTime(progress.position)}/${formatTime(progress.duration)}`;
+    if (progress.position <= 0) return base;
+    const pct = Math.min(100, Math.max(0, Math.round((progress.position / progress.duration) * 100)));
+    return `${base} · ${pct}%`;
   });
 
   // Episode number to highlight on the card grid for the season currently
@@ -951,7 +954,10 @@ export class WatchComponent {
       : (ep.runtime && ep.runtime > 0 ? ep.runtime * 60 : 0);
     if (totalSeconds <= 0) return '';
     const watchedSeconds = progress?.position && progress.position > 0 ? progress.position : 0;
-    return `${formatTime(watchedSeconds)}/${formatTime(totalSeconds)}`;
+    const base = `${formatTime(watchedSeconds)}/${formatTime(totalSeconds)}`;
+    if (watchedSeconds <= 0) return base;
+    const pct = Math.min(100, Math.max(0, Math.round((watchedSeconds / totalSeconds) * 100)));
+    return `${base} · ${pct}%`;
   }
 
   protected canClearEpisodeProgress(episodeNumber: number): boolean {

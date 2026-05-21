@@ -34,6 +34,9 @@ export interface CardFolderClickEvent {
       }
 
       @if (showProgress() && progressPct() !== null) {
+        @if (progressPctRounded() > 0) {
+          <div class="card-progress-pct">{{ progressPctRounded() }}%</div>
+        }
         <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
       }
 
@@ -129,6 +132,11 @@ export class CardComponent {
     const it = this.item();
     if (typeof it.duration !== 'number' || typeof it.position !== 'number' || it.duration <= 0) return null;
     return Math.min(100, (it.position / it.duration) * 100);
+  });
+
+  protected readonly progressPctRounded = computed(() => {
+    const pct = this.progressPct();
+    return pct === null ? 0 : Math.round(pct);
   });
 
   protected readonly episodeBadge = computed(() => {
