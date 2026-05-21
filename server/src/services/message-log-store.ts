@@ -104,7 +104,12 @@ export function createMessageLogStore<T extends MessageLogEntry>(
 
   function trimLogFile(): void {
     const lines = readLogLines();
-    if (lines.length <= options.maxEntries) {
+    // Amortize the rewrite cost — only trim when we're 50% over capacity,
+    // then back down to capacity. This bounds the file at ~1.5x maxEntries
+    // while skipping the O(file size) rewrite on most appends. Under load
+    // (playbackLogger fires per stream event) the previous "rewrite every
+    // append past capacity" pattern hammered the event loop.
+    if (lines.length <= options.maxEntries * 1.5) {
       return;
     }
 
