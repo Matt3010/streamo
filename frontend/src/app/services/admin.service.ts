@@ -6,7 +6,8 @@ import type {
   PlaybackLogEntry,
   ProviderResolveLogEntry,
   TransportLogEntry,
-  AdminQueueStatus
+  AdminQueueStatus,
+  AdminEgressCheck
 } from '../models';
 import { LiveSocketService, type LiveSocketController } from './live-socket.service';
 import { apiCall, apiGetJson, apiSendJson, jsonRequest } from '../utils/api.util';
@@ -64,6 +65,8 @@ export class AdminService {
   readonly transportLogCapacity = signal(500);
   readonly transportLogPath = signal('');
   readonly queueStatus = signal<AdminQueueStatus | null>(null);
+  readonly egressCheck = signal<AdminEgressCheck | null>(null);
+  readonly egressCheckLoading = signal(false);
   readonly sessionsLiveConnected = signal(false);
   readonly authLogsLiveConnected = signal(false);
   readonly playbackLogsLiveConnected = signal(false);
@@ -236,6 +239,16 @@ export class AdminService {
       if (data) this.queueStatus.set(data);
     } finally {
       this.queueStatusLoading.set(false);
+    }
+  }
+
+  async fetchEgressCheck(): Promise<void> {
+    this.egressCheckLoading.set(true);
+    try {
+      const data = await apiGetJson<AdminEgressCheck>('/api/admin/egress-check');
+      if (data) this.egressCheck.set(data);
+    } finally {
+      this.egressCheckLoading.set(false);
     }
   }
 

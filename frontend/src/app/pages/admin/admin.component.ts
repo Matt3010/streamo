@@ -6,15 +6,17 @@ import { AdminTokensTabComponent } from './components/admin-tokens-tab.component
 import { AdminSessionsTabComponent } from './components/admin-sessions-tab.component';
 import { AdminQueueTabComponent } from './components/admin-queue-tab.component';
 import { AdminLogsTabComponent } from './components/admin-logs-tab.component';
+import { AdminEgressTabComponent } from './components/admin-egress-tab.component';
 
-type AdminTab = 'queue' | 'tokens' | 'sessions' | 'logs';
+type AdminTab = 'queue' | 'tokens' | 'sessions' | 'logs' | 'egress';
 
 const ADMIN_TAB_STORAGE_KEY = 'streamo.admin.active-tab';
 const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
   { value: 'queue', label: 'Queue' },
   { value: 'tokens', label: 'Token' },
   { value: 'sessions', label: 'Sessioni' },
-  { value: 'logs', label: 'Log' }
+  { value: 'logs', label: 'Log' },
+  { value: 'egress', label: 'Egress' }
 ];
 
 @Component({
@@ -26,7 +28,8 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
     AdminQueueTabComponent,
     AdminTokensTabComponent,
     AdminSessionsTabComponent,
-    AdminLogsTabComponent
+    AdminLogsTabComponent,
+    AdminEgressTabComponent
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -49,6 +52,9 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
         }
         @case ('logs') {
           <app-admin-logs-tab />
+        }
+        @case ('egress') {
+          <app-admin-egress-tab />
         }
       }
     </div>
@@ -76,7 +82,7 @@ export class AdminComponent {
 function loadAdminTab(): AdminTab {
   try {
     const value = localStorage.getItem(ADMIN_TAB_STORAGE_KEY);
-    if (value === 'queue' || value === 'tokens' || value === 'sessions' || value === 'logs') {
+    if (value === 'queue' || value === 'tokens' || value === 'sessions' || value === 'logs' || value === 'egress') {
       return value;
     }
   } catch {}

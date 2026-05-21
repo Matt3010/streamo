@@ -7,5 +7,6 @@ export type {
   ProviderResolveLogEntry,
   TransportLogEntry,
   AdminQueueStatus,
-  AdminQueueWorkerHeartbeat
+  AdminQueueWorkerHeartbeat,
+  AdminEgressCheck
 } from '../../../../shared/types';

@@ -215,3 +215,17 @@ export interface AdminQueueStatus {
   };
   workers: AdminQueueWorkerHeartbeat[];
 }
+
+// Backend egress probe — verifies that outbound traffic is exiting via
+// the WARP tunnel. Fetched on demand from the admin "Egress" tab.
+export interface AdminEgressCheck {
+  checked_at: number;
+  ip: string | null;
+  asn_org: string | null;
+  warp: boolean;
+  colo: string | null;
+  country: string | null;
+  city: string | null;
+  through_cloudflare: boolean;
+  errors: string[];
+}
