@@ -362,8 +362,7 @@ export class HomeComponent {
       episode: p.episode,
       position: p.position,
       duration: p.duration,
-      nextReleaseText: p.watch_status_text,
-      hasNewAiredEpisodes: p.has_new_aired_episodes
+      nextReleaseText: p.watch_status_text
     })), this.tmdb);
     if (seq !== this.userSeq) return;
 

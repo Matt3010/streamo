@@ -253,8 +253,6 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
         .execute();
     }
 
-    const tvStatus = formatTvStatusText(tmdb, prog.watched_count, doneAiredEpisodes, caughtUp, resume);
-
     return {
       ...r,
       status,
@@ -268,8 +266,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       seasons: tmdb?.seasons ?? [],
       is_upcoming: releaseMeta.isUpcoming,
       caught_up: caughtUp,
-      watch_status_text: tvStatus.text,
-      has_new_aired_episodes: tvStatus.hasNewAired || undefined,
+      watch_status_text: formatTvStatusText(tmdb, prog.watched_count, doneAiredEpisodes, caughtUp, resume),
       next_release_text: releaseMeta.text,
       resume_season: resume?.season,
       resume_episode: resume?.episode,

@@ -33,7 +33,7 @@ export interface CardFolderClickEvent {
         </div>
       }
 
-      @if (showProgress() && progressPct() !== null && !hasNewEpisodeAlert()) {
+      @if (showProgress() && progressPct() !== null) {
         <div class="card-progress-row">
           <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
           @if (progressPctRounded() > 0) {
@@ -140,14 +140,6 @@ export class CardComponent {
     const pct = this.progressPct();
     return pct === null ? 0 : Math.round(pct);
   });
-
-  /* Suppress the progress bar when the server has flagged the show as
-   * "freshly-aired unwatched episodes". In that case the stored progress
-   * refers to the previously-watched episode (typically at ~100%) and the
-   * bar would be misleading — the user's next action is the new episode,
-   * not resuming the old one. The flag is computed once on the backend in
-   * formatTvStatusText so the UI doesn't have to string-match the copy. */
-  protected readonly hasNewEpisodeAlert = computed(() => this.item().hasNewAiredEpisodes === true);
 
   protected readonly episodeBadge = computed(() => {
     const it = this.item();

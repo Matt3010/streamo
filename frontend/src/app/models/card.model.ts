@@ -36,11 +36,6 @@ export interface CardItem {
   watchStatus?: string;
   /** Optional tertiary line (release note, resume hint, etc.). */
   nextReleaseText?: string;
-  /** Server-provided flag: the show has unwatched aired episodes
-   *  ("Nuovo episodio!" / "N nuovi episodi!"). Cards use it to hide the
-   *  progress bar that would otherwise be stuck at ~100% on the previous
-   *  episode. */
-  hasNewAiredEpisodes?: boolean;
   resumeSeason?: number;
   resumeEpisode?: number;
   /** Pending mutation currently affecting this card's actions. */

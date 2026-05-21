@@ -41,7 +41,6 @@ export function watchlistToCardItem(item: WatchlistItem): CardItem {
     folderName: item.folder_name ?? null,
     isUpcoming: item.is_upcoming,
     watchStatus: item.watch_status_text,
-    hasNewAiredEpisodes: item.has_new_aired_episodes,
     nextReleaseText: item.next_release_text,
     season: item.resume_season,
     episode: item.resume_episode,

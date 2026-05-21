@@ -25,7 +25,6 @@ interface ProgressRow {
   backdrop: string | null;
   updated_at: number;
   watch_status_text?: string;
-  has_new_aired_episodes?: boolean;
 }
 
 router.post('/user/progress', requireAuth, async (req, res) => {
@@ -257,21 +256,18 @@ router.get('/user/progress', requireAuth, async (req, res) => {
       resolvedRow = { ...row, season: next.season, episode: next.episode, position: 0, duration: 0 };
     }
 
+    // caughtUp is structurally impossible here: rows past WATCHED_THRESHOLD
+    // were either advanced (duration becomes 0) or filtered out (no next
+    // episode → return null above). Partway rows by definition didn't cross
+    // the threshold. So we always pass false and let the remaining===0
+    // branch in formatTvStatusText handle the "Sei al passo" edge.
     const tmdb = await getTmdbTvSummary(resolvedRow.tmdb_id);
-    const noLaterAiredEpisode = (await findNextEpisode(resolvedRow.tmdb_id, resolvedRow.season, resolvedRow.episode)) === null;
-    const caughtUp = resolvedRow.duration > 0
-      && resolvedRow.position >= resolvedRow.duration * WATCHED_THRESHOLD
-      && noLaterAiredEpisode;
     const actualWatched = watchedByTmdb.get(resolvedRow.tmdb_id) ?? 0;
-    const status = formatTvStatusText(tmdb, actualWatched, 0, caughtUp, {
+    const statusText = formatTvStatusText(tmdb, actualWatched, 0, false, {
       season: resolvedRow.season,
       episode: resolvedRow.episode
     });
-    return {
-      ...resolvedRow,
-      watch_status_text: status.text,
-      has_new_aired_episodes: status.hasNewAired || undefined
-    };
+    return statusText ? { ...resolvedRow, watch_status_text: statusText } : resolvedRow;
   }));
 
   res.json({ items: items.filter((x): x is ProgressRow => x !== null) });
