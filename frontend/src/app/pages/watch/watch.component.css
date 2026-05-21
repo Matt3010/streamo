@@ -152,6 +152,23 @@
   height: 18px;
 }
 
+/* Secondary action: smaller and doesn't stretch, so the primary "Guarda"
+ * stays the dominant CTA in the row. Overrides the bigger sizing applied
+ * to all non-icon buttons inside .player-actions above. */
+.player-actions > .provider-picker-btn {
+  flex: 0 1 auto;
+  min-height: 36px;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.9rem;
+  gap: 0.4rem;
+  border-radius: 10px;
+}
+
+.player-actions > .provider-picker-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* Watchlist toggle sits flush to the right edge. The global
  * .ui-button-icon locks width/height to 40px (+ aspect-ratio: 1).
  * Override here so the toggle stretches vertically to match the row's

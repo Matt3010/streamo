@@ -124,7 +124,7 @@ type ConfirmAction =
               </button>
             }
             @if (showProviderPicker()) {
-              <button uiButton type="button" (click)="openProviderPicker()">
+              <button uiButton type="button" class="provider-picker-btn" (click)="openProviderPicker()">
                 <app-icon name="search"></app-icon>
                 <span>{{ providerPickerButtonLabel() }}</span>
               </button>
