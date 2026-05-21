@@ -1,7 +1,21 @@
+# Custom bridge with explicit IPs so backend can reach postgres/redis even
+# inside warp's network namespace, where /etc/resolv.conf gets rewritten by
+# warp and DNS lookups get hijacked back to 127.0.0.1 by the TIM home router
+# (NXDOMAIN-hijacking through the inherited `search homenet.telecomitalia.it`).
+networks:
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
 services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    networks:
+      internal:
+        ipv4_address: 172.30.0.10
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -11,6 +25,9 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    networks:
+      internal:
+        ipv4_address: 172.30.0.11
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-streamo}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-streamo}
@@ -38,6 +55,8 @@ services:
       - net.ipv6.conf.all.disable_ipv6=0
     devices:
       - /dev/net/tun
+    networks:
+      - internal
     volumes:
       - ./data/warp:/var/lib/cloudflare-warp
     expose:
@@ -69,9 +88,9 @@ services:
       - COOKIE_SECURE=${COOKIE_SECURE:-}
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
       - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:-}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - REDIS_URL=${REDIS_URL:-redis://172.30.0.10:6379}
       - TMDB_REFRESH_INTERVAL_SECONDS=${TMDB_REFRESH_INTERVAL_SECONDS:-1800}
-      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@postgres:5432/${POSTGRES_DB:-streamo}}
+      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@172.30.0.11:5432/${POSTGRES_DB:-streamo}}
       - AUTO_MIGRATE=${AUTO_MIGRATE:-1}
     healthcheck:
       # node 22 includes a global `fetch`; no curl needed in the slim image.
@@ -100,12 +119,12 @@ services:
       - COOKIE_SECURE=${COOKIE_SECURE:-}
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
       - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:-}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - REDIS_URL=${REDIS_URL:-redis://172.30.0.10:6379}
       - TMDB_REFRESH_INTERVAL_SECONDS=${TMDB_REFRESH_INTERVAL_SECONDS:-1800}
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
       - TMDB_JOB_RATE_LIMIT_MAX=${TMDB_JOB_RATE_LIMIT_MAX:-6}
       - TMDB_JOB_RATE_LIMIT_DURATION_MS=${TMDB_JOB_RATE_LIMIT_DURATION_MS:-1000}
-      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@postgres:5432/${POSTGRES_DB:-streamo}}
+      - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@172.30.0.11:5432/${POSTGRES_DB:-streamo}}
       - AUTO_MIGRATE=${AUTO_MIGRATE:-1}
     depends_on:
       warp:
