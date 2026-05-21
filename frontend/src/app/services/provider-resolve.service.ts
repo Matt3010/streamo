@@ -76,8 +76,6 @@ interface TitleCacheEntry {
 @Injectable({ providedIn: 'root' })
 export class ProviderResolveService {
   private readonly titleCache = new Map<string, TitleCacheEntry>();
-  private readonly episodeCache = new Map<string, ProviderResolvedEpisode | null>();
-  private readonly movieCache = new Map<number, ProviderResolvedMovie | null>();
 
   async resolve(
     tmdbId: number,
@@ -181,6 +179,9 @@ export class ProviderResolveService {
     };
   }
 
+  // Episode/movie embed URLs are short-lived (vixcloud bakes a few-minute
+  // `expires=` into the token), so caching them client-side serves stale URLs
+  // that come back as 410 Gone. Every call hits the backend for a fresh token.
   async resolveEpisode(
     providerTitleId: number,
     providerSlug: string | null,
@@ -188,14 +189,6 @@ export class ProviderResolveService {
     episode: number
   ): Promise<ProviderResolveResult<ProviderResolvedEpisode>> {
     const slug = providerSlug?.trim() || null;
-    const key = `${providerTitleId}:${slug ?? '-'}:${season}:${episode}`;
-    if (this.episodeCache.has(key)) {
-      return {
-        resolved: this.episodeCache.get(key) ?? null,
-        reason: null
-      };
-    }
-
     const data = await apiSendJson<ProviderResolveResult<ProviderResolvedEpisode>>(
       '/api/user/provider/resolve-episode',
       jsonRequest('POST', {
@@ -206,26 +199,15 @@ export class ProviderResolveService {
       })
     );
     if (!data) return { resolved: null, reason: 'temporarily_unavailable' };
-    const resolved = data.resolved ?? null;
-    if (resolved) this.episodeCache.set(key, resolved);
-    return { resolved, reason: data.reason ?? null };
+    return { resolved: data.resolved ?? null, reason: data.reason ?? null };
   }
 
   async resolveMovie(providerTitleId: number): Promise<ProviderResolveResult<ProviderResolvedMovie>> {
-    if (this.movieCache.has(providerTitleId)) {
-      return {
-        resolved: this.movieCache.get(providerTitleId) ?? null,
-        reason: null
-      };
-    }
-
     const data = await apiSendJson<ProviderResolveResult<ProviderResolvedMovie>>(
       '/api/user/provider/resolve-movie',
       jsonRequest('POST', { provider_title_id: providerTitleId })
     );
     if (!data) return { resolved: null, reason: 'temporarily_unavailable' };
-    const resolved = data.resolved ?? null;
-    if (resolved) this.movieCache.set(providerTitleId, resolved);
-    return { resolved, reason: data.reason ?? null };
+    return { resolved: data.resolved ?? null, reason: data.reason ?? null };
   }
 }
