@@ -33,7 +33,7 @@ export interface CardFolderClickEvent {
         </div>
       }
 
-      @if (showProgress() && progressPct() !== null) {
+      @if (showProgress() && progressPct() !== null && !hasNewEpisodeAlert()) {
         <div class="card-progress-row">
           <div class="card-progress"><span [style.width.%]="progressPct()"></span></div>
           @if (progressPctRounded() > 0) {
@@ -139,6 +139,19 @@ export class CardComponent {
   protected readonly progressPctRounded = computed(() => {
     const pct = this.progressPct();
     return pct === null ? 0 : Math.round(pct);
+  });
+
+  /* Suppress the progress bar when the card's release-status line announces
+   * a freshly-aired episode ("Nuovo episodio!" / "N nuovi episodi!"). In
+   * that case the stored progress refers to the previously-watched episode
+   * (typically at 100%) and the bar would be misleading — the user's next
+   * action is the new episode, not resuming the old one. The future-date
+   * variant "Nuovo ep. 25 giu" intentionally doesn't match (no "episod"
+   * suffix), so partial-progress cards waiting for the next drop still show
+   * their bar. */
+  protected readonly hasNewEpisodeAlert = computed(() => {
+    const text = this.item().nextReleaseText;
+    return !!text && /(episodio|episodi)\s*!\s*$/i.test(text);
   });
 
   protected readonly episodeBadge = computed(() => {

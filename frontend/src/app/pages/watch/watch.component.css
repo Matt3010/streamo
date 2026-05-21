@@ -153,9 +153,10 @@
 }
 
 /* Secondary action: smaller and doesn't stretch, so the primary "Guarda"
- * stays the dominant CTA in the row. Overrides the bigger sizing applied
- * to all non-icon buttons inside .player-actions above. */
-.player-actions > .provider-picker-btn {
+ * stays the dominant CTA in the row. Selector matches the specificity of
+ * the .ui-button:not(.ui-button-icon) rule above (3 classes) so the
+ * compact overrides actually win. */
+.player-actions > .ui-button.provider-picker-btn {
   flex: 0 1 auto;
   min-height: 36px;
   font-size: 0.85rem;
@@ -164,7 +165,7 @@
   border-radius: 10px;
 }
 
-.player-actions > .provider-picker-btn svg {
+.player-actions > .ui-button.provider-picker-btn svg {
   width: 14px;
   height: 14px;
 }
