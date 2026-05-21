@@ -1,4 +1,5 @@
 import os from 'os';
+import crypto from 'crypto';
 import type IORedis from 'ioredis';
 import { createRedisClient, hasRedisConfig } from './redis';
 import type { AdminQueueWorkerHeartbeat } from '../../../shared/types';
@@ -13,7 +14,15 @@ export function startWorkerHeartbeat(): (() => void) | null {
   const client = createRedisClient();
   const hostname = os.hostname();
   const pid = process.pid;
-  const workerId = `${hostname}-${pid}`;
+  /* hostname + pid alone collide when the worker container shares
+   * its UTS namespace with another via `network_mode: service:warp`
+   * (Docker copies the hostname) and each replica's main process is
+   * PID 1 inside its own PID namespace. Scaling backend-worker would
+   * then show "1 worker" in the admin board because every replica
+   * wrote to the same Redis key. The random suffix makes the id
+   * unique per process. */
+  const instanceId = crypto.randomBytes(4).toString('hex');
+  const workerId = `${hostname}-${pid}-${instanceId}`;
   const key = `${HEARTBEAT_KEY_PREFIX}:${workerId}`;
   const startedAt = Math.floor(Date.now() / 1000);
 
