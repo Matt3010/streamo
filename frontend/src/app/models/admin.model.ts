@@ -1,7 +1,4 @@
 export type {
-  AdminUserRow,
-  AdminTokenRow,
-  AdminSession,
   AuthLogEntry,
   PlaybackLogEntry,
   ProviderResolveLogEntry,

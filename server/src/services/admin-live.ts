@@ -1,7 +1,6 @@
 import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, isSuperAdminUser, readCookie } from '../middleware/auth';
-import { listLiveAdminSessions, LIVE_SESSION_WINDOW_SECONDS } from './admin-sessions';
 import { authLogger, getAuthLogCapacity, getAuthLogPath, listAuthLogs, subscribeAuthLogs } from './auth-logs';
 import { getPlaybackLogCapacity, getPlaybackLogPath, listPlaybackLogs, subscribePlaybackLogs } from './playback-logs';
 import {
@@ -12,25 +11,17 @@ import {
 } from './provider-resolve-logs';
 import { getTransportLogCapacity, getTransportLogPath, listTransportLogs, subscribeTransportLogs } from './transport-logs';
 import type {
-  AdminSession,
   AuthLogEntry,
   PlaybackLogEntry,
   ProviderResolveLogEntry,
   TransportLogEntry
 } from '../../../shared/types';
 
-const ADMIN_SESSIONS_WS_PATH = '/admin/sessions/ws';
 const ADMIN_AUTH_LOGS_WS_PATH = '/admin/auth-logs/ws';
 const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
 const ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH = '/admin/provider-resolve-logs/ws';
 const ADMIN_TRANSPORT_LOGS_WS_PATH = '/admin/transport-logs/ws';
-const EXPIRY_FUZZ_MS = 150;
 const HEARTBEAT_INTERVAL_MS = 30000;
-
-interface SessionsPayload {
-  type: 'sessions';
-  sessions: AdminSession[];
-}
 
 interface AuthLogsPayload {
   type: 'auth-logs';
@@ -64,13 +55,11 @@ interface ProviderResolveLogsPayload {
   logs: ProviderResolveLogEntry[];
 }
 
-let sessionClients = new Set<WebSocket>();
-let authLogClients = new Set<WebSocket>();
-let playbackLogClients = new Set<WebSocket>();
-let providerResolveLogClients = new Set<WebSocket>();
-let transportLogClients = new Set<WebSocket>();
+const authLogClients = new Set<WebSocket>();
+const playbackLogClients = new Set<WebSocket>();
+const providerResolveLogClients = new Set<WebSocket>();
+const transportLogClients = new Set<WebSocket>();
 const heartbeatState = new WeakMap<WebSocket, boolean>();
-let expiryTimeout: NodeJS.Timeout | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
 let unsubscribeAuthLogs: (() => void) | null = null;
 let unsubscribePlaybackLogs: (() => void) | null = null;
@@ -78,24 +67,10 @@ let unsubscribeProviderResolveLogs: (() => void) | null = null;
 let unsubscribeTransportLogs: (() => void) | null = null;
 
 export function attachAdminLiveSessions(server: HttpServer): void {
-  const sessionsWss = new WebSocketServer({ noServer: true });
   const authLogsWss = new WebSocketServer({ noServer: true });
   const playbackLogsWss = new WebSocketServer({ noServer: true });
   const providerResolveLogsWss = new WebSocketServer({ noServer: true });
   const transportLogsWss = new WebSocketServer({ noServer: true });
-
-  sessionsWss.on('connection', (ws) => {
-    sessionClients.add(ws);
-    trackClient(ws);
-    void broadcastSessions();
-
-    ws.on('close', () => {
-      sessionClients.delete(ws);
-      if (sessionClients.size === 0) {
-        clearExpiryTimeout();
-      }
-    });
-  });
 
   authLogsWss.on('connection', (ws) => {
     authLogClients.add(ws);
@@ -157,7 +132,6 @@ export function attachAdminLiveSessions(server: HttpServer): void {
     void (async () => {
       const pathname = getPathname(req);
       if (
-        pathname !== ADMIN_SESSIONS_WS_PATH &&
         pathname !== ADMIN_AUTH_LOGS_WS_PATH &&
         pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
         pathname !== ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH &&
@@ -190,10 +164,8 @@ export function attachAdminLiveSessions(server: HttpServer): void {
         return;
       }
 
-      const target = pathname === ADMIN_SESSIONS_WS_PATH
-        ? sessionsWss
-        : pathname === ADMIN_AUTH_LOGS_WS_PATH
-          ? authLogsWss
+      const target = pathname === ADMIN_AUTH_LOGS_WS_PATH
+        ? authLogsWss
         : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
           ? playbackLogsWss
           : pathname === ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH
@@ -204,56 +176,6 @@ export function attachAdminLiveSessions(server: HttpServer): void {
       });
     })();
   });
-}
-
-export function notifyAdminSessionsChanged(): void {
-  if (sessionClients.size === 0) return;
-  void broadcastSessions();
-}
-
-async function broadcastSessions(): Promise<void> {
-  if (sessionClients.size === 0) {
-    clearExpiryTimeout();
-    return;
-  }
-
-  const sessions = await listLiveAdminSessions();
-  const payload = JSON.stringify({
-    type: 'sessions',
-    sessions
-  } satisfies SessionsPayload);
-
-  for (const client of sessionClients) {
-    if (client.readyState !== WebSocket.OPEN) continue;
-    client.send(payload);
-  }
-
-  scheduleNextExpiry(sessions);
-}
-
-function scheduleNextExpiry(sessions: AdminSession[]): void {
-  clearExpiryTimeout();
-  if (sessionClients.size === 0 || sessions.length === 0) return;
-
-  let earliestExpiryMs = Number.POSITIVE_INFINITY;
-  for (const session of sessions) {
-    const expiryMs = (session.updated_at + LIVE_SESSION_WINDOW_SECONDS) * 1000;
-    if (expiryMs < earliestExpiryMs) earliestExpiryMs = expiryMs;
-  }
-
-  if (!Number.isFinite(earliestExpiryMs)) return;
-
-  const delayMs = Math.max(0, earliestExpiryMs - Date.now() + EXPIRY_FUZZ_MS);
-  expiryTimeout = setTimeout(() => {
-    expiryTimeout = null;
-    void broadcastSessions();
-  }, delayMs);
-}
-
-function clearExpiryTimeout(): void {
-  if (!expiryTimeout) return;
-  clearTimeout(expiryTimeout);
-  expiryTimeout = null;
 }
 
 function broadcastAuthLogs(): void {
@@ -416,7 +338,6 @@ function ensureHeartbeatInterval(): void {
   }
 
   heartbeatInterval = setInterval(() => {
-    heartbeatClients(sessionClients);
     heartbeatClients(authLogClients);
     heartbeatClients(playbackLogClients);
     heartbeatClients(providerResolveLogClients);
@@ -450,8 +371,7 @@ function heartbeatClients(clients: Set<WebSocket>): void {
 }
 
 function hasAnyClients(): boolean {
-  return sessionClients.size > 0 ||
-    authLogClients.size > 0 ||
+  return authLogClients.size > 0 ||
     playbackLogClients.size > 0 ||
     providerResolveLogClients.size > 0 ||
     transportLogClients.size > 0;

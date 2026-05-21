@@ -1,10 +1,9 @@
 import { Pool, types as pgTypes } from 'pg';
-import { Kysely, PostgresDialect, Transaction, sql } from 'kysely';
+import { Kysely, PostgresDialect, Transaction } from 'kysely';
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { SUPER_ADMIN_EMAIL } from './config';
 import type { Database } from './db-types';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -79,7 +78,6 @@ export function initDb(): Promise<void> {
     } else {
       console.log('[migrate] AUTO_MIGRATE not set — skipping. Run `npm run migrate:up` manually.');
     }
-    await runLegacyInviteMigration();
     cachedJwtSecret = process.env.JWT_SECRET || await loadOrCreateJwtSecret();
   })();
   return initPromise;
@@ -90,35 +88,6 @@ export function getJwtSecret(): string {
     throw new Error('JWT secret not initialized — call initDb() before using auth');
   }
   return cachedJwtSecret;
-}
-
-async function runLegacyInviteMigration(): Promise<void> {
-  const done = await kdb
-    .selectFrom('_meta')
-    .select('value')
-    .where('key', '=', 'migration_invite_tokens_v1')
-    .executeTakeFirst();
-  if (done) return;
-
-  const users = await kdb.selectFrom('users').select(['id', 'email']).execute();
-  for (const u of users) {
-    if (SUPER_ADMIN_EMAIL && u.email.toLowerCase() === SUPER_ADMIN_EMAIL) continue;
-    const legacyToken = `legacy_${crypto.randomBytes(12).toString('base64url')}`;
-    await kdb
-      .insertInto('invite_tokens')
-      .values({
-        token: legacyToken,
-        label: 'legacy',
-        used_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`,
-        used_by_user_id: u.id
-      })
-      .execute();
-  }
-  await kdb
-    .insertInto('_meta')
-    .values({ key: 'migration_invite_tokens_v1', value: 'done' })
-    .onConflict((oc) => oc.column('key').doNothing())
-    .execute();
 }
 
 async function loadOrCreateJwtSecret(): Promise<string> {

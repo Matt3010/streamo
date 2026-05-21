@@ -9,7 +9,10 @@
     "start:worker": "node dist/server/src/worker.js",
     "migrate:up": "node dist/server/src/scripts/migrate.js up",
     "migrate:down": "node dist/server/src/scripts/migrate.js down",
-    "migrate:status": "node dist/server/src/scripts/migrate.js status"
+    "migrate:status": "node dist/server/src/scripts/migrate.js status",
+    "user:add": "node dist/server/src/scripts/users.js add",
+    "user:remove": "node dist/server/src/scripts/users.js remove",
+    "user:list": "node dist/server/src/scripts/users.js list"
   },
   "dependencies": {
     "@bull-board/api": "^7.0.0",

@@ -2,19 +2,15 @@ import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@ang
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { UiTabsComponent, type UiTab } from '../../ui/tabs/tabs.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
-import { AdminTokensTabComponent } from './components/admin-tokens-tab.component';
-import { AdminSessionsTabComponent } from './components/admin-sessions-tab.component';
 import { AdminQueueTabComponent } from './components/admin-queue-tab.component';
 import { AdminLogsTabComponent } from './components/admin-logs-tab.component';
 import { AdminEgressTabComponent } from './components/admin-egress-tab.component';
 
-type AdminTab = 'queue' | 'tokens' | 'sessions' | 'logs' | 'egress';
+type AdminTab = 'queue' | 'logs' | 'egress';
 
 const ADMIN_TAB_STORAGE_KEY = 'streamo.admin.active-tab';
 const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
   { value: 'queue', label: 'Queue' },
-  { value: 'tokens', label: 'Token' },
-  { value: 'sessions', label: 'Sessioni' },
   { value: 'logs', label: 'Log' },
   { value: 'egress', label: 'Egress' }
 ];
@@ -26,8 +22,6 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
     PageHeaderComponent,
     UiTabsComponent,
     AdminQueueTabComponent,
-    AdminTokensTabComponent,
-    AdminSessionsTabComponent,
     AdminLogsTabComponent,
     AdminEgressTabComponent
   ],
@@ -43,12 +37,6 @@ const ADMIN_TABS: ReadonlyArray<UiTab<AdminTab>> = [
       @switch (activeTab()) {
         @case ('queue') {
           <app-admin-queue-tab />
-        }
-        @case ('tokens') {
-          <app-admin-tokens-tab />
-        }
-        @case ('sessions') {
-          <app-admin-sessions-tab />
         }
         @case ('logs') {
           <app-admin-logs-tab />
@@ -82,7 +70,7 @@ export class AdminComponent {
 function loadAdminTab(): AdminTab {
   try {
     const value = localStorage.getItem(ADMIN_TAB_STORAGE_KEY);
-    if (value === 'queue' || value === 'tokens' || value === 'sessions' || value === 'logs' || value === 'egress') {
+    if (value === 'queue' || value === 'logs' || value === 'egress') {
       return value;
     }
   } catch {}

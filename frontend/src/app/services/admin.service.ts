@@ -1,7 +1,5 @@
 import { Injectable, inject, signal, type WritableSignal } from '@angular/core';
 import type {
-  AdminTokenRow,
-  AdminSession,
   AuthLogEntry,
   PlaybackLogEntry,
   ProviderResolveLogEntry,
@@ -10,7 +8,7 @@ import type {
   AdminEgressCheck
 } from '../models';
 import { LiveSocketService, type LiveSocketController } from './live-socket.service';
-import { apiCall, apiGetJson, apiSendJson, jsonRequest } from '../utils/api.util';
+import { apiGetJson } from '../utils/api.util';
 
 interface LogStreamConfig<T> {
   wsPath: string;
@@ -29,29 +27,10 @@ interface LogsPayload<T> {
   logs: T[];
 }
 
-interface TokenCreateResponse {
-  token: string;
-  label: string | null;
-  created_at: number;
-}
-
-interface RevokeResponse {
-  ok: boolean;
-  was_used: boolean;
-  error?: string;
-}
-
-interface AdminSessionsSocketMessage {
-  type: 'sessions';
-  sessions: AdminSession[];
-}
-
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   private readonly liveSocket = inject(LiveSocketService);
 
-  readonly tokens = signal<AdminTokenRow[]>([]);
-  readonly sessions = signal<AdminSession[]>([]);
   readonly authLogs = signal<AuthLogEntry[]>([]);
   readonly authLogCapacity = signal(500);
   readonly authLogPath = signal('');
@@ -67,34 +46,18 @@ export class AdminService {
   readonly queueStatus = signal<AdminQueueStatus | null>(null);
   readonly egressCheck = signal<AdminEgressCheck | null>(null);
   readonly egressCheckLoading = signal(false);
-  readonly sessionsLiveConnected = signal(false);
   readonly authLogsLiveConnected = signal(false);
   readonly playbackLogsLiveConnected = signal(false);
   readonly providerResolveLogsLiveConnected = signal(false);
   readonly transportLogsLiveConnected = signal(false);
-  readonly loading = signal(false);
   readonly queueStatusLoading = signal(false);
 
-  private readonly sessionsSocket: LiveSocketController;
   private readonly authLogsSocket: LiveSocketController;
   private readonly playbackLogsSocket: LiveSocketController;
   private readonly providerResolveLogsSocket: LiveSocketController;
   private readonly transportLogsSocket: LiveSocketController;
 
   constructor() {
-    this.sessionsSocket = this.liveSocket.create({
-      path: '/api/admin/sessions/ws',
-      onConnected: (connected) => this.sessionsLiveConnected.set(connected),
-      onMessage: (event) => {
-        try {
-          const message = JSON.parse(event.data as string) as AdminSessionsSocketMessage;
-          if (message.type === 'sessions') {
-            this.sessions.set(message.sessions);
-          }
-        } catch {}
-      }
-    });
-
     this.authLogsSocket = this.createLogStreamSocket(this.authLogStreamConfig);
     this.playbackLogsSocket = this.createLogStreamSocket(this.playbackLogStreamConfig);
     this.providerResolveLogsSocket = this.createLogStreamSocket(this.providerResolveLogStreamConfig);
@@ -174,48 +137,6 @@ export class AdminService {
     cfg.pathSignal.set(data.path);
   }
 
-  async fetchTokens(): Promise<void> {
-    this.loading.set(true);
-    try {
-      const data = await apiGetJson<{ tokens: AdminTokenRow[] }>('/api/admin/tokens');
-      if (data) this.tokens.set(data.tokens);
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
-  async createToken(label?: string): Promise<TokenCreateResponse | null> {
-    const data = await apiSendJson<TokenCreateResponse>('/api/admin/tokens', jsonRequest('POST', { label: label || null }));
-    if (data) await this.fetchTokens();
-    return data;
-  }
-
-  /* The three token-state endpoints below return a useful body even on
-   * non-2xx — `{ok: false, was_used, error}` lets the UI distinguish
-   * "already used" from "network down". apiCall preserves both signals. */
-  async revokeToken(token: string): Promise<RevokeResponse> {
-    return this.applyTokenStateChange(`/api/admin/tokens/${encodeURIComponent(token)}`, jsonRequest('DELETE'));
-  }
-
-  async reactivateToken(token: string): Promise<RevokeResponse> {
-    return this.applyTokenStateChange(`/api/admin/tokens/${encodeURIComponent(token)}/reactivate`, jsonRequest('PATCH'));
-  }
-
-  async deleteTokenPermanently(token: string): Promise<RevokeResponse> {
-    return this.applyTokenStateChange(`/api/admin/tokens/${encodeURIComponent(token)}/permanent`, jsonRequest('DELETE'));
-  }
-
-  private async applyTokenStateChange(url: string, init: RequestInit): Promise<RevokeResponse> {
-    const { ok, data } = await apiCall<RevokeResponse>(url, init);
-    if (ok) await this.fetchTokens();
-    return data ?? { ok: false, was_used: false, error: 'network_error' };
-  }
-
-  async fetchSessions(): Promise<void> {
-    const data = await apiGetJson<{ sessions: AdminSession[] }>('/api/admin/sessions');
-    if (data) this.sessions.set(data.sessions);
-  }
-
   async fetchPlaybackLogs(): Promise<void> {
     return this.fetchLogStream(this.playbackLogStreamConfig);
   }
@@ -250,14 +171,6 @@ export class AdminService {
     } finally {
       this.egressCheckLoading.set(false);
     }
-  }
-
-  connectSessionsLive(): void {
-    this.sessionsSocket.connect();
-  }
-
-  disconnectSessionsLive(): void {
-    this.sessionsSocket.disconnect();
   }
 
   connectPlaybackLogsLive(): void {

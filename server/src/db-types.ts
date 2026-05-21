@@ -72,15 +72,6 @@ interface TmdbCacheTable {
   fetched_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
 }
 
-interface InviteTokensTable {
-  token: string;
-  label: string | null;
-  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
-  used_at: Epoch | null;
-  used_by_user_id: number | null;
-  revoked_at: Epoch | null;
-}
-
 interface ProviderTitleMapTable {
   tmdb_id: number;
   media_type: string;
@@ -113,7 +104,6 @@ export interface Database {
   watchlist: WatchlistTable;
   _meta: MetaTable;
   tmdb_cache: TmdbCacheTable;
-  invite_tokens: InviteTokensTable;
   provider_title_map: ProviderTitleMapTable;
   provider_manual_refresh_cooldowns: ProviderManualRefreshCooldownsTable;
 }

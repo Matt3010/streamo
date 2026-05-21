@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { kdb, getJwtSecret } from '../db';
+import { getJwtSecret } from '../db';
 import { COOKIE_SECURE, TOKEN_TTL, SUPER_ADMIN_EMAIL } from '../config';
 import { authLogger } from '../services/auth-logs';
 
@@ -9,7 +9,7 @@ export interface AuthedUser {
   email: string;
 }
 
-export type AuthFailureReason = 'missing_token' | 'invalid_token' | 'access_revoked';
+export type AuthFailureReason = 'missing_token' | 'invalid_token';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -27,21 +27,6 @@ export async function authenticateToken(token?: string): Promise<{ user: AuthedU
 
   try {
     const user = jwt.verify(token, getJwtSecret()) as AuthedUser;
-
-    if (isSuperAdminUser(user)) {
-      return { user };
-    }
-
-    const inviteRow = await kdb
-      .selectFrom('invite_tokens')
-      .select('revoked_at')
-      .where('used_by_user_id', '=', user.id)
-      .executeTakeFirst();
-
-    if (!inviteRow || inviteRow.revoked_at !== null) {
-      return { user: null, error: 'access_revoked' };
-    }
-
     return { user };
   } catch {
     return { user: null, error: 'invalid_token' };
@@ -107,11 +92,10 @@ export function setAuthCookie(res: Response, user: AuthedUser): void {
 
 export function respondAuthFailure(req: Request, res: Response, reason: string, event = 'request auth denied'): void {
   // Clear the cookie when the token itself is bad (expired/malformed/
-  // unknown signature) or the user's access was revoked — otherwise the
-  // browser keeps sending the dead token until maxAge (30 days), spamming
-  // 401s. `missing_token` doesn't need clearing because there was no
-  // cookie to begin with.
-  if (reason === 'access_revoked' || reason === 'invalid_token') {
+  // unknown signature) — otherwise the browser keeps sending the dead
+  // token until maxAge (30 days), spamming 401s. `missing_token` doesn't
+  // need clearing because there was no cookie to begin with.
+  if (reason === 'invalid_token') {
     res.clearCookie('token', { path: '/' });
   }
 

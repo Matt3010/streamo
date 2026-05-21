@@ -33,10 +33,6 @@ export class AuthService {
     return this.submitAuth('/api/auth/login', email, password);
   }
 
-  async register(email: string, password: string, token?: string): Promise<AuthResponse> {
-    return this.submitAuth('/api/auth/register', email, password, token);
-  }
-
   async logout(): Promise<void> {
     // Best-effort POST — clear local state regardless because the cookie
     // is httpOnly and we can't unset it ourselves.
@@ -65,12 +61,10 @@ export class AuthService {
     return true;
   }
 
-  private async submitAuth(endpoint: string, email: string, password: string, token?: string): Promise<AuthResponse> {
-    const body: Record<string, string> = { email, password };
-    if (token) body['token'] = token;
+  private async submitAuth(endpoint: string, email: string, password: string): Promise<AuthResponse> {
     // Server returns a useful body on both success (`{user}`) and failure
     // (`{error: 'invalid_credentials' | ...}`) — apiCall surfaces both.
-    const { ok, data } = await apiCall<AuthResponse>(endpoint, jsonRequest('POST', body));
+    const { ok, data } = await apiCall<AuthResponse>(endpoint, jsonRequest('POST', { email, password }));
     this.authResolved.set(true);
     if (ok && data?.user) this.currentUser.set(data.user);
     return data ?? { error: 'network_error' };

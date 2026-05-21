@@ -6,7 +6,6 @@ import { toInt } from '../utils/validation';
 import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD, isMediaType } from '../config';
 import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
-import { notifyAdminSessionsChanged } from '../services/admin-live';
 import { publishUserWatchlistChanged } from '../services/user-live';
 import { formatMovieRemaining, formatTvStatusText } from '../services/watch-status';
 import type { MediaType } from '../../../shared/types';
@@ -87,7 +86,6 @@ router.post('/user/progress', requireAuth, async (req, res) => {
       media_type
     });
   }
-  notifyAdminSessionsChanged();
 
   res.json({ ok: true });
 });
@@ -312,7 +310,6 @@ router.delete('/user/progress/title/:type/:tmdb_id', requireAuth, async (req, re
     )
     .execute();
 
-  notifyAdminSessionsChanged();
   res.json({ ok: true });
 });
 
@@ -351,7 +348,6 @@ router.delete('/user/progress/:type/:tmdb_id/:season?/:episode?', requireAuth, a
     .where('season', '=', season)
     .where('episode', '=', episode)
     .execute();
-  notifyAdminSessionsChanged();
   res.json({ ok: true });
 });
 

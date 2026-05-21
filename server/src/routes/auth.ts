@@ -2,16 +2,14 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { promisify } from 'node:util';
 import rateLimit from 'express-rate-limit';
-import { sql } from 'kysely';
-import { kdb, withTx } from '../db';
-import { EMAIL_RE, SUPER_ADMIN_EMAIL } from '../config';
+import { kdb } from '../db';
+import { SUPER_ADMIN_EMAIL } from '../config';
 import { authenticateToken, requireAuth, respondAuthFailure, setAuthCookie } from '../middleware/auth';
 import { hasValidVixcloudSignature } from '../utils/vix-token';
 import type { User } from '../../../shared/types';
 
 const router = Router();
 
-const bcryptHash = promisify<string, number, string>(bcrypt.hash as never);
 const bcryptCompare = promisify<string, string, boolean>(bcrypt.compare as never);
 
 const authLimiter = rateLimit({
@@ -20,90 +18,6 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'too_many_attempts' }
-});
-
-router.post('/auth/register', authLimiter, async (req, res) => {
-  const body = req.body ?? {};
-  // Explicit string checks — otherwise an array/object payload sneaks past
-  // the truthiness gates and reaches Kysely where it throws a 500 instead
-  // of the 400 the client should see.
-  const email = typeof body.email === 'string' ? body.email : '';
-  const password = typeof body.password === 'string' ? body.password : '';
-  const token = typeof body.token === 'string' ? body.token : '';
-
-  if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
-  if (email.length > 254 || !EMAIL_RE.test(email)) return res.status(400).json({ error: 'invalid_email' });
-  if (password.length < 6) return res.status(400).json({ error: 'weak_password' });
-
-  const normalized = email.trim().toLowerCase();
-  const isSuperAdmin = Boolean(SUPER_ADMIN_EMAIL) && normalized === SUPER_ADMIN_EMAIL;
-
-  if (!isSuperAdmin) {
-    if (!SUPER_ADMIN_EMAIL) {
-      return res.status(400).json({ error: 'super_admin_not_configured' });
-    }
-    if (!token) {
-      return res.status(400).json({ error: 'missing_token' });
-    }
-  }
-
-  try {
-    const hash = await bcryptHash(password, 10);
-
-    const result = await withTx(async (trx) => {
-      if (!isSuperAdmin) {
-        const inviteRow = await trx
-          .selectFrom('invite_tokens')
-          .select(['token', 'used_at', 'revoked_at'])
-          .where('token', '=', token)
-          .executeTakeFirst();
-
-        if (!inviteRow) return { error: 'invalid_token' as const };
-        if (inviteRow.revoked_at !== null) return { error: 'revoked_token' as const };
-        if (inviteRow.used_at !== null) return { error: 'token_already_used' as const };
-      }
-
-      const inserted = await trx
-        .insertInto('users')
-        .values({ email: normalized, password_hash: hash })
-        .returning('id')
-        .executeTakeFirstOrThrow();
-
-      if (!isSuperAdmin) {
-        await trx
-          .updateTable('invite_tokens')
-          .set({
-            used_at: sql<number>`EXTRACT(EPOCH FROM NOW())::BIGINT`,
-            used_by_user_id: inserted.id
-          })
-          .where('token', '=', token)
-          .execute();
-      }
-
-      return { userId: inserted.id };
-    });
-
-    if ('error' in result) {
-      return res.status(400).json({ error: result.error });
-    }
-
-    const user: User = {
-      id: result.userId,
-      email: normalized,
-      autoplay_next: 1,
-      folders_enabled: 1,
-      is_admin: isSuperAdmin
-    };
-    setAuthCookie(res, user);
-    res.json({ user });
-  } catch (e) {
-    const msg = String((e as Error).message);
-    if (msg.includes('duplicate key') || msg.includes('users_email_key')) {
-      return res.status(409).json({ error: 'email_taken' });
-    }
-    console.error('[auth/register]', e);
-    res.status(500).json({ error: 'server_error' });
-  }
 });
 
 router.post('/auth/login', authLimiter, async (req, res) => {

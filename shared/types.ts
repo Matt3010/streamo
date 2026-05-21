@@ -96,41 +96,6 @@ export interface WatchlistUpdatedEvent {
 
 // Admin types
 
-export interface AdminUserRow {
-  id: number;
-  email: string;
-  created_at: number;
-  token: string | null;
-  label: string | null;
-  token_created_at: number | null;
-  used_at: number | null;
-  revoked_at: number | null;
-}
-
-export interface AdminTokenRow {
-  token: string;
-  label: string | null;
-  created_at: number;
-  used_at: number | null;
-  revoked_at: number | null;
-  used_by_email: string | null;
-  can_manage?: boolean;
-}
-
-export interface AdminSession {
-  user_id: number;
-  email: string;
-  tmdb_id: number;
-  media_type: MediaType;
-  season: number;
-  episode: number;
-  position: number;
-  duration: number;
-  title: string | null;
-  poster: string | null;
-  updated_at: number;
-}
-
 export interface PlaybackLogEntry {
   ts: number;
   message: string;

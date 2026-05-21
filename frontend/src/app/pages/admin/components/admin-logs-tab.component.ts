@@ -24,7 +24,7 @@ interface LogSourceConfig {
 const AUTH_TONE_RULES: readonly ToneRule[] = [
   { keywords: ['level=error'], tone: 'error' },
   { keywords: ['level=warn'], tone: 'warn' },
-  { keywords: ['access_revoked', 'super_admin_required', 'forbidden'], tone: 'error' },
+  { keywords: ['super_admin_required', 'forbidden'], tone: 'error' },
   { keywords: ['missing_token', 'invalid_token', 'unauthenticated'], tone: 'warn' }
 ];
 
