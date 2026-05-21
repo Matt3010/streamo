@@ -28,6 +28,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await addCheck(db, 'history', 'history_media_type_chk', "media_type IN ('movie', 'tv')");
   await addCheck(db, 'watchlist', 'watchlist_media_type_chk', "media_type IN ('movie', 'tv')");
   await addCheck(db, 'hidden_continue', 'hidden_continue_media_type_chk', "media_type IN ('movie', 'tv')");
+  await addCheck(db, 'provider_title_map', 'provider_title_map_media_type_chk', "media_type IN ('movie', 'tv')");
+  await addCheck(db, 'provider_manual_refresh_cooldowns', 'provider_manual_refresh_cooldowns_media_type_chk', "media_type IN ('movie', 'tv')");
 
   await addCheck(db, 'watchlist', 'watchlist_status_chk', "status IN ('todo', 'in_progress', 'done')");
   await addCheck(db, 'share_links', 'share_links_status_chk', "status IN ('active', 'suspended')");
@@ -42,6 +44,8 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await sql`DROP INDEX IF EXISTS idx_watchlist_media_tmdb`.execute(db);
   await sql`ALTER TABLE share_links DROP CONSTRAINT IF EXISTS share_links_status_chk`.execute(db);
   await sql`ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_status_chk`.execute(db);
+  await sql`ALTER TABLE provider_manual_refresh_cooldowns DROP CONSTRAINT IF EXISTS provider_manual_refresh_cooldowns_media_type_chk`.execute(db);
+  await sql`ALTER TABLE provider_title_map DROP CONSTRAINT IF EXISTS provider_title_map_media_type_chk`.execute(db);
   await sql`ALTER TABLE hidden_continue DROP CONSTRAINT IF EXISTS hidden_continue_media_type_chk`.execute(db);
   await sql`ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_media_type_chk`.execute(db);
   await sql`ALTER TABLE history DROP CONSTRAINT IF EXISTS history_media_type_chk`.execute(db);

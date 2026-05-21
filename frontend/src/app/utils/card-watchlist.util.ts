@@ -4,6 +4,7 @@ import type { WatchlistService } from '../services/watchlist.service';
 import type { CardPendingAction } from '../models';
 
 export interface WatchlistToggleResult {
+  ok: boolean;
   inWatchlist: boolean;
   message: string;
 }
@@ -68,10 +69,14 @@ export async function toggleCardWatchlist(
   watchlist: WatchlistService
 ): Promise<WatchlistToggleResult> {
   if (item.inWatchlist) {
-    await watchlist.remove(item.tmdb_id, item.media_type);
-    return { inWatchlist: false, message: `${item.title}: rimosso dalla lista` };
+    const ok = await watchlist.remove(item.tmdb_id, item.media_type);
+    return ok
+      ? { ok: true, inWatchlist: false, message: `${item.title}: rimosso dalla lista` }
+      : { ok: false, inWatchlist: true, message: 'Errore di rete, riprova' };
   }
 
-  await watchlist.add(item.tmdb_id, item.media_type, item.title, item.poster);
-  return { inWatchlist: true, message: `${item.title}: aggiunto alla lista` };
+  const ok = await watchlist.add(item.tmdb_id, item.media_type, item.title, item.poster);
+  return ok
+    ? { ok: true, inWatchlist: true, message: `${item.title}: aggiunto alla lista` }
+    : { ok: false, inWatchlist: false, message: 'Errore di rete, riprova' };
 }

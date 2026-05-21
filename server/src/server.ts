@@ -24,6 +24,13 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
+// Process-liveness probe for the docker-compose healthcheck. Intentionally
+// minimal — does not touch DB or Redis (those have their own healthchecks),
+// so a transient upstream blip won't restart the API.
+app.get('/health', (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.use(authRoutes);
 app.use(preferencesRoutes);
 app.use(progressRoutes);

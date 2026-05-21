@@ -77,14 +77,14 @@ export class SharedListViewComponent {
     effect(() => {
       const token = this.token();
       if (!token) return;
-      this.socket?.disconnect();
+      this.socket?.destroy();
       this.firstLoad = true;
       void this.load(token);
       this.openSocket(token);
     });
 
     this.destroyRef.onDestroy(() => {
-      this.socket?.disconnect();
+      this.socket?.destroy();
       this.socket = null;
     });
   }
@@ -100,7 +100,7 @@ export class SharedListViewComponent {
       /* Token is gone — stop the reconnect loop. The socket would
        * otherwise keep hitting the 404 upgrade and retrying with
        * exponential backoff. */
-      this.socket?.disconnect();
+      this.socket?.destroy();
       this.socket = null;
       return;
     }

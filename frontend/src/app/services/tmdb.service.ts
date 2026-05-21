@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import type { MediaType, TmdbItem, TmdbReview, TmdbSeasonDetails } from '../models';
+import { apiGetJson } from '../utils/api.util';
 
 const TMDB_BASE = '/api/tmdb';
 const CACHE_MAX = 100;
@@ -15,60 +16,38 @@ export class TmdbService {
     const cached = this.cacheGet(key);
     if (cached) return cached;
 
-    const res = await fetch(`${TMDB_BASE}/${type}/${tmdbId}?language=it-IT&append_to_response=credits`);
-    if (!res.ok) return null;
-    const data = await res.json() as TmdbItem;
-    this.cacheSet(key, data);
+    const data = await apiGetJson<TmdbItem>(`${TMDB_BASE}/${type}/${tmdbId}?language=it-IT&append_to_response=credits`);
+    if (data) this.cacheSet(key, data);
     return data;
   }
 
   async getSeasonDetails(tvId: number, seasonNumber: number): Promise<TmdbSeasonDetails | null> {
-    const res = await fetch(`${TMDB_BASE}/tv/${tvId}/season/${seasonNumber}?language=it-IT`);
-    if (!res.ok) return null;
-    return res.json() as Promise<TmdbSeasonDetails>;
+    return apiGetJson<TmdbSeasonDetails>(`${TMDB_BASE}/tv/${tvId}/season/${seasonNumber}?language=it-IT`);
   }
 
   async getRecommendations(tmdbId: string | number, type: MediaType): Promise<TmdbItem[]> {
-    try {
-      const res = await fetch(`${TMDB_BASE}/${type}/${tmdbId}/recommendations?language=it-IT`);
-      if (!res.ok) return [];
-      const data = await res.json() as { results?: TmdbItem[] };
-      return data.results ?? [];
-    } catch {
-      return [];
-    }
+    const data = await apiGetJson<{ results?: TmdbItem[] }>(`${TMDB_BASE}/${type}/${tmdbId}/recommendations?language=it-IT`);
+    return data?.results ?? [];
   }
 
   async getReviews(tmdbId: string | number, type: MediaType): Promise<TmdbReview[]> {
-    try {
-      const urls = [
-        `${TMDB_BASE}/${type}/${tmdbId}/reviews?language=it-IT`,
-        `${TMDB_BASE}/${type}/${tmdbId}/reviews`,
-        `${TMDB_BASE}/${type}/${tmdbId}/reviews?language=en-US`
-      ];
+    const urls = [
+      `${TMDB_BASE}/${type}/${tmdbId}/reviews?language=it-IT`,
+      `${TMDB_BASE}/${type}/${tmdbId}/reviews`,
+      `${TMDB_BASE}/${type}/${tmdbId}/reviews?language=en-US`
+    ];
 
-      for (const url of urls) {
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        const data = await res.json() as { results?: TmdbReview[] };
-        const reviews = data.results ?? [];
-        if (reviews.length > 0) return reviews;
-      }
-
-      return [];
-    } catch {
-      return [];
+    for (const url of urls) {
+      const data = await apiGetJson<{ results?: TmdbReview[] }>(url);
+      const reviews = data?.results ?? [];
+      if (reviews.length > 0) return reviews;
     }
+    return [];
   }
 
   async list(endpoint: string): Promise<TmdbItem[]> {
-    try {
-      const res = await fetch(`${TMDB_BASE}${endpoint}?language=it-IT&region=IT`);
-      const data = await res.json() as { results?: TmdbItem[] };
-      return sortByNewest(data.results ?? []);
-    } catch {
-      return [];
-    }
+    const data = await apiGetJson<{ results?: TmdbItem[] }>(`${TMDB_BASE}${endpoint}?language=it-IT&region=IT`);
+    return sortByNewest(data?.results ?? []);
   }
 
   async searchAll(query: string, signal?: AbortSignal): Promise<TmdbItem[]> {
@@ -78,22 +57,18 @@ export class TmdbService {
     const cached = this.searchCacheGet(key);
     if (cached) return cached;
 
-    try {
-      const res = await fetch(
-        `${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`,
-        { signal }
-      );
-      if (!res.ok) return [];
-      const data = await res.json() as { results?: TmdbItem[] };
-      const results = data.results ?? [];
-      const filtered = sortByNewest(
-        results.filter((item): item is TmdbItem & { media_type: MediaType } => item.media_type === 'movie' || item.media_type === 'tv')
-      );
-      this.searchCacheSet(key, filtered);
-      return filtered;
-    } catch {
-      return [];
-    }
+    const data = await apiGetJson<{ results?: TmdbItem[] }>(
+      `${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`,
+      { signal }
+    );
+    if (!data) return [];
+    const filtered = sortByNewest(
+      (data.results ?? []).filter((item): item is TmdbItem & { media_type: MediaType } =>
+        item.media_type === 'movie' || item.media_type === 'tv'
+      )
+    );
+    this.searchCacheSet(key, filtered);
+    return filtered;
   }
 
   private searchCacheGet(key: string): TmdbItem[] | undefined {

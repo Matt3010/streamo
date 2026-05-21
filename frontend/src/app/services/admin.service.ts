@@ -9,6 +9,7 @@ import type {
   AdminQueueStatus
 } from '../models';
 import { LiveSocketService, type LiveSocketController } from './live-socket.service';
+import { apiCall, apiGetJson, apiSendJson, jsonRequest } from '../utils/api.util';
 
 interface LogStreamConfig<T> {
   wsPath: string;
@@ -163,101 +164,53 @@ export class AdminService {
   }
 
   private async fetchLogStream<T>(cfg: LogStreamConfig<T>): Promise<void> {
-    try {
-      const res = await fetch(cfg.fetchPath);
-      if (res.ok) {
-        const data = await res.json() as LogsPayload<T>;
-        cfg.logsSignal.set(data.logs);
-        cfg.capacitySignal.set(data.capacity);
-        cfg.pathSignal.set(data.path);
-      }
-    } catch {}
+    const data = await apiGetJson<LogsPayload<T>>(cfg.fetchPath);
+    if (!data) return;
+    cfg.logsSignal.set(data.logs);
+    cfg.capacitySignal.set(data.capacity);
+    cfg.pathSignal.set(data.path);
   }
 
   async fetchTokens(): Promise<void> {
     this.loading.set(true);
     try {
-      const res = await fetch('/api/admin/tokens');
-      if (res.ok) {
-        const data = await res.json() as { tokens: AdminTokenRow[] };
-        this.tokens.set(data.tokens);
-      }
+      const data = await apiGetJson<{ tokens: AdminTokenRow[] }>('/api/admin/tokens');
+      if (data) this.tokens.set(data.tokens);
     } finally {
       this.loading.set(false);
     }
   }
 
   async createToken(label?: string): Promise<TokenCreateResponse | null> {
-    try {
-      const res = await fetch('/api/admin/tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: label || null })
-      });
-      if (res.ok) {
-        const data = await res.json() as TokenCreateResponse;
-        // Refresh list
-        await this.fetchTokens();
-        return data;
-      }
-    } catch {}
-    return null;
+    const data = await apiSendJson<TokenCreateResponse>('/api/admin/tokens', jsonRequest('POST', { label: label || null }));
+    if (data) await this.fetchTokens();
+    return data;
   }
 
+  /* The three token-state endpoints below return a useful body even on
+   * non-2xx — `{ok: false, was_used, error}` lets the UI distinguish
+   * "already used" from "network down". apiCall preserves both signals. */
   async revokeToken(token: string): Promise<RevokeResponse> {
-    try {
-      const res = await fetch(`/api/admin/tokens/${encodeURIComponent(token)}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json() as RevokeResponse;
-      if (res.ok) {
-        // Refresh list
-        await this.fetchTokens();
-      }
-      return data;
-    } catch {
-      return { ok: false, was_used: false, error: 'network_error' };
-    }
+    return this.applyTokenStateChange(`/api/admin/tokens/${encodeURIComponent(token)}`, jsonRequest('DELETE'));
   }
 
   async reactivateToken(token: string): Promise<RevokeResponse> {
-    try {
-      const res = await fetch(`/api/admin/tokens/${encodeURIComponent(token)}/reactivate`, {
-        method: 'PATCH'
-      });
-      const data = await res.json() as RevokeResponse;
-      if (res.ok) {
-        await this.fetchTokens();
-      }
-      return data;
-    } catch {
-      return { ok: false, was_used: false, error: 'network_error' };
-    }
+    return this.applyTokenStateChange(`/api/admin/tokens/${encodeURIComponent(token)}/reactivate`, jsonRequest('PATCH'));
   }
 
   async deleteTokenPermanently(token: string): Promise<RevokeResponse> {
-    try {
-      const res = await fetch(`/api/admin/tokens/${encodeURIComponent(token)}/permanent`, {
-        method: 'DELETE'
-      });
-      const data = await res.json() as RevokeResponse;
-      if (res.ok) {
-        await this.fetchTokens();
-      }
-      return data;
-    } catch {
-      return { ok: false, was_used: false, error: 'network_error' };
-    }
+    return this.applyTokenStateChange(`/api/admin/tokens/${encodeURIComponent(token)}/permanent`, jsonRequest('DELETE'));
+  }
+
+  private async applyTokenStateChange(url: string, init: RequestInit): Promise<RevokeResponse> {
+    const { ok, data } = await apiCall<RevokeResponse>(url, init);
+    if (ok) await this.fetchTokens();
+    return data ?? { ok: false, was_used: false, error: 'network_error' };
   }
 
   async fetchSessions(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/sessions');
-      if (res.ok) {
-        const data = await res.json() as { sessions: AdminSession[] };
-        this.sessions.set(data.sessions);
-      }
-    } catch {}
+    const data = await apiGetJson<{ sessions: AdminSession[] }>('/api/admin/sessions');
+    if (data) this.sessions.set(data.sessions);
   }
 
   async fetchPlaybackLogs(): Promise<void> {
@@ -279,12 +232,9 @@ export class AdminService {
   async fetchQueueStatus(): Promise<void> {
     this.queueStatusLoading.set(true);
     try {
-      const res = await fetch('/api/admin/queue-status');
-      if (res.ok) {
-        const data = await res.json() as AdminQueueStatus;
-        this.queueStatus.set(data);
-      }
-    } catch {} finally {
+      const data = await apiGetJson<AdminQueueStatus>('/api/admin/queue-status');
+      if (data) this.queueStatus.set(data);
+    } finally {
       this.queueStatusLoading.set(false);
     }
   }

@@ -441,18 +441,22 @@ export class PlayerService {
     const title = item.title ?? item.name ?? '';
     const poster = item.poster_path ?? null;
 
-    try {
-      if (this.isInWatchlist()) {
-        await this.watchlist.remove(item.id, type);
-        this.isInWatchlist.set(false);
-        this.toast.show('Rimosso dalla lista');
-      } else {
-        await this.watchlist.add(item.id, type, title, poster);
-        this.isInWatchlist.set(true);
-        this.toast.show('Aggiunto alla lista');
+    if (this.isInWatchlist()) {
+      const ok = await this.watchlist.remove(item.id, type);
+      if (!ok) {
+        this.toast.show('Errore di rete, riprova');
+        return;
       }
-    } catch {
-      this.toast.show('Errore');
+      this.isInWatchlist.set(false);
+      this.toast.show('Rimosso dalla lista');
+    } else {
+      const ok = await this.watchlist.add(item.id, type, title, poster);
+      if (!ok) {
+        this.toast.show('Errore di rete, riprova');
+        return;
+      }
+      this.isInWatchlist.set(true);
+      this.toast.show('Aggiunto alla lista');
     }
   }
 
@@ -471,14 +475,14 @@ export class PlayerService {
       this.urlSeq++;
       this.resumeProgress.set(null);
       this.resumeText.set('');
-      await this.progress.remove(item.id, 'movie');
+      const ok = await this.progress.remove(item.id, 'movie');
       const playback = this.requirePlaybackTitle();
       if (playback) {
         const resolveSeq = this.beginPlaybackResolve();
         void this.setMovieUrl(playback, resolveSeq);
       }
       this.progressTick.update(n => n + 1);
-      this.toast.show('Progresso film azzerato');
+      this.toast.show(ok ? 'Progresso film azzerato' : 'Errore di rete, riprova');
       return;
     }
 
@@ -494,7 +498,7 @@ export class PlayerService {
       return next;
     });
 
-    await this.progress.remove(item.id, 'tv', season, episode);
+    const ok = await this.progress.remove(item.id, 'tv', season, episode);
     await this.refreshNextUnwatchedRef();
     const playback = this.requirePlaybackTitle();
     if (playback) {
@@ -502,7 +506,7 @@ export class PlayerService {
       void this.setEpisodeUrl(playback, season, episode, resolveSeq);
     }
     this.progressTick.update(n => n + 1);
-    this.toast.show(`Progresso S${season} E${episode} azzerato`);
+    this.toast.show(ok ? `Progresso S${season} E${episode} azzerato` : 'Errore di rete, riprova');
   }
 
   async clearEpisodeProgress(season: number, episode: number): Promise<void> {
@@ -527,7 +531,7 @@ export class PlayerService {
       return next;
     });
 
-    await this.progress.remove(item.id, 'tv', season, episode);
+    const ok = await this.progress.remove(item.id, 'tv', season, episode);
     await this.refreshNextUnwatchedRef();
     if (isCurrentEpisode) {
       const playback = this.requirePlaybackTitle();
@@ -537,7 +541,7 @@ export class PlayerService {
       }
     }
     this.progressTick.update(n => n + 1);
-    this.toast.show(`Progresso S${season} E${episode} azzerato`);
+    this.toast.show(ok ? `Progresso S${season} E${episode} azzerato` : 'Errore di rete, riprova');
   }
 
   // ===== PRIVATE =====

@@ -22,12 +22,19 @@ const authLimiter = rateLimit({
 });
 
 router.post('/auth/register', authLimiter, async (req, res) => {
-  const { email, password, token } = req.body || {};
+  const body = req.body ?? {};
+  // Explicit string checks — otherwise an array/object payload sneaks past
+  // the truthiness gates and reaches Kysely where it throws a 500 instead
+  // of the 400 the client should see.
+  const email = typeof body.email === 'string' ? body.email : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const token = typeof body.token === 'string' ? body.token : '';
+
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
   if (email.length > 254 || !EMAIL_RE.test(email)) return res.status(400).json({ error: 'invalid_email' });
   if (password.length < 6) return res.status(400).json({ error: 'weak_password' });
 
-  const normalized = (email as string).trim().toLowerCase();
+  const normalized = email.trim().toLowerCase();
   const isSuperAdmin = Boolean(SUPER_ADMIN_EMAIL) && normalized === SUPER_ADMIN_EMAIL;
 
   if (!isSuperAdmin) {
@@ -99,10 +106,12 @@ router.post('/auth/register', authLimiter, async (req, res) => {
 });
 
 router.post('/auth/login', authLimiter, async (req, res) => {
-  const { email, password } = req.body || {};
+  const body = req.body ?? {};
+  const email = typeof body.email === 'string' ? body.email : '';
+  const password = typeof body.password === 'string' ? body.password : '';
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
 
-  const normalized = (email as string).trim().toLowerCase();
+  const normalized = email.trim().toLowerCase();
   const row = await kdb
     .selectFrom('users')
     .select(['id', 'email', 'password_hash', 'autoplay_next', 'folders_enabled'])

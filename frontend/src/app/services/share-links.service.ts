@@ -1,54 +1,24 @@
 import { Injectable } from '@angular/core';
 import type { ShareLink, ShareLinkStatus, SharedWatchlistResponse } from '../../../../shared/types';
+import { apiGetJson, apiOk, apiSendJson, jsonRequest } from '../utils/api.util';
 
 @Injectable({ providedIn: 'root' })
 export class ShareLinksService {
   async list(): Promise<ShareLink[]> {
-    try {
-      const res = await fetch('/api/user/share-links');
-      if (!res.ok) return [];
-      const data = await res.json() as { links?: ShareLink[] };
-      return data.links ?? [];
-    } catch {
-      return [];
-    }
+    const data = await apiGetJson<{ links?: ShareLink[] }>('/api/user/share-links');
+    return data?.links ?? [];
   }
 
   async create(label: string | null): Promise<ShareLink | null> {
-    try {
-      const res = await fetch('/api/user/share-links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label })
-      });
-      if (!res.ok) return null;
-      return await res.json() as ShareLink;
-    } catch {
-      return null;
-    }
+    return apiSendJson<ShareLink>('/api/user/share-links', jsonRequest('POST', { label }));
   }
 
   async update(id: number, patch: { status?: ShareLinkStatus; label?: string | null }): Promise<ShareLink | null> {
-    try {
-      const res = await fetch(`/api/user/share-links/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch)
-      });
-      if (!res.ok) return null;
-      return await res.json() as ShareLink;
-    } catch {
-      return null;
-    }
+    return apiSendJson<ShareLink>(`/api/user/share-links/${id}`, jsonRequest('PATCH', patch));
   }
 
   async remove(id: number): Promise<boolean> {
-    try {
-      const res = await fetch(`/api/user/share-links/${id}`, { method: 'DELETE' });
-      return res.ok;
-    } catch {
-      return false;
-    }
+    return apiOk(`/api/user/share-links/${id}`, jsonRequest('DELETE'));
   }
 
   /* Public read endpoint — no auth header. Returns null on 404
@@ -58,13 +28,7 @@ export class ShareLinksService {
    * socket (data changed / connection blip) MUST omit it, otherwise
    * a single session inflates the count once per owner edit. */
   async fetchShared(token: string, opts?: { track?: boolean }): Promise<SharedWatchlistResponse | null> {
-    try {
-      const qs = opts?.track ? '?track=1' : '';
-      const res = await fetch(`/api/shared/${encodeURIComponent(token)}${qs}`);
-      if (!res.ok) return null;
-      return await res.json() as SharedWatchlistResponse;
-    } catch {
-      return null;
-    }
+    const qs = opts?.track ? '?track=1' : '';
+    return apiGetJson<SharedWatchlistResponse>(`/api/shared/${encodeURIComponent(token)}${qs}`);
   }
 }

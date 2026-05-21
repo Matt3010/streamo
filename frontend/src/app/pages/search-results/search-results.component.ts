@@ -110,7 +110,9 @@ export class SearchResultsComponent {
     }
     await runCardMutation(this.items, item, 'watchlist', async () => {
       const result = await toggleCardWatchlist(item, this.watchlist);
-      this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+      if (result.ok) {
+        this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+      }
       this.toast.show(result.message);
     });
   }
@@ -120,7 +122,11 @@ export class SearchResultsComponent {
     this.pendingRemoval.set(null);
     if (!item) return;
     await runCardMutation(this.items, item, 'watchlist', async () => {
-      await this.watchlist.remove(item.tmdb_id, item.media_type);
+      const ok = await this.watchlist.remove(item.tmdb_id, item.media_type);
+      if (!ok) {
+        this.toast.show('Errore di rete, riprova');
+        return;
+      }
       this.items.update((items) => setCardWatchlistFlag(items, item, false));
       this.toast.show(`${item.title}: rimosso dalla lista`);
     });

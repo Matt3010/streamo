@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import type { MediaType } from '../models';
+import { apiSendJson, jsonRequest } from '../utils/api.util';
 
 interface ProviderResolvedTitle {
   provider: 'streamingcommunity';
@@ -96,32 +97,21 @@ export class ProviderResolveService {
       };
     }
 
-    try {
-      const res = await fetch('/api/user/provider/resolve', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          tmdb_id: tmdbId,
-          media_type: mediaType,
-          title,
-          release_date: releaseDate ?? null
-        })
-      });
-      if (!res.ok) {
-        return fallbackTitleResult('temporarily_unavailable');
-      }
-      const data = await res.json() as ProviderResolvedTitleResult;
-      this.cacheTitleEntry(key, data);
-      return {
-        resolved: data.resolved ?? null,
-        reason: data.reason ?? null,
-        manualRefresh: data.manualRefresh,
-        candidates: data.candidates ?? [],
-        matchStatus: data.matchStatus ?? null
-      };
-    } catch {
-      return fallbackTitleResult('temporarily_unavailable');
-    }
+    const data = await apiSendJson<ProviderResolvedTitleResult>('/api/user/provider/resolve', jsonRequest('POST', {
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      title,
+      release_date: releaseDate ?? null
+    }));
+    if (!data) return fallbackTitleResult('temporarily_unavailable');
+    this.cacheTitleEntry(key, data);
+    return {
+      resolved: data.resolved ?? null,
+      reason: data.reason ?? null,
+      manualRefresh: data.manualRefresh,
+      candidates: data.candidates ?? [],
+      matchStatus: data.matchStatus ?? null
+    };
   }
 
   private cacheTitleEntry(key: string, data: ProviderResolvedTitleResult): void {
@@ -144,37 +134,25 @@ export class ProviderResolveService {
     releaseDate?: string | null
   ): Promise<ProviderResolvedTitleResult> {
     const key = `${mediaType}:${tmdbId}`;
-
-    try {
-      const res = await fetch('/api/user/provider/refresh-resolve', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          tmdb_id: tmdbId,
-          media_type: mediaType,
-          title,
-          release_date: releaseDate ?? null
-        })
-      });
-      if (!res.ok) {
-        return fallbackTitleResult('temporarily_unavailable');
-      }
-      const data = await res.json() as ProviderResolvedTitleResult;
-      if (data.resolved) {
-        this.cacheTitleEntry(key, data);
-      } else {
-        this.titleCache.delete(key);
-      }
-      return {
-        resolved: data.resolved ?? null,
-        reason: data.reason ?? null,
-        manualRefresh: data.manualRefresh,
-        candidates: data.candidates ?? [],
-        matchStatus: data.matchStatus ?? null
-      };
-    } catch {
-      return fallbackTitleResult('temporarily_unavailable');
+    const data = await apiSendJson<ProviderResolvedTitleResult>('/api/user/provider/refresh-resolve', jsonRequest('POST', {
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      title,
+      release_date: releaseDate ?? null
+    }));
+    if (!data) return fallbackTitleResult('temporarily_unavailable');
+    if (data.resolved) {
+      this.cacheTitleEntry(key, data);
+    } else {
+      this.titleCache.delete(key);
     }
+    return {
+      resolved: data.resolved ?? null,
+      reason: data.reason ?? null,
+      manualRefresh: data.manualRefresh,
+      candidates: data.candidates ?? [],
+      matchStatus: data.matchStatus ?? null
+    };
   }
 
   async manualConfirm(
@@ -183,35 +161,24 @@ export class ProviderResolveService {
     providerTitleId: number
   ): Promise<ProviderResolvedTitleResult> {
     const key = `${mediaType}:${tmdbId}`;
-    try {
-      const res = await fetch('/api/user/provider/manual-confirm', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          tmdb_id: tmdbId,
-          media_type: mediaType,
-          provider_title_id: providerTitleId
-        })
-      });
-      if (!res.ok) {
-        return fallbackTitleResult('temporarily_unavailable');
-      }
-      const data = await res.json() as ProviderResolvedTitleResult;
-      if (data.resolved) {
-        this.cacheTitleEntry(key, data);
-      } else {
-        this.titleCache.delete(key);
-      }
-      return {
-        resolved: data.resolved ?? null,
-        reason: data.reason ?? null,
-        manualRefresh: data.manualRefresh,
-        candidates: data.candidates ?? [],
-        matchStatus: data.matchStatus ?? null
-      };
-    } catch {
-      return fallbackTitleResult('temporarily_unavailable');
+    const data = await apiSendJson<ProviderResolvedTitleResult>('/api/user/provider/manual-confirm', jsonRequest('POST', {
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      provider_title_id: providerTitleId
+    }));
+    if (!data) return fallbackTitleResult('temporarily_unavailable');
+    if (data.resolved) {
+      this.cacheTitleEntry(key, data);
+    } else {
+      this.titleCache.delete(key);
     }
+    return {
+      resolved: data.resolved ?? null,
+      reason: data.reason ?? null,
+      manualRefresh: data.manualRefresh,
+      candidates: data.candidates ?? [],
+      matchStatus: data.matchStatus ?? null
+    };
   }
 
   async resolveEpisode(
@@ -229,32 +196,19 @@ export class ProviderResolveService {
       };
     }
 
-    try {
-      const res = await fetch('/api/user/provider/resolve-episode', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          provider_title_id: providerTitleId,
-          provider_slug: slug,
-          season,
-          episode
-        })
-      });
-      if (!res.ok) {
-        return { resolved: null, reason: 'temporarily_unavailable' };
-      }
-      const data = await res.json() as ProviderResolveResult<ProviderResolvedEpisode>;
-      const resolved = data.resolved ?? null;
-      if (resolved) {
-        this.episodeCache.set(key, resolved);
-      }
-      return {
-        resolved,
-        reason: data.reason ?? null
-      };
-    } catch {
-      return { resolved: null, reason: 'temporarily_unavailable' };
-    }
+    const data = await apiSendJson<ProviderResolveResult<ProviderResolvedEpisode>>(
+      '/api/user/provider/resolve-episode',
+      jsonRequest('POST', {
+        provider_title_id: providerTitleId,
+        provider_slug: slug,
+        season,
+        episode
+      })
+    );
+    if (!data) return { resolved: null, reason: 'temporarily_unavailable' };
+    const resolved = data.resolved ?? null;
+    if (resolved) this.episodeCache.set(key, resolved);
+    return { resolved, reason: data.reason ?? null };
   }
 
   async resolveMovie(providerTitleId: number): Promise<ProviderResolveResult<ProviderResolvedMovie>> {
@@ -265,28 +219,13 @@ export class ProviderResolveService {
       };
     }
 
-    try {
-      const res = await fetch('/api/user/provider/resolve-movie', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          provider_title_id: providerTitleId
-        })
-      });
-      if (!res.ok) {
-        return { resolved: null, reason: 'temporarily_unavailable' };
-      }
-      const data = await res.json() as ProviderResolveResult<ProviderResolvedMovie>;
-      const resolved = data.resolved ?? null;
-      if (resolved) {
-        this.movieCache.set(providerTitleId, resolved);
-      }
-      return {
-        resolved,
-        reason: data.reason ?? null
-      };
-    } catch {
-      return { resolved: null, reason: 'temporarily_unavailable' };
-    }
+    const data = await apiSendJson<ProviderResolveResult<ProviderResolvedMovie>>(
+      '/api/user/provider/resolve-movie',
+      jsonRequest('POST', { provider_title_id: providerTitleId })
+    );
+    if (!data) return { resolved: null, reason: 'temporarily_unavailable' };
+    const resolved = data.resolved ?? null;
+    if (resolved) this.movieCache.set(providerTitleId, resolved);
+    return { resolved, reason: data.reason ?? null };
   }
 }

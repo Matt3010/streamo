@@ -2,7 +2,17 @@ import { Injectable } from '@angular/core';
 
 export interface LiveSocketController {
   connect(): void;
+  /** Temporary disconnect — the controller can be `connect()`-ed again
+   *  later (e.g. on auth state changes). Internal listeners stay
+   *  registered so a backoff'd reconnect after a tab visibility change
+   *  still works. Use `destroy()` for permanent teardown. */
   disconnect(): void;
+  /** Permanent teardown — closes the socket and unregisters listeners.
+   *  After `destroy()`, `connect()` is a no-op. Components that own
+   *  per-instance controllers (e.g. shared-list-view) should call this
+   *  from `DestroyRef.onDestroy` to avoid leaking visibilitychange
+   *  listeners across navigations. */
+  destroy(): void;
 }
 
 interface LiveSocketOptions {
@@ -21,6 +31,7 @@ export class LiveSocketService {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectAttempts = 0;
     let shouldReconnect = false;
+    let destroyed = false;
 
     const clearReconnectTimer = (): void => {
       if (!reconnectTimer) return;
@@ -43,7 +54,14 @@ export class LiveSocketService {
 
     /* When the tab returns to foreground after sleep, the backoff counter
      * may have grown to the 15s ceiling. Reset it and re-attempt immediately
-     * so the user sees fresh data instead of waiting out the old delay. */
+     * so the user sees fresh data instead of waiting out the old delay.
+     *
+     * The listener stays registered for the entire lifetime of the
+     * controller (no removal in disconnect()) — consumers like
+     * WatchlistLiveService toggle connect/disconnect on auth changes, and
+     * removing+re-adding would silently drop the listener after the first
+     * disconnect. The shouldReconnect gate makes it a no-op while
+     * disconnected. */
     const onVisibilityChange = (): void => {
       if (document.visibilityState !== 'visible') return;
       if (!shouldReconnect) return;
@@ -88,21 +106,29 @@ export class LiveSocketService {
         });
     };
 
+    const disconnectInternal = (): void => {
+      shouldReconnect = false;
+      reconnectAttempts = 0;
+      clearReconnectTimer();
+      options.onConnected(false);
+      if (!socket) return;
+      const current = socket;
+      socket = null;
+      current.close();
+    };
+
     return {
       connect: () => {
+        if (destroyed) return;
         shouldReconnect = true;
         connect();
       },
-      disconnect: () => {
-        shouldReconnect = false;
-        reconnectAttempts = 0;
-        clearReconnectTimer();
+      disconnect: disconnectInternal,
+      destroy: () => {
+        if (destroyed) return;
+        destroyed = true;
         document.removeEventListener('visibilitychange', onVisibilityChange);
-        options.onConnected(false);
-        if (!socket) return;
-        const current = socket;
-        socket = null;
-        current.close();
+        disconnectInternal();
       }
     };
   }

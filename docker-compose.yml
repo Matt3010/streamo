@@ -43,6 +43,13 @@ services:
       - AUTO_MIGRATE=${AUTO_MIGRATE:-1}
     expose:
       - "3000"
+    healthcheck:
+      # node 22 includes a global `fetch`; no curl needed in the slim image.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       redis:
         condition: service_healthy
@@ -84,4 +91,5 @@ services:
       # Required — used by the nginx template to inject the TMDB API key.
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY must be set in .env}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy

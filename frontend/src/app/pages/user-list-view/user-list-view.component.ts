@@ -617,7 +617,11 @@ export class UserListViewComponent {
     }
 
     await runCardMutation(this.items, item, 'status', async () => {
-      await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
+      const ok = await this.watchlist.setStatus(item.tmdb_id, item.media_type, next);
+      if (!ok) {
+        this.toast.show('Errore di rete, riprova');
+        return;
+      }
       this.items.update(items => items.map(candidate => (
         candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
           ? { ...candidate, status: next }
@@ -636,7 +640,9 @@ export class UserListViewComponent {
     }
     await runCardMutation(this.items, item, 'watchlist', async () => {
       const result = await toggleCardWatchlist(item, this.watchlist);
-      this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+      if (result.ok) {
+        this.items.update((items) => setCardWatchlistFlag(items, item, result.inWatchlist));
+      }
       this.toast.show(result.message);
     });
   }
@@ -647,7 +653,11 @@ export class UserListViewComponent {
 
     if (action.type === 'mark-done') {
       await runCardMutation(this.items, action.item, 'status', async () => {
-        await this.watchlist.setStatus(action.item.tmdb_id, action.item.media_type, 'done');
+        const ok = await this.watchlist.setStatus(action.item.tmdb_id, action.item.media_type, 'done');
+        if (!ok) {
+          this.toast.show('Errore di rete, riprova');
+          return;
+        }
         this.toast.show(`${action.item.title}: segnato come visto`);
         void this.load(this.kind(), this.mediaFilter(), this.statusFilter());
       });
@@ -656,7 +666,11 @@ export class UserListViewComponent {
 
     if (action.type === 'remove-watchlist') {
       await runCardMutation(this.items, action.item, 'watchlist', async () => {
-        await this.watchlist.remove(action.item.tmdb_id, action.item.media_type);
+        const ok = await this.watchlist.remove(action.item.tmdb_id, action.item.media_type);
+        if (!ok) {
+          this.toast.show('Errore di rete, riprova');
+          return;
+        }
         this.items.update((items) => setCardWatchlistFlag(items, action.item, false));
         this.toast.show(`${action.item.title}: rimosso dalla lista`);
       });
@@ -667,10 +681,18 @@ export class UserListViewComponent {
     const matcher = this.kind() === 'history' ? isSameHistoryEntry : undefined;
     await runCardMutation(this.items, item, 'remove', async () => {
       if (this.kind() === 'watchlist') {
-        await this.watchlist.remove(item.tmdb_id, item.media_type);
+        const ok = await this.watchlist.remove(item.tmdb_id, item.media_type);
+        if (!ok) {
+          this.toast.show('Errore di rete, riprova');
+          return;
+        }
         this.toast.show(`${item.title}: rimosso dalla lista`);
       } else {
-        await this.history.remove(item.tmdb_id, item.media_type, item.season, item.episode);
+        const ok = await this.history.remove(item.tmdb_id, item.media_type, item.season, item.episode);
+        if (!ok) {
+          this.toast.show('Errore di rete, riprova');
+          return;
+        }
         this.toast.show(`${item.title}: rimosso dalla cronologia`);
       }
       this.items.update(arr => arr.filter(i => (
@@ -688,7 +710,11 @@ export class UserListViewComponent {
     closeModal = false
   ): Promise<void> {
     await runCardMutation(this.items, item, 'folder', async () => {
-      await this.watchlist.setFolder(item.tmdb_id, item.media_type, folderName);
+      const ok = await this.watchlist.setFolder(item.tmdb_id, item.media_type, folderName);
+      if (!ok) {
+        this.toast.show('Errore di rete, riprova');
+        return;
+      }
       this.items.update((items) => items.map((candidate) => (
         candidate.tmdb_id === item.tmdb_id && candidate.media_type === item.media_type
           ? { ...candidate, folderName }
