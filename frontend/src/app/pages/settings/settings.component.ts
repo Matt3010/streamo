@@ -132,7 +132,7 @@ export class SettingsComponent {
     if (p === 'unsupported') return 'Il tuo browser non supporta le notifiche push.';
     if (p === 'unconfigured') return 'Le credenziali Firebase non sono configurate su questo server.';
     if (p === 'denied') return 'Permesso negato dal browser — sbloccalo dalle impostazioni del sito.';
-    return 'Riceverai gli avvisi anche quando Streamo non è aperto.';
+    return 'Riceverai gli avvisi anche quando AIR non è aperto.';
   });
   protected readonly playbackIcon = faCirclePlay;
   protected readonly foldersIcon = faFolder;
