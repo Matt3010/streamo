@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { IconComponent } from '../../ui/icon/icon.component';
 
 // Distance the user must drag past the rest position before releasing
 // triggers a refresh. Tuned to feel like Twitter/Instagram on iOS.
@@ -22,7 +21,6 @@ const HAPTIC_COMMIT_MS = 22;
 @Component({
   selector: 'app-pull-to-refresh',
   standalone: true,
-  imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="ptr-indicator"
@@ -30,7 +28,7 @@ const HAPTIC_COMMIT_MS = 22;
          [class.ready]="reached()"
          [class.spin]="refreshing()"
          [style.transform]="transform()">
-      <app-icon name="rotate-left"></app-icon>
+      <span class="ptr-dot" [style.transform]="'scale(' + dotScale() + ')'"></span>
     </div>
   `,
   styleUrl: './pull-to-refresh.component.css'
@@ -39,12 +37,16 @@ export class PullToRefreshComponent {
   protected readonly pullPx = signal(0);
   protected readonly refreshing = signal(false);
   protected readonly reached = computed(() => this.pullPx() >= TRIGGER_PX);
+  // The AIR mark: a white pill with a red dot that grows from 0 to its
+  // full size as the user pulls. The brand identity reads at a glance
+  // without leaning on a generic refresh glyph.
+  protected readonly dotScale = computed(() => {
+    if (this.refreshing()) return 1;
+    return Math.min(1, this.pullPx() / TRIGGER_PX);
+  });
   protected readonly transform = computed(() => {
-    if (this.refreshing()) return `translateY(${TRIGGER_PX * 0.7}px) rotate(0deg)`;
-    const px = this.pullPx();
-    // Rotate as the user pulls — full 360° at trigger distance.
-    const angle = (px / TRIGGER_PX) * 360;
-    return `translateY(${px * 0.7}px) rotate(${angle}deg)`;
+    const px = this.refreshing() ? TRIGGER_PX : this.pullPx();
+    return `translateY(${px * 0.7}px)`;
   });
 
   private startY = 0;
