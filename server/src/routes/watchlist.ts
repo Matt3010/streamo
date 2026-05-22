@@ -270,7 +270,17 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       next_release_text: releaseMeta.text,
       resume_season: resume?.season,
       resume_episode: resume?.episode,
-      ...(inFlight ? { position: inFlight.position, duration: inFlight.duration } : {})
+      // Drop the in-flight progress when it belongs to a *different* episode
+      // than the one we're displaying (resume). After the user crosses
+      // WATCHED_THRESHOLD on S2E1, latestTv still points at S2E1 but resume
+      // advances to S2E2 — painting position/duration against the displayed
+      // S/E renders "S2 E2 90%" while the 90% is actually S2E1. /user/progress
+      // already zeroes out position/duration in the same advancement case.
+      ...(inFlight && latestTv && resume
+          && latestTv.season === resume.season
+          && latestTv.episode === resume.episode
+          ? { position: inFlight.position, duration: inFlight.duration }
+          : {})
     };
   }));
 
