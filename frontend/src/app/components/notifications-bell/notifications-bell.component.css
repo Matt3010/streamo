@@ -116,19 +116,18 @@
   display: block;
 }
 
-/* Admin alerts have no TMDB poster — the thumb slot becomes a square
- * warning glyph instead. Same width as the poster column so the grid
- * still aligns with the surrounding user-notification rows. */
+/* Admin alerts have no TMDB poster. Use the same poster-shaped slot
+ * (40×56) as the real thumb so the grid stays perfectly aligned with
+ * surrounding user-notification rows, and centre a large warning glyph
+ * inside. width/height/border-radius cascade from .bell-thumb. */
 .bell-thumb-alert {
-  height: 2.5rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: rgba(229, 9, 20, 0.12);
   border: 1px solid rgba(229, 9, 20, 0.32);
   color: var(--accent);
-  font-size: 1.1rem;
-  border-radius: 8px;
+  font-size: 1.5rem;
 }
 
 .bell-copy {
