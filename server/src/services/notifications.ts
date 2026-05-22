@@ -1,6 +1,6 @@
 import { kdb } from '../db';
 import { publishUserNotificationCreated } from './user-live';
-import { sendPushToUser } from './fcm';
+import { enqueuePushDelivery } from './notifications-jobs';
 import type {
   MediaType,
   NotificationItem,
@@ -68,10 +68,12 @@ export async function createNotificationsForUsers(input: CreateInput): Promise<N
     };
     created.push(item);
     publishUserNotificationCreated(userId, item);
-    // Push is a bonus channel: fire-and-forget so an FCM outage never
-    // fails the worker job that's already persisted the notification.
-    void sendPushToUser(userId, item).catch((error) => {
-      console.error(`[notifications] push delivery failed user=${userId} id=${item.id}`, error);
+    // Enqueue on the notifications-delivery BullMQ queue. The worker
+    // calls sendPushToUser with retry+backoff. This run never awaits
+    // the actual FCM round-trip — its caller (a watchlist or
+    // resume-reminder job) shouldn't be blocked by Google's latency.
+    void enqueuePushDelivery(userId, item).catch((error) => {
+      console.error(`[notifications] enqueue push failed user=${userId} id=${item.id}`, error);
     });
   }
 
