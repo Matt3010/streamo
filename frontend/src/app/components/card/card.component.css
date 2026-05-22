@@ -30,10 +30,16 @@
   box-shadow: none;
 }
 
-.card:hover {
-  transform: translateY(-3px);
-  border-color: var(--accent);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+/* Hover bump scoped to real pointing devices. On touch, :hover sticks
+ * after release on whatever element the finger lifted from — scrolling
+ * a card row and lifting on a card was leaving the lifted card stuck
+ * in the elevated state until the user tapped elsewhere. */
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+  }
 }
 
 .card-upcoming .card-poster,
@@ -170,7 +176,9 @@
   z-index: 4;
 }
 
-.card:hover .card-actions { display: flex; }
+@media (hover: hover) {
+  .card:hover .card-actions { display: flex; }
+}
 
 /* Touch devices have no hover — always show the actions */
 @media (hover: none) {
