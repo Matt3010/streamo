@@ -18,6 +18,10 @@ import { formatTime, progressKey } from '../utils/time.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
 const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
+// Mirror of WATCHED_THRESHOLD in server/src/config.ts. Used here only to
+// decide when to advance the CTA target mid-playback — the backend remains
+// the source of truth for resolveNextPlayable.
+const WATCHED_THRESHOLD = 0.8;
 
 interface ProviderPlaybackTitle {
   provider: 'streamingcommunity';
@@ -1046,6 +1050,19 @@ export class PlayerService {
       await this.saveCurrentHistory(type === 'tv' ? season : 0, type === 'tv' ? episode : 0);
     }
     this.progressTick.update(n => n + 1);
+
+    // If the periodic 15s save just crossed WATCHED_THRESHOLD on the
+    // episode the CTA currently points to, advance the CTA on the fly.
+    // Previously the CTA only updated on the 'ended' event, so pausing
+    // at 96% left the button stuck on "Riprendi da S2 E2" until the user
+    // reloaded the page — even though the episode grid below already
+    // showed it as effectively done.
+    if (type === 'tv' && duration > 0 && position >= duration * WATCHED_THRESHOLD) {
+      const cur = untracked(() => this.nextUnwatchedRef());
+      if (cur && cur.season === season && cur.episode === episode) {
+        void this.refreshNextUnwatchedRef();
+      }
+    }
   }
 
   // Re-fetch the next-unwatched coordinate from the backend after an
