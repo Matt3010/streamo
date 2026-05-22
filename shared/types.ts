@@ -16,12 +16,16 @@ export interface User {
   is_admin?: boolean;
 }
 
-export type NotificationType = 'new_episode' | 'new_season' | 'resume_reminder';
+export type NotificationType = 'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed';
 
 export interface NotificationPayload {
   season?: number;
   episode?: number;
   aired_delta?: number;
+  /** Frozen random index used by formatNotificationBody to pick a phrase
+   *  from a pool (e.g. for series_completed). Frozen at create time so
+   *  reopening the bell shows the same line every time. */
+  flavor_index?: number;
 }
 
 export interface NotificationItem {

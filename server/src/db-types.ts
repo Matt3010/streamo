@@ -21,7 +21,11 @@ interface UsersTable {
 interface NotificationsTable {
   id: Generated<number>;
   user_id: number;
-  type: ColumnType<'new_episode' | 'new_season' | 'resume_reminder', 'new_episode' | 'new_season' | 'resume_reminder', 'new_episode' | 'new_season' | 'resume_reminder'>;
+  type: ColumnType<
+    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed',
+    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed',
+    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed'
+  >;
   tmdb_id: number;
   media_type: string;
   title: string | null;

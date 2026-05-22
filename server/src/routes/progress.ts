@@ -7,6 +7,7 @@ import { CONTINUE_HIDE_THRESHOLD, WATCHED_THRESHOLD, isMediaType } from '../conf
 import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache';
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { publishUserWatchlistChanged } from '../services/user-live';
+import { createNotificationsForUsers } from '../services/notifications';
 import { formatMovieRemaining, formatTvStatusText } from '../services/watch-status';
 import { getWatchlistReleaseMeta } from '../../../shared/release-format';
 import type { MediaType } from '../../../shared/types';
@@ -183,9 +184,43 @@ async function maybeAutoCompleteWatchlist(userId: number, tmdbId: number, mediaT
       .where('tmdb_id', '=', tmdbId)
       .where('media_type', '=', 'tv')
       .executeTakeFirst();
-    return Number(result.numUpdatedRows) > 0;
+    const flipped = Number(result.numUpdatedRows) > 0;
+    if (flipped) {
+      void fireSeriesCompletedNotification(userId, tmdbId);
+    }
+    return flipped;
   }
   return false;
+}
+
+// Emits the "Serie finita" notification when a TV show auto-flips to
+// 'done'. Fire-and-forget so progress-save latency stays unaffected.
+// The 7-day dedupe inside createNotificationsForUsers prevents a
+// duplicate ping if the user briefly drops below threshold and re-crosses.
+async function fireSeriesCompletedNotification(userId: number, tmdbId: number): Promise<void> {
+  try {
+    const wl = await kdb
+      .selectFrom('watchlist')
+      .select(['title', 'poster'])
+      .where('user_id', '=', userId)
+      .where('tmdb_id', '=', tmdbId)
+      .where('media_type', '=', 'tv')
+      .executeTakeFirst();
+    await createNotificationsForUsers({
+      userIds: [userId],
+      type: 'series_completed',
+      tmdbId,
+      mediaType: 'tv',
+      title: wl?.title ?? null,
+      poster: wl?.poster ?? null,
+      // 32-bit positive int — modulo'd by the formatter to pick a phrase.
+      // Frozen at create time so the user sees the same line every time
+      // they reopen the bell.
+      payload: { flavor_index: Math.floor(Math.random() * 1_000_000) }
+    });
+  } catch (error) {
+    console.error(`[progress] series_completed notify failed user=${userId} tmdb=${tmdbId}`, error);
+  }
 }
 
 router.get('/user/progress', requireAuth, async (req, res) => {

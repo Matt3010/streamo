@@ -17,8 +17,22 @@ export function formatNotificationTitle(n: NotificationFormatInput): string {
   return n.title ?? defaultLabelFor(n.type);
 }
 
+// Pool of "you finished the show" phrases. Picked deterministically by
+// payload.flavor_index so the same notification renders the same line
+// every time it's read (no flicker between push body and bell card).
+const SERIES_COMPLETED_PHRASES = [
+  'Hai finito tutti gli episodi',
+  'Serie completata',
+  'Capitolo chiuso',
+  'Maratona conclusa',
+  'Tutto visto, complimenti',
+  'Hai chiuso il cerchio',
+  'Fine corsa',
+  'Visto fino all’ultimo episodio'
+];
+
 export function formatNotificationBody(n: NotificationFormatInput): string {
-  const { season, episode, aired_delta } = n.payload ?? {};
+  const { season, episode, aired_delta, flavor_index } = n.payload ?? {};
   switch (n.type) {
     case 'new_season':
       return season ? `Nuova stagione disponibile (S${season})` : 'Nuova stagione disponibile';
@@ -29,6 +43,10 @@ export function formatNotificationBody(n: NotificationFormatInput): string {
     case 'resume_reminder':
       if (season && episode) return `Riprendi da S${season} E${episode}`;
       return 'Hai un titolo da finire';
+    case 'series_completed': {
+      const idx = typeof flavor_index === 'number' && flavor_index >= 0 ? flavor_index : 0;
+      return SERIES_COMPLETED_PHRASES[idx % SERIES_COMPLETED_PHRASES.length];
+    }
   }
 }
 
@@ -52,5 +70,6 @@ function defaultLabelFor(type: NotificationType): string {
     case 'new_episode': return 'Nuovo episodio';
     case 'new_season': return 'Nuova stagione';
     case 'resume_reminder': return 'Riprendi a guardare';
+    case 'series_completed': return 'Serie finita';
   }
 }
