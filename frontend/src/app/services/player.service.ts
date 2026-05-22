@@ -18,10 +18,12 @@ import { formatTime, progressKey } from '../utils/time.util';
 import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 
 const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
-// Mirror of WATCHED_THRESHOLD in server/src/config.ts. Used here only to
-// decide when to advance the CTA target mid-playback — the backend remains
-// the source of truth for resolveNextPlayable.
-const WATCHED_THRESHOLD = 0.8;
+// Mirror of CONTINUE_HIDE_THRESHOLD in server/src/config.ts. Used only
+// to decide when to advance the CTA mid-playback. Matches the backend's
+// resolveNextPlayable threshold so both sides agree on "really done".
+// Deliberately NOT 0.8: between 80–95% the README intent is to let the
+// user finish the same episode (credits, post-credit teaser).
+const CONTINUE_HIDE_THRESHOLD = 0.95;
 
 interface ProviderPlaybackTitle {
   provider: 'streamingcommunity';
@@ -1051,13 +1053,11 @@ export class PlayerService {
     }
     this.progressTick.update(n => n + 1);
 
-    // If the periodic 15s save just crossed WATCHED_THRESHOLD on the
-    // episode the CTA currently points to, advance the CTA on the fly.
-    // Previously the CTA only updated on the 'ended' event, so pausing
-    // at 96% left the button stuck on "Riprendi da S2 E2" until the user
-    // reloaded the page — even though the episode grid below already
-    // showed it as effectively done.
-    if (type === 'tv' && duration > 0 && position >= duration * WATCHED_THRESHOLD) {
+    // If the periodic 15s save just crossed CONTINUE_HIDE_THRESHOLD on
+    // the episode the CTA points to, advance the CTA on the fly.
+    // Previously it updated only on the 'ended' event, so pausing at 96%
+    // left the button stuck on "Riprendi da S2 E2" until reload.
+    if (type === 'tv' && duration > 0 && position >= duration * CONTINUE_HIDE_THRESHOLD) {
       const cur = untracked(() => this.nextUnwatchedRef());
       if (cur && cur.season === season && cur.episode === episode) {
         void this.refreshNextUnwatchedRef();

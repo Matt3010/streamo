@@ -1,5 +1,5 @@
 import { kdb } from '../db';
-import { WATCHED_THRESHOLD } from '../config';
+import { CONTINUE_HIDE_THRESHOLD } from '../config';
 import { getTmdbTvSummary, isFutureDate } from './tmdb-cache';
 
 function getEffectiveLastEpisode(summary: Awaited<ReturnType<typeof getTmdbTvSummary>>): { season_number: number; episode_number: number } | null {
@@ -43,11 +43,13 @@ export async function findNextEpisode(tmdbId: number, season: number, episode: n
 
 // "Where to play next" for a TV show given a user's progress: returns the
 // latest touched episode, pivoted forward when the user is effectively done
-// with that episode. The threshold (WATCHED_THRESHOLD = 0.8) matches the
-// "watched" cutoff used everywhere else and absorbs the float drift between
-// what the player reports as position and what the source says is duration
-// (e.g. position 3086 vs duration 3086.249822 would have failed a strict
-// `>=` check and pinned the user to the already-finished episode).
+// with that episode. Uses CONTINUE_HIDE_THRESHOLD (0.95) — NOT
+// WATCHED_THRESHOLD (0.8) — because the two are deliberately separated
+// (see config.ts): 0.8 means "counts as watched" (badges, watched_count,
+// auto-flip), but the README is explicit that at 80–95% the user might
+// still want to finish the same episode (credits, post-credit teasers).
+// The resume CTA respects that and only pivots once the user is *really*
+// done.
 export async function resolveNextPlayable(userId: number, tmdbId: number): Promise<{ season: number; episode: number } | null> {
   const last = await kdb
     .selectFrom('progress')
@@ -63,7 +65,7 @@ export async function resolveNextPlayable(userId: number, tmdbId: number): Promi
     .executeTakeFirst();
   if (!last) return null;
 
-  const ended = last.duration > 0 && last.position >= last.duration * WATCHED_THRESHOLD;
+  const ended = last.duration > 0 && last.position >= last.duration * CONTINUE_HIDE_THRESHOLD;
   if (!ended) return { season: last.season, episode: last.episode };
 
   const next = await findNextEpisode(tmdbId, last.season, last.episode);
