@@ -159,5 +159,11 @@ function buildPushTag(notification: NotificationItem): string {
   const { season, episode } = notification.payload ?? {};
   if (season && episode) return `${base}-s${season}e${episode}`;
   if (season) return `${base}-s${season}`;
-  return base;
+  // No season/episode discriminator — fall back to notification.id so each
+  // alert gets its own OS slot. Without this, two admin alerts of the same
+  // kind (same sentinel tmdb_id) collapse onto a single banner, and the
+  // second one is silently swallowed when the first is already dismissed.
+  // Same risk for two series_completed events on the same show after a
+  // 7-day suppression window expires.
+  return `${base}-n${notification.id}`;
 }
