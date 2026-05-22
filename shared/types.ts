@@ -16,7 +16,14 @@ export interface User {
   is_admin?: boolean;
 }
 
-export type NotificationType = 'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed';
+export type NotificationType =
+  | 'new_episode'
+  | 'new_season'
+  | 'resume_reminder'
+  | 'series_completed'
+  | 'admin_alert';
+
+export type AdminAlertKind = 'worker' | 'failed_jobs' | 'egress' | 'provider' | 'fcm_credentials';
 
 export interface NotificationPayload {
   season?: number;
@@ -26,7 +33,13 @@ export interface NotificationPayload {
    *  from a pool (e.g. for series_completed). Frozen at create time so
    *  reopening the bell shows the same line every time. */
   flavor_index?: number;
+  /** Discriminator for `admin_alert`. */
+  kind?: AdminAlertKind;
+  /** Free-form context shown in the notification body (e.g. queue name,
+   *  failure count). */
+  detail?: string;
 }
+
 
 export interface NotificationItem {
   id: number;
@@ -191,6 +204,14 @@ export interface AdminQueueStatus {
   scheduler_enabled: boolean;
   queues: AdminQueueSnapshot[];
   workers: AdminQueueWorkerHeartbeat[];
+  // Rolling 5-minute provider outage flag — true when temporarily_unavailable
+  // events have crossed the threshold in the recent window. Drives the
+  // "Provider" pill on the admin queue tab.
+  provider_outage: boolean;
+  // Cached result of the latest admin-health egress probe (every 5 min).
+  // Defaults to true on a fresh boot before any probe has run, so the
+  // pill doesn't false-alarm.
+  egress_ok: boolean;
 }
 
 // Backend egress probe — verifies that outbound traffic is exiting via

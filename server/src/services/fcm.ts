@@ -5,6 +5,25 @@ import { FCM_PROJECT_ID, FCM_SERVICE_ACCOUNT_JSON_B64, isFcmConfigured } from '.
 import type { NotificationItem } from '../../../shared/types';
 import { formatNotification, notificationTargetPath } from '../../../shared/notification-format';
 
+// Firebase Admin error codes that indicate the *server-side* credential
+// (the service-account JSON / project mapping) is unusable. Distinct from
+// per-token rejections — they affect every push at once. We throw on
+// these so BullMQ retries surface them, and the notifications-worker
+// (which observes worker.on('failed')) dispatches the admin alert. This
+// keeps fcm.ts free of any import to the notifications module, breaking
+// the otherwise-circular fcm <-> notifications <-> notifications-jobs
+// dependency.
+const CREDENTIAL_FAILURE_CODES = new Set<string>([
+  'app/invalid-credential',
+  'auth/invalid-credential',
+  'messaging/mismatched-credential',
+  'messaging/authentication-error'
+]);
+
+/** Marker prefix on Error.message used by notifications-worker to
+ *  recognise a credential failure across the BullMQ boundary. */
+export const FCM_CREDENTIAL_ERROR_PREFIX = 'FCM_CREDENTIAL_FAILURE:';
+
 const FIREBASE_APP_NAME = 'streamo-fcm';
 
 // Codes that mean "this token is dead — never deliver to it again".
@@ -91,6 +110,17 @@ export async function sendPushToUser(userId: number, notification: NotificationI
     await pruneInvalidTokens(userId, tokens, result.responses);
   } catch (error) {
     console.error(`[fcm] send failed for user=${userId} tokens=${tokens.length}`, error);
+    // sendEachForMulticast normally swallows per-token errors into the
+    // result array. A thrown error here means something is wrong with
+    // the credential or project itself — let BullMQ see it (re-throw)
+    // so the notifications-delivery worker's on('failed') hook fires
+    // an admin alert. Non-credential errors stay swallowed so a
+    // transient FCM blip doesn't burn job retries.
+    const code = (error as { errorInfo?: { code?: string }; code?: string })?.errorInfo?.code
+      ?? (error as { code?: string })?.code;
+    if (code && CREDENTIAL_FAILURE_CODES.has(code)) {
+      throw new Error(`${FCM_CREDENTIAL_ERROR_PREFIX}${code}`);
+    }
   }
 }
 

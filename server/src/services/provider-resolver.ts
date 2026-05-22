@@ -12,6 +12,7 @@ import { getRedisPublisher, hasRedisConfig } from './redis';
 import { searchTmdbPosterUrl } from './tmdb-cache';
 import { fetchWithTimeout } from '../utils/fetch';
 import { isFutureDateStr } from '../../../shared/release-format';
+import { recordProviderOutageEvent } from './admin-health';
 
 const PROVIDER_REQUEST_TIMEOUT_MS = 8000;
 
@@ -226,6 +227,7 @@ export async function resolveProviderTitle(
 
   const page = await fetchProviderSearchPage(query);
   if (!page) {
+    void recordProviderOutageEvent();
     return finalizeTitleResolveOutcome(args, null, 'temporarily_unavailable', override, [], null);
   }
 

@@ -22,9 +22,9 @@ interface NotificationsTable {
   id: Generated<number>;
   user_id: number;
   type: ColumnType<
-    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed',
-    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed',
-    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed'
+    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed' | 'admin_alert',
+    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed' | 'admin_alert',
+    'new_episode' | 'new_season' | 'resume_reminder' | 'series_completed' | 'admin_alert'
   >;
   tmdb_id: number;
   media_type: string;

@@ -33,7 +33,7 @@ import { AdminService } from '../../../services/admin.service';
         <p class="empty">Stato coda non disponibile</p>
       } @else {
         <div class="queue-stats-grid">
-          <div class="queue-stat-card">
+          <div class="queue-stat-card" [class.alert]="queueStatus()!.workers.length === 0">
             <span class="queue-stat-label">Worker online</span>
             <strong class="queue-stat-value">{{ queueStatus()!.workers.length }}</strong>
           </div>
@@ -59,7 +59,7 @@ import { AdminService } from '../../../services/admin.service';
               <span class="queue-stat-label">Delayed</span>
               <strong class="queue-stat-value">{{ q.counts.delayed }}</strong>
             </div>
-            <div class="queue-stat-card">
+            <div class="queue-stat-card" [class.alert]="q.counts.failed > 0">
               <span class="queue-stat-label">Failed</span>
               <strong class="queue-stat-value">{{ q.counts.failed }}</strong>
             </div>
@@ -78,6 +78,14 @@ import { AdminService } from '../../../services/admin.service';
           <span class="live-pill" [class.connected]="queueStatus()!.scheduler_enabled">
             <span class="live-pill-dot" aria-hidden="true"></span>
             <span>{{ queueStatus()!.scheduler_enabled ? 'Scheduler attivo' : 'Scheduler disattivo' }}</span>
+          </span>
+          <span class="live-pill" [class.connected]="!queueStatus()!.provider_outage">
+            <span class="live-pill-dot" aria-hidden="true"></span>
+            <span>{{ queueStatus()!.provider_outage ? 'Provider in outage' : 'Provider ok' }}</span>
+          </span>
+          <span class="live-pill" [class.connected]="queueStatus()!.egress_ok">
+            <span class="live-pill-dot" aria-hidden="true"></span>
+            <span>{{ queueStatus()!.egress_ok ? 'Egress ok' : 'Egress KO' }}</span>
           </span>
         </div>
 

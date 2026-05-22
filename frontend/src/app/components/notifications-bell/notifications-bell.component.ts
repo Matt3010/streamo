@@ -44,7 +44,11 @@ import {
           @for (n of items(); track n.id) {
             <div class="bell-item" [class.unread]="n.read_at === null">
               <button type="button" class="bell-main" (click)="onItemClick(n)">
-                @if (posterUrl(n); as src) {
+                @if (n.type === 'admin_alert') {
+                  <span class="bell-thumb bell-thumb-alert" aria-hidden="true">
+                    <app-icon name="warning"></app-icon>
+                  </span>
+                } @else if (posterUrl(n); as src) {
                   <img class="bell-thumb" [src]="src" alt="">
                 } @else {
                   <span class="bell-thumb bell-thumb-empty" aria-hidden="true"></span>

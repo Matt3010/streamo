@@ -1,6 +1,7 @@
 import { Job, Worker } from 'bullmq';
 import { assertRedisReady, getBullMqConnection, hasRedisConfig } from './redis';
-import { sendPushToUser } from './fcm';
+import { FCM_CREDENTIAL_ERROR_PREFIX, sendPushToUser } from './fcm';
+import { createAdminAlert } from './notifications';
 import {
   DELIVER_PUSH_JOB,
   NOTIFICATIONS_DELIVERY_QUEUE_NAME,
@@ -41,6 +42,18 @@ export async function startNotificationsWorker(): Promise<void> {
       `[notifications-worker] failed ${job?.name ?? 'unknown'}#${job?.id ?? 'n/a'}`,
       error
     );
+    // FCM credential failures are surfaced via re-thrown Error here
+    // (see fcm.ts). The 30-min dedupe inside createAdminAlert absorbs
+    // the burst of failed-attempt events that fire across retries.
+    const msg = error?.message ?? '';
+    if (msg.startsWith(FCM_CREDENTIAL_ERROR_PREFIX)) {
+      const code = msg.slice(FCM_CREDENTIAL_ERROR_PREFIX.length) || 'unknown';
+      void createAdminAlert(
+        'fcm_credentials',
+        'FCM credenziali non valide',
+        `Firebase rifiuta il service account (${code})`
+      ).catch((err) => console.error('[notifications-worker] admin alert dispatch failed', err));
+    }
   });
   worker.on('error', (error) => {
     console.error('[notifications-worker] error', error);

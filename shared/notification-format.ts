@@ -47,6 +47,19 @@ export function formatNotificationBody(n: NotificationFormatInput): string {
       const idx = typeof flavor_index === 'number' && flavor_index >= 0 ? flavor_index : 0;
       return SERIES_COMPLETED_PHRASES[idx % SERIES_COMPLETED_PHRASES.length];
     }
+    case 'admin_alert':
+      return n.payload?.detail ?? adminAlertDefaultDetail(n.payload?.kind);
+  }
+}
+
+function adminAlertDefaultDetail(kind: string | undefined): string {
+  switch (kind) {
+    case 'worker': return 'Worker non risponde';
+    case 'failed_jobs': return 'Ci sono job falliti in coda';
+    case 'egress': return 'Egress WARP non raggiungibile';
+    case 'provider': return 'Provider non disponibile da troppo tempo';
+    case 'fcm_credentials': return 'Firebase non accetta le credenziali';
+    default: return 'Anomalia rilevata';
   }
 }
 
@@ -60,8 +73,13 @@ export function formatNotification(n: NotificationFormatInput): { title: string;
 
 /** Stable, same-origin path used as the deep link target. Both the server
  *  (in the FCM `click_url` data field) and the bell (router.navigate)
- *  build the URL from this single helper. */
-export function notificationTargetPath(n: Pick<NotificationItem, 'media_type' | 'tmdb_id'>): string {
+ *  build the URL from this single helper. Admin alerts have no TMDB
+ *  context (sentinel tmdb_id 1..5), so they route to the admin tab
+ *  instead of a non-existent /watch/tv/1 page. */
+export function notificationTargetPath(
+  n: Pick<NotificationItem, 'media_type' | 'tmdb_id' | 'type'>
+): string {
+  if (n.type === 'admin_alert') return '/admin';
   return `/watch/${n.media_type}/${n.tmdb_id}`;
 }
 
@@ -71,5 +89,6 @@ function defaultLabelFor(type: NotificationType): string {
     case 'new_season': return 'Nuova stagione';
     case 'resume_reminder': return 'Riprendi a guardare';
     case 'series_completed': return 'Serie finita';
+    case 'admin_alert': return 'Anomalia di sistema';
   }
 }

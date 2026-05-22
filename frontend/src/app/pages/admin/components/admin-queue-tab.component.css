@@ -17,6 +17,18 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Cell tinted red when a runtime threshold is breached
+ * (zero workers, failed > 0). Visual cue only — the actual alert
+ * goes through createAdminAlert on transition. */
+.queue-stat-card.alert {
+  border-color: rgba(229, 9, 20, 0.45);
+  background: rgba(229, 9, 20, 0.08);
+}
+
+.queue-stat-card.alert .queue-stat-value {
+  color: var(--accent);
+}
+
 .queue-stat-label {
   color: var(--text-muted);
   font-size: 0.76rem;

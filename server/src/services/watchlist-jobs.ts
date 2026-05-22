@@ -6,6 +6,7 @@ export const WATCHLIST_QUEUE_NAME = 'watchlist-sync';
 export const WATCHLIST_SCAN_JOB = 'scan-watchlists';
 export const WATCHLIST_REFRESH_JOB = 'refresh-watchlist-title';
 export const RESUME_REMINDER_SCAN_JOB = 'resume-reminder-scan';
+export const ADMIN_HEALTH_SCAN_JOB = 'admin-health-scan';
 
 interface ScanWatchlistsJobData {
   source?: 'scheduler';
@@ -20,7 +21,15 @@ interface ResumeReminderScanJobData {
   source?: 'scheduler';
 }
 
-export type WatchlistJobData = ScanWatchlistsJobData | RefreshWatchlistTitleJobData | ResumeReminderScanJobData;
+interface AdminHealthScanJobData {
+  source?: 'scheduler';
+}
+
+export type WatchlistJobData =
+  | ScanWatchlistsJobData
+  | RefreshWatchlistTitleJobData
+  | ResumeReminderScanJobData
+  | AdminHealthScanJobData;
 
 let queue: Queue<WatchlistJobData, void, string> | null = null;
 
@@ -65,6 +74,24 @@ export async function ensureWatchlistJobScheduler(): Promise<void> {
     { every: RESUME_REMINDER_INTERVAL_SECONDS * 1000 },
     {
       name: RESUME_REMINDER_SCAN_JOB,
+      data: { source: 'scheduler' },
+      opts: {
+        removeOnComplete: 10,
+        removeOnFail: 20
+      }
+    }
+  );
+
+  // Admin health probe — every 5 minutes. Piggybacks on the watchlist-sync
+  // queue rather than adding a new one so bull-board / queue-status / the
+  // worker process stay singular. Frequency picked to keep alert latency
+  // bounded while leaving plenty of headroom over the heartbeat staleness
+  // threshold (90s) we use to flag a dead worker.
+  await watchlistQueue.upsertJobScheduler(
+    'admin-health-scan',
+    { every: 5 * 60 * 1000 },
+    {
+      name: ADMIN_HEALTH_SCAN_JOB,
       data: { source: 'scheduler' },
       opts: {
         removeOnComplete: 10,

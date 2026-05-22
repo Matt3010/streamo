@@ -4,6 +4,7 @@ import { createRedisClient, hasRedisConfig } from './redis';
 import { getWatchlistQueue, WATCHLIST_QUEUE_NAME } from './watchlist-jobs';
 import { getNotificationsDeliveryQueue, NOTIFICATIONS_DELIVERY_QUEUE_NAME } from './notifications-jobs';
 import { listWorkerHeartbeats } from './worker-heartbeat';
+import { isProviderOutage, readEgressOk } from './admin-health';
 import type { AdminQueueCounts, AdminQueueSnapshot, AdminQueueStatus } from '../../../shared/types';
 
 const EMPTY_COUNTS: AdminQueueCounts = {
@@ -29,17 +30,21 @@ export async function getAdminQueueStatus(): Promise<AdminQueueStatus> {
       available: !!r.queue,
       counts: { ...EMPTY_COUNTS }
     })),
-    workers: []
+    workers: [],
+    provider_outage: false,
+    egress_ok: true
   };
 
   if (!hasRedisConfig()) return base;
 
-  const [queues, workers] = await Promise.all([
+  const [queues, workers, providerOutage, egressOk] = await Promise.all([
     Promise.all(registrations.map((r) => snapshot(r))),
-    withRedisClient(async (redis) => listWorkerHeartbeats(redis))
+    withRedisClient(async (redis) => listWorkerHeartbeats(redis)),
+    isProviderOutage(),
+    readEgressOk()
   ]);
 
-  return { ...base, queues, workers };
+  return { ...base, queues, workers, provider_outage: providerOutage, egress_ok: egressOk };
 }
 
 async function snapshot(reg: QueueRegistration): Promise<AdminQueueSnapshot> {

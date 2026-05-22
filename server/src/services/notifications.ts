@@ -1,7 +1,9 @@
 import { kdb } from '../db';
+import { SUPER_ADMIN_EMAIL } from '../config';
 import { publishUserNotificationCreated } from './user-live';
 import { enqueuePushDelivery } from './notifications-jobs';
 import type {
+  AdminAlertKind,
   MediaType,
   NotificationItem,
   NotificationListResponse,
@@ -24,6 +26,10 @@ interface CreateInput {
   title: string | null;
   poster: string | null;
   payload: NotificationPayload;
+  /** Override the default 7-day suppression. Admin alerts pass a much
+   *  shorter window so a recurring outage during a single day can fire
+   *  again instead of being silently absorbed. */
+  dedupeWindowSeconds?: number;
 }
 
 export async function createNotificationsForUsers(input: CreateInput): Promise<NotificationItem[]> {
@@ -33,11 +39,12 @@ export async function createNotificationsForUsers(input: CreateInput): Promise<N
   // aired_delta) shift on every refresh, so we deliberately do NOT key the
   // dedupe off it. The dedupe key is (user, type, tmdb_id, media_type).
   const payloadJson = JSON.stringify(input.payload ?? {});
+  const dedupeWindow = input.dedupeWindowSeconds ?? CREATE_DEDUPE_WINDOW_SECONDS;
   const created: NotificationItem[] = [];
 
   for (const userId of input.userIds) {
     const exists = await hasRecentNotificationOfType(
-      userId, input.type, input.tmdbId, input.mediaType, CREATE_DEDUPE_WINDOW_SECONDS
+      userId, input.type, input.tmdbId, input.mediaType, dedupeWindow
     );
     if (exists) continue;
 
@@ -167,6 +174,54 @@ export async function deleteNotification(userId: number, id: number): Promise<bo
     .where('id', '=', id)
     .executeTakeFirst();
   return Number(result?.numDeletedRows ?? 0) > 0;
+}
+
+// Stable per-kind sentinel for the tmdb_id dedupe key. Without different
+// values across kinds, all admin alerts would compete for a single 7-day
+// (user, type, tmdb_id, media_type) slot and silently mask each other.
+const ADMIN_ALERT_SENTINELS: Record<AdminAlertKind, number> = {
+  worker: 1,
+  failed_jobs: 2,
+  egress: 3,
+  provider: 4,
+  fcm_credentials: 5
+};
+
+// 30 minutes — short enough that a recurring fault during the day fires
+// again, long enough that a flapping check doesn't spam.
+const ADMIN_ALERT_DEDUPE_SECONDS = 30 * 60;
+
+// Thin wrapper over createNotificationsForUsers for system-level alerts
+// targeted at the super-admin user. Reuses the full notification pipeline
+// (DB inbox + WS publish + FCM push via the notifications-delivery queue)
+// — no separate channel.
+export async function createAdminAlert(
+  kind: AdminAlertKind,
+  title: string,
+  detail: string
+): Promise<void> {
+  if (!SUPER_ADMIN_EMAIL) return;
+
+  const admin = await kdb
+    .selectFrom('users')
+    .select('id')
+    .where('email', '=', SUPER_ADMIN_EMAIL)
+    .executeTakeFirst();
+  if (!admin) {
+    console.warn('[admin-alert] super-admin user not found for SUPER_ADMIN_EMAIL');
+    return;
+  }
+
+  await createNotificationsForUsers({
+    userIds: [admin.id],
+    type: 'admin_alert',
+    tmdbId: ADMIN_ALERT_SENTINELS[kind],
+    mediaType: 'tv',
+    title,
+    poster: null,
+    payload: { kind, detail },
+    dedupeWindowSeconds: ADMIN_ALERT_DEDUPE_SECONDS
+  });
 }
 
 function parsePayload(raw: string): NotificationPayload {

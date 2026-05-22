@@ -6,6 +6,7 @@ import {
 } from '../config';
 import { assertRedisReady, getBullMqConnection, hasRedisConfig } from './redis';
 import {
+  ADMIN_HEALTH_SCAN_JOB,
   cleanupLegacyWatchlistJobs,
   enqueueTrackedWatchlistRefreshes,
   ensureWatchlistJobScheduler,
@@ -18,6 +19,7 @@ import {
 import { startWorkerHeartbeat } from './worker-heartbeat';
 import { listTrackedWatchlistTvIds, refreshWatchlistTitle } from './watchlist-sync';
 import { runResumeReminderScan } from './resume-reminder';
+import { runAdminHealthChecks } from './admin-health';
 
 export async function startWatchlistWorker(): Promise<void> {
   if (!hasRedisConfig()) {
@@ -87,6 +89,11 @@ async function processWatchlistJob(job: Job<WatchlistJobData, void, string>): Pr
   if (job.name === RESUME_REMINDER_SCAN_JOB) {
     const summary = await runResumeReminderScan();
     console.log(`[watchlist-worker] resume-reminder scanned=${summary.scanned} sent=${summary.sent}`);
+    return;
+  }
+
+  if (job.name === ADMIN_HEALTH_SCAN_JOB) {
+    await runAdminHealthChecks();
     return;
   }
 
