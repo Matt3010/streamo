@@ -167,18 +167,25 @@ export interface AdminQueueWorkerHeartbeat {
   ttl_seconds: number;
 }
 
+export interface AdminQueueCounts {
+  waiting: number;
+  active: number;
+  delayed: number;
+  completed: number;
+  failed: number;
+  paused: number;
+}
+
+export interface AdminQueueSnapshot {
+  name: string;
+  available: boolean;
+  counts: AdminQueueCounts;
+}
+
 export interface AdminQueueStatus {
   redis_configured: boolean;
-  queue_available: boolean;
   scheduler_enabled: boolean;
-  counts: {
-    waiting: number;
-    active: number;
-    delayed: number;
-    completed: number;
-    failed: number;
-    paused: number;
-  };
+  queues: AdminQueueSnapshot[];
   workers: AdminQueueWorkerHeartbeat[];
 }
 

@@ -13,7 +13,7 @@ export interface DeliverPushJobData {
 
 let queue: Queue<DeliverPushJobData, void, string> | null = null;
 
-function getDeliveryQueue(): Queue<DeliverPushJobData, void, string> | null {
+export function getNotificationsDeliveryQueue(): Queue<DeliverPushJobData, void, string> | null {
   if (!hasRedisConfig()) return null;
   if (!queue) {
     queue = new Queue<DeliverPushJobData, void, string>(NOTIFICATIONS_DELIVERY_QUEUE_NAME, {
@@ -40,7 +40,7 @@ function getDeliveryQueue(): Queue<DeliverPushJobData, void, string> | null {
 // fire-and-forget send so the developer flow doesn't depend on a
 // background worker being up.
 export async function enqueuePushDelivery(userId: number, notification: NotificationItem): Promise<void> {
-  const q = getDeliveryQueue();
+  const q = getNotificationsDeliveryQueue();
   if (!q) {
     await sendPushToUser(userId, notification);
     return;

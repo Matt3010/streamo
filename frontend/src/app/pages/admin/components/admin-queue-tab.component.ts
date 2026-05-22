@@ -37,36 +37,43 @@ import { AdminService } from '../../../services/admin.service';
             <span class="queue-stat-label">Worker online</span>
             <strong class="queue-stat-value">{{ queueStatus()!.workers.length }}</strong>
           </div>
-          <div class="queue-stat-card">
-            <span class="queue-stat-label">Waiting</span>
-            <strong class="queue-stat-value">{{ queueStatus()!.counts.waiting }}</strong>
-          </div>
-          <div class="queue-stat-card">
-            <span class="queue-stat-label">Active</span>
-            <strong class="queue-stat-value">{{ queueStatus()!.counts.active }}</strong>
-          </div>
-          <div class="queue-stat-card">
-            <span class="queue-stat-label">Delayed</span>
-            <strong class="queue-stat-value">{{ queueStatus()!.counts.delayed }}</strong>
-          </div>
-          <div class="queue-stat-card">
-            <span class="queue-stat-label">Failed</span>
-            <strong class="queue-stat-value">{{ queueStatus()!.counts.failed }}</strong>
-          </div>
-          <div class="queue-stat-card">
-            <span class="queue-stat-label">Completed</span>
-            <strong class="queue-stat-value">{{ queueStatus()!.counts.completed }}</strong>
-          </div>
         </div>
+
+        @for (q of queueStatus()!.queues; track q.name) {
+          <h4 class="queue-name">
+            {{ q.name }}
+            @if (!q.available) {
+              <span class="queue-name-tag">non disponibile</span>
+            }
+          </h4>
+          <div class="queue-stats-grid">
+            <div class="queue-stat-card">
+              <span class="queue-stat-label">Waiting</span>
+              <strong class="queue-stat-value">{{ q.counts.waiting }}</strong>
+            </div>
+            <div class="queue-stat-card">
+              <span class="queue-stat-label">Active</span>
+              <strong class="queue-stat-value">{{ q.counts.active }}</strong>
+            </div>
+            <div class="queue-stat-card">
+              <span class="queue-stat-label">Delayed</span>
+              <strong class="queue-stat-value">{{ q.counts.delayed }}</strong>
+            </div>
+            <div class="queue-stat-card">
+              <span class="queue-stat-label">Failed</span>
+              <strong class="queue-stat-value">{{ q.counts.failed }}</strong>
+            </div>
+            <div class="queue-stat-card">
+              <span class="queue-stat-label">Completed</span>
+              <strong class="queue-stat-value">{{ q.counts.completed }}</strong>
+            </div>
+          </div>
+        }
 
         <div class="queue-flags">
           <span class="live-pill" [class.connected]="queueStatus()!.redis_configured">
             <span class="live-pill-dot" aria-hidden="true"></span>
             <span>{{ queueStatus()!.redis_configured ? 'Redis configurato' : 'Redis non configurato' }}</span>
-          </span>
-          <span class="live-pill" [class.connected]="queueStatus()!.queue_available">
-            <span class="live-pill-dot" aria-hidden="true"></span>
-            <span>{{ queueStatus()!.queue_available ? 'Queue disponibile' : 'Queue non disponibile' }}</span>
           </span>
           <span class="live-pill" [class.connected]="queueStatus()!.scheduler_enabled">
             <span class="live-pill-dot" aria-hidden="true"></span>
