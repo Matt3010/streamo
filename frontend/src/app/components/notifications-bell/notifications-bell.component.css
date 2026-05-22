@@ -72,27 +72,19 @@
   border-radius: var(--radius);
 }
 
-.bell-item:hover {
-  background: var(--surface-hover);
-}
-
-.bell-item.unread {
-  background: var(--surface);
-}
-
-/* Unread indicator in the top-right of the row, between the remove
- * button and the row edge. Positioned inside the bell-item so the
- * scroll container (overflow-y:auto → implicit overflow-x:auto) doesn't
- * clip it. */
-.bell-item.unread::before {
+/* Unread indicator: small red dot sitting inline before the title text,
+ * vertically aligned with the title baseline. Rendered as a ::before on
+ * the title span so it lives inside the same flex/grid cell as the
+ * title — no absolute positioning, no overflow-clip surprises. */
+.bell-item.unread .bell-title::before {
   content: '';
-  position: absolute;
+  display: inline-block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  top: 6px;
-  right: 6px;
+  margin-right: 0.4rem;
+  vertical-align: 1px;
 }
 
 .bell-main {
