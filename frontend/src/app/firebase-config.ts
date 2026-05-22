@@ -23,14 +23,14 @@ export interface FirebaseClientConfig {
 }
 
 export const FIREBASE_CONFIG: FirebaseClientConfig = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  messagingSenderId: '',
-  appId: ''
+  apiKey: 'AIzaSyCbDbwT_9aQqztsEnYmW2QlQAqRgLeL3NM',
+  authDomain: 'air-app-99861.firebaseapp.com',
+  projectId: 'air-app-99861',
+  messagingSenderId: '494300586333',
+  appId: '1:494300586333:web:66776a5f04b83f4b9148b4'
 };
 
-export const VAPID_KEY = '';
+export const VAPID_KEY = 'BNGqvibi4yPUFzVtKU069Pyg8sD7HhBlFgfKmanGlpDSnwcYVEJ4K3W54C0MYxQXuA1SuKPfJsJ08TfGhEFZlbw';
 
 export function isFirebaseConfigured(): boolean {
   return Boolean(

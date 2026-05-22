@@ -10,11 +10,11 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js');
 
 const FIREBASE_CONFIG = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  messagingSenderId: '',
-  appId: ''
+  apiKey: 'AIzaSyCbDbwT_9aQqztsEnYmW2QlQAqRgLeL3NM',
+  authDomain: 'air-app-99861.firebaseapp.com',
+  projectId: 'air-app-99861',
+  messagingSenderId: '494300586333',
+  appId: '1:494300586333:web:66776a5f04b83f4b9148b4'
 };
 
 if (FIREBASE_CONFIG.apiKey) {
