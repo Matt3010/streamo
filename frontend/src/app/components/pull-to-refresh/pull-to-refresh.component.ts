@@ -104,6 +104,14 @@ export class PullToRefreshComponent {
       this.tracking = false;
       return;
     }
+    // Don't arm if the touch originated inside an overlay (popover, modal).
+    // Those are position:fixed so scrolling inside them leaves the body
+    // scrollY at 0; without this guard, scrolling the bell list would
+    // trigger the refresh indicator.
+    if (this.touchInsideOverlay(event.target)) {
+      this.tracking = false;
+      return;
+    }
     const t = event.touches[0];
     if (!t) return;
     this.startY = t.clientY;
@@ -111,6 +119,16 @@ export class PullToRefreshComponent {
     this.tracking = true;
     this.locked = false;
     this.hapticFired = false;
+  }
+
+  private touchInsideOverlay(target: EventTarget | null): boolean {
+    let el = target instanceof Element ? target : null;
+    while (el && el !== document.body) {
+      const pos = window.getComputedStyle(el).position;
+      if (pos === 'fixed' || pos === 'sticky') return true;
+      el = el.parentElement;
+    }
+    return false;
   }
 
   private onMove(event: TouchEvent): void {
