@@ -1,14 +1,19 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import type { User } from '../models';
 import { apiCall, apiGetJson, apiOk, jsonRequest } from '../utils/api.util';
+import { PushNotificationsService } from './push-notifications.service';
 
 interface AuthResponse {
   user?: User;
   error?: string;
 }
 
+type NotifPrefField = 'notif_new_episode' | 'notif_new_season' | 'notif_resume_reminder';
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private readonly push = inject(PushNotificationsService);
+
   readonly currentUser = signal<User | null>(null);
   readonly authResolved = signal(false);
   readonly isLoggedIn = computed(() => this.currentUser() !== null);
@@ -34,6 +39,11 @@ export class AuthService {
   }
 
   async logout(): Promise<void> {
+    // Drop the local push token before clearing auth — otherwise the
+    // device keeps receiving notifications belonging to the user that
+    // just logged out (or, after a different user logs in, the wrong
+    // user's notifications).
+    await this.push.disable();
     // Best-effort POST — clear local state regardless because the cookie
     // is httpOnly and we can't unset it ourselves.
     await apiOk('/api/auth/logout', jsonRequest('POST'));
@@ -53,7 +63,13 @@ export class AuthService {
     return this.updatePreferences({ folders_enabled: enabled });
   }
 
-  private async updatePreferences(preferences: Partial<Pick<User, 'autoplay_next' | 'folders_enabled'>>): Promise<boolean> {
+  async setNotifPref(field: NotifPrefField, enabled: 0 | 1): Promise<boolean> {
+    return this.updatePreferences({ [field]: enabled });
+  }
+
+  private async updatePreferences(
+    preferences: Partial<Pick<User, 'autoplay_next' | 'folders_enabled' | NotifPrefField>>
+  ): Promise<boolean> {
     const ok = await apiOk('/api/user/preferences', jsonRequest('PUT', preferences));
     if (!ok) return false;
     const user = this.currentUser();
