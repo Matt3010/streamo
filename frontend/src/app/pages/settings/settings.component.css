@@ -13,12 +13,20 @@
   padding: 1rem;
 }
 
+/* The settings-toggle component doesn't set :host display, so the custom
+ * element renders inline by default. Force block so vertical margins
+ * actually push subsequent toggles down. Scoped to settings to avoid
+ * leaking into other pages. */
+.settings-section ui-settings-toggle {
+  display: block;
+}
+
 /* Spacing between stacked toggles inside the same section — used by the
  * Notifiche section which has multiple toggles. Adjacent-sibling so the
  * first toggle still sits flush under the section header. */
 .settings-section ui-settings-toggle + ui-settings-toggle,
 .settings-section .settings-note + ui-settings-toggle {
-  margin-top: 0.75rem;
+  margin-top: 1rem;
 }
 
 .section-header {
