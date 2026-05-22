@@ -1,6 +1,6 @@
 import type { Queue } from 'bullmq';
 import { TMDB_API_KEY, TMDB_REFRESH_INTERVAL_SECONDS } from '../config';
-import { createRedisClient, hasRedisConfig } from './redis';
+import { hasRedisConfig, withRedisClient } from './redis';
 import { getWatchlistQueue, WATCHLIST_QUEUE_NAME } from './watchlist-jobs';
 import { getNotificationsDeliveryQueue, NOTIFICATIONS_DELIVERY_QUEUE_NAME } from './notifications-jobs';
 import { listWorkerHeartbeats } from './worker-heartbeat';
@@ -39,7 +39,7 @@ export async function getAdminQueueStatus(): Promise<AdminQueueStatus> {
 
   const [queues, workers, providerOutage, egressOk] = await Promise.all([
     Promise.all(registrations.map((r) => snapshot(r))),
-    withRedisClient(async (redis) => listWorkerHeartbeats(redis)),
+    withRedisClient(listWorkerHeartbeats),
     isProviderOutage(),
     readEgressOk()
   ]);
@@ -68,11 +68,3 @@ async function snapshot(reg: QueueRegistration): Promise<AdminQueueSnapshot> {
   };
 }
 
-async function withRedisClient<T>(fn: (redis: ReturnType<typeof createRedisClient>) => Promise<T>): Promise<T> {
-  const redis = createRedisClient();
-  try {
-    return await fn(redis);
-  } finally {
-    redis.disconnect();
-  }
-}

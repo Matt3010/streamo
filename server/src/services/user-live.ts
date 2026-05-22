@@ -2,6 +2,7 @@ import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, readCookie } from '../middleware/auth';
 import { createRedisClient, getRedisPublisher, hasRedisConfig } from './redis';
+import { createWsHeartbeat, getRequestPathname } from './ws-heartbeat';
 import type {
   MediaType,
   NotificationCreatedEvent,
@@ -13,7 +14,6 @@ const USER_WATCHLIST_WS_PATH = '/user/watchlist/ws';
 const USER_NOTIFICATIONS_WS_PATH = '/user/notifications/ws';
 const USER_WATCHLIST_CHANNEL = 'streamo:user-watchlist-updates';
 const USER_NOTIFICATIONS_CHANNEL = 'streamo:user-notifications';
-const HEARTBEAT_INTERVAL_MS = 30000;
 
 interface WatchlistBroadcastEnvelope {
   userIds: number[];
@@ -27,10 +27,15 @@ interface NotificationsBroadcastEnvelope {
 
 const watchlistClients = new Map<number, Set<WebSocket>>();
 const notificationsClients = new Map<number, Set<WebSocket>>();
-const heartbeatState = new WeakMap<WebSocket, boolean>();
-let heartbeatInterval: NodeJS.Timeout | null = null;
 let watchlistSubscriberStarted = false;
 let notificationsSubscriberStarted = false;
+
+const heartbeat = createWsHeartbeat({
+  getClientSets: function* () {
+    for (const set of watchlistClients.values()) yield set;
+    for (const set of notificationsClients.values()) yield set;
+  }
+});
 
 export function attachUserLiveSessions(server: HttpServer): void {
   const watchlistWss = new WebSocketServer({ noServer: true });
@@ -45,11 +50,11 @@ export function attachUserLiveSessions(server: HttpServer): void {
       }
 
       addToClients(watchlistClients, userId, ws);
-      trackClient(ws);
+      heartbeat.trackClient(ws);
 
       ws.on('close', () => {
         removeFromClients(watchlistClients, userId, ws);
-        clearHeartbeatIntervalIfIdle();
+        heartbeat.clearIntervalIfIdle();
       });
     })();
   });
@@ -63,18 +68,18 @@ export function attachUserLiveSessions(server: HttpServer): void {
       }
 
       addToClients(notificationsClients, userId, ws);
-      trackClient(ws);
+      heartbeat.trackClient(ws);
 
       ws.on('close', () => {
         removeFromClients(notificationsClients, userId, ws);
-        clearHeartbeatIntervalIfIdle();
+        heartbeat.clearIntervalIfIdle();
       });
     })();
   });
 
   server.on('upgrade', (req, socket, head) => {
     void (async () => {
-      const pathname = getPathname(req);
+      const pathname = getRequestPathname(req);
 
       let wss: WebSocketServer | null = null;
       if (pathname === USER_WATCHLIST_WS_PATH) wss = watchlistWss;
@@ -222,64 +227,8 @@ function deliverNotification(userId: number, payload: NotificationCreatedEvent):
   }
 }
 
-function trackClient(ws: WebSocket): void {
-  heartbeatState.set(ws, true);
-  ensureHeartbeatInterval();
-
-  ws.on('pong', () => {
-    heartbeatState.set(ws, true);
-  });
-
-  ws.on('close', () => {
-    heartbeatState.delete(ws);
-  });
-}
-
-function ensureHeartbeatInterval(): void {
-  if (heartbeatInterval) return;
-  heartbeatInterval = setInterval(() => {
-    for (const clients of watchlistClients.values()) {
-      heartbeatClients(clients);
-    }
-    for (const clients of notificationsClients.values()) {
-      heartbeatClients(clients);
-    }
-    clearHeartbeatIntervalIfIdle();
-  }, HEARTBEAT_INTERVAL_MS);
-}
-
-function clearHeartbeatIntervalIfIdle(): void {
-  if (!heartbeatInterval) return;
-  if (watchlistClients.size > 0 || notificationsClients.size > 0) return;
-  clearInterval(heartbeatInterval);
-  heartbeatInterval = null;
-}
-
-function heartbeatClients(clients: Set<WebSocket>): void {
-  for (const client of clients) {
-    if (client.readyState !== WebSocket.OPEN) continue;
-
-    const alive = heartbeatState.get(client) ?? true;
-    if (!alive) {
-      client.terminate();
-      continue;
-    }
-
-    heartbeatState.set(client, false);
-    client.ping();
-  }
-}
-
 async function getUserId(req: IncomingMessage): Promise<number | null> {
   const token = readCookie(req.headers.cookie, 'token');
   const auth = await authenticateToken(token);
   return auth.user?.id ?? null;
-}
-
-function getPathname(req: IncomingMessage): string {
-  try {
-    return new URL(req.url ?? '/', 'http://localhost').pathname;
-  } catch {
-    return '/';
-  }
 }

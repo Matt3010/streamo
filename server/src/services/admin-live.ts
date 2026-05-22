@@ -1,4 +1,4 @@
-import type { IncomingMessage, Server as HttpServer } from 'http';
+import type { Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, isSuperAdminUser, readCookie } from '../middleware/auth';
 import { authLogger, getAuthLogCapacity, getAuthLogPath, listAuthLogs, subscribeAuthLogs } from './auth-logs';
@@ -10,6 +10,7 @@ import {
   subscribeProviderResolveLogs
 } from './provider-resolve-logs';
 import { getTransportLogCapacity, getTransportLogPath, listTransportLogs, subscribeTransportLogs } from './transport-logs';
+import { createWsHeartbeat, getRequestPathname, type WsHeartbeat } from './ws-heartbeat';
 import type {
   AuthLogEntry,
   PlaybackLogEntry,
@@ -17,126 +18,84 @@ import type {
   TransportLogEntry
 } from '../../../shared/types';
 
-const ADMIN_AUTH_LOGS_WS_PATH = '/admin/auth-logs/ws';
-const ADMIN_PLAYBACK_LOGS_WS_PATH = '/admin/playback-logs/ws';
-const ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH = '/admin/provider-resolve-logs/ws';
-const ADMIN_TRANSPORT_LOGS_WS_PATH = '/admin/transport-logs/ws';
-const HEARTBEAT_INTERVAL_MS = 30000;
-
-interface AuthLogsPayload {
-  type: 'auth-logs';
-  count: number;
-  capacity: number;
-  path: string;
-  logs: AuthLogEntry[];
+/** Generic log-service shape — each in-memory log module exposes the
+ *  same quartet of functions, just under different names. Adapting them
+ *  to this interface at channel-registration time keeps createLogChannel
+ *  blind to the specific kind. */
+interface LogService<T> {
+  list(): T[];
+  getCapacity(): number;
+  getPath(): string;
+  subscribe(fn: () => void): () => void;
 }
 
-interface PlaybackLogsPayload {
-  type: 'playback-logs';
-  count: number;
-  capacity: number;
+interface LogChannel {
   path: string;
-  logs: PlaybackLogEntry[];
+  wss: WebSocketServer;
+  clients: Set<WebSocket>;
 }
-
-interface TransportLogsPayload {
-  type: 'transport-logs';
-  count: number;
-  capacity: number;
-  path: string;
-  logs: TransportLogEntry[];
-}
-
-interface ProviderResolveLogsPayload {
-  type: 'provider-resolve-logs';
-  count: number;
-  capacity: number;
-  path: string;
-  logs: ProviderResolveLogEntry[];
-}
-
-const authLogClients = new Set<WebSocket>();
-const playbackLogClients = new Set<WebSocket>();
-const providerResolveLogClients = new Set<WebSocket>();
-const transportLogClients = new Set<WebSocket>();
-const heartbeatState = new WeakMap<WebSocket, boolean>();
-let heartbeatInterval: NodeJS.Timeout | null = null;
-let unsubscribeAuthLogs: (() => void) | null = null;
-let unsubscribePlaybackLogs: (() => void) | null = null;
-let unsubscribeProviderResolveLogs: (() => void) | null = null;
-let unsubscribeTransportLogs: (() => void) | null = null;
 
 export function attachAdminLiveSessions(server: HttpServer): void {
-  const authLogsWss = new WebSocketServer({ noServer: true });
-  const playbackLogsWss = new WebSocketServer({ noServer: true });
-  const providerResolveLogsWss = new WebSocketServer({ noServer: true });
-  const transportLogsWss = new WebSocketServer({ noServer: true });
+  const channels: LogChannel[] = [];
 
-  authLogsWss.on('connection', (ws) => {
-    authLogClients.add(ws);
-    trackClient(ws);
-    ensureAuthLogSubscription();
-    broadcastAuthLogs();
-
-    ws.on('close', () => {
-      authLogClients.delete(ws);
-      if (authLogClients.size === 0) {
-        clearAuthLogSubscription();
-      }
-    });
+  const heartbeat = createWsHeartbeat({
+    getClientSets: function* () {
+      for (const ch of channels) yield ch.clients;
+    }
   });
 
-  playbackLogsWss.on('connection', (ws) => {
-    playbackLogClients.add(ws);
-    trackClient(ws);
-    ensurePlaybackLogSubscription();
-    broadcastPlaybackLogs();
-
-    ws.on('close', () => {
-      playbackLogClients.delete(ws);
-      if (playbackLogClients.size === 0) {
-        clearPlaybackLogSubscription();
-      }
-    });
-  });
-
-  providerResolveLogsWss.on('connection', (ws) => {
-    providerResolveLogClients.add(ws);
-    trackClient(ws);
-    ensureProviderResolveLogSubscription();
-    broadcastProviderResolveLogs();
-
-    ws.on('close', () => {
-      providerResolveLogClients.delete(ws);
-      if (providerResolveLogClients.size === 0) {
-        clearProviderResolveLogSubscription();
-      }
-    });
-  });
-
-  transportLogsWss.on('connection', (ws) => {
-    transportLogClients.add(ws);
-    trackClient(ws);
-    ensureTransportLogSubscription();
-    broadcastTransportLogs();
-
-    ws.on('close', () => {
-      transportLogClients.delete(ws);
-      if (transportLogClients.size === 0) {
-        clearTransportLogSubscription();
-      }
-    });
-  });
+  channels.push(
+    createLogChannel({
+      path: '/admin/auth-logs/ws',
+      type: 'auth-logs',
+      service: {
+        list: listAuthLogs,
+        getCapacity: getAuthLogCapacity,
+        getPath: getAuthLogPath,
+        subscribe: subscribeAuthLogs
+      } satisfies LogService<AuthLogEntry>,
+      heartbeat
+    }),
+    createLogChannel({
+      path: '/admin/playback-logs/ws',
+      type: 'playback-logs',
+      service: {
+        list: listPlaybackLogs,
+        getCapacity: getPlaybackLogCapacity,
+        getPath: getPlaybackLogPath,
+        subscribe: subscribePlaybackLogs
+      } satisfies LogService<PlaybackLogEntry>,
+      heartbeat
+    }),
+    createLogChannel({
+      path: '/admin/provider-resolve-logs/ws',
+      type: 'provider-resolve-logs',
+      service: {
+        list: listProviderResolveLogs,
+        getCapacity: getProviderResolveLogCapacity,
+        getPath: getProviderResolveLogPath,
+        subscribe: subscribeProviderResolveLogs
+      } satisfies LogService<ProviderResolveLogEntry>,
+      heartbeat
+    }),
+    createLogChannel({
+      path: '/admin/transport-logs/ws',
+      type: 'transport-logs',
+      service: {
+        list: listTransportLogs,
+        getCapacity: getTransportLogCapacity,
+        getPath: getTransportLogPath,
+        subscribe: subscribeTransportLogs
+      } satisfies LogService<TransportLogEntry>,
+      heartbeat
+    })
+  );
 
   server.on('upgrade', (req, socket, head) => {
     void (async () => {
-      const pathname = getPathname(req);
-      if (
-        pathname !== ADMIN_AUTH_LOGS_WS_PATH &&
-        pathname !== ADMIN_PLAYBACK_LOGS_WS_PATH &&
-        pathname !== ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH &&
-        pathname !== ADMIN_TRANSPORT_LOGS_WS_PATH
-      ) return;
+      const pathname = getRequestPathname(req);
+      const channel = channels.find((c) => c.path === pathname);
+      if (!channel) return;
 
       const token = readCookie(req.headers.cookie, 'token');
       const auth = await authenticateToken(token);
@@ -164,223 +123,72 @@ export function attachAdminLiveSessions(server: HttpServer): void {
         return;
       }
 
-      const target = pathname === ADMIN_AUTH_LOGS_WS_PATH
-        ? authLogsWss
-        : pathname === ADMIN_PLAYBACK_LOGS_WS_PATH
-          ? playbackLogsWss
-          : pathname === ADMIN_PROVIDER_RESOLVE_LOGS_WS_PATH
-            ? providerResolveLogsWss
-            : transportLogsWss;
-      target.handleUpgrade(req, socket, head, (ws) => {
-        target.emit('connection', ws, req);
+      channel.wss.handleUpgrade(req, socket, head, (ws) => {
+        channel.wss.emit('connection', ws, req);
       });
     })();
   });
 }
 
-function broadcastAuthLogs(): void {
-  if (authLogClients.size === 0) {
-    clearAuthLogSubscription();
-    return;
-  }
+/** Wires up one log-stream channel: its own client set, WebSocketServer,
+ *  upstream subscription, and broadcast/cleanup machinery. Replaces what
+ *  was previously four hand-rolled copies — auth/playback/provider/transport
+ *  — that diverged only on naming. */
+function createLogChannel<T>(opts: {
+  path: string;
+  type: string;
+  service: LogService<T>;
+  heartbeat: WsHeartbeat;
+}): LogChannel {
+  const clients = new Set<WebSocket>();
+  const wss = new WebSocketServer({ noServer: true });
+  let unsubscribe: (() => void) | null = null;
 
-  const logs = listAuthLogs();
-  const payload = JSON.stringify({
-    type: 'auth-logs',
-    count: logs.length,
-    capacity: getAuthLogCapacity(),
-    path: getAuthLogPath(),
-    logs
-  } satisfies AuthLogsPayload);
-
-  for (const client of authLogClients) {
-    if (client.readyState !== WebSocket.OPEN) continue;
-    client.send(payload);
-  }
-}
-
-function ensureAuthLogSubscription(): void {
-  if (unsubscribeAuthLogs) return;
-  unsubscribeAuthLogs = subscribeAuthLogs(() => {
-    if (authLogClients.size === 0) return;
-    broadcastAuthLogs();
-  });
-}
-
-function clearAuthLogSubscription(): void {
-  if (authLogClients.size > 0 || !unsubscribeAuthLogs) return;
-  unsubscribeAuthLogs();
-  unsubscribeAuthLogs = null;
-}
-
-function broadcastPlaybackLogs(): void {
-  if (playbackLogClients.size === 0) {
-    clearPlaybackLogSubscription();
-    return;
-  }
-
-  const logs = listPlaybackLogs();
-  const payload = JSON.stringify({
-    type: 'playback-logs',
-    count: logs.length,
-    capacity: getPlaybackLogCapacity(),
-    path: getPlaybackLogPath(),
-    logs
-  } satisfies PlaybackLogsPayload);
-
-  for (const client of playbackLogClients) {
-    if (client.readyState !== WebSocket.OPEN) continue;
-    client.send(payload);
-  }
-}
-
-function ensurePlaybackLogSubscription(): void {
-  if (unsubscribePlaybackLogs) return;
-  unsubscribePlaybackLogs = subscribePlaybackLogs(() => {
-    if (playbackLogClients.size === 0) return;
-    broadcastPlaybackLogs();
-  });
-}
-
-function clearPlaybackLogSubscription(): void {
-  if (playbackLogClients.size > 0 || !unsubscribePlaybackLogs) return;
-  unsubscribePlaybackLogs();
-  unsubscribePlaybackLogs = null;
-}
-
-function broadcastTransportLogs(): void {
-  if (transportLogClients.size === 0) {
-    clearTransportLogSubscription();
-    return;
-  }
-
-  const logs = listTransportLogs();
-  const payload = JSON.stringify({
-    type: 'transport-logs',
-    count: logs.length,
-    capacity: getTransportLogCapacity(),
-    path: getTransportLogPath(),
-    logs
-  } satisfies TransportLogsPayload);
-
-  for (const client of transportLogClients) {
-    if (client.readyState !== WebSocket.OPEN) continue;
-    client.send(payload);
-  }
-}
-
-function broadcastProviderResolveLogs(): void {
-  if (providerResolveLogClients.size === 0) {
-    clearProviderResolveLogSubscription();
-    return;
-  }
-
-  const logs = listProviderResolveLogs();
-  const payload = JSON.stringify({
-    type: 'provider-resolve-logs',
-    count: logs.length,
-    capacity: getProviderResolveLogCapacity(),
-    path: getProviderResolveLogPath(),
-    logs
-  } satisfies ProviderResolveLogsPayload);
-
-  for (const client of providerResolveLogClients) {
-    if (client.readyState !== WebSocket.OPEN) continue;
-    client.send(payload);
-  }
-}
-
-function ensureProviderResolveLogSubscription(): void {
-  if (unsubscribeProviderResolveLogs) return;
-  unsubscribeProviderResolveLogs = subscribeProviderResolveLogs(() => {
-    if (providerResolveLogClients.size === 0) return;
-    broadcastProviderResolveLogs();
-  });
-}
-
-function clearProviderResolveLogSubscription(): void {
-  if (providerResolveLogClients.size > 0 || !unsubscribeProviderResolveLogs) return;
-  unsubscribeProviderResolveLogs();
-  unsubscribeProviderResolveLogs = null;
-}
-
-function ensureTransportLogSubscription(): void {
-  if (unsubscribeTransportLogs) return;
-  unsubscribeTransportLogs = subscribeTransportLogs(() => {
-    if (transportLogClients.size === 0) return;
-    broadcastTransportLogs();
-  });
-}
-
-function clearTransportLogSubscription(): void {
-  if (transportLogClients.size > 0 || !unsubscribeTransportLogs) return;
-  unsubscribeTransportLogs();
-  unsubscribeTransportLogs = null;
-}
-
-function trackClient(ws: WebSocket): void {
-  heartbeatState.set(ws, true);
-  ensureHeartbeatInterval();
-
-  ws.on('pong', () => {
-    heartbeatState.set(ws, true);
-  });
-
-  ws.on('close', () => {
-    heartbeatState.delete(ws);
-    clearHeartbeatIntervalIfIdle();
-  });
-}
-
-function ensureHeartbeatInterval(): void {
-  if (heartbeatInterval) {
-    return;
-  }
-
-  heartbeatInterval = setInterval(() => {
-    heartbeatClients(authLogClients);
-    heartbeatClients(playbackLogClients);
-    heartbeatClients(providerResolveLogClients);
-    heartbeatClients(transportLogClients);
-    clearHeartbeatIntervalIfIdle();
-  }, HEARTBEAT_INTERVAL_MS);
-}
-
-function clearHeartbeatIntervalIfIdle(): void {
-  if (heartbeatInterval && !hasAnyClients()) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
-}
-
-function heartbeatClients(clients: Set<WebSocket>): void {
-  for (const client of clients) {
-    if (client.readyState !== WebSocket.OPEN) {
-      continue;
+  const broadcast = (): void => {
+    if (clients.size === 0) {
+      clearSubscriptionIfIdle();
+      return;
     }
-
-    const alive = heartbeatState.get(client) ?? true;
-    if (!alive) {
-      client.terminate();
-      continue;
+    const logs = opts.service.list();
+    const payload = JSON.stringify({
+      type: opts.type,
+      count: logs.length,
+      capacity: opts.service.getCapacity(),
+      path: opts.service.getPath(),
+      logs
+    });
+    for (const client of clients) {
+      if (client.readyState !== WebSocket.OPEN) continue;
+      client.send(payload);
     }
+  };
 
-    heartbeatState.set(client, false);
-    client.ping();
-  }
-}
+  const ensureSubscription = (): void => {
+    if (unsubscribe) return;
+    unsubscribe = opts.service.subscribe(() => {
+      if (clients.size === 0) return;
+      broadcast();
+    });
+  };
 
-function hasAnyClients(): boolean {
-  return authLogClients.size > 0 ||
-    playbackLogClients.size > 0 ||
-    providerResolveLogClients.size > 0 ||
-    transportLogClients.size > 0;
-}
+  const clearSubscriptionIfIdle = (): void => {
+    if (clients.size > 0 || !unsubscribe) return;
+    unsubscribe();
+    unsubscribe = null;
+  };
 
-function getPathname(req: IncomingMessage): string {
-  try {
-    return new URL(req.url ?? '/', 'http://localhost').pathname;
-  } catch {
-    return '/';
-  }
+  wss.on('connection', (ws) => {
+    clients.add(ws);
+    opts.heartbeat.trackClient(ws);
+    ensureSubscription();
+    broadcast();
+
+    ws.on('close', () => {
+      clients.delete(ws);
+      clearSubscriptionIfIdle();
+      opts.heartbeat.clearIntervalIfIdle();
+    });
+  });
+
+  return { path: opts.path, wss, clients };
 }

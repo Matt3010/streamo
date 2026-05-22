@@ -47,6 +47,19 @@ export function getRedisPublisher(): IORedis {
   return publisher;
 }
 
+// Scoped helper: open a one-shot client, run the callback, always
+// disconnect — used by queue-status, admin-health, and anywhere else
+// that just needs to issue a handful of commands without holding a
+// long-lived connection.
+export async function withRedisClient<T>(fn: (redis: IORedis) => Promise<T>): Promise<T> {
+  const redis = createRedisClient();
+  try {
+    return await fn(redis);
+  } finally {
+    redis.disconnect();
+  }
+}
+
 export async function assertRedisReady(): Promise<void> {
   if (!hasRedisConfig()) {
     throw new Error('REDIS_URL is not configured');

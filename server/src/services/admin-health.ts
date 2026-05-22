@@ -1,4 +1,4 @@
-import { createRedisClient, hasRedisConfig } from './redis';
+import { hasRedisConfig, withRedisClient } from './redis';
 import { getWatchlistQueue, WATCHLIST_QUEUE_NAME } from './watchlist-jobs';
 import { getNotificationsDeliveryQueue, NOTIFICATIONS_DELIVERY_QUEUE_NAME } from './notifications-jobs';
 import { listWorkerHeartbeats } from './worker-heartbeat';
@@ -50,8 +50,7 @@ interface HealthProbe {
 }
 
 async function checkWorker(): Promise<HealthProbe> {
-  const redis = createRedisClient();
-  try {
+  return withRedisClient(async (redis) => {
     const beats = await listWorkerHeartbeats(redis);
     const now = Math.floor(Date.now() / 1000);
     const alive = beats.filter((b) => now - b.last_seen_at <= WORKER_HEARTBEAT_STALE_SECONDS);
@@ -66,9 +65,7 @@ async function checkWorker(): Promise<HealthProbe> {
       };
     }
     return { kind: 'worker', ok: true, title: '', detail: `${alive.length} worker online` };
-  } finally {
-    redis.disconnect();
-  }
+  });
 }
 
 async function checkFailedJobs(): Promise<HealthProbe> {
@@ -103,12 +100,9 @@ async function checkEgress(): Promise<HealthProbe> {
   // without rerunning the full probe on every page hit. TTL is slightly
   // wider than the 5-min scan so a delayed scan doesn't blank the pill.
   if (hasRedisConfig()) {
-    const redis = createRedisClient();
-    try {
-      await redis.set(EGRESS_OK_REDIS_KEY, ok ? '1' : '0', 'EX', EGRESS_CACHE_TTL_SECONDS);
-    } finally {
-      redis.disconnect();
-    }
+    await withRedisClient((redis) =>
+      redis.set(EGRESS_OK_REDIS_KEY, ok ? '1' : '0', 'EX', EGRESS_CACHE_TTL_SECONDS)
+    );
   }
 
   if (!ok) {
@@ -126,13 +120,10 @@ async function checkEgress(): Promise<HealthProbe> {
 // fresh boot).
 export async function readEgressOk(): Promise<boolean> {
   if (!hasRedisConfig()) return true;
-  const redis = createRedisClient();
-  try {
+  return withRedisClient(async (redis) => {
     const v = await redis.get(EGRESS_OK_REDIS_KEY);
     return v === null ? true : v === '1';
-  } finally {
-    redis.disconnect();
-  }
+  });
 }
 
 async function checkProvider(): Promise<HealthProbe> {
@@ -154,17 +145,16 @@ async function checkProvider(): Promise<HealthProbe> {
 // cheaply with ZREMRANGEBYSCORE + ZCARD.
 export async function recordProviderOutageEvent(): Promise<void> {
   if (!hasRedisConfig()) return;
-  const redis = createRedisClient();
   try {
-    const now = Math.floor(Date.now() / 1000);
-    await redis.zadd(PROVIDER_OUTAGE_REDIS_KEY, now, `${now}-${Math.random()}`);
-    await redis.zremrangebyscore(PROVIDER_OUTAGE_REDIS_KEY, 0, now - PROVIDER_OUTAGE_WINDOW_SECONDS);
-    // Bounded TTL so a one-off spike eventually clears even without future calls.
-    await redis.expire(PROVIDER_OUTAGE_REDIS_KEY, PROVIDER_OUTAGE_WINDOW_SECONDS * 2);
+    await withRedisClient(async (redis) => {
+      const now = Math.floor(Date.now() / 1000);
+      await redis.zadd(PROVIDER_OUTAGE_REDIS_KEY, now, `${now}-${Math.random()}`);
+      await redis.zremrangebyscore(PROVIDER_OUTAGE_REDIS_KEY, 0, now - PROVIDER_OUTAGE_WINDOW_SECONDS);
+      // Bounded TTL so a one-off spike eventually clears even without future calls.
+      await redis.expire(PROVIDER_OUTAGE_REDIS_KEY, PROVIDER_OUTAGE_WINDOW_SECONDS * 2);
+    });
   } catch (error) {
     console.error('[admin-health] failed to record provider outage event', error);
-  } finally {
-    redis.disconnect();
   }
 }
 
@@ -172,15 +162,14 @@ export async function recordProviderOutageEvent(): Promise<void> {
 // (pill on the admin UI).
 export async function readProviderOutageCount(): Promise<number> {
   if (!hasRedisConfig()) return 0;
-  const redis = createRedisClient();
   try {
-    const now = Math.floor(Date.now() / 1000);
-    await redis.zremrangebyscore(PROVIDER_OUTAGE_REDIS_KEY, 0, now - PROVIDER_OUTAGE_WINDOW_SECONDS);
-    return await redis.zcard(PROVIDER_OUTAGE_REDIS_KEY);
+    return await withRedisClient(async (redis) => {
+      const now = Math.floor(Date.now() / 1000);
+      await redis.zremrangebyscore(PROVIDER_OUTAGE_REDIS_KEY, 0, now - PROVIDER_OUTAGE_WINDOW_SECONDS);
+      return redis.zcard(PROVIDER_OUTAGE_REDIS_KEY);
+    });
   } catch {
     return 0;
-  } finally {
-    redis.disconnect();
   }
 }
 
@@ -189,8 +178,7 @@ export async function isProviderOutage(): Promise<boolean> {
 }
 
 async function reconcileTransitions(probes: HealthProbe[]): Promise<void> {
-  const redis = createRedisClient();
-  try {
+  await withRedisClient(async (redis) => {
     const previous = await redis.hgetall(HEALTH_STATE_REDIS_KEY);
     const nextState: Record<string, string> = {};
 
@@ -211,7 +199,5 @@ async function reconcileTransitions(probes: HealthProbe[]): Promise<void> {
     }
 
     await redis.hset(HEALTH_STATE_REDIS_KEY, nextState);
-  } finally {
-    redis.disconnect();
-  }
+  });
 }
