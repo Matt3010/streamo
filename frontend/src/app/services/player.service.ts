@@ -72,6 +72,13 @@ export class PlayerService {
   readonly iframeSrc = signal('');
   readonly playbackAvailability = signal<PlaybackAvailability>('idle');
   readonly playbackUnavailableMessage = signal<string | null>(null);
+  // Becomes true once the initial open() flow for the current title has
+  // finished its dependent fetches (TMDB details + provider resolve +
+  // progress + next-unwatched). The watch page uses this to keep the
+  // action-button skeleton in place across the entire load — without it,
+  // currentItem flips first and the play button briefly renders its
+  // fallback label ("Guarda") before nextUnwatchedRef arrives.
+  readonly initialLoadComplete = signal(false);
   readonly playbackUnavailableReason = signal<ProviderResolveFailureReason | null>(null);
   readonly providerManualRefreshState = signal<ProviderManualRefreshState | null>(null);
   readonly providerCandidates = signal<ProviderResolvedTitleCandidate[]>([]);
@@ -227,6 +234,7 @@ export class PlayerService {
     this.seriesProgress.set(new Map());
     this.nextUnwatchedRef.set(null);
     this.activeEpisodeRef.set(null);
+    this.initialLoadComplete.set(false);
 
     const item = await this.tmdb.getDetails(tmdbId, type);
     if (!item) {
@@ -309,6 +317,8 @@ export class PlayerService {
         await this.applyResumeProgress(seq, tmdbId, 'movie');
       }
     }
+
+    this.initialLoadComplete.set(true);
   }
 
   cleanup(): void {

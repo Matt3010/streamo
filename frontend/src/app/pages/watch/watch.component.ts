@@ -440,7 +440,13 @@ export class WatchComponent {
   // True while the watch page is fetching TMDB details for this title — no
   // currentItem yet means dropdowns/title/info would render empty, which
   // looks broken. Skeletons fill that gap.
-  protected readonly loading = computed(() => this.player.currentItem() === null);
+  // Skeletons stay up until ALL initial fetches for this title have landed
+  // (TMDB details + provider resolve + progress + next-unwatched). currentItem
+  // flips much sooner, so without the initialLoadComplete gate the play button
+  // briefly renders its fallback label ("Guarda") before nextUnwatchedRef arrives.
+  protected readonly loading = computed(() =>
+    this.player.currentItem() === null || !this.player.initialLoadComplete()
+  );
 
   protected readonly title = computed(() => {
     const it = this.player.currentItem();
