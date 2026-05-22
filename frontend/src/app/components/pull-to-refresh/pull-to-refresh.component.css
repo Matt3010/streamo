@@ -1,0 +1,48 @@
+:host {
+  /* Float above all page chrome but below modals/toasts. */
+  position: fixed;
+  inset: 0 0 auto 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 250;
+}
+
+.ptr-indicator {
+  /* Park the indicator just above the viewport so it slides into view
+   * only when the user actually pulls. */
+  margin-top: -2.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  will-change: transform;
+}
+
+.ptr-indicator.visible {
+  opacity: 1;
+}
+
+.ptr-indicator.ready {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Continuous spin while the page is reloading — matches the visual
+ * grammar of native PTR after release. */
+.ptr-indicator.spin app-icon {
+  animation: ptr-spin 0.7s linear infinite;
+  display: inline-flex;
+}
+
+@keyframes ptr-spin {
+  to { transform: rotate(-360deg); }
+}

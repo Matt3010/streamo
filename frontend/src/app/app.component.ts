@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/cor
 import { ActivatedRouteSnapshot, Router, RouterOutlet } from '@angular/router';
 import { AuthModalComponent } from './components/auth-modal/auth-modal.component';
 import { OfflineBannerComponent } from './components/offline-banner/offline-banner.component';
+import { PullToRefreshComponent } from './components/pull-to-refresh/pull-to-refresh.component';
 import { ToastComponent } from './ui/toast/toast.component';
 import { AuthService } from './services/auth.service';
 import { WatchlistLiveService } from './services/watchlist-live.service';
@@ -9,10 +10,11 @@ import { WatchlistLiveService } from './services/watchlist-live.service';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, AuthModalComponent, OfflineBannerComponent, ToastComponent],
+  imports: [RouterOutlet, AuthModalComponent, OfflineBannerComponent, PullToRefreshComponent, ToastComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-offline-banner />
+    <app-pull-to-refresh />
     <router-outlet />
     <app-auth-modal />
     <app-toast />
