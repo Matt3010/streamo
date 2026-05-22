@@ -80,6 +80,10 @@
   background: var(--surface);
 }
 
+/* Unread indicator sits inside the row so the scroll container
+ * (overflow-y: auto on .bell-list, which implies overflow-x: auto)
+ * doesn't clip it. Positioned over the bell-main left padding, ahead of
+ * the thumbnail. */
 .bell-item.unread::before {
   content: '';
   position: absolute;
@@ -87,8 +91,8 @@
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  left: -2px;
-  top: 0.85rem;
+  left: 2px;
+  top: 1.1rem;
 }
 
 .bell-main {
