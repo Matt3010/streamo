@@ -93,8 +93,15 @@ async function checkFailedJobs(): Promise<HealthProbe> {
 async function checkEgress(): Promise<HealthProbe> {
   // Single source of truth for the egress probe — same service the
   // /admin/egress-check route uses on manual refresh.
+  //
+  // Health is determined by the Cloudflare trace alone: warp=on means
+  // outbound traffic is going through the WARP tunnel, which is what
+  // we actually care about. ipinfo.io contributes only ASN/city metadata
+  // and is third-party-flaky — its 5xx responses (non-JSON "upstream
+  // connect" bodies, etc.) used to false-alarm this check.
   const result = await runEgressCheck();
-  const ok = result.warp && result.errors.length === 0;
+  const traceFailed = result.errors.some((e) => e.startsWith('trace:'));
+  const ok = result.warp && !traceFailed;
 
   // Cache the latest observation so the admin Queue pill can read it
   // without rerunning the full probe on every page hit. TTL is slightly
@@ -106,9 +113,10 @@ async function checkEgress(): Promise<HealthProbe> {
   }
 
   if (!ok) {
+    const traceErrors = result.errors.filter((e) => e.startsWith('trace:'));
     const detail = !result.warp
-      ? `warp=${result.warp ? 'on' : 'off'}`
-      : result.errors.join('; ');
+      ? 'warp=off'
+      : (traceErrors.join('; ') || 'trace probe failed');
     return { kind: 'egress', ok: false, title: 'Egress non via WARP', detail };
   }
   return { kind: 'egress', ok: true, title: '', detail: `warp=on colo=${result.colo ?? '?'}` };
