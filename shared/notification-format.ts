@@ -73,14 +73,29 @@ export function formatNotification(n: NotificationFormatInput): { title: string;
 
 /** Stable, same-origin path used as the deep link target. Both the server
  *  (in the FCM `click_url` data field) and the bell (router.navigate)
- *  build the URL from this single helper. Admin alerts have no TMDB
- *  context (sentinel tmdb_id 1..5), so they route to the admin tab
- *  instead of a non-existent /watch/tv/1 page. */
+ *  build the URL from this single helper.
+ *
+ *  Includes the season/episode as query params when the payload carries
+ *  them, so the watch page's `s` / `e` inputs land the player on the
+ *  right episode immediately. Without this, navigating to the bare
+ *  /watch/tv/<id> only refreshes the route if the URL actually changes —
+ *  re-clicking a notification for the show you're already viewing would
+ *  silently no-op. The query params also skip the next-unwatched fallback
+ *  and let the user resume from the exact coordinate the notification was
+ *  about (e.g. "Riprendi da S1 E3" should land on S1 E3, not on whatever
+ *  the latest progress row points to).
+ *
+ *  Admin alerts have no TMDB context (sentinel tmdb_id 1..5) — route to
+ *  the admin tab instead of a non-existent /watch/tv/1 page. */
 export function notificationTargetPath(
-  n: Pick<NotificationItem, 'media_type' | 'tmdb_id' | 'type'>
+  n: Pick<NotificationItem, 'media_type' | 'tmdb_id' | 'type' | 'payload'>
 ): string {
   if (n.type === 'admin_alert') return '/admin';
-  return `/watch/${n.media_type}/${n.tmdb_id}`;
+  const base = `/watch/${n.media_type}/${n.tmdb_id}`;
+  const { season, episode } = n.payload ?? {};
+  if (season && episode) return `${base}?s=${season}&e=${episode}`;
+  if (season) return `${base}?s=${season}`;
+  return base;
 }
 
 function defaultLabelFor(type: NotificationType): string {
