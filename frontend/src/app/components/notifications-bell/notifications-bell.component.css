@@ -21,8 +21,8 @@
   height: 1.1rem;
   padding: 0 0.3rem;
   border-radius: 999px;
-  background: #e23d3d;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1.1rem;
@@ -40,7 +40,7 @@
 
 .bell-empty {
   padding: 1.5rem 0.5rem;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-muted);
   text-align: center;
   font-size: 0.9rem;
 }
@@ -50,15 +50,15 @@
   display: flex;
   align-items: stretch;
   padding: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .bell-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
 }
 
 .bell-item.unread {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface);
 }
 
 .bell-item.unread::before {
@@ -67,7 +67,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #4a90ff;
+  background: var(--accent);
   left: -0.25rem;
   top: 0.85rem;
 }
@@ -92,7 +92,7 @@
   height: 3.5rem;
   border-radius: 4px;
   object-fit: cover;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface);
 }
 
 .bell-thumb-empty {
@@ -109,6 +109,7 @@
 .bell-title {
   font-size: 0.9rem;
   font-weight: 600;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -116,7 +117,7 @@
 
 .bell-body {
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -124,7 +125,8 @@
 
 .bell-time {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 
 .bell-remove {
@@ -135,20 +137,20 @@
   border-radius: 50%;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-muted);
   cursor: pointer;
   flex: 0 0 auto;
 }
 
 .bell-remove:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.85);
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .bell-footer {
   display: flex;
   justify-content: flex-end;
   padding-top: 0.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--border);
   margin-top: 0.4rem;
 }

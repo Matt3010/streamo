@@ -4,7 +4,12 @@ import { IconComponent } from '../../ui/icon/icon.component';
 import { UiPopoverComponent } from '../../ui/popover/popover.component';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { NotificationsService } from '../../services/notifications.service';
-import type { NotificationItem, NotificationType } from '../../models';
+import type { NotificationItem } from '../../models';
+import {
+  formatNotificationBody,
+  formatNotificationTitle,
+  notificationTargetPath
+} from '../../../../../shared/notification-format';
 
 @Component({
   selector: 'app-notifications-bell',
@@ -45,7 +50,7 @@ import type { NotificationItem, NotificationType } from '../../models';
                 <span class="bell-thumb bell-thumb-empty" aria-hidden="true"></span>
               }
               <span class="bell-copy">
-                <span class="bell-title">{{ n.title ?? defaultTitleFor(n.type) }}</span>
+                <span class="bell-title">{{ titleFor(n) }}</span>
                 <span class="bell-body">{{ bodyFor(n) }}</span>
                 <span class="bell-time">{{ formatRelative(n.created_at) }}</span>
               </span>
@@ -105,7 +110,7 @@ export class NotificationsBellComponent {
   protected async onItemClick(n: NotificationItem): Promise<void> {
     this.open.set(false);
     if (n.read_at === null) void this.notifications.markRead(n.id);
-    await this.router.navigate(['/watch', n.media_type, n.tmdb_id]);
+    await this.router.navigateByUrl(notificationTargetPath(n));
   }
 
   protected onRemove(event: MouseEvent, id: number): void {
@@ -117,27 +122,12 @@ export class NotificationsBellComponent {
     void this.notifications.markAllRead();
   }
 
-  protected defaultTitleFor(type: NotificationType): string {
-    switch (type) {
-      case 'new_episode': return 'Nuovo episodio';
-      case 'new_season': return 'Nuova stagione';
-      case 'resume_reminder': return 'Riprendi a guardare';
-    }
+  protected titleFor(n: NotificationItem): string {
+    return formatNotificationTitle(n);
   }
 
   protected bodyFor(n: NotificationItem): string {
-    const { season, episode, aired_delta } = n.payload ?? {};
-    switch (n.type) {
-      case 'new_season':
-        return season ? `Nuova stagione (S${season})` : 'Nuova stagione disponibile';
-      case 'new_episode':
-        if (aired_delta && aired_delta > 1) return `${aired_delta} nuovi episodi`;
-        if (season && episode) return `S${season} E${episode}`;
-        return 'Nuovo episodio disponibile';
-      case 'resume_reminder':
-        if (season && episode) return `Riprendi da S${season} E${episode}`;
-        return 'Hai un titolo da finire';
-    }
+    return formatNotificationBody(n);
   }
 
   protected formatRelative(epochSeconds: number): string {

@@ -2,7 +2,8 @@ import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getMessaging, type Messaging, type MulticastMessage } from 'firebase-admin/messaging';
 import { kdb } from '../db';
 import { FCM_PROJECT_ID, FCM_SERVICE_ACCOUNT_JSON_B64, isFcmConfigured } from '../config';
-import type { NotificationItem, NotificationType } from '../../../shared/types';
+import type { NotificationItem } from '../../../shared/types';
+import { formatNotification, notificationTargetPath } from '../../../shared/notification-format';
 
 const FIREBASE_APP_NAME = 'streamo-fcm';
 
@@ -59,28 +60,28 @@ export async function sendPushToUser(userId: number, notification: NotificationI
   if (rows.length === 0) return;
 
   const tokens = rows.map((r) => r.token);
+  const { title, body } = formatNotification(notification);
+  const link = notificationTargetPath(notification);
   const message: MulticastMessage = {
     tokens,
-    notification: {
-      title: buildTitle(notification),
-      body: buildBody(notification)
-    },
+    notification: { title, body },
     data: {
       notification_id: String(notification.id),
       type: notification.type,
       tmdb_id: String(notification.tmdb_id),
       media_type: notification.media_type,
-      click_url: buildClickUrl(notification)
+      click_url: link
     },
     webpush: {
-      fcmOptions: { link: buildClickUrl(notification) },
+      fcmOptions: { link },
       notification: {
         icon: notification.poster ?? undefined,
-        tag: `streamo-${notification.media_type}-${notification.tmdb_id}`,
-        // Collapse repeated pushes for the same show into one OS notification
-        // — useful when the worker re-fires after a reconnect or the user
-        // has many devices and one was offline.
-        renotify: false
+        // Tag granularity: include type + season/episode so back-to-back
+        // releases (S5E1 then S5E2) and a resume_reminder for the same show
+        // don't coalesce into a single banner. Same payload arriving twice
+        // (worker re-fire, multi-device with one offline) still dedupes
+        // because the tag is fully deterministic from the payload.
+        tag: buildPushTag(notification)
       }
     }
   };
@@ -123,36 +124,10 @@ export function redactToken(token: string): string {
   return `${token.slice(0, 12)}…`;
 }
 
-function buildClickUrl(notification: NotificationItem): string {
-  // Always a same-origin path, constructed from a fixed template. The
-  // service worker (PR 4) will still validate this is same-origin before
-  // calling clients.openWindow(), as defense in depth.
-  return `/watch/${notification.media_type}/${notification.tmdb_id}`;
-}
-
-function buildTitle(notification: NotificationItem): string {
-  return notification.title ?? defaultLabelFor(notification.type);
-}
-
-function defaultLabelFor(type: NotificationType): string {
-  switch (type) {
-    case 'new_episode': return 'Nuovo episodio';
-    case 'new_season': return 'Nuova stagione';
-    case 'resume_reminder': return 'Riprendi a guardare';
-  }
-}
-
-function buildBody(notification: NotificationItem): string {
-  const { season, episode, aired_delta } = notification.payload ?? {};
-  switch (notification.type) {
-    case 'new_season':
-      return season ? `Nuova stagione disponibile (S${season})` : 'Nuova stagione disponibile';
-    case 'new_episode':
-      if (aired_delta && aired_delta > 1) return `${aired_delta} nuovi episodi`;
-      if (season && episode) return `Nuovo episodio: S${season} E${episode}`;
-      return 'Nuovo episodio disponibile';
-    case 'resume_reminder':
-      if (season && episode) return `Riprendi da S${season} E${episode}`;
-      return 'Hai un titolo da finire';
-  }
+function buildPushTag(notification: NotificationItem): string {
+  const base = `streamo-${notification.type}-${notification.media_type}-${notification.tmdb_id}`;
+  const { season, episode } = notification.payload ?? {};
+  if (season && episode) return `${base}-s${season}e${episode}`;
+  if (season) return `${base}-s${season}`;
+  return base;
 }

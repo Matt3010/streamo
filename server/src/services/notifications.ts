@@ -9,10 +9,12 @@ import type {
   NotificationType
 } from '../../../shared/types';
 
-// Suppress duplicate notifications produced within this window. The worker
-// is scheduled (BullMQ scan) so a flaky TMDB response shouldn't double-notify
-// the same user about the same release.
-const DEDUPE_WINDOW_SECONDS = 7 * 24 * 60 * 60;
+// Suppress duplicate notifications produced within this window for the same
+// (user, type, tmdb_id, media_type). TMDB refreshes are incremental — an
+// initial "+1 episode" reading often becomes "+2" minutes later — and we
+// don't want each correction to spawn its own ping. Resume reminders use
+// their own 30d suppression via hasRecentNotificationOfType.
+const CREATE_DEDUPE_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 interface CreateInput {
   userIds: number[];
@@ -27,22 +29,16 @@ interface CreateInput {
 export async function createNotificationsForUsers(input: CreateInput): Promise<NotificationItem[]> {
   if (input.userIds.length === 0) return [];
 
-  const payloadJson = stringifyPayload(input.payload ?? {});
-  const dedupeCutoff = Math.floor(Date.now() / 1000) - DEDUPE_WINDOW_SECONDS;
+  // payload_json is stored for display only — the exact contents (esp.
+  // aired_delta) shift on every refresh, so we deliberately do NOT key the
+  // dedupe off it. The dedupe key is (user, type, tmdb_id, media_type).
+  const payloadJson = JSON.stringify(input.payload ?? {});
   const created: NotificationItem[] = [];
 
   for (const userId of input.userIds) {
-    const exists = await kdb
-      .selectFrom('notifications')
-      .select('id')
-      .where('user_id', '=', userId)
-      .where('type', '=', input.type)
-      .where('tmdb_id', '=', input.tmdbId)
-      .where('media_type', '=', input.mediaType)
-      .where('payload_json', '=', payloadJson)
-      .where('created_at', '>=', dedupeCutoff)
-      .limit(1)
-      .executeTakeFirst();
+    const exists = await hasRecentNotificationOfType(
+      userId, input.type, input.tmdbId, input.mediaType, CREATE_DEDUPE_WINDOW_SECONDS
+    );
     if (exists) continue;
 
     const row = await kdb
@@ -138,10 +134,9 @@ export async function markAllNotificationsRead(userId: number): Promise<number> 
   return Number(result?.numUpdatedRows ?? 0);
 }
 
-// Per-call suppression check used when the caller wants a non-default
-// dedupe window (e.g. resume reminders, which should be suppressed for
-// much longer than the 7-day payload-equality dedupe inside
-// createNotificationsForUsers).
+// Per-call suppression check. Used both internally (CREATE_DEDUPE_WINDOW_SECONDS)
+// and by callers that need a non-default window (e.g. resume reminders, which
+// should be suppressed for 30d rather than the standard 7d).
 export async function hasRecentNotificationOfType(
   userId: number,
   type: NotificationType,
@@ -170,18 +165,6 @@ export async function deleteNotification(userId: number, id: number): Promise<bo
     .where('id', '=', id)
     .executeTakeFirst();
   return Number(result?.numDeletedRows ?? 0) > 0;
-}
-
-// Stable JSON for the dedupe equality check — JS object key order is insertion
-// order, so without sorting the worker and a future caller could produce
-// `{"season":2,"episode":5}` and `{"episode":5,"season":2}` and bypass dedupe.
-function stringifyPayload(payload: NotificationPayload): string {
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(payload).sort()) {
-    const value = (payload as Record<string, unknown>)[key];
-    if (value !== undefined) sorted[key] = value;
-  }
-  return JSON.stringify(sorted);
 }
 
 function parsePayload(raw: string): NotificationPayload {
