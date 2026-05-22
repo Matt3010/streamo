@@ -1,4 +1,4 @@
-import type { MediaType } from '../../../shared/types';
+import type { MediaType, ProviderResolveFailureReason } from '../../../shared/types';
 import { kdb } from '../db';
 import {
   PROVIDER_CATALOG_LINK_SOURCE_URL,
@@ -39,8 +39,6 @@ export interface ProviderResolvedEpisode {
 export interface ProviderResolvedMovie {
   embedUrl: string | null;
 }
-
-export type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 
 export interface ProviderResolveOutcome<T> {
   resolved: T | null;

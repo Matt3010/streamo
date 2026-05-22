@@ -6,6 +6,7 @@ import {
   getAiredEpisodesCount as sharedGetAiredEpisodesCount,
   getBaseAiredEpisodesCount as sharedGetBaseAiredEpisodesCount
 } from '../../../shared/release-format';
+import { tmdbImageUrl } from '../../../shared/tmdb-image';
 
 export { isFutureDateStr as isFutureDate } from '../../../shared/release-format';
 
@@ -205,8 +206,6 @@ export async function getTmdbTvSummary(
 // surfaces (otherwise the picker is just a list of titles with no visual
 // disambiguation). Aggressively cached because the same query repeats across
 // users and resolves.
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w92';
-
 export async function searchTmdbPosterUrl(
   query: string,
   mediaType: 'movie' | 'tv',
@@ -247,7 +246,7 @@ export async function searchTmdbPosterUrl(
     if (res.ok) {
       const body = await res.json() as { results?: Array<{ poster_path?: string | null }> };
       const path = body.results?.find((r) => typeof r.poster_path === 'string' && r.poster_path)?.poster_path;
-      posterUrl = path ? `${TMDB_IMAGE_BASE}${path}` : null;
+      posterUrl = path ? tmdbImageUrl(path, 'w92') : null;
     }
   } catch {
     posterUrl = null;

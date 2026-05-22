@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import type { MediaType } from '../models';
+import type { MediaType, ProviderResolveFailureReason } from '../models';
 import { apiSendJson, jsonRequest } from '../utils/api.util';
 
 interface ProviderResolvedTitle {
@@ -18,8 +18,6 @@ interface ProviderResolvedEpisode {
 interface ProviderResolvedMovie {
   embedUrl: string | null;
 }
-
-type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 
 export interface ProviderManualRefreshState {
   /** True after the user has clicked the manual refresh button at least

@@ -2,6 +2,11 @@
 // Wire-format only — no UI-specific shapes (those stay in frontend/src/app/models).
 
 export type MediaType = 'movie' | 'tv';
+
+/** Reason for a failed provider resolve. Shared so server (resolver
+ *  outcome) and client (player / provider-resolve service) agree on
+ *  the wire-format strings — they were declared three times before. */
+export type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 export type WatchlistStatus = 'todo' | 'in_progress' | 'done';
 export type WatchlistListStatusFilter = WatchlistStatus | 'unreleased';
 

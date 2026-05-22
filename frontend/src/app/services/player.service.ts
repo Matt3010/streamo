@@ -15,9 +15,9 @@ import { isTitleUpcoming } from '../utils/media-release.util';
 import { isFutureDateStr } from '../utils/date.util';
 import { getEffectiveLastEpisode } from '../utils/aired-episodes.util';
 import { formatTime, progressKey } from '../utils/time.util';
-import type { MediaType, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
+import type { MediaType, ProviderResolveFailureReason, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
+import { tmdbImageUrl } from '../../../../shared/tmdb-image';
 
-const BACKDROP_BASE = 'https://image.tmdb.org/t/p/w1280';
 // Mirror of CONTINUE_HIDE_THRESHOLD in server/src/config.ts. Used only
 // to decide when to advance the CTA mid-playback. Matches the backend's
 // resolveNextPlayable threshold so both sides agree on "really done".
@@ -34,7 +34,6 @@ interface ProviderPlaybackTitle {
 }
 
 type PlaybackAvailability = 'idle' | 'resolving' | 'ready' | 'unavailable';
-type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
@@ -266,7 +265,7 @@ export class PlayerService {
     this.currentItemType.set(type);
 
     const backdrop = item.backdrop_path ?? item.poster_path;
-    this.backdropUrl.set(backdrop ? `${BACKDROP_BASE}${backdrop}` : '');
+    this.backdropUrl.set(tmdbImageUrl(backdrop, 'w1280'));
 
     this.iframeSrc.set('');
     this.videoStartTime = null;

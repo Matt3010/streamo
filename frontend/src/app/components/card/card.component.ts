@@ -3,9 +3,9 @@ import { IconComponent } from '../../ui/icon/icon.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { getStatusButtonTitle, getStatusButtonIcon } from '../../utils/watchlist-status.util';
+import { tmdbImageUrl } from '../../../../../shared/tmdb-image';
 import type { CardItem } from '../../models';
 
-const IMG_BASE = 'https://image.tmdb.org/t/p/w342';
 export interface CardFolderClickEvent {
   item: CardItem;
   anchor: HTMLElement | null;
@@ -125,10 +125,7 @@ export class CardComponent {
   readonly dragStarted = output<DragEvent>();
   readonly dragEnded = output<void>();
 
-  protected readonly posterUrl = computed(() => {
-    const p = this.item().poster;
-    return p ? `${IMG_BASE}${p}` : '';
-  });
+  protected readonly posterUrl = computed(() => tmdbImageUrl(this.item().poster, 'w342'));
 
   protected readonly progressPct = computed(() => {
     const it = this.item();

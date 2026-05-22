@@ -17,13 +17,13 @@ import { UiButtonDirective } from '../../ui/ui-button.directive';
 import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
 import { TmdbService } from '../../services/tmdb.service';
 import { BodyScrollLockService } from '../../services/body-scroll-lock.service';
+import { tmdbImageUrl } from '../../../../../shared/tmdb-image';
 import type { TmdbItem } from '../../models';
 
 const RECENTS_KEY = 'streamo.search.recent';
 const RECENTS_LIMIT = 8;
 const SUGGESTION_LIMIT = 6;
 const SUGGESTION_DEBOUNCE_MS = 220;
-const THUMB_BASE = 'https://image.tmdb.org/t/p/w92';
 
 @Component({
   selector: 'app-floating-search',
@@ -389,7 +389,7 @@ export class FloatingSearchComponent {
   }
 
   protected thumbUrl(path: string): string {
-    return `${THUMB_BASE}${path}`;
+    return tmdbImageUrl(path, 'w92');
   }
 
   private async fetchSuggestions(q: string): Promise<void> {

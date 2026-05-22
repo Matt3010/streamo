@@ -13,6 +13,7 @@ import { UiSurfaceDirective } from '../../ui/ui-surface.directive';
 import { UiSelectComponent, type UiSelectOption } from '../../ui/select/select.component';
 import { SectionRowComponent } from '../../components/section-row/section-row.component';
 import { PlayerService } from '../../services/player.service';
+import { tmdbImageUrl } from '../../../../../shared/tmdb-image';
 import { TmdbService } from '../../services/tmdb.service';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { BackgroundService } from '../../services/background.service';
@@ -217,7 +218,7 @@ type ConfirmAction =
                          (keydown.space)="selectEpisode(ep.episode_number); $event.preventDefault()">
                   <div class="episode-thumb"
                        [class.no-image]="!ep.still_path"
-                       [style.background-image]="ep.still_path ? 'url(' + episodeThumbBase + ep.still_path + ')' : null">
+                       [style.background-image]="ep.still_path ? 'url(' + episodeThumbUrl(ep.still_path) + ')' : null">
                     @if (canClearEpisodeProgress(ep.episode_number)) {
                       <button uiButton="icon-overlay"
                               type="button"
@@ -417,9 +418,11 @@ export class WatchComponent {
   protected readonly providerPickerPending = signal(false);
   private readonly pendingConfirmAction = signal<ConfirmAction | null>(null);
 
-  // TMDB still-image base. w300 is 300×169 — enough for crisp thumbnails on
-  // 220px-wide cards even on retina, without the bandwidth cost of w500/w780.
-  protected readonly episodeThumbBase = 'https://image.tmdb.org/t/p/w300';
+  // w300 is 300×169 — enough for crisp thumbnails on 220px-wide cards
+  // even on retina, without the bandwidth cost of w500/w780.
+  protected episodeThumbUrl(stillPath: string | null | undefined): string {
+    return tmdbImageUrl(stillPath, 'w300');
+  }
 
   // Static array used by the skeleton loop — doesn't need to be a signal
   // since it never changes. Five placeholder cards is enough to fill a

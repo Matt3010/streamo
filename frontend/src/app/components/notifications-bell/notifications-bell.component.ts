@@ -10,6 +10,7 @@ import {
   formatNotificationTitle,
   notificationTargetPath
 } from '../../../../../shared/notification-format';
+import { tmdbImageUrl } from '../../../../../shared/tmdb-image';
 
 @Component({
   selector: 'app-notifications-bell',
@@ -136,13 +137,8 @@ export class NotificationsBellComponent {
   }
 
   protected posterUrl(n: NotificationItem): string | null {
-    if (!n.poster) return null;
-    // Backend stores TMDB's bare poster_path (e.g. "/abc.jpg"). Prepend
-    // the image CDN base — w92 is the smallest size, plenty for the bell
-    // thumbnail (40×56 css).
-    return n.poster.startsWith('http')
-      ? n.poster
-      : `https://image.tmdb.org/t/p/w92${n.poster}`;
+    // w92 is the smallest TMDB size — plenty for the 40×56 css thumbnail.
+    return n.poster ? tmdbImageUrl(n.poster, 'w92') : null;
   }
 
   protected formatRelative(epochSeconds: number): string {
