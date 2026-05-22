@@ -2,10 +2,17 @@ import type { IncomingMessage, Server as HttpServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authenticateToken, readCookie } from '../middleware/auth';
 import { createRedisClient, getRedisPublisher, hasRedisConfig } from './redis';
-import type { MediaType, WatchlistUpdatedEvent } from '../../../shared/types';
+import type {
+  MediaType,
+  NotificationCreatedEvent,
+  NotificationItem,
+  WatchlistUpdatedEvent
+} from '../../../shared/types';
 
 const USER_WATCHLIST_WS_PATH = '/user/watchlist/ws';
+const USER_NOTIFICATIONS_WS_PATH = '/user/notifications/ws';
 const USER_WATCHLIST_CHANNEL = 'streamo:user-watchlist-updates';
+const USER_NOTIFICATIONS_CHANNEL = 'streamo:user-notifications';
 const HEARTBEAT_INTERVAL_MS = 30000;
 
 interface WatchlistBroadcastEnvelope {
@@ -13,13 +20,21 @@ interface WatchlistBroadcastEnvelope {
   payload: WatchlistUpdatedEvent;
 }
 
-const userClients = new Map<number, Set<WebSocket>>();
+interface NotificationsBroadcastEnvelope {
+  userId: number;
+  payload: NotificationCreatedEvent;
+}
+
+const watchlistClients = new Map<number, Set<WebSocket>>();
+const notificationsClients = new Map<number, Set<WebSocket>>();
 const heartbeatState = new WeakMap<WebSocket, boolean>();
 let heartbeatInterval: NodeJS.Timeout | null = null;
-let subscriberStarted = false;
+let watchlistSubscriberStarted = false;
+let notificationsSubscriberStarted = false;
 
 export function attachUserLiveSessions(server: HttpServer): void {
   const watchlistWss = new WebSocketServer({ noServer: true });
+  const notificationsWss = new WebSocketServer({ noServer: true });
 
   watchlistWss.on('connection', (ws, req) => {
     void (async () => {
@@ -29,11 +44,29 @@ export function attachUserLiveSessions(server: HttpServer): void {
         return;
       }
 
-      addToUserClients(userId, ws);
+      addToClients(watchlistClients, userId, ws);
       trackClient(ws);
 
       ws.on('close', () => {
-        removeFromUserClients(userId, ws);
+        removeFromClients(watchlistClients, userId, ws);
+        clearHeartbeatIntervalIfIdle();
+      });
+    })();
+  });
+
+  notificationsWss.on('connection', (ws, req) => {
+    void (async () => {
+      const userId = await getUserId(req);
+      if (!userId) {
+        ws.close();
+        return;
+      }
+
+      addToClients(notificationsClients, userId, ws);
+      trackClient(ws);
+
+      ws.on('close', () => {
+        removeFromClients(notificationsClients, userId, ws);
         clearHeartbeatIntervalIfIdle();
       });
     })();
@@ -43,43 +76,46 @@ export function attachUserLiveSessions(server: HttpServer): void {
     void (async () => {
       const pathname = getPathname(req);
 
-      if (pathname === USER_WATCHLIST_WS_PATH) {
-        const token = readCookie(req.headers.cookie, 'token');
-        const auth = await authenticateToken(token);
-        if (!auth.user) {
-          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          socket.destroy();
-          return;
-        }
+      let wss: WebSocketServer | null = null;
+      if (pathname === USER_WATCHLIST_WS_PATH) wss = watchlistWss;
+      else if (pathname === USER_NOTIFICATIONS_WS_PATH) wss = notificationsWss;
+      if (!wss) return;
 
-        watchlistWss.handleUpgrade(req, socket, head, (ws) => {
-          watchlistWss.emit('connection', ws, req);
-        });
+      const token = readCookie(req.headers.cookie, 'token');
+      const auth = await authenticateToken(token);
+      if (!auth.user) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
       }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
     })();
   });
 }
 
-function addToUserClients(userId: number, ws: WebSocket): void {
-  const clients = userClients.get(userId) ?? new Set<WebSocket>();
+function addToClients(map: Map<number, Set<WebSocket>>, userId: number, ws: WebSocket): void {
+  const clients = map.get(userId) ?? new Set<WebSocket>();
   clients.add(ws);
-  userClients.set(userId, clients);
+  map.set(userId, clients);
 }
 
-function removeFromUserClients(userId: number, ws: WebSocket): void {
-  const current = userClients.get(userId);
+function removeFromClients(map: Map<number, Set<WebSocket>>, userId: number, ws: WebSocket): void {
+  const current = map.get(userId);
   if (!current) return;
   current.delete(ws);
-  if (current.size === 0) userClients.delete(userId);
+  if (current.size === 0) map.delete(userId);
 }
 
 export function startUserWatchlistEventsSubscription(): void {
-  if (!hasRedisConfig() || subscriberStarted) return;
-  subscriberStarted = true;
+  if (!hasRedisConfig() || watchlistSubscriberStarted) return;
+  watchlistSubscriberStarted = true;
 
   const subscriber = createRedisClient();
   subscriber.on('error', (error) => {
-    console.error('[user-live-subscriber]', error);
+    console.error('[user-live-subscriber:watchlist]', error);
   });
   subscriber.on('message', (channel, message) => {
     try {
@@ -88,14 +124,40 @@ export function startUserWatchlistEventsSubscription(): void {
         broadcastUserWatchlistChanged(parsed.userIds, parsed.payload);
       }
     } catch (error) {
-      console.error('[user-live-subscriber] invalid payload', error);
+      console.error('[user-live-subscriber:watchlist] invalid payload', error);
     }
   });
 
   void subscriber.subscribe(USER_WATCHLIST_CHANNEL).catch((error) => {
-    console.error('[user-live-subscriber] subscribe failed', error);
+    console.error('[user-live-subscriber:watchlist] subscribe failed', error);
     subscriber.disconnect();
-    subscriberStarted = false;
+    watchlistSubscriberStarted = false;
+  });
+}
+
+export function startUserNotificationsSubscription(): void {
+  if (!hasRedisConfig() || notificationsSubscriberStarted) return;
+  notificationsSubscriberStarted = true;
+
+  const subscriber = createRedisClient();
+  subscriber.on('error', (error) => {
+    console.error('[user-live-subscriber:notifications]', error);
+  });
+  subscriber.on('message', (channel, message) => {
+    try {
+      if (channel === USER_NOTIFICATIONS_CHANNEL) {
+        const parsed = JSON.parse(message) as NotificationsBroadcastEnvelope;
+        deliverNotification(parsed.userId, parsed.payload);
+      }
+    } catch (error) {
+      console.error('[user-live-subscriber:notifications] invalid payload', error);
+    }
+  });
+
+  void subscriber.subscribe(USER_NOTIFICATIONS_CHANNEL).catch((error) => {
+    console.error('[user-live-subscriber:notifications] subscribe failed', error);
+    subscriber.disconnect();
+    notificationsSubscriberStarted = false;
   });
 }
 
@@ -117,20 +179,46 @@ export function publishUserWatchlistChanged(
   }
 
   void getRedisPublisher().publish(USER_WATCHLIST_CHANNEL, JSON.stringify(envelope)).catch((error) => {
-    console.error('[user-live-publisher]', error);
+    console.error('[user-live-publisher:watchlist]', error);
+  });
+}
+
+export function publishUserNotificationCreated(userId: number, notification: NotificationItem): void {
+  const envelope: NotificationsBroadcastEnvelope = {
+    userId,
+    payload: { type: 'notification-created', notification }
+  };
+
+  if (!hasRedisConfig()) {
+    deliverNotification(userId, envelope.payload);
+    return;
+  }
+
+  void getRedisPublisher().publish(USER_NOTIFICATIONS_CHANNEL, JSON.stringify(envelope)).catch((error) => {
+    console.error('[user-live-publisher:notifications]', error);
   });
 }
 
 function broadcastUserWatchlistChanged(userIds: number[], payload: WatchlistUpdatedEvent): void {
+  const message = JSON.stringify(payload);
   for (const userId of userIds) {
-    const clients = userClients.get(userId);
+    const clients = watchlistClients.get(userId);
     if (!clients?.size) continue;
-
-    const message = JSON.stringify(payload);
     for (const client of clients) {
       if (client.readyState !== WebSocket.OPEN) continue;
       client.send(message);
     }
+  }
+}
+
+function deliverNotification(userId: number, payload: NotificationCreatedEvent): void {
+  const clients = notificationsClients.get(userId);
+  if (!clients?.size) return;
+
+  const message = JSON.stringify(payload);
+  for (const client of clients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    client.send(message);
   }
 }
 
@@ -150,7 +238,10 @@ function trackClient(ws: WebSocket): void {
 function ensureHeartbeatInterval(): void {
   if (heartbeatInterval) return;
   heartbeatInterval = setInterval(() => {
-    for (const clients of userClients.values()) {
+    for (const clients of watchlistClients.values()) {
+      heartbeatClients(clients);
+    }
+    for (const clients of notificationsClients.values()) {
       heartbeatClients(clients);
     }
     clearHeartbeatIntervalIfIdle();
@@ -158,7 +249,8 @@ function ensureHeartbeatInterval(): void {
 }
 
 function clearHeartbeatIntervalIfIdle(): void {
-  if (!heartbeatInterval || userClients.size > 0) return;
+  if (!heartbeatInterval) return;
+  if (watchlistClients.size > 0 || notificationsClients.size > 0) return;
   clearInterval(heartbeatInterval);
   heartbeatInterval = null;
 }

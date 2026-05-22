@@ -29,7 +29,11 @@ router.post('/auth/login', authLimiter, async (req, res) => {
   const normalized = email.trim().toLowerCase();
   const row = await kdb
     .selectFrom('users')
-    .select(['id', 'email', 'password_hash', 'autoplay_next', 'folders_enabled'])
+    .select([
+      'id', 'email', 'password_hash',
+      'autoplay_next', 'folders_enabled',
+      'notif_new_episode', 'notif_new_season', 'notif_resume_reminder'
+    ])
     .where('email', '=', normalized)
     .executeTakeFirst();
   if (!row || !(await bcryptCompare(password, row.password_hash))) {
@@ -41,6 +45,9 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     email: row.email,
     autoplay_next: row.autoplay_next,
     folders_enabled: row.folders_enabled,
+    notif_new_episode: row.notif_new_episode,
+    notif_new_season: row.notif_new_season,
+    notif_resume_reminder: row.notif_resume_reminder,
     is_admin: isAdmin
   };
   setAuthCookie(res, user);
@@ -55,7 +62,10 @@ router.post('/auth/logout', (_req, res) => {
 router.get('/auth/me', requireAuth, async (req, res) => {
   const row = await kdb
     .selectFrom('users')
-    .select(['autoplay_next', 'folders_enabled'])
+    .select([
+      'autoplay_next', 'folders_enabled',
+      'notif_new_episode', 'notif_new_season', 'notif_resume_reminder'
+    ])
     .where('id', '=', req.user!.id)
     .executeTakeFirst();
   const isAdmin = Boolean(SUPER_ADMIN_EMAIL) && req.user!.email.toLowerCase() === SUPER_ADMIN_EMAIL;
@@ -64,6 +74,9 @@ router.get('/auth/me', requireAuth, async (req, res) => {
     email: req.user!.email,
     autoplay_next: row?.autoplay_next ?? 1,
     folders_enabled: row?.folders_enabled ?? 1,
+    notif_new_episode: row?.notif_new_episode ?? 1,
+    notif_new_season: row?.notif_new_season ?? 1,
+    notif_resume_reminder: row?.notif_resume_reminder ?? 1,
     is_admin: isAdmin
   };
   res.json({ user });

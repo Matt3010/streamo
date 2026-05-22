@@ -10,7 +10,40 @@ export interface User {
   email: string;
   autoplay_next: 0 | 1;
   folders_enabled: 0 | 1;
+  notif_new_episode: 0 | 1;
+  notif_new_season: 0 | 1;
+  notif_resume_reminder: 0 | 1;
   is_admin?: boolean;
+}
+
+export type NotificationType = 'new_episode' | 'new_season' | 'resume_reminder';
+
+export interface NotificationPayload {
+  season?: number;
+  episode?: number;
+  aired_delta?: number;
+}
+
+export interface NotificationItem {
+  id: number;
+  type: NotificationType;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string | null;
+  poster: string | null;
+  payload: NotificationPayload;
+  created_at: number;
+  read_at: number | null;
+}
+
+export interface NotificationCreatedEvent {
+  type: 'notification-created';
+  notification: NotificationItem;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  unread_count: number;
 }
 
 export interface ProgressItem {

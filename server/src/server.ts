@@ -11,12 +11,16 @@ import watchlistRoutes from './routes/watchlist';
 import adminRoutes from './routes/admin';
 import playbackRoutes from './routes/playback';
 import providerRoutes from './routes/provider';
+import notificationsRoutes from './routes/notifications';
 import { attachAdminLiveSessions } from './services/admin-live';
 import { requireSuperAdmin } from './middleware/auth';
 import { getAdminQueuesBoardRouter } from './services/admin-queues-board';
 import { assertRedisReady } from './services/redis';
 import { attachUserLiveSessions } from './services/user-live';
-import { startUserWatchlistEventsSubscription } from './services/user-live';
+import {
+  startUserNotificationsSubscription,
+  startUserWatchlistEventsSubscription
+} from './services/user-live';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -39,6 +43,7 @@ app.use(watchlistRoutes);
 app.use(adminRoutes);
 app.use(playbackRoutes);
 app.use(providerRoutes);
+app.use(notificationsRoutes);
 
 async function start(): Promise<void> {
   await initDb();
@@ -48,6 +53,7 @@ async function start(): Promise<void> {
   attachAdminLiveSessions(server);
   attachUserLiveSessions(server);
   startUserWatchlistEventsSubscription();
+  startUserNotificationsSubscription();
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend listening on ${PORT}`);

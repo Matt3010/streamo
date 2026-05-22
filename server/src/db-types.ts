@@ -12,7 +12,31 @@ interface UsersTable {
   password_hash: string;
   autoplay_next: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
   folders_enabled: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  notif_new_episode: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  notif_new_season: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  notif_resume_reminder: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
   created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+}
+
+interface NotificationsTable {
+  id: Generated<number>;
+  user_id: number;
+  type: ColumnType<'new_episode' | 'new_season' | 'resume_reminder', 'new_episode' | 'new_season' | 'resume_reminder', 'new_episode' | 'new_season' | 'resume_reminder'>;
+  tmdb_id: number;
+  media_type: string;
+  title: string | null;
+  poster: string | null;
+  payload_json: ColumnType<string, string | undefined, string>;
+  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+  read_at: Epoch | null;
+}
+
+interface FcmTokensTable {
+  token: string;
+  user_id: number;
+  user_agent: string | null;
+  created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
+  last_seen_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
 }
 
 interface ProgressTable {
@@ -106,4 +130,6 @@ export interface Database {
   tmdb_cache: TmdbCacheTable;
   provider_title_map: ProviderTitleMapTable;
   provider_manual_refresh_cooldowns: ProviderManualRefreshCooldownsTable;
+  notifications: NotificationsTable;
+  fcm_tokens: FcmTokensTable;
 }
