@@ -13,6 +13,13 @@ export const COOKIE_SECURE =
 export const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 export const TMDB_CACHE_TTL = 6 * 60 * 60; // 6 hours
 export const TMDB_REFRESH_INTERVAL_SECONDS = Number(process.env.TMDB_REFRESH_INTERVAL_SECONDS) || (30 * 60);
+// Resume-reminder scan cadence. Daily is plenty: the idle window required
+// (>= 7 days since last play) is much coarser than the scan period, so
+// running more often just burns DB cycles for no extra coverage.
+export const RESUME_REMINDER_INTERVAL_SECONDS = Math.max(
+  60,
+  Number(process.env.RESUME_REMINDER_INTERVAL_SECONDS) || (24 * 60 * 60)
+);
 export const REDIS_URL = (process.env.REDIS_URL || '').trim();
 export const WORKER_CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY) || 4);
 export const TMDB_JOB_RATE_LIMIT_MAX = Math.max(1, Number(process.env.TMDB_JOB_RATE_LIMIT_MAX) || 6);
@@ -37,3 +44,21 @@ export const CONTINUE_HIDE_THRESHOLD = 0.95;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+
+// FCM web push. Service account JSON is supplied base64-encoded so it
+// transports cleanly via .env. If either var is empty the FCM module
+// no-ops (the notifications inbox still works over WebSocket).
+export const FCM_SERVICE_ACCOUNT_JSON_B64 = (process.env.FCM_SERVICE_ACCOUNT_JSON || '').trim();
+export const FCM_PROJECT_ID = (process.env.FCM_PROJECT_ID || '').trim();
+
+export function isFcmConfigured(): boolean {
+  return FCM_SERVICE_ACCOUNT_JSON_B64.length > 0 && FCM_PROJECT_ID.length > 0;
+}
+
+// Per-user device cap. Beyond this we evict the least-recently-seen token
+// at registration time — prevents stale tokens from accumulating across
+// reinstalls / private-mode sessions.
+export const FCM_MAX_TOKENS_PER_USER = Math.max(
+  1,
+  Number(process.env.FCM_MAX_TOKENS_PER_USER) || 10
+);

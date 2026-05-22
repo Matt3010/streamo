@@ -1,5 +1,6 @@
 import { kdb } from '../db';
 import { publishUserNotificationCreated } from './user-live';
+import { sendPushToUser } from './fcm';
 import type {
   MediaType,
   NotificationItem,
@@ -71,6 +72,11 @@ export async function createNotificationsForUsers(input: CreateInput): Promise<N
     };
     created.push(item);
     publishUserNotificationCreated(userId, item);
+    // Push is a bonus channel: fire-and-forget so an FCM outage never
+    // fails the worker job that's already persisted the notification.
+    void sendPushToUser(userId, item).catch((error) => {
+      console.error(`[notifications] push delivery failed user=${userId} id=${item.id}`, error);
+    });
   }
 
   return created;
@@ -130,6 +136,31 @@ export async function markAllNotificationsRead(userId: number): Promise<number> 
     .where('read_at', 'is', null)
     .executeTakeFirst();
   return Number(result?.numUpdatedRows ?? 0);
+}
+
+// Per-call suppression check used when the caller wants a non-default
+// dedupe window (e.g. resume reminders, which should be suppressed for
+// much longer than the 7-day payload-equality dedupe inside
+// createNotificationsForUsers).
+export async function hasRecentNotificationOfType(
+  userId: number,
+  type: NotificationType,
+  tmdbId: number,
+  mediaType: MediaType,
+  withinSeconds: number
+): Promise<boolean> {
+  const cutoff = Math.floor(Date.now() / 1000) - withinSeconds;
+  const row = await kdb
+    .selectFrom('notifications')
+    .select('id')
+    .where('user_id', '=', userId)
+    .where('type', '=', type)
+    .where('tmdb_id', '=', tmdbId)
+    .where('media_type', '=', mediaType)
+    .where('created_at', '>=', cutoff)
+    .limit(1)
+    .executeTakeFirst();
+  return !!row;
 }
 
 export async function deleteNotification(userId: number, id: number): Promise<boolean> {

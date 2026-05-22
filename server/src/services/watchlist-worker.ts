@@ -9,6 +9,7 @@ import {
   cleanupLegacyWatchlistJobs,
   enqueueTrackedWatchlistRefreshes,
   ensureWatchlistJobScheduler,
+  RESUME_REMINDER_SCAN_JOB,
   WATCHLIST_QUEUE_NAME,
   WATCHLIST_REFRESH_JOB,
   WATCHLIST_SCAN_JOB,
@@ -16,6 +17,7 @@ import {
 } from './watchlist-jobs';
 import { startWorkerHeartbeat } from './worker-heartbeat';
 import { listTrackedWatchlistTvIds, refreshWatchlistTitle } from './watchlist-sync';
+import { runResumeReminderScan } from './resume-reminder';
 
 export async function startWatchlistWorker(): Promise<void> {
   if (!hasRedisConfig()) {
@@ -79,6 +81,12 @@ async function processWatchlistJob(job: Job<WatchlistJobData, void, string>): Pr
       throw new Error(`invalid watchlist refresh payload: ${JSON.stringify(data)}`);
     }
     await refreshWatchlistTitle((data as { tmdbId: number }).tmdbId);
+    return;
+  }
+
+  if (job.name === RESUME_REMINDER_SCAN_JOB) {
+    const summary = await runResumeReminderScan();
+    console.log(`[watchlist-worker] resume-reminder scanned=${summary.scanned} sent=${summary.sent}`);
     return;
   }
 

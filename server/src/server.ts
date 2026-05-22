@@ -12,6 +12,7 @@ import adminRoutes from './routes/admin';
 import playbackRoutes from './routes/playback';
 import providerRoutes from './routes/provider';
 import notificationsRoutes from './routes/notifications';
+import fcmRoutes from './routes/fcm';
 import { attachAdminLiveSessions } from './services/admin-live';
 import { requireSuperAdmin } from './middleware/auth';
 import { getAdminQueuesBoardRouter } from './services/admin-queues-board';
@@ -44,6 +45,7 @@ app.use(adminRoutes);
 app.use(playbackRoutes);
 app.use(providerRoutes);
 app.use(notificationsRoutes);
+app.use(fcmRoutes);
 
 async function start(): Promise<void> {
   await initDb();

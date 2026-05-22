@@ -1,10 +1,11 @@
 import { Queue } from 'bullmq';
-import { TMDB_API_KEY, TMDB_REFRESH_INTERVAL_SECONDS } from '../config';
+import { RESUME_REMINDER_INTERVAL_SECONDS, TMDB_API_KEY, TMDB_REFRESH_INTERVAL_SECONDS } from '../config';
 import { getBullMqConnection, hasRedisConfig } from './redis';
 
 export const WATCHLIST_QUEUE_NAME = 'watchlist-sync';
 export const WATCHLIST_SCAN_JOB = 'scan-watchlists';
 export const WATCHLIST_REFRESH_JOB = 'refresh-watchlist-title';
+export const RESUME_REMINDER_SCAN_JOB = 'resume-reminder-scan';
 
 interface ScanWatchlistsJobData {
   source?: 'scheduler';
@@ -15,7 +16,11 @@ interface RefreshWatchlistTitleJobData {
   source?: 'scheduler' | 'watchlist-add' | 'manual';
 }
 
-export type WatchlistJobData = ScanWatchlistsJobData | RefreshWatchlistTitleJobData;
+interface ResumeReminderScanJobData {
+  source?: 'scheduler';
+}
+
+export type WatchlistJobData = ScanWatchlistsJobData | RefreshWatchlistTitleJobData | ResumeReminderScanJobData;
 
 let queue: Queue<WatchlistJobData, void, string> | null = null;
 
@@ -38,13 +43,28 @@ export function getWatchlistQueue(): Queue<WatchlistJobData, void, string> | nul
 
 export async function ensureWatchlistJobScheduler(): Promise<void> {
   const watchlistQueue = getWatchlistQueue();
-  if (!watchlistQueue || !TMDB_API_KEY || TMDB_REFRESH_INTERVAL_SECONDS <= 0) return;
+  if (!watchlistQueue) return;
+
+  if (TMDB_API_KEY && TMDB_REFRESH_INTERVAL_SECONDS > 0) {
+    await watchlistQueue.upsertJobScheduler(
+      'watchlist-scan',
+      { every: TMDB_REFRESH_INTERVAL_SECONDS * 1000 },
+      {
+        name: WATCHLIST_SCAN_JOB,
+        data: { source: 'scheduler' },
+        opts: {
+          removeOnComplete: 10,
+          removeOnFail: 20
+        }
+      }
+    );
+  }
 
   await watchlistQueue.upsertJobScheduler(
-    'watchlist-scan',
-    { every: TMDB_REFRESH_INTERVAL_SECONDS * 1000 },
+    'resume-reminder-scan',
+    { every: RESUME_REMINDER_INTERVAL_SECONDS * 1000 },
     {
-      name: WATCHLIST_SCAN_JOB,
+      name: RESUME_REMINDER_SCAN_JOB,
       data: { source: 'scheduler' },
       opts: {
         removeOnComplete: 10,

@@ -92,6 +92,8 @@ services:
       - TMDB_REFRESH_INTERVAL_SECONDS=${TMDB_REFRESH_INTERVAL_SECONDS:-1800}
       - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@172.30.0.11:5432/${POSTGRES_DB:-streamo}}
       - AUTO_MIGRATE=${AUTO_MIGRATE:-1}
+      - FCM_PROJECT_ID=${FCM_PROJECT_ID:-}
+      - FCM_SERVICE_ACCOUNT_JSON=${FCM_SERVICE_ACCOUNT_JSON:-}
     healthcheck:
       # node 22 includes a global `fetch`; no curl needed in the slim image.
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
@@ -126,6 +128,9 @@ services:
       - TMDB_JOB_RATE_LIMIT_DURATION_MS=${TMDB_JOB_RATE_LIMIT_DURATION_MS:-1000}
       - DATABASE_URL=${DATABASE_URL:-postgres://${POSTGRES_USER:-streamo}:${POSTGRES_PASSWORD:-streamo}@172.30.0.11:5432/${POSTGRES_DB:-streamo}}
       - AUTO_MIGRATE=${AUTO_MIGRATE:-1}
+      - FCM_PROJECT_ID=${FCM_PROJECT_ID:-}
+      - FCM_SERVICE_ACCOUNT_JSON=${FCM_SERVICE_ACCOUNT_JSON:-}
+      - RESUME_REMINDER_INTERVAL_SECONDS=${RESUME_REMINDER_INTERVAL_SECONDS:-86400}
     depends_on:
       warp:
         condition: service_healthy
