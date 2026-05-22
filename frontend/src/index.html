@@ -6,9 +6,12 @@
   <title>AIR</title>
   <base href="/">
   <!-- favicon path is intentionally NOT /favicon.ico: nginx already binds
-       that path to a vixcloud proxy for player iframe assets. -->
-  <link rel="icon" type="image/x-icon" href="/assets/air.ico">
-  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+       that path to a vixcloud proxy for player iframe assets. The ?v=
+       query string is a cache-buster — Chrome/Safari cache favicons for
+       days even after a file replacement, so bump this when the icon
+       artwork changes. -->
+  <link rel="icon" type="image/x-icon" href="/assets/air.ico?v=2">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png?v=2">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#0a0a0a">
   <meta name="apple-mobile-web-app-capable" content="yes">
