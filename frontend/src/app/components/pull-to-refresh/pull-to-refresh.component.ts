@@ -62,6 +62,14 @@ export class PullToRefreshComponent {
     const start = (e: TouchEvent) => this.onStart(e);
     const move = (e: TouchEvent) => this.onMove(e);
     const end = () => this.onEnd();
+    // If the page is hidden (Control Center pulled down, app switched, etc.)
+    // mid-refresh, the location.reload() never actually fires. Coming back
+    // would otherwise show a perma-stuck "spinning" indicator. Clear on
+    // visibility return — same idea as a defensive timeout, but tied to a
+    // real user-relevant event.
+    const visibility = () => {
+      if (document.visibilityState === 'visible') this.fullReset();
+    };
 
     // touchstart is passive so we never block native scroll initiation.
     // touchmove can't be passive because we need preventDefault() once
@@ -70,16 +78,25 @@ export class PullToRefreshComponent {
     document.addEventListener('touchmove', move, { passive: false });
     document.addEventListener('touchend', end);
     document.addEventListener('touchcancel', end);
+    document.addEventListener('visibilitychange', visibility);
 
     inject(DestroyRef).onDestroy(() => {
       document.removeEventListener('touchstart', start);
       document.removeEventListener('touchmove', move);
       document.removeEventListener('touchend', end);
       document.removeEventListener('touchcancel', end);
+      document.removeEventListener('visibilitychange', visibility);
     });
   }
 
   private onStart(event: TouchEvent): void {
+    // Defensive cleanup before any new gesture: iOS can swallow touchend
+    // (multi-touch, Control Center swipe, edge gestures) and leave the
+    // indicator hovering at a partial pullPx. Any new finger-down is a
+    // good moment to wipe stale state. Skipped while genuinely refreshing
+    // so we don't yank away the spinner mid-reload.
+    if (!this.refreshing() && this.pullPx() > 0) this.reset();
+
     if (this.refreshing()) return;
     // Only arm the gesture when the page is already at the top —
     // otherwise the user is mid-scroll and we don't want to interfere.
@@ -161,6 +178,12 @@ export class PullToRefreshComponent {
     this.pullPx.set(0);
     this.locked = false;
     this.hapticFired = false;
+  }
+
+  private fullReset(): void {
+    this.tracking = false;
+    this.refreshing.set(false);
+    this.reset();
   }
 
   private vibrate(ms: number): void {
