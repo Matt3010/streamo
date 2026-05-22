@@ -744,6 +744,10 @@ export class PlayerService {
     if (!playback) return;
 
     if (type === 'tv') {
+      // The save above may have pushed the just-watched episode past
+      // WATCHED_THRESHOLD; without this refresh the CTA stays anchored to
+      // the episode the user just finished until a hard reload.
+      await this.refreshNextUnwatchedRef();
       const season = untracked(() => this.selectedSeason());
       const episode = untracked(() => this.selectedEpisode());
       const resolveSeq = this.beginPlaybackResolve();
