@@ -8,15 +8,31 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.5rem;
+  height: 2.5rem;
   padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.bell-trigger:hover,
+.bell-trigger[aria-expanded="true"] {
+  background: var(--surface-hover);
+}
+
+.bell-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.18);
 }
 
 .bell-badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: 2px;
+  right: 2px;
   min-width: 1.1rem;
   height: 1.1rem;
   padding: 0 0.3rem;
@@ -30,16 +46,19 @@
   pointer-events: none;
 }
 
+.bell-body {
+  padding: 0.5rem 0.55rem 0.55rem;
+}
+
 .bell-list {
   display: flex;
   flex-direction: column;
   max-height: 360px;
   overflow-y: auto;
-  margin: 0 -0.5rem;
 }
 
 .bell-empty {
-  padding: 1.5rem 0.5rem;
+  padding: 1.25rem 0.5rem;
   color: var(--text-muted);
   text-align: center;
   font-size: 0.9rem;
@@ -68,7 +87,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  left: -0.25rem;
+  left: -2px;
   top: 0.85rem;
 }
 
@@ -78,13 +97,14 @@
   gap: 0.6rem;
   align-items: flex-start;
   flex: 1 1 auto;
-  padding: 0.55rem 0.5rem;
+  padding: 0.5rem 0.4rem 0.5rem 0.55rem;
   background: transparent;
   border: none;
   color: inherit;
   text-align: left;
   cursor: pointer;
   min-width: 0;
+  border-radius: var(--radius);
 }
 
 .bell-thumb {
@@ -93,6 +113,7 @@
   border-radius: 4px;
   object-fit: cover;
   background: var(--surface);
+  display: block;
 }
 
 .bell-thumb-empty {
@@ -115,7 +136,7 @@
   text-overflow: ellipsis;
 }
 
-.bell-body {
+.bell-text {
   font-size: 0.8rem;
   color: var(--text-muted);
   white-space: nowrap;
@@ -131,7 +152,7 @@
 
 .bell-remove {
   align-self: center;
-  margin-right: 0.4rem;
+  margin-right: 0.3rem;
   width: 1.6rem;
   height: 1.6rem;
   border-radius: 50%;

@@ -13,6 +13,14 @@
   padding: 1rem;
 }
 
+/* Spacing between stacked toggles inside the same section — used by the
+ * Notifiche section which has multiple toggles. Adjacent-sibling so the
+ * first toggle still sits flush under the section header. */
+.settings-section ui-settings-toggle + ui-settings-toggle,
+.settings-section .settings-note + ui-settings-toggle {
+  margin-top: 0.75rem;
+}
+
 .section-header {
   display: flex;
   align-items: center;

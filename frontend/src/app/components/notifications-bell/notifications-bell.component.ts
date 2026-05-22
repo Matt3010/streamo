@@ -18,7 +18,6 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <button #trigger
-            uiButton="panel-pill"
             type="button"
             class="bell-trigger"
             [attr.aria-expanded]="open()"
@@ -37,41 +36,43 @@ import {
                 title="Notifiche"
                 [secondary]="secondaryLabel()"
                 (closed)="onClose()">
-      <div class="bell-list">
-        @if (items().length === 0) {
-          <div class="bell-empty">Nessuna notifica</div>
-        }
-        @for (n of items(); track n.id) {
-          <div class="bell-item" [class.unread]="n.read_at === null">
-            <button type="button" class="bell-main" (click)="onItemClick(n)">
-              @if (n.poster) {
-                <img class="bell-thumb" [src]="n.poster" alt="">
-              } @else {
-                <span class="bell-thumb bell-thumb-empty" aria-hidden="true"></span>
-              }
-              <span class="bell-copy">
-                <span class="bell-title">{{ titleFor(n) }}</span>
-                <span class="bell-body">{{ bodyFor(n) }}</span>
-                <span class="bell-time">{{ formatRelative(n.created_at) }}</span>
-              </span>
-            </button>
-            <button type="button"
-                    class="bell-remove"
-                    aria-label="Rimuovi notifica"
-                    (click)="onRemove($event, n.id)">
-              <app-icon name="close"></app-icon>
+      <div class="bell-body">
+        <div class="bell-list">
+          @if (items().length === 0) {
+            <div class="bell-empty">Nessuna notifica</div>
+          }
+          @for (n of items(); track n.id) {
+            <div class="bell-item" [class.unread]="n.read_at === null">
+              <button type="button" class="bell-main" (click)="onItemClick(n)">
+                @if (posterUrl(n); as src) {
+                  <img class="bell-thumb" [src]="src" alt="">
+                } @else {
+                  <span class="bell-thumb bell-thumb-empty" aria-hidden="true"></span>
+                }
+                <span class="bell-copy">
+                  <span class="bell-title">{{ titleFor(n) }}</span>
+                  <span class="bell-text">{{ bodyFor(n) }}</span>
+                  <span class="bell-time">{{ formatRelative(n.created_at) }}</span>
+                </span>
+              </button>
+              <button type="button"
+                      class="bell-remove"
+                      aria-label="Rimuovi notifica"
+                      (click)="onRemove($event, n.id)">
+                <app-icon name="close"></app-icon>
+              </button>
+            </div>
+          }
+        </div>
+
+        @if (items().length > 0 && notifications.hasUnread()) {
+          <div class="bell-footer">
+            <button uiButton="ghost" uiButtonSize="dense" type="button" (click)="onMarkAll()">
+              Segna tutte come lette
             </button>
           </div>
         }
       </div>
-
-      @if (items().length > 0 && notifications.hasUnread()) {
-        <div class="bell-footer">
-          <button uiButton="ghost" uiButtonSize="dense" type="button" (click)="onMarkAll()">
-            Segna tutte come lette
-          </button>
-        </div>
-      }
     </ui-popover>
   `,
   styleUrl: './notifications-bell.component.css'
@@ -128,6 +129,16 @@ export class NotificationsBellComponent {
 
   protected bodyFor(n: NotificationItem): string {
     return formatNotificationBody(n);
+  }
+
+  protected posterUrl(n: NotificationItem): string | null {
+    if (!n.poster) return null;
+    // Backend stores TMDB's bare poster_path (e.g. "/abc.jpg"). Prepend
+    // the image CDN base — w92 is the smallest size, plenty for the bell
+    // thumbnail (40×56 css).
+    return n.poster.startsWith('http')
+      ? n.poster
+      : `https://image.tmdb.org/t/p/w92${n.poster}`;
   }
 
   protected formatRelative(epochSeconds: number): string {
