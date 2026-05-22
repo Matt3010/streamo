@@ -483,11 +483,7 @@ export class WatchComponent {
     if (!item || !type) return '';
     const isUpcoming = isTitleUpcoming(item, type);
     if (this.player.playbackAvailability() === 'unavailable' && !isUpcoming) return '';
-    // When the user has caught up with all aired episodes (next-unwatched is
-    // null for TV), suppress the "Nuovo episodio!" branch — the
-    // message is meant for users who still have to watch the new release.
-    const caughtUp = type === 'tv' && this.player.nextUnwatchedRef() === null;
-    return getFullReleaseStatusText(item, type, { suppressNewEpisode: caughtUp });
+    return getFullReleaseStatusText(item, type);
   });
 
   protected readonly isUpcomingTitle = computed(() => {

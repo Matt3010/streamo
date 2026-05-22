@@ -88,27 +88,6 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return out;
 }
 
-export async function enrichTmdbCards(
-  items: CardItem[],
-  tmdb: TmdbService
-): Promise<CardItem[]> {
-  return mapWithConcurrency(items, ENRICH_CONCURRENCY, async (item) => {
-    const details = await tmdb.getDetails(item.tmdb_id, item.media_type);
-    if (!details) return item;
-    const upcoming = isTitleUpcoming(details, item.media_type);
-    // Respect a server-provided release text (e.g. "Continua a guardare"
-    // rows that arrive with watch_status_text already computed against the
-    // user's actual watched count). Only fall back to the TMDB-only string
-    // when the caller didn't pre-populate one.
-    const releaseText = item.nextReleaseText ?? (getCompactReleaseStatusText(details, item.media_type) || undefined);
-    return {
-      ...enrichCardBase(item, details),
-      isUpcoming: upcoming,
-      nextReleaseText: releaseText
-    };
-  });
-}
-
 export async function enrichLibraryCardsWithTmdb(
   items: CardItem[],
   tmdb: TmdbService

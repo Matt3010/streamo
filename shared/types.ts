@@ -25,6 +25,7 @@ export interface ProgressItem {
   backdrop: string | null;
   updated_at: number;
   watch_status_text?: string;
+  next_release_text?: string;
 }
 
 export interface HistoryItem {

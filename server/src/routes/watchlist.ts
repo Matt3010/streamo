@@ -251,6 +251,21 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
         .where('tmdb_id', '=', r.tmdb_id)
         .where('media_type', '=', 'tv')
         .execute();
+    } else if (status === 'in_progress' && caughtUp && airedEpisodes > 0) {
+      // Symmetric counterpart to the done→in_progress bump above. The POST
+      // /user/progress handler already calls maybeAutoCompleteWatchlist on
+      // each save, but rare timing/order-of-watch edge cases can leave an
+      // in_progress row paired with caughtUp=true. Surface here so the
+      // watchlist tab the user is reading reflects reality.
+      status = 'done';
+      doneAiredEpisodes = airedEpisodes;
+      await kdb
+        .updateTable('watchlist')
+        .set({ status: 'done', done_aired_episodes: airedEpisodes })
+        .where('user_id', '=', req.user!.id)
+        .where('tmdb_id', '=', r.tmdb_id)
+        .where('media_type', '=', 'tv')
+        .execute();
     }
 
     return {

@@ -8,6 +8,7 @@ import { getAiredEpisodesCount, getTmdbTvSummary } from '../services/tmdb-cache'
 import { findNextEpisode, resolveNextPlayable } from '../services/next-episode';
 import { publishUserWatchlistChanged } from '../services/user-live';
 import { formatMovieRemaining, formatTvStatusText } from '../services/watch-status';
+import { getWatchlistReleaseMeta } from '../../../shared/release-format';
 import type { MediaType } from '../../../shared/types';
 
 const router = Router();
@@ -24,6 +25,7 @@ interface ProgressRow {
   backdrop: string | null;
   updated_at: number;
   watch_status_text?: string;
+  next_release_text?: string;
 }
 
 router.post('/user/progress', requireAuth, async (req, res) => {
@@ -265,7 +267,12 @@ router.get('/user/progress', requireAuth, async (req, res) => {
       season: resolvedRow.season,
       episode: resolvedRow.episode
     });
-    return statusText ? { ...resolvedRow, watch_status_text: statusText } : resolvedRow;
+    const releaseText = getWatchlistReleaseMeta(tmdb, 'tv').text;
+    return {
+      ...resolvedRow,
+      ...(statusText ? { watch_status_text: statusText } : {}),
+      ...(releaseText ? { next_release_text: releaseText } : {})
+    };
   }));
 
   res.json({ items: items.filter((x): x is ProgressRow => x !== null) });

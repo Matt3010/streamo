@@ -12,7 +12,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { ToastService } from '../../services/toast.service';
 import { applyWatchlistFlags, runCardMutation, setCardWatchlistFlag, toggleCardWatchlist } from '../../utils/card-watchlist.util';
-import { enrichLibraryCardsWithTmdb, enrichTmdbCards, tmdbToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
+import { enrichLibraryCardsWithTmdb, tmdbToCardItem, watchlistToCardItem } from '../../utils/card-item.util';
 import { getStatusTransition, getStatusConfirmModal, getStatusToastMessage } from '../../utils/watchlist-status.util';
 import { SECTIONS } from './sections.config';
 import type { CardItem, SectionConfig } from '../../models';
@@ -321,7 +321,7 @@ export class HomeComponent {
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
 
-    const progressCardsRaw = await enrichTmdbCards(progress.map(p => ({
+    const progressCardsRaw = await enrichLibraryCardsWithTmdb(progress.map(p => ({
       tmdb_id: p.tmdb_id,
       media_type: p.media_type,
       title: p.title ?? 'Senza titolo',
@@ -330,7 +330,8 @@ export class HomeComponent {
       episode: p.episode,
       position: p.position,
       duration: p.duration,
-      nextReleaseText: p.watch_status_text
+      watchStatus: p.watch_status_text,
+      nextReleaseText: p.next_release_text
     })), this.tmdb);
     if (seq !== this.userSeq) return;
 

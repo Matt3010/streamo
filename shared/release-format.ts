@@ -44,7 +44,7 @@ export function isFutureDateStr(dateStr: string | null | undefined): boolean {
 }
 
 /** Formats a YYYY-MM-DD date string as Italian short (e.g., "25 giu"). */
-export function formatDateShortIt(dateStr: string): string {
+function formatDateShortIt(dateStr: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!match) return dateStr;
   const [, y, m, d] = match;
@@ -53,7 +53,7 @@ export function formatDateShortIt(dateStr: string): string {
 }
 
 /** Formats a YYYY-MM-DD date string as Italian long (e.g., "25 giugno 2026"). */
-export function formatDateLongIt(dateStr: string): string {
+function formatDateLongIt(dateStr: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!match) return dateStr;
   const [, y, m, d] = match;
@@ -122,19 +122,9 @@ export function getEpisodesBefore(
 // --- Italian message formatters ---
 
 /**
- * "Nuovo episodio!" / "N nuovi episodi!"
- * Count <= 1 returns the singular form.
- */
-export function formatNewEpisodesMessage(count: number): string {
-  return count <= 1
-    ? 'Nuovo episodio!'
-    : `${count} nuovi episodi!`;
-}
-
-/**
  * "Nuovo ep. 25 giu" for a future air date, otherwise undefined.
  */
-export function formatNextEpisodeDate(dateStr: string | null | undefined): string | undefined {
+function formatNextEpisodeDate(dateStr: string | null | undefined): string | undefined {
   if (!dateStr || !isFutureDateStr(dateStr)) return undefined;
   return `Nuovo ep. ${formatDateShortIt(dateStr)}`;
 }
