@@ -28,7 +28,7 @@ interface ProviderPlaybackTitle {
 }
 
 type PlaybackAvailability = 'idle' | 'resolving' | 'ready' | 'unavailable';
-type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
+type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerService {

@@ -11,6 +11,7 @@ import { providerResolveLogger } from './provider-resolve-logs';
 import { getRedisPublisher, hasRedisConfig } from './redis';
 import { searchTmdbPosterUrl } from './tmdb-cache';
 import { fetchWithTimeout } from '../utils/fetch';
+import { isFutureDateStr } from '../../../shared/release-format';
 
 const PROVIDER_REQUEST_TIMEOUT_MS = 8000;
 
@@ -38,7 +39,7 @@ export interface ProviderResolvedMovie {
   embedUrl: string | null;
 }
 
-export type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
+export type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 
 export interface ProviderResolveOutcome<T> {
   resolved: T | null;
@@ -179,6 +180,22 @@ export async function resolveProviderTitle(
   const cacheKey = `${args.mediaType}:${args.tmdbId}`;
   const now = Date.now();
   const override = options?.manualRefreshOverride;
+
+  // Skip the upstream search for titles that haven't been released yet:
+  // the provider catalogue won't have an entry, the search would just
+  // burn an HTTP request and pollute the mapping cache with a 'failed'
+  // row. We intentionally do NOT touch the in-memory cache or DB here
+  // — when the release date crosses today, the next call performs a
+  // fresh resolve without needing manual invalidation.
+  if (isFutureDateStr(args.releaseDate ?? null)) {
+    providerResolveLogger.info('title resolve skipped: unreleased', {
+      tmdbId: args.tmdbId,
+      mediaType: args.mediaType,
+      releaseDate: args.releaseDate ?? null
+    });
+    return finalizeTitleResolveOutcome(args, null, 'unreleased', override, [], null);
+  }
+
   if (!options?.forceRefresh) {
     const cached = resolveCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {

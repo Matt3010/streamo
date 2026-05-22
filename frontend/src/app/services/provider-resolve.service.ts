@@ -19,7 +19,7 @@ interface ProviderResolvedMovie {
   embedUrl: string | null;
 }
 
-type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable';
+type ProviderResolveFailureReason = 'not_found' | 'temporarily_unavailable' | 'unreleased';
 
 export interface ProviderManualRefreshState {
   /** True after the user has clicked the manual refresh button at least
