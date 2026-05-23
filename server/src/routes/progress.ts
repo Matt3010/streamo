@@ -282,7 +282,7 @@ router.get('/user/progress', requireAuth, async (req, res) => {
 
     // Tolerate float imprecision: a saved position 0.25s shy of duration
     // still means the episode is done. WATCHED_THRESHOLD lines this up with
-    // the same 93% cutoff used for watched_count aggregation above.
+    // the same 90% cutoff used for watched_count aggregation above.
     const ended = row.duration > 0 && row.position >= row.duration * WATCHED_THRESHOLD;
     let resolvedRow: ProgressRow = row;
     if (ended) {

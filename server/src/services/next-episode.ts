@@ -44,7 +44,7 @@ export async function findNextEpisode(tmdbId: number, season: number, episode: n
 // "Where to play next" for a TV show given a user's progress: returns the
 // latest touched episode, pivoted forward only when the user is effectively
 // done with that episode. The cutoff is shared with watched/completed logic
-// so all surfaces stay aligned on the same 93% boundary.
+// so all surfaces stay aligned on the same 90% boundary.
 export async function resolveNextPlayable(userId: number, tmdbId: number): Promise<{ season: number; episode: number } | null> {
   const last = await kdb
     .selectFrom('progress')

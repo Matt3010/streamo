@@ -35,7 +35,7 @@ export const PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS = Math.max(
 );
 
 // Episodes/movies count as "watched" only when they're effectively complete.
-export const WATCHED_THRESHOLD = 0.93;
+export const WATCHED_THRESHOLD = 0.9;
 // Keep continue/resume aligned with the watched/completed cutoff so watchlist,
 // history, notifications and player CTAs all pivot at the same point.
 export const CONTINUE_HIDE_THRESHOLD = WATCHED_THRESHOLD;

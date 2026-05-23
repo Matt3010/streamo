@@ -18,10 +18,10 @@ import { formatTime, progressKey } from '../utils/time.util';
 import type { MediaType, ProviderResolveFailureReason, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 import { tmdbImageUrl } from '../../../../shared/tmdb-image';
 
-// Mirror of the backend's 93% watched/completed threshold. Used to decide
+// Mirror of the backend's 90% watched/completed threshold. Used to decide
 // when to advance the CTA mid-playback so the watch page stays aligned with
 // watchlist/history/continue logic.
-const CONTINUE_HIDE_THRESHOLD = 0.93;
+const CONTINUE_HIDE_THRESHOLD = 0.9;
 
 interface ProviderPlaybackTitle {
   provider: 'streamingcommunity';
@@ -757,7 +757,7 @@ export class PlayerService {
 
     if (type === 'tv') {
       // The save above may have pushed the just-watched episode past
-      // the shared 93% completion threshold; without this refresh the CTA stays anchored to
+      // the shared 90% completion threshold; without this refresh the CTA stays anchored to
       // the episode the user just finished until a hard reload.
       await this.refreshNextUnwatchedRef();
       const season = untracked(() => this.selectedSeason());
