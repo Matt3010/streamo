@@ -127,10 +127,7 @@
 }
 
 .pattern-card {
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
-  padding: 0.9rem;
+  min-width: 0;
 }
 
 .pattern-card-header {
@@ -179,20 +176,16 @@
 }
 
 .pattern-canvas-frame {
-  width: min(100%, 320px);
-  max-width: 320px;
+  width: 100%;
+  height: 100%;
   aspect-ratio: 1;
-  border-radius: 18px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.22);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(0, 0, 0, 0.18);
+  max-width: 100%;
+  border-radius: 14px;
 }
 
 .pattern-canvas {
   width: 100%;
+  height: 100%;
   aspect-ratio: 1;
   border-radius: 14px;
   outline: 2px solid rgba(255, 255, 255, 0.2);
