@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faBell, faBrush, faCirclePlay, faFolder } from '@fortawesome/free-solid-svg-icons';
@@ -185,11 +185,9 @@ type PatternTool = 'draw' | 'recolor';
             type="button"
             [disabled]="savingPattern()"
             [attr.aria-expanded]="randomPopoverOpen()"
-            (click)="toggleRandomPopover()">
-            <span #randomAnchor class="pattern-action-anchor">
-              <fa-icon [icon]="randomIcon"></fa-icon>
-              Random
-            </span>
+            (click)="toggleRandomPopover($event)">
+            <fa-icon [icon]="randomIcon"></fa-icon>
+            Random
           </button>
 
           <button
@@ -217,7 +215,7 @@ type PatternTool = 'draw' | 'recolor';
 
         <ui-popover
           [(open)]="randomPopoverOpen"
-          [anchor]="randomAnchorEl()?.nativeElement ?? null"
+          [anchor]="randomPopoverAnchor()"
           [width]="320"
           [preferredHeight]="250"
           icon="settings"
@@ -225,26 +223,35 @@ type PatternTool = 'draw' | 'recolor';
           secondary="Regola il carattere del tile e genera una nuova variante"
           (closed)="closeRandomPopover()">
           <div class="pattern-random-popover">
-            <ui-range
-              label="Densità"
-              [(value)]="randomDensity"
-              [min]="1"
-              [max]="10"
-              [step]="1" />
+            <div class="pattern-random-field">
+              <ui-range
+                label="Densità"
+                [(value)]="randomDensity"
+                [min]="1"
+                [max]="10"
+                [step]="1" />
+              <p class="pattern-random-hint">Quanti elementi inserire.</p>
+            </div>
 
-            <ui-range
-              label="Variazione"
-              [(value)]="randomVariation"
-              [min]="1"
-              [max]="10"
-              [step]="1" />
+            <div class="pattern-random-field">
+              <ui-range
+                label="Variazione"
+                [(value)]="randomVariation"
+                [min]="1"
+                [max]="10"
+                [step]="1" />
+              <p class="pattern-random-hint">Quanto cambia forme e ritmo.</p>
+            </div>
 
-            <ui-range
-              label="Scala"
-              [(value)]="randomScale"
-              [min]="1"
-              [max]="10"
-              [step]="1" />
+            <div class="pattern-random-field">
+              <ui-range
+                label="Scala"
+                [(value)]="randomScale"
+                [min]="1"
+                [max]="10"
+                [step]="1" />
+              <p class="pattern-random-hint">Dimensione media dei segni.</p>
+            </div>
 
             <div class="pattern-random-actions">
               <button
@@ -321,7 +328,6 @@ type PatternTool = 'draw' | 'recolor';
 export class SettingsComponent implements AfterViewInit {
   @ViewChild('patternCanvas')
   private patternCanvasRef?: ElementRef<HTMLCanvasElement>;
-  protected readonly randomAnchorEl = viewChild<ElementRef<HTMLSpanElement>>('randomAnchor');
 
   protected readonly auth = inject(AuthService);
   protected readonly push = inject(PushNotificationsService);
@@ -337,6 +343,7 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly activeTool = signal<PatternTool>('draw');
   protected readonly patternDirty = signal(false);
   protected readonly randomPopoverOpen = signal(false);
+  protected readonly randomPopoverAnchor = signal<HTMLElement | null>(null);
   protected readonly randomDensity = signal(6);
   protected readonly randomVariation = signal(5);
   protected readonly randomScale = signal(6);
@@ -465,12 +472,20 @@ export class SettingsComponent implements AfterViewInit {
     this.activeTool.set(tool);
   }
 
-  protected toggleRandomPopover(): void {
-    this.randomPopoverOpen.update(open => !open);
+  protected toggleRandomPopover(event: MouseEvent): void {
+    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    if (!anchor) return;
+    if (this.randomPopoverOpen() && this.randomPopoverAnchor() === anchor) {
+      this.closeRandomPopover();
+      return;
+    }
+    this.randomPopoverAnchor.set(anchor);
+    this.randomPopoverOpen.set(true);
   }
 
   protected closeRandomPopover(): void {
     this.randomPopoverOpen.set(false);
+    this.randomPopoverAnchor.set(null);
   }
 
   protected onCanvasPointerDown(event: PointerEvent): void {
