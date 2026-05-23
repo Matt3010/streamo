@@ -182,7 +182,7 @@ type PatternTool = 'draw' | 'recolor';
             #randomButton
             uiButton
             uiButtonSize="compact"
-            class="pattern-action-btn"
+            class="pattern-action-btn pattern-random-trigger"
             type="button"
             [disabled]="savingPattern()"
             [attr.aria-expanded]="randomPopoverOpen()"
