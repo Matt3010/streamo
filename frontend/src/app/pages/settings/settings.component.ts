@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faBell, faBrush, faCirclePlay, faFolder } from '@fortawesome/free-solid-svg-icons';
@@ -7,6 +7,7 @@ import { PageHeaderComponent } from '../../ui/page-header/page-header.component'
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
 import { UiColorPickerComponent } from '../../ui/color-picker/color-picker.component';
+import { UiPopoverComponent } from '../../ui/popover/popover.component';
 import { UiRangeComponent } from '../../ui/range/range.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { AuthService } from '../../services/auth.service';
@@ -29,7 +30,8 @@ type PatternTool = 'draw' | 'recolor';
     UiButtonDirective,
     FaIconComponent,
     UiColorPickerComponent,
-    UiRangeComponent
+    UiRangeComponent,
+    UiPopoverComponent
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -177,12 +179,14 @@ type PatternTool = 'draw' | 'recolor';
 
         <div class="pattern-actions">
           <button
+            #randomButton
             uiButton
             uiButtonSize="compact"
             class="pattern-action-btn"
             type="button"
             [disabled]="savingPattern()"
-            (click)="generateRandomPattern()">
+            [attr.aria-expanded]="randomPopoverOpen()"
+            (click)="toggleRandomPopover()">
             <fa-icon [icon]="randomIcon"></fa-icon>
             Random
           </button>
@@ -209,6 +213,57 @@ type PatternTool = 'draw' | 'recolor';
             Rimuovi trama
           </button>
         </div>
+
+        <ui-popover
+          [(open)]="randomPopoverOpen"
+          [anchor]="randomButtonEl()?.nativeElement ?? null"
+          [width]="320"
+          [preferredHeight]="250"
+          icon="settings"
+          title="Genera pattern"
+          secondary="Regola il carattere del tile e genera una nuova variante"
+          (closed)="closeRandomPopover()">
+          <div class="pattern-random-popover">
+            <ui-range
+              label="Densità"
+              [(value)]="randomDensity"
+              [min]="1"
+              [max]="10"
+              [step]="1" />
+
+            <ui-range
+              label="Variazione"
+              [(value)]="randomVariation"
+              [min]="1"
+              [max]="10"
+              [step]="1" />
+
+            <ui-range
+              label="Scala"
+              [(value)]="randomScale"
+              [min]="1"
+              [max]="10"
+              [step]="1" />
+
+            <div class="pattern-random-actions">
+              <button
+                uiButton="ghost"
+                uiButtonSize="dense"
+                type="button"
+                (click)="closeRandomPopover()">
+                Chiudi
+              </button>
+
+              <button
+                uiButton="primary"
+                uiButtonSize="dense"
+                type="button"
+                (click)="generateRandomPattern()">
+                Genera
+              </button>
+            </div>
+          </div>
+        </ui-popover>
       </section>
 
       <section class="settings-section">
@@ -265,6 +320,7 @@ type PatternTool = 'draw' | 'recolor';
 export class SettingsComponent implements AfterViewInit {
   @ViewChild('patternCanvas')
   private patternCanvasRef?: ElementRef<HTMLCanvasElement>;
+  protected readonly randomButtonEl = viewChild<ElementRef<HTMLButtonElement>>('randomButton');
 
   protected readonly auth = inject(AuthService);
   protected readonly push = inject(PushNotificationsService);
@@ -279,6 +335,10 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly brushSize = signal(DEFAULT_BRUSH_SIZE);
   protected readonly activeTool = signal<PatternTool>('draw');
   protected readonly patternDirty = signal(false);
+  protected readonly randomPopoverOpen = signal(false);
+  protected readonly randomDensity = signal(6);
+  protected readonly randomVariation = signal(5);
+  protected readonly randomScale = signal(6);
   protected readonly autoplayEnabled = computed(() => this.auth.currentUser()?.autoplay_next === 1);
   protected readonly foldersEnabled = computed(() => this.auth.currentUser()?.folders_enabled === 1);
   protected readonly notifEpisode = computed(() => this.auth.currentUser()?.notif_new_episode === 1);
@@ -404,6 +464,14 @@ export class SettingsComponent implements AfterViewInit {
     this.activeTool.set(tool);
   }
 
+  protected toggleRandomPopover(): void {
+    this.randomPopoverOpen.update(open => !open);
+  }
+
+  protected closeRandomPopover(): void {
+    this.randomPopoverOpen.set(false);
+  }
+
   protected onCanvasPointerDown(event: PointerEvent): void {
     const canvas = this.patternCanvasRef?.nativeElement;
     if (!canvas) return;
@@ -490,12 +558,13 @@ export class SettingsComponent implements AfterViewInit {
       () => this.drawRandomCrosses(ctx)
     ] as const;
 
-    const picks = 2 + Math.floor(Math.random() * 2);
+    const picks = 1 + Math.round(this.randomDensity() / 3) + Math.floor(Math.random() * Math.max(1, Math.round(this.randomVariation() / 4)));
     for (let index = 0; index < picks; index += 1) {
       families[Math.floor(Math.random() * families.length)]();
     }
 
     this.snapshotPatternDraft();
+    this.randomPopoverOpen.set(false);
   }
 
   private errorMessage(reason: string | undefined): string {
@@ -541,15 +610,15 @@ export class SettingsComponent implements AfterViewInit {
   }
 
   private drawRandomDots(ctx: CanvasRenderingContext2D): void {
-    const count = 8 + Math.floor(Math.random() * 10);
+    const count = 4 + this.randomDensity() * 2 + Math.floor(Math.random() * (2 + this.randomVariation()));
     for (let index = 0; index < count; index += 1) {
       const x = Math.random() * PATTERN_TILE_SIZE;
       const y = Math.random() * PATTERN_TILE_SIZE;
-      const radius = Math.max(1.5, this.brushSize() * (0.3 + Math.random() * 0.9));
+      const radius = Math.max(1.5, this.scaledSize(0.2, 0.7));
       this.drawWrapped(ctx, (drawX, drawY) => {
         ctx.save();
         ctx.fillStyle = this.brushColor();
-        ctx.globalAlpha = 0.5 + Math.random() * 0.35;
+        ctx.globalAlpha = this.randomAlpha(0.42, 0.3);
         ctx.beginPath();
         ctx.arc(drawX, drawY, radius, 0, Math.PI * 2);
         ctx.fill();
@@ -559,11 +628,11 @@ export class SettingsComponent implements AfterViewInit {
   }
 
   private drawRandomLines(ctx: CanvasRenderingContext2D): void {
-    const count = 4 + Math.floor(Math.random() * 5);
+    const count = 2 + Math.round(this.randomDensity() / 2) + Math.floor(Math.random() * Math.max(1, Math.round(this.randomVariation() / 3)));
     for (let index = 0; index < count; index += 1) {
       const x = Math.random() * PATTERN_TILE_SIZE;
       const y = Math.random() * PATTERN_TILE_SIZE;
-      const length = PATTERN_TILE_SIZE * (0.25 + Math.random() * 0.45);
+      const length = PATTERN_TILE_SIZE * this.scaledFactor(0.18, 0.42);
       const angle = Math.random() * Math.PI * 2;
       const endX = x + Math.cos(angle) * length;
       const endY = y + Math.sin(angle) * length;
@@ -571,8 +640,8 @@ export class SettingsComponent implements AfterViewInit {
       this.drawWrapped(ctx, (drawX, drawY, offsetX, offsetY) => {
         ctx.save();
         ctx.strokeStyle = this.brushColor();
-        ctx.globalAlpha = 0.3 + Math.random() * 0.3;
-        ctx.lineWidth = Math.max(1.25, this.brushSize() * (0.35 + Math.random() * 0.7));
+        ctx.globalAlpha = this.randomAlpha(0.24, 0.28);
+        ctx.lineWidth = Math.max(1.25, this.scaledSize(0.2, 0.65));
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(drawX, drawY);
@@ -584,18 +653,18 @@ export class SettingsComponent implements AfterViewInit {
   }
 
   private drawRandomArcs(ctx: CanvasRenderingContext2D): void {
-    const count = 3 + Math.floor(Math.random() * 4);
+    const count = 2 + Math.round(this.randomDensity() / 3) + Math.floor(Math.random() * Math.max(1, Math.round(this.randomVariation() / 4)));
     for (let index = 0; index < count; index += 1) {
       const x = Math.random() * PATTERN_TILE_SIZE;
       const y = Math.random() * PATTERN_TILE_SIZE;
-      const radius = PATTERN_TILE_SIZE * (0.12 + Math.random() * 0.22);
+      const radius = PATTERN_TILE_SIZE * this.scaledFactor(0.08, 0.18);
       const start = Math.random() * Math.PI * 2;
-      const span = Math.PI * (0.35 + Math.random() * 0.85);
+      const span = Math.PI * (0.22 + Math.random() * (0.35 + this.randomVariation() * 0.08));
       this.drawWrapped(ctx, (drawX, drawY) => {
         ctx.save();
         ctx.strokeStyle = this.brushColor();
-        ctx.globalAlpha = 0.45 + Math.random() * 0.25;
-        ctx.lineWidth = Math.max(1.5, this.brushSize() * (0.35 + Math.random() * 0.75));
+        ctx.globalAlpha = this.randomAlpha(0.34, 0.24);
+        ctx.lineWidth = Math.max(1.5, this.scaledSize(0.24, 0.7));
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.arc(drawX, drawY, radius, start, start + span);
@@ -606,16 +675,16 @@ export class SettingsComponent implements AfterViewInit {
   }
 
   private drawRandomCrosses(ctx: CanvasRenderingContext2D): void {
-    const count = 3 + Math.floor(Math.random() * 5);
+    const count = 2 + Math.round(this.randomDensity() / 3) + Math.floor(Math.random() * Math.max(1, Math.round(this.randomVariation() / 4)));
     for (let index = 0; index < count; index += 1) {
       const x = Math.random() * PATTERN_TILE_SIZE;
       const y = Math.random() * PATTERN_TILE_SIZE;
-      const size = PATTERN_TILE_SIZE * (0.08 + Math.random() * 0.14);
+      const size = PATTERN_TILE_SIZE * this.scaledFactor(0.05, 0.11);
       this.drawWrapped(ctx, (drawX, drawY) => {
         ctx.save();
         ctx.strokeStyle = this.brushColor();
-        ctx.globalAlpha = 0.35 + Math.random() * 0.25;
-        ctx.lineWidth = Math.max(1.25, this.brushSize() * 0.4);
+        ctx.globalAlpha = this.randomAlpha(0.28, 0.24);
+        ctx.lineWidth = Math.max(1.25, this.scaledSize(0.18, 0.36));
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(drawX - size, drawY - size);
@@ -645,6 +714,22 @@ export class SettingsComponent implements AfterViewInit {
         draw(drawX, drawY, offsetX, offsetY);
       }
     }
+  }
+
+  private scaledFactor(min: number, variance: number): number {
+    const scaleWeight = this.randomScale() / 10;
+    const variationWeight = this.randomVariation() / 10;
+    return min + scaleWeight * variance + Math.random() * variance * Math.max(0.15, variationWeight * 0.55);
+  }
+
+  private scaledSize(minFactor: number, variance: number): number {
+    return Math.max(1, this.brushSize() * this.scaledFactor(minFactor, variance));
+  }
+
+  private randomAlpha(base: number, spread: number): number {
+    const densityWeight = this.randomDensity() / 10;
+    const variationWeight = this.randomVariation() / 10;
+    return Math.min(0.92, base + densityWeight * 0.08 + Math.random() * spread * Math.max(0.25, variationWeight));
   }
 
   private snapshotPatternDraft(): void {
