@@ -141,11 +141,6 @@ interface TelegraphPageResponse {
   };
 }
 
-type EpisodeCacheEntry = {
-  expiresAt: number;
-  value: ProviderLoadedSeason | null;
-};
-
 type ProviderCatalogBaseUrlChangeSource = 'telegraph' | 'persisted';
 
 type AttemptResult<T> =
@@ -163,7 +158,6 @@ interface StoredProviderMappingRow {
 }
 
 const resolveCache = new Map<string, CacheEntry>();
-const seasonCache = new Map<string, EpisodeCacheEntry>();
 let providerCatalogBaseUrlRefreshInFlight: Promise<string | null> | null = null;
 const PROVIDER_NAME = 'streamingcommunity';
 const PROVIDER_CATALOG_BASE_URL_META_KEY = 'provider_catalog_base_url';
@@ -171,6 +165,8 @@ const STRONG_MATCH_THRESHOLD = 170;
 const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_MS = 30 * 1000;
 const PROVIDER_CATALOG_BASE_URL_REDIS_KEY = 'streamo:provider:catalog-base-url';
 const PROVIDER_CATALOG_BASE_URL_REFRESH_COOLDOWN_REDIS_KEY = 'streamo:provider:catalog-base-url:refresh-cooldown';
+const PROVIDER_SEASON_CACHE_REDIS_PREFIX = 'streamo:provider:season:';
+const PROVIDER_SEASON_CACHE_REDIS_TTL_SECONDS = 10 * 60;
 
 export async function resolveProviderTitle(
   args: ResolveArgs,
@@ -1058,10 +1054,9 @@ async function fetchProviderSeason(
   }
 
   const cacheKey = `${providerTitleId}:${slug}:${seasonNumber}`;
-  const now = Date.now();
-  const cached = seasonCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return cached.value;
+  const redisCached = await readCachedProviderSeason(cacheKey);
+  if (redisCached) {
+    return redisCached;
   }
 
   const loadedSeason = await withProviderCatalogBaseUrlRetry('season', {
@@ -1164,10 +1159,9 @@ async function fetchProviderSeason(
     return successAttempt(loaded);
   });
 
-  seasonCache.set(cacheKey, {
-    value: loadedSeason,
-    expiresAt: now + (PROVIDER_RESOLVE_CACHE_TTL * 1000)
-  });
+  if (loadedSeason) {
+    await cacheProviderSeason(cacheKey, loadedSeason);
+  }
 
   return loadedSeason;
 }
@@ -1391,6 +1385,35 @@ async function cacheProviderCatalogBaseUrl(value: string): Promise<void> {
       value,
       'EX',
       PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS
+    );
+  } catch {}
+}
+
+async function readCachedProviderSeason(cacheKey: string): Promise<ProviderLoadedSeason | null> {
+  if (!hasRedisConfig()) {
+    return null;
+  }
+
+  try {
+    const raw = await getRedisPublisher().get(PROVIDER_SEASON_CACHE_REDIS_PREFIX + cacheKey);
+    if (!raw) return null;
+    return JSON.parse(raw) as ProviderLoadedSeason;
+  } catch {
+    return null;
+  }
+}
+
+async function cacheProviderSeason(cacheKey: string, value: ProviderLoadedSeason): Promise<void> {
+  if (!hasRedisConfig()) {
+    return;
+  }
+
+  try {
+    await getRedisPublisher().set(
+      PROVIDER_SEASON_CACHE_REDIS_PREFIX + cacheKey,
+      JSON.stringify(value),
+      'EX',
+      PROVIDER_SEASON_CACHE_REDIS_TTL_SECONDS
     );
   } catch {}
 }
