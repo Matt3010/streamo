@@ -77,9 +77,7 @@
 }
 
 .pattern-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.8rem;
+  display: block;
 }
 
 .pattern-control {
@@ -101,6 +99,13 @@
 
 .pattern-tool-btn {
   min-width: 0;
+}
+
+.pattern-secondary-controls {
+  margin-top: 0.9rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.8rem;
 }
 
 .pattern-control span {

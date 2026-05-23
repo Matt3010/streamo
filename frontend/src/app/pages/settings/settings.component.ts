@@ -114,8 +114,10 @@ type PatternTool = 'draw' | 'recolor';
               </button>
             </div>
           </div>
+        </div>
 
-          <ui-color-picker label="Colore" [(value)]="brushColor" />
+        <div class="pattern-secondary-controls">
+          <ui-color-picker label="Colore" size="compact" [(value)]="brushColor" />
 
           <ui-range
             label="Pennello"

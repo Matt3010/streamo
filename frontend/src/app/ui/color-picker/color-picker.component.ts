@@ -10,6 +10,7 @@ import { ChangeDetectionStrategy, Component, input, model } from '@angular/core'
       <input
         type="color"
         class="ui-color-picker-input"
+        [class.ui-color-picker-input-compact]="size() === 'compact'"
         [disabled]="disabled()"
         [value]="value()"
         (input)="onInput($event)" />
@@ -21,6 +22,7 @@ export class UiColorPickerComponent {
   readonly label = input.required<string>();
   readonly value = model.required<string>();
   readonly disabled = input(false);
+  readonly size = input<'default' | 'compact'>('default');
 
   protected onInput(event: Event): void {
     const target = event.target;

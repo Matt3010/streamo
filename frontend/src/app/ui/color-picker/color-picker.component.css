@@ -26,6 +26,10 @@
   cursor: pointer;
 }
 
+.ui-color-picker-input-compact {
+  min-height: 34px;
+}
+
 .ui-color-picker-input::-webkit-color-swatch-wrapper {
   padding: 0;
 }
@@ -35,7 +39,15 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.ui-color-picker-input-compact::-webkit-color-swatch {
+  border-radius: 10px;
+}
+
 .ui-color-picker-input::-moz-color-swatch {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ui-color-picker-input-compact::-moz-color-swatch {
+  border-radius: 10px;
 }
