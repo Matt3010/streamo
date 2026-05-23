@@ -242,14 +242,15 @@
   min-height: 38px;
 }
 
-.pattern-random-trigger {
-  width: auto;
-  justify-self: start;
-}
-
 .pattern-action-btn fa-icon {
   width: 0.95rem;
   text-align: center;
+}
+
+.pattern-action-anchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 @media (min-width: 640px) {
