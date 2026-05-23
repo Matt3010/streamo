@@ -179,16 +179,17 @@ type PatternTool = 'draw' | 'recolor';
 
         <div class="pattern-actions">
           <button
-            #randomButton
             uiButton
             uiButtonSize="compact"
-            class="pattern-action-btn pattern-random-trigger"
+            class="pattern-action-btn"
             type="button"
             [disabled]="savingPattern()"
             [attr.aria-expanded]="randomPopoverOpen()"
             (click)="toggleRandomPopover()">
-            <fa-icon [icon]="randomIcon"></fa-icon>
-            Random
+            <span #randomAnchor class="pattern-action-anchor">
+              <fa-icon [icon]="randomIcon"></fa-icon>
+              Random
+            </span>
           </button>
 
           <button
@@ -216,7 +217,7 @@ type PatternTool = 'draw' | 'recolor';
 
         <ui-popover
           [(open)]="randomPopoverOpen"
-          [anchor]="randomButtonEl()?.nativeElement ?? null"
+          [anchor]="randomAnchorEl()?.nativeElement ?? null"
           [width]="320"
           [preferredHeight]="250"
           icon="settings"
@@ -320,7 +321,7 @@ type PatternTool = 'draw' | 'recolor';
 export class SettingsComponent implements AfterViewInit {
   @ViewChild('patternCanvas')
   private patternCanvasRef?: ElementRef<HTMLCanvasElement>;
-  protected readonly randomButtonEl = viewChild<ElementRef<HTMLButtonElement>>('randomButton');
+  protected readonly randomAnchorEl = viewChild<ElementRef<HTMLSpanElement>>('randomAnchor');
 
   protected readonly auth = inject(AuthService);
   protected readonly push = inject(PushNotificationsService);
@@ -564,7 +565,6 @@ export class SettingsComponent implements AfterViewInit {
     }
 
     this.snapshotPatternDraft();
-    this.randomPopoverOpen.set(false);
   }
 
   private errorMessage(reason: string | undefined): string {

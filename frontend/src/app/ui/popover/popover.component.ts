@@ -139,6 +139,7 @@ export class UiPopoverComponent {
   @HostListener('window:scroll')
   onWindowScroll(): void {
     if (!this.open()) return;
+    this.viewportTick.update((value) => value + 1);
     const active = document.activeElement;
     if (active instanceof Element && active.closest('.ui-popover')) return;
     this.dismiss();
