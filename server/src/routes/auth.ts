@@ -32,7 +32,8 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     .select([
       'id', 'email', 'password_hash',
       'autoplay_next', 'folders_enabled',
-      'notif_new_episode', 'notif_new_season', 'notif_resume_reminder'
+      'notif_new_episode', 'notif_new_season', 'notif_resume_reminder',
+      'background_pattern_data_url'
     ])
     .where('email', '=', normalized)
     .executeTakeFirst();
@@ -48,6 +49,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     notif_new_episode: row.notif_new_episode,
     notif_new_season: row.notif_new_season,
     notif_resume_reminder: row.notif_resume_reminder,
+    background_pattern_data_url: row.background_pattern_data_url,
     is_admin: isAdmin
   };
   setAuthCookie(res, user);
@@ -64,7 +66,8 @@ router.get('/auth/me', requireAuth, async (req, res) => {
     .selectFrom('users')
     .select([
       'autoplay_next', 'folders_enabled',
-      'notif_new_episode', 'notif_new_season', 'notif_resume_reminder'
+      'notif_new_episode', 'notif_new_season', 'notif_resume_reminder',
+      'background_pattern_data_url'
     ])
     .where('id', '=', req.user!.id)
     .executeTakeFirst();
@@ -77,6 +80,7 @@ router.get('/auth/me', requireAuth, async (req, res) => {
     notif_new_episode: row?.notif_new_episode ?? 1,
     notif_new_season: row?.notif_new_season ?? 1,
     notif_resume_reminder: row?.notif_resume_reminder ?? 1,
+    background_pattern_data_url: row?.background_pattern_data_url ?? null,
     is_admin: isAdmin
   };
   res.json({ user });

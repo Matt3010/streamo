@@ -1,0 +1,22 @@
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+.app-shell-content {
+  position: relative;
+  z-index: 1;
+}
+
+.app-pattern-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-repeat: repeat;
+  background-position: center top;
+  background-size: 96px 96px;
+  filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.18));
+}

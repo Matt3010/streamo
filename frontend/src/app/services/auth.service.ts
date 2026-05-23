@@ -9,6 +9,12 @@ interface AuthResponse {
 }
 
 type NotifPrefField = 'notif_new_episode' | 'notif_new_season' | 'notif_resume_reminder';
+type PreferencePatch = Partial<Pick<User,
+  'autoplay_next'
+  | 'folders_enabled'
+  | NotifPrefField
+  | 'background_pattern_data_url'
+>>;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -67,9 +73,11 @@ export class AuthService {
     return this.updatePreferences({ [field]: enabled });
   }
 
-  private async updatePreferences(
-    preferences: Partial<Pick<User, 'autoplay_next' | 'folders_enabled' | NotifPrefField>>
-  ): Promise<boolean> {
+  async setBackgroundPattern(dataUrl: string | null): Promise<boolean> {
+    return this.updatePreferences({ background_pattern_data_url: dataUrl });
+  }
+
+  private async updatePreferences(preferences: PreferencePatch): Promise<boolean> {
     const ok = await apiOk('/api/user/preferences', jsonRequest('PUT', preferences));
     if (!ok) return false;
     const user = this.currentUser();

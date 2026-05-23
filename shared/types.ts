@@ -18,6 +18,7 @@ export interface User {
   notif_new_episode: 0 | 1;
   notif_new_season: 0 | 1;
   notif_resume_reminder: 0 | 1;
+  background_pattern_data_url: string | null;
   is_admin?: boolean;
 }
 

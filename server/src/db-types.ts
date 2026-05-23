@@ -15,6 +15,7 @@ interface UsersTable {
   notif_new_episode: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
   notif_new_season: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
   notif_resume_reminder: ColumnType<0 | 1, 0 | 1 | undefined, 0 | 1>;
+  background_pattern_data_url: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: ColumnType<Epoch, Epoch | undefined, Epoch>;
 }
 

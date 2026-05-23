@@ -78,3 +78,132 @@
   font-size: 0.88rem;
   line-height: 1.5;
 }
+
+.pattern-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.8rem;
+}
+
+.pattern-control {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.pattern-control span {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pattern-control input[type="color"] {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.28rem;
+}
+
+.pattern-control-range {
+  align-content: start;
+}
+
+.pattern-control-range input[type="range"] {
+  width: 100%;
+}
+
+.pattern-control-range strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.pattern-workbench {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.pattern-card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
+  padding: 0.9rem;
+}
+
+.pattern-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.pattern-card-header strong {
+  font-size: 0.92rem;
+}
+
+.pattern-card-header span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.pattern-canvas-shell,
+.pattern-preview-shell {
+  position: relative;
+  min-height: 260px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.03) 75%),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.03) 75%),
+    rgba(10, 10, 10, 0.85);
+  background-position: 0 0, 12px 12px, 0 0;
+  background-size: 24px 24px, 24px 24px, auto;
+}
+
+.pattern-canvas-shell {
+  display: grid;
+  place-items: center;
+}
+
+.pattern-canvas {
+  width: min(100%, 320px);
+  max-width: 320px;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  image-rendering: pixelated;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.pattern-preview-fill {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  background-position: center;
+  background-size: 96px 96px;
+}
+
+.pattern-preview-empty {
+  position: absolute;
+  inset: auto 1rem 1rem 1rem;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.pattern-actions {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}

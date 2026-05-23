@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
-import { ActivatedRouteSnapshot, Router, RouterOutlet } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { filter, map, startWith } from 'rxjs/operators';
 import { AuthModalComponent } from './components/auth-modal/auth-modal.component';
 import { OfflineBannerComponent } from './components/offline-banner/offline-banner.component';
 import { PullToRefreshComponent } from './components/pull-to-refresh/pull-to-refresh.component';
@@ -13,12 +15,21 @@ import { WatchlistLiveService } from './services/watchlist-live.service';
   imports: [RouterOutlet, AuthModalComponent, OfflineBannerComponent, PullToRefreshComponent, ToastComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-offline-banner />
-    <app-pull-to-refresh />
-    <router-outlet />
-    <app-auth-modal />
-    <app-toast />
-  `
+    <div class="app-shell">
+      @if (showBackgroundPattern()) {
+        <div class="app-pattern-backdrop" [style.background-image]="backgroundPatternImage()"></div>
+      }
+
+      <div class="app-shell-content">
+        <app-offline-banner />
+        <app-pull-to-refresh />
+        <router-outlet />
+        <app-auth-modal />
+        <app-toast />
+      </div>
+    </div>
+  `,
+  styleUrl: './app.component.css'
 })
 export class AppComponent {
   private readonly auth = inject(AuthService);
@@ -26,6 +37,24 @@ export class AppComponent {
   /** Injected to eagerly initialize the WebSocket connection for live watchlist updates. */
   private readonly _watchlistLive = inject(WatchlistLiveService);
   private sawAuthenticated = false;
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map(() => this.router.url),
+      startWith(this.router.url)
+    ),
+    { initialValue: this.router.url }
+  );
+
+  protected readonly backgroundPattern = computed(() => this.auth.currentUser()?.background_pattern_data_url ?? null);
+  protected readonly showBackgroundPattern = computed(() => {
+    const pattern = this.backgroundPattern();
+    return !!pattern && !this.currentUrl().startsWith('/watch/');
+  });
+  protected readonly backgroundPatternImage = computed(() => {
+    const pattern = this.backgroundPattern();
+    return pattern ? `url("${pattern}")` : '';
+  });
 
   constructor() {
     void this.auth.checkAuth();
