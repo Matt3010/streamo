@@ -267,7 +267,7 @@
 
 @media (min-width: 640px) {
   .pattern-actions {
-    grid-template-columns: repeat(2, max-content);
+    grid-template-columns: repeat(3, max-content);
     align-items: center;
   }
 

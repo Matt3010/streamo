@@ -2,7 +2,7 @@ import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChil
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faBell, faBrush, faCirclePlay, faFolder } from '@fortawesome/free-solid-svg-icons';
-import { faDroplet, faFloppyDisk, faPen, faRotateLeft, faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import { faDroplet, faFloppyDisk, faPen, faRotateLeft, faShuffle, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
@@ -172,6 +172,17 @@ type PatternTool = 'draw' | 'recolor';
 
         <div class="pattern-actions">
           <button
+            uiButton
+            uiButtonSize="compact"
+            class="pattern-action-btn"
+            type="button"
+            [disabled]="savingPattern()"
+            (click)="generateRandomPattern()">
+            <fa-icon [icon]="randomIcon"></fa-icon>
+            Random
+          </button>
+
+          <button
             uiButton="primary"
             uiButtonSize="compact"
             class="pattern-action-btn"
@@ -293,6 +304,7 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly saveIcon: IconDefinition = faFloppyDisk;
   protected readonly resetIcon: IconDefinition = faRotateLeft;
   protected readonly removeIcon: IconDefinition = faTrashCan;
+  protected readonly randomIcon: IconDefinition = faShuffle;
   protected readonly drawToolIcon: IconDefinition = faPen;
   protected readonly recolorToolIcon: IconDefinition = faDroplet;
   private drawingPointerId: number | null = null;
@@ -474,6 +486,26 @@ export class SettingsComponent implements AfterViewInit {
     void this.paintCanvasFromDataUrl(this.savedPatternDataUrl(), { force: true });
   }
 
+  protected generateRandomPattern(): void {
+    const ctx = this.patternCanvasRef?.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    this.clearCanvas();
+    const families = [
+      () => this.drawRandomDots(ctx),
+      () => this.drawRandomLines(ctx),
+      () => this.drawRandomArcs(ctx),
+      () => this.drawRandomCrosses(ctx)
+    ] as const;
+
+    const picks = 2 + Math.floor(Math.random() * 2);
+    for (let index = 0; index < picks; index += 1) {
+      families[Math.floor(Math.random() * families.length)]();
+    }
+
+    this.snapshotPatternDraft();
+  }
+
   private errorMessage(reason: string | undefined): string {
     switch (reason) {
       case 'unsupported': return 'Browser non supportato';
@@ -514,6 +546,113 @@ export class SettingsComponent implements AfterViewInit {
     ctx.stroke();
     ctx.restore();
     this.snapshotPatternDraft();
+  }
+
+  private drawRandomDots(ctx: CanvasRenderingContext2D): void {
+    const count = 8 + Math.floor(Math.random() * 10);
+    for (let index = 0; index < count; index += 1) {
+      const x = Math.random() * PATTERN_TILE_SIZE;
+      const y = Math.random() * PATTERN_TILE_SIZE;
+      const radius = Math.max(1.5, this.brushSize() * (0.3 + Math.random() * 0.9));
+      this.drawWrapped(ctx, (drawX, drawY) => {
+        ctx.save();
+        ctx.fillStyle = this.brushColor();
+        ctx.globalAlpha = 0.5 + Math.random() * 0.35;
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }, x, y, radius);
+    }
+  }
+
+  private drawRandomLines(ctx: CanvasRenderingContext2D): void {
+    const count = 4 + Math.floor(Math.random() * 5);
+    for (let index = 0; index < count; index += 1) {
+      const x = Math.random() * PATTERN_TILE_SIZE;
+      const y = Math.random() * PATTERN_TILE_SIZE;
+      const length = PATTERN_TILE_SIZE * (0.25 + Math.random() * 0.45);
+      const angle = Math.random() * Math.PI * 2;
+      const endX = x + Math.cos(angle) * length;
+      const endY = y + Math.sin(angle) * length;
+      const radius = length;
+      this.drawWrapped(ctx, (drawX, drawY, offsetX, offsetY) => {
+        ctx.save();
+        ctx.strokeStyle = this.brushColor();
+        ctx.globalAlpha = 0.3 + Math.random() * 0.3;
+        ctx.lineWidth = Math.max(1.25, this.brushSize() * (0.35 + Math.random() * 0.7));
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(drawX, drawY);
+        ctx.lineTo(endX + offsetX, endY + offsetY);
+        ctx.stroke();
+        ctx.restore();
+      }, x, y, radius);
+    }
+  }
+
+  private drawRandomArcs(ctx: CanvasRenderingContext2D): void {
+    const count = 3 + Math.floor(Math.random() * 4);
+    for (let index = 0; index < count; index += 1) {
+      const x = Math.random() * PATTERN_TILE_SIZE;
+      const y = Math.random() * PATTERN_TILE_SIZE;
+      const radius = PATTERN_TILE_SIZE * (0.12 + Math.random() * 0.22);
+      const start = Math.random() * Math.PI * 2;
+      const span = Math.PI * (0.35 + Math.random() * 0.85);
+      this.drawWrapped(ctx, (drawX, drawY) => {
+        ctx.save();
+        ctx.strokeStyle = this.brushColor();
+        ctx.globalAlpha = 0.45 + Math.random() * 0.25;
+        ctx.lineWidth = Math.max(1.5, this.brushSize() * (0.35 + Math.random() * 0.75));
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, radius, start, start + span);
+        ctx.stroke();
+        ctx.restore();
+      }, x, y, radius);
+    }
+  }
+
+  private drawRandomCrosses(ctx: CanvasRenderingContext2D): void {
+    const count = 3 + Math.floor(Math.random() * 5);
+    for (let index = 0; index < count; index += 1) {
+      const x = Math.random() * PATTERN_TILE_SIZE;
+      const y = Math.random() * PATTERN_TILE_SIZE;
+      const size = PATTERN_TILE_SIZE * (0.08 + Math.random() * 0.14);
+      this.drawWrapped(ctx, (drawX, drawY) => {
+        ctx.save();
+        ctx.strokeStyle = this.brushColor();
+        ctx.globalAlpha = 0.35 + Math.random() * 0.25;
+        ctx.lineWidth = Math.max(1.25, this.brushSize() * 0.4);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(drawX - size, drawY - size);
+        ctx.lineTo(drawX + size, drawY + size);
+        ctx.moveTo(drawX + size, drawY - size);
+        ctx.lineTo(drawX - size, drawY + size);
+        ctx.stroke();
+        ctx.restore();
+      }, x, y, size);
+    }
+  }
+
+  private drawWrapped(
+    ctx: CanvasRenderingContext2D,
+    draw: (x: number, y: number, offsetX: number, offsetY: number) => void,
+    x: number,
+    y: number,
+    radius: number
+  ): void {
+    const offsets = [-PATTERN_TILE_SIZE, 0, PATTERN_TILE_SIZE];
+    for (const offsetX of offsets) {
+      for (const offsetY of offsets) {
+        const drawX = x + offsetX;
+        const drawY = y + offsetY;
+        if (drawX < -radius || drawX > PATTERN_TILE_SIZE + radius) continue;
+        if (drawY < -radius || drawY > PATTERN_TILE_SIZE + radius) continue;
+        draw(drawX, drawY, offsetX, offsetY);
+      }
+    }
   }
 
   private snapshotPatternDraft(): void {
