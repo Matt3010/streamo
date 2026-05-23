@@ -1,0 +1,26 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.ui-range {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.ui-range-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ui-range-input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.ui-range-value {
+  color: var(--text);
+  font-size: 0.84rem;
+}

@@ -6,6 +6,8 @@ import { faDroplet, faFloppyDisk, faPen, faRotateLeft, faShuffle, faTrashCan } f
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
+import { UiColorPickerComponent } from '../../ui/color-picker/color-picker.component';
+import { UiRangeComponent } from '../../ui/range/range.component';
 import { NavigationSourceService } from '../../services/navigation-source.service';
 import { AuthService } from '../../services/auth.service';
 import { PushNotificationsService } from '../../services/push-notifications.service';
@@ -20,7 +22,15 @@ type PatternTool = 'draw' | 'recolor';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [PageHeaderComponent, SettingsToggleComponent, SectionHeaderComponent, UiButtonDirective, FaIconComponent],
+  imports: [
+    PageHeaderComponent,
+    SettingsToggleComponent,
+    SectionHeaderComponent,
+    UiButtonDirective,
+    FaIconComponent,
+    UiColorPickerComponent,
+    UiRangeComponent
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header title="Impostazioni" (back)="back()" />
@@ -105,22 +115,15 @@ type PatternTool = 'draw' | 'recolor';
             </div>
           </div>
 
-          <label class="pattern-control">
-            <span>Colore</span>
-            <input type="color" [value]="brushColor()" (input)="onBrushColorInput($event)" />
-          </label>
+          <ui-color-picker label="Colore" [(value)]="brushColor" />
 
-          <label class="pattern-control pattern-control-range">
-            <span>Pennello</span>
-            <input
-              type="range"
-              min="1"
-              max="18"
-              step="1"
-              [value]="brushSize()"
-              (input)="onBrushSizeInput($event)" />
-            <strong>{{ brushSize() }}px</strong>
-          </label>
+          <ui-range
+            label="Pennello"
+            [(value)]="brushSize"
+            [min]="1"
+            [max]="18"
+            [step]="1"
+            suffix="px" />
         </div>
 
         <div class="pattern-workbench">
@@ -393,19 +396,6 @@ export class SettingsComponent implements AfterViewInit {
       target.checked = !target.checked;
       this.toast.show('Impossibile aggiornare le preferenze');
     }
-  }
-
-  protected onBrushColorInput(event: Event): void {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    this.brushColor.set(target.value || DEFAULT_BRUSH_COLOR);
-  }
-
-  protected onBrushSizeInput(event: Event): void {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    const next = Number(target.value);
-    if (Number.isFinite(next) && next >= 1) this.brushSize.set(next);
   }
 
   protected setTool(tool: PatternTool): void {
