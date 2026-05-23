@@ -171,14 +171,41 @@
   place-items: center;
 }
 
-.pattern-canvas {
+.pattern-reset-fab {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 2;
+}
+
+.pattern-canvas-frame {
   width: min(100%, 320px);
   max-width: 320px;
   aspect-ratio: 1;
+  border-radius: 18px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.pattern-canvas {
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 14px;
+  outline: 2px solid rgba(255, 255, 255, 0.2);
+  outline-offset: -2px;
   image-rendering: pixelated;
   touch-action: none;
   cursor: crosshair;
+}
+
+.pattern-canvas-hint {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
 .pattern-preview-fill {
@@ -203,7 +230,28 @@
 
 .pattern-actions {
   margin-top: 1rem;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 0.75rem;
+}
+
+.pattern-action-btn {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 38px;
+}
+
+.pattern-action-btn fa-icon {
+  width: 0.95rem;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .pattern-actions {
+    grid-template-columns: repeat(2, max-content);
+    align-items: center;
+  }
+
+  .pattern-action-btn {
+    width: auto;
+  }
 }

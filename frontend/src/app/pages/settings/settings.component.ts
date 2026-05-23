@@ -1,5 +1,8 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faBell, faBrush, faCirclePlay, faFolder } from '@fortawesome/free-solid-svg-icons';
+import { faFloppyDisk, faRotateLeft, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
@@ -16,7 +19,7 @@ const DEFAULT_BRUSH_COLOR = '#ffffff';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [PageHeaderComponent, SettingsToggleComponent, SectionHeaderComponent, UiButtonDirective],
+  imports: [PageHeaderComponent, SettingsToggleComponent, SectionHeaderComponent, UiButtonDirective, FaIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header title="Impostazioni" (back)="back()" />
@@ -67,7 +70,6 @@ const DEFAULT_BRUSH_COLOR = '#ffffff';
         <div class="section-header">
           <div class="section-heading">
             <app-section-header title="Trama Sfondo" [icon]="backgroundIcon" />
-            <p class="section-caption">Disegna un tile trasparente: AIR lo ripeterà come texture su tutte le pagine, tranne watch.</p>
           </div>
           <span class="settings-pill" [class.active]="hasSavedPattern()">
             {{ hasSavedPattern() ? 'Trama attiva' : 'Nessuna trama' }}
@@ -100,17 +102,30 @@ const DEFAULT_BRUSH_COLOR = '#ffffff';
               <span>Trascina per disegnare</span>
             </div>
             <div class="pattern-canvas-shell">
-              <canvas
-                #patternCanvas
-                class="pattern-canvas"
-                width="96"
-                height="96"
-                (pointerdown)="onCanvasPointerDown($event)"
-                (pointermove)="onCanvasPointerMove($event)"
-                (pointerup)="onCanvasPointerUp($event)"
-                (pointercancel)="onCanvasPointerUp($event)"
-                (pointerleave)="onCanvasPointerLeave($event)"></canvas>
+              <button
+                uiButton="icon-overlay"
+                type="button"
+                class="pattern-reset-fab"
+                [disabled]="savingPattern() || !patternDirty()"
+                (click)="resetCanvasToSavedPattern()"
+                aria-label="Ripristina trama salvata"
+                title="Ripristina trama salvata">
+                <fa-icon [icon]="resetIcon"></fa-icon>
+              </button>
+              <div class="pattern-canvas-frame">
+                <canvas
+                  #patternCanvas
+                  class="pattern-canvas"
+                  width="96"
+                  height="96"
+                  (pointerdown)="onCanvasPointerDown($event)"
+                  (pointermove)="onCanvasPointerMove($event)"
+                  (pointerup)="onCanvasPointerUp($event)"
+                  (pointercancel)="onCanvasPointerUp($event)"
+                  (pointerleave)="onCanvasPointerLeave($event)"></canvas>
+              </div>
             </div>
+            <div class="pattern-canvas-hint">Il bordo del tile coincide con questo quadrato.</div>
           </div>
 
           <div class="pattern-card">
@@ -130,31 +145,25 @@ const DEFAULT_BRUSH_COLOR = '#ffffff';
         <div class="pattern-actions">
           <button
             uiButton="primary"
+            uiButtonSize="compact"
+            class="pattern-action-btn"
             type="button"
             [disabled]="savingPattern()"
             (click)="saveBackgroundPattern()">
+            <fa-icon [icon]="saveIcon"></fa-icon>
             {{ savingPattern() ? 'Salvataggio…' : 'Salva trama' }}
           </button>
 
           <button
-            uiButton
-            type="button"
-            [disabled]="savingPattern() || !patternDirty()"
-            (click)="resetCanvasToSavedPattern()">
-            Ripristina
-          </button>
-
-          <button
             uiButton="danger-outline"
+            uiButtonSize="compact"
+            class="pattern-action-btn"
             type="button"
             [disabled]="savingPattern() || !hasSavedPattern()"
             (click)="removeBackgroundPattern()">
+            <fa-icon [icon]="removeIcon"></fa-icon>
             Rimuovi trama
           </button>
-        </div>
-
-        <div class="settings-note">
-          Il pattern viene salvato nel profilo utente. Se il canvas è vuoto, non viene salvato nulla.
         </div>
       </section>
 
@@ -252,6 +261,9 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly foldersIcon = faFolder;
   protected readonly backgroundIcon = faBrush;
   protected readonly bellIcon = faBell;
+  protected readonly saveIcon: IconDefinition = faFloppyDisk;
+  protected readonly resetIcon: IconDefinition = faRotateLeft;
+  protected readonly removeIcon: IconDefinition = faTrashCan;
   private drawingPointerId: number | null = null;
   private lastDrawPoint: { x: number; y: number } | null = null;
   private readonly patternCanvasReady = signal(false);
