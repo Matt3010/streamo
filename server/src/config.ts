@@ -34,12 +34,11 @@ export const PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS = Math.max(
   Number(process.env.PROVIDER_LINK_SOURCE_CACHE_TTL_SECONDS) || (10 * 60)
 );
 
-// Episodes/movies count as "watched" once you've seen at least this fraction.
-export const WATCHED_THRESHOLD = 0.8;
-// "Continua a guardare" hides items only when they're effectively complete —
-// otherwise pausing at 80% to grab a coffee would yank the title out of your
-// resume queue.
-export const CONTINUE_HIDE_THRESHOLD = 0.95;
+// Episodes/movies count as "watched" only when they're effectively complete.
+export const WATCHED_THRESHOLD = 0.93;
+// Keep continue/resume aligned with the watched/completed cutoff so watchlist,
+// history, notifications and player CTAs all pivot at the same point.
+export const CONTINUE_HIDE_THRESHOLD = WATCHED_THRESHOLD;
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

@@ -42,14 +42,9 @@ export async function findNextEpisode(tmdbId: number, season: number, episode: n
 }
 
 // "Where to play next" for a TV show given a user's progress: returns the
-// latest touched episode, pivoted forward when the user is effectively done
-// with that episode. Uses CONTINUE_HIDE_THRESHOLD (0.95) — NOT
-// WATCHED_THRESHOLD (0.8) — because the two are deliberately separated
-// (see config.ts): 0.8 means "counts as watched" (badges, watched_count,
-// auto-flip), but the README is explicit that at 80–95% the user might
-// still want to finish the same episode (credits, post-credit teasers).
-// The resume CTA respects that and only pivots once the user is *really*
-// done.
+// latest touched episode, pivoted forward only when the user is effectively
+// done with that episode. The cutoff is shared with watched/completed logic
+// so all surfaces stay aligned on the same 93% boundary.
 export async function resolveNextPlayable(userId: number, tmdbId: number): Promise<{ season: number; episode: number } | null> {
   const last = await kdb
     .selectFrom('progress')

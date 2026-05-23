@@ -287,7 +287,7 @@ router.get('/user/watchlist', requireAuth, async (req, res) => {
       resume_episode: resume?.episode,
       // Drop the in-flight progress when it belongs to a *different* episode
       // than the one we're displaying (resume). After the user crosses
-      // WATCHED_THRESHOLD on S2E1, latestTv still points at S2E1 but resume
+      // the shared completion threshold on S2E1, latestTv still points at S2E1 but resume
       // advances to S2E2 — painting position/duration against the displayed
       // S/E renders "S2 E2 90%" while the 90% is actually S2E1. /user/progress
       // already zeroes out position/duration in the same advancement case.

@@ -282,7 +282,7 @@ router.get('/user/progress', requireAuth, async (req, res) => {
 
     // Tolerate float imprecision: a saved position 0.25s shy of duration
     // still means the episode is done. WATCHED_THRESHOLD lines this up with
-    // the same cutoff used for watched_count aggregation above.
+    // the same 93% cutoff used for watched_count aggregation above.
     const ended = row.duration > 0 && row.position >= row.duration * WATCHED_THRESHOLD;
     let resolvedRow: ProgressRow = row;
     if (ended) {
@@ -291,7 +291,7 @@ router.get('/user/progress', requireAuth, async (req, res) => {
       resolvedRow = { ...row, season: next.season, episode: next.episode, position: 0, duration: 0 };
     }
 
-    // caughtUp is structurally impossible here: rows past WATCHED_THRESHOLD
+    // caughtUp is structurally impossible here: rows past the completion threshold
     // were either advanced (duration becomes 0) or filtered out (no next
     // episode → return null above). Partway rows by definition didn't cross
     // the threshold. So we always pass false and let the remaining===0

@@ -18,12 +18,10 @@ import { formatTime, progressKey } from '../utils/time.util';
 import type { MediaType, ProviderResolveFailureReason, TmdbItem, TmdbEpisodeDetail, PlayerEventMessage } from '../models';
 import { tmdbImageUrl } from '../../../../shared/tmdb-image';
 
-// Mirror of CONTINUE_HIDE_THRESHOLD in server/src/config.ts. Used only
-// to decide when to advance the CTA mid-playback. Matches the backend's
-// resolveNextPlayable threshold so both sides agree on "really done".
-// Deliberately NOT 0.8: between 80–95% the README intent is to let the
-// user finish the same episode (credits, post-credit teaser).
-const CONTINUE_HIDE_THRESHOLD = 0.95;
+// Mirror of the backend's 93% watched/completed threshold. Used to decide
+// when to advance the CTA mid-playback so the watch page stays aligned with
+// watchlist/history/continue logic.
+const CONTINUE_HIDE_THRESHOLD = 0.93;
 
 interface ProviderPlaybackTitle {
   provider: 'streamingcommunity';
@@ -87,8 +85,7 @@ export class PlayerService {
   // Playback tracking
   readonly resumeText = signal('');
   // Saved progress for the *current* selected episode. Drives the
-  // "Riprendi da hh:mm:ss" button label and the "Vai al prossimo" decision
-  // (shown only if pct >= 80% — same WATCHED_THRESHOLD as the backend).
+  // "Riprendi da hh:mm:ss" button label and the "Vai al prossimo" decision.
   readonly resumeProgress = signal<{ position: number; duration: number } | null>(null);
   // Per-episode progress map for the currently-loaded series, keyed by
   // `s${season}e${episode}`. Powers the progress bars rendered at the
@@ -760,7 +757,7 @@ export class PlayerService {
 
     if (type === 'tv') {
       // The save above may have pushed the just-watched episode past
-      // WATCHED_THRESHOLD; without this refresh the CTA stays anchored to
+      // the shared 93% completion threshold; without this refresh the CTA stays anchored to
       // the episode the user just finished until a hard reload.
       await this.refreshNextUnwatchedRef();
       const season = untracked(() => this.selectedSeason());
@@ -780,8 +777,8 @@ export class PlayerService {
   }
 
   // Switch the player to the next episode and start it from the beginning.
-  // Used by the preview "Vai al prossimo" button to skip past the tail-end
-  // of the current episode (≥80%) instead of resuming it.
+  // Used by the preview "Vai al prossimo" button to jump straight to the
+  // next episode instead of resuming the current one.
   async playNextEpisode(): Promise<boolean> {
     const next = untracked(() => this.nextEpisode());
     const item = untracked(() => this.currentItem());
