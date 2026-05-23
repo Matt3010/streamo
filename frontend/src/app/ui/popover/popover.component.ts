@@ -4,6 +4,7 @@ import {
   ElementRef,
   HostListener,
   computed,
+  effect,
   input,
   model,
   output,
@@ -68,12 +69,47 @@ export class UiPopoverComponent {
   readonly open = model.required<boolean>();
   readonly anchor = input<HTMLElement | null>(null);
   readonly width = input(228);
+  readonly horizontalAlign = input<'center' | 'start' | 'end'>('center');
+  readonly preferredPlacement = input<'above' | 'below'>('below');
   readonly title = input('');
   readonly secondary = input('');
   readonly icon = input<IconName | null>(null);
   readonly preferredHeight = input(96);
   readonly closed = output<void>();
   private readonly panel = viewChild<ElementRef<HTMLDivElement>>('panel');
+
+  constructor() {
+    effect((onCleanup) => {
+      if (!this.open() || !this.anchor()) return;
+
+      let frameId = 0;
+      let lastRect = '';
+      let lastViewport = '';
+
+      const syncPosition = () => {
+        const anchor = this.anchor();
+        if (!anchor) return;
+        const rect = anchor.getBoundingClientRect();
+        const nextRect = `${rect.top}:${rect.left}:${rect.width}:${rect.height}`;
+        const nextViewport = `${window.innerWidth}:${window.innerHeight}`;
+        if (nextRect !== lastRect || nextViewport !== lastViewport) {
+          lastRect = nextRect;
+          lastViewport = nextViewport;
+          this.viewportTick.update((value) => value + 1);
+        }
+      };
+
+      const loop = () => {
+        syncPosition();
+        frameId = window.requestAnimationFrame(loop);
+      };
+
+      syncPosition();
+      frameId = window.requestAnimationFrame(loop);
+      onCleanup(() => window.cancelAnimationFrame(frameId));
+    });
+  }
+
   protected readonly panelWidth = computed(() =>
     Math.min(this.width(), window.innerWidth - this.edgePadding * 2)
   );
@@ -89,7 +125,11 @@ export class UiPopoverComponent {
     if (!anchor) return 0;
     const rect = anchor.getBoundingClientRect();
     const width = this.panelWidth();
-    const desired = rect.left + (rect.width / 2) - (width / 2);
+    const desired = this.horizontalAlign() === 'start'
+      ? rect.left
+      : this.horizontalAlign() === 'end'
+        ? rect.right - width
+        : rect.left + (rect.width / 2) - (width / 2);
     const min = this.edgePadding;
     const max = window.innerWidth - width - this.edgePadding;
     return Math.max(min, Math.min(desired, max));
@@ -103,9 +143,14 @@ export class UiPopoverComponent {
     const spaceAbove = rect.top - this.edgePadding - this.anchorGap;
     const spaceBelow = window.innerHeight - rect.bottom - this.edgePadding - this.anchorGap;
     const needed = this.panelHeight();
+    if (this.preferredPlacement() === 'above') {
+      if (spaceAbove >= needed) return 'above';
+      if (spaceBelow >= needed) return 'below';
+      return spaceAbove >= spaceBelow ? 'above' : 'below';
+    }
     if (spaceBelow >= needed) return 'below';
     if (spaceAbove >= needed) return 'above';
-    return spaceBelow > spaceAbove ? 'below' : 'above';
+    return spaceBelow >= spaceAbove ? 'below' : 'above';
   });
 
   protected readonly panelTop = computed(() => {
@@ -134,15 +179,6 @@ export class UiPopoverComponent {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     if (this.open()) this.dismiss();
-  }
-
-  @HostListener('window:scroll')
-  onWindowScroll(): void {
-    if (!this.open()) return;
-    this.viewportTick.update((value) => value + 1);
-    const active = document.activeElement;
-    if (active instanceof Element && active.closest('.ui-popover')) return;
-    this.dismiss();
   }
 
   @HostListener('window:resize')
