@@ -12,6 +12,7 @@ export { isFutureDateStr as isFutureDate } from '../../../shared/release-format'
 
 export interface TmdbTvSummary {
   first_air_date?: string | null;
+  status?: string | null;
   number_of_seasons: number;
   number_of_episodes: number;
   seasons: WatchlistSeasonInfo[];
@@ -36,6 +37,7 @@ interface RawTmdbEpisodeRef {
 
 interface RawTmdbTv {
   first_air_date?: string | null;
+  status?: string | null;
   number_of_seasons?: number;
   number_of_episodes?: number;
   seasons?: RawTmdbSeason[];
@@ -65,6 +67,7 @@ function parseCachedSummary(data: string): TmdbTvSummary | null {
     if (
       !Array.isArray(parsed.seasons)
       || !('first_air_date' in parsed)
+      || !('status' in parsed)
       || !('last_episode_to_air' in parsed)
       || !('next_episode_to_air' in parsed)
     ) {
@@ -174,6 +177,7 @@ export async function getTmdbTvSummary(
     const lea = data.last_episode_to_air;
     const stored: TmdbTvSummary = {
       first_air_date: data.first_air_date ?? null,
+      status: data.status ?? null,
       number_of_seasons: data.number_of_seasons ?? 0,
       number_of_episodes: data.number_of_episodes ?? 0,
       seasons: (data.seasons ?? [])

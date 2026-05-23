@@ -1,6 +1,12 @@
 import { getEpisodesBefore } from '../../../shared/release-format';
 import { getAiredEpisodesCount, type TmdbTvSummary } from './tmdb-cache';
 
+function formatTvCaughtUpText(tmdb: TmdbTvSummary | null): string {
+  return tmdb?.status === 'Ended' || tmdb?.status === 'Canceled'
+    ? 'Serie conclusa'
+    : 'Sei al passo';
+}
+
 /** "Mancano N min" / "Manca 1 min" / "Mancano X h Y min" copy for the
  *  movie/Continua-a-guardare meta line. Returns undefined when the movie
  *  hasn't been started or has already been finished. */
@@ -54,8 +60,8 @@ export function formatTvStatusText(
   const watchedBaseline = Math.max(watchedCount, doneAiredEpisodes, impliedWatched);
   const remaining = Math.max(0, airedEpisodes - watchedBaseline);
 
-  if (caughtUp) return 'Sei al passo';
+  if (caughtUp) return formatTvCaughtUpText(tmdb);
   if (watchedBaseline <= 0) return undefined;
-  if (remaining === 0) return 'Sei al passo';
+  if (remaining === 0) return formatTvCaughtUpText(tmdb);
   return remaining === 1 ? 'Manca 1 episodio' : `Mancano ${remaining} episodi`;
 }
