@@ -6,7 +6,13 @@ import { ChangeDetectionStrategy, Component, input, model } from '@angular/core'
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <label class="ui-range">
-      <span class="ui-range-label">{{ label() }}</span>
+      <span class="ui-range-head">
+        <span class="ui-range-label">{{ label() }}</span>
+        <strong class="ui-range-value">{{ value() }}{{ suffix() }}</strong>
+      </span>
+      @if (description()) {
+        <span class="ui-range-description">{{ description() }}</span>
+      }
       <input
         type="range"
         class="ui-range-input"
@@ -16,13 +22,13 @@ import { ChangeDetectionStrategy, Component, input, model } from '@angular/core'
         [disabled]="disabled()"
         [value]="value()"
         (input)="onInput($event)" />
-      <strong class="ui-range-value">{{ value() }}{{ suffix() }}</strong>
     </label>
   `,
   styleUrl: './range.component.css'
 })
 export class UiRangeComponent {
   readonly label = input.required<string>();
+  readonly description = input('');
   readonly value = model.required<number>();
   readonly min = input(0);
   readonly max = input(100);

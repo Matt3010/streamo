@@ -228,31 +228,31 @@ type PatternTool = 'draw' | 'recolor';
             <div class="pattern-random-field">
               <ui-range
                 label="Densità"
+                description="Controlla quanti elementi vengono distribuiti nel tile."
                 [(value)]="randomDensity"
                 [min]="1"
                 [max]="10"
                 [step]="1" />
-              <p class="pattern-random-hint">Quanti elementi inserire.</p>
             </div>
 
             <div class="pattern-random-field">
               <ui-range
                 label="Variazione"
+                description="Aumenta il contrasto tra forme, ritmo e direzione dei segni."
                 [(value)]="randomVariation"
                 [min]="1"
                 [max]="10"
                 [step]="1" />
-              <p class="pattern-random-hint">Quanto cambia forme e ritmo.</p>
             </div>
 
             <div class="pattern-random-field">
               <ui-range
                 label="Scala"
+                description="Definisce la dimensione media delle tracce generate."
                 [(value)]="randomScale"
                 [min]="1"
                 [max]="10"
                 [step]="1" />
-              <p class="pattern-random-hint">Dimensione media dei segni.</p>
             </div>
 
             <div class="pattern-random-actions">

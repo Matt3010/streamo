@@ -230,13 +230,7 @@
 
 .pattern-random-field {
   display: grid;
-  gap: 0.2rem;
-}
-
-.pattern-random-hint {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  line-height: 1.35;
+  gap: 0;
 }
 
 .pattern-random-actions {
