@@ -340,12 +340,19 @@ router.patch('/user/watchlist/:type/:tmdb_id', requireAuth, async (req, res) => 
     return res.json({ ok: true, folder_name: folderName ?? null });
   }
 
-  if (type === 'tv' && status === 'done') {
-    const summary = await getTmdbTvSummary(tmdb_id);
-    const doneAiredEpisodes = getAiredEpisodesCount(summary);
+  if (type === 'tv') {
+    const update = { status, done_aired_episodes: 0 };
+    if (status === 'done') {
+      const summary = await getTmdbTvSummary(tmdb_id);
+      update.done_aired_episodes = getAiredEpisodesCount(summary);
+    }
+    // Leaving "done" must not preserve the synthetic "all aired episodes
+    // were completed" marker, otherwise the stale baseline can mask the
+    // user's real saved progress (e.g. 4% -> "Sei al passo").
+
     const result = await kdb
       .updateTable('watchlist')
-      .set({ status, done_aired_episodes: doneAiredEpisodes })
+      .set(update)
       .where('user_id', '=', req.user!.id)
       .where('tmdb_id', '=', tmdb_id)
       .where('media_type', '=', type)
