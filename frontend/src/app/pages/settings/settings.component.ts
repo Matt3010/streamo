@@ -2,7 +2,7 @@ import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChil
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faBell, faBrush, faCirclePlay, faFolder } from '@fortawesome/free-solid-svg-icons';
-import { faFloppyDisk, faRotateLeft, faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import { faDroplet, faFloppyDisk, faPen, faRotateLeft, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { PageHeaderComponent } from '../../ui/page-header/page-header.component';
 import { SettingsToggleComponent } from '../../ui/settings-toggle/settings-toggle.component';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
@@ -15,6 +15,7 @@ import { UiButtonDirective } from '../../ui/ui-button.directive';
 const PATTERN_TILE_SIZE = 96;
 const DEFAULT_BRUSH_SIZE = 6;
 const DEFAULT_BRUSH_COLOR = '#ffffff';
+type PatternTool = 'draw' | 'recolor';
 
 @Component({
   selector: 'app-settings',
@@ -77,6 +78,33 @@ const DEFAULT_BRUSH_COLOR = '#ffffff';
         </div>
 
         <div class="pattern-controls">
+          <div class="pattern-control pattern-tool-control">
+            <span>Modalità</span>
+            <div class="pattern-tool-row">
+              <button
+                uiButton="panel"
+                uiButtonSize="dense"
+                type="button"
+                class="pattern-tool-btn"
+                [attr.aria-pressed]="activeTool() === 'draw'"
+                (click)="setTool('draw')">
+                <fa-icon [icon]="drawToolIcon"></fa-icon>
+                Disegna
+              </button>
+
+              <button
+                uiButton="panel"
+                uiButtonSize="dense"
+                type="button"
+                class="pattern-tool-btn"
+                [attr.aria-pressed]="activeTool() === 'recolor'"
+                (click)="setTool('recolor')">
+                <fa-icon [icon]="recolorToolIcon"></fa-icon>
+                Ricolora
+              </button>
+            </div>
+          </div>
+
           <label class="pattern-control">
             <span>Colore</span>
             <input type="color" [value]="brushColor()" (input)="onBrushColorInput($event)" />
@@ -99,7 +127,7 @@ const DEFAULT_BRUSH_COLOR = '#ffffff';
           <div class="pattern-card">
             <div class="pattern-card-header">
               <strong>Editor tile 96×96</strong>
-              <span>Trascina per disegnare</span>
+              <span>{{ activeTool() === 'draw' ? 'Trascina per disegnare' : 'Trascina per ricolorare' }}</span>
             </div>
             <div class="pattern-canvas-shell">
               <button
@@ -233,6 +261,7 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly savingPattern = signal(false);
   protected readonly brushColor = signal(DEFAULT_BRUSH_COLOR);
   protected readonly brushSize = signal(DEFAULT_BRUSH_SIZE);
+  protected readonly activeTool = signal<PatternTool>('draw');
   protected readonly patternDirty = signal(false);
   protected readonly autoplayEnabled = computed(() => this.auth.currentUser()?.autoplay_next === 1);
   protected readonly foldersEnabled = computed(() => this.auth.currentUser()?.folders_enabled === 1);
@@ -264,6 +293,8 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly saveIcon: IconDefinition = faFloppyDisk;
   protected readonly resetIcon: IconDefinition = faRotateLeft;
   protected readonly removeIcon: IconDefinition = faTrashCan;
+  protected readonly drawToolIcon: IconDefinition = faPen;
+  protected readonly recolorToolIcon: IconDefinition = faDroplet;
   private drawingPointerId: number | null = null;
   private lastDrawPoint: { x: number; y: number } | null = null;
   private readonly patternCanvasReady = signal(false);
@@ -363,6 +394,10 @@ export class SettingsComponent implements AfterViewInit {
     if (!(target instanceof HTMLInputElement)) return;
     const next = Number(target.value);
     if (Number.isFinite(next) && next >= 1) this.brushSize.set(next);
+  }
+
+  protected setTool(tool: PatternTool): void {
+    this.activeTool.set(tool);
   }
 
   protected onCanvasPointerDown(event: PointerEvent): void {
@@ -466,6 +501,9 @@ export class SettingsComponent implements AfterViewInit {
     const ctx = this.patternCanvasRef?.nativeElement.getContext('2d');
     if (!ctx) return;
     ctx.save();
+    if (this.activeTool() === 'recolor') {
+      ctx.globalCompositeOperation = 'source-atop';
+    }
     ctx.strokeStyle = this.brushColor();
     ctx.lineWidth = this.brushSize();
     ctx.lineCap = 'round';
@@ -537,4 +575,5 @@ export class SettingsComponent implements AfterViewInit {
     this.previewPatternDataUrl.set(dataUrl);
     this.patternDirty.set(false);
   }
+
 }

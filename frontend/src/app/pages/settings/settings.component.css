@@ -89,6 +89,20 @@
   font-size: 0.82rem;
 }
 
+.pattern-tool-control {
+  align-content: start;
+}
+
+.pattern-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.pattern-tool-btn {
+  min-width: 0;
+}
+
 .pattern-control span {
   color: var(--text);
   font-weight: 600;
@@ -97,10 +111,25 @@
 .pattern-control input[type="color"] {
   width: 100%;
   min-height: 46px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  appearance: none;
+}
+
+.pattern-control input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.pattern-control input[type="color"]::-webkit-color-swatch {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 0.28rem;
+}
+
+.pattern-control input[type="color"]::-moz-color-swatch {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .pattern-control-range {
@@ -148,7 +177,8 @@
 .pattern-canvas-shell,
 .pattern-preview-shell {
   position: relative;
-  min-height: 260px;
+  min-height: 0;
+  aspect-ratio: 1;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
