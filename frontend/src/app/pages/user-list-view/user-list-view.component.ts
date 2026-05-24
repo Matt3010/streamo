@@ -66,8 +66,10 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
 ];
 
 interface WatchTimeCounter {
-  value: string;
-  unit: string;
+  primaryValue: string;
+  primaryUnit: string;
+  secondaryValue?: string;
+  secondaryUnit?: string;
 }
 
 @Component({
@@ -110,8 +112,12 @@ interface WatchTimeCounter {
           <div class="history-total-skeleton" aria-hidden="true"></div>
         } @else {
           <div class="history-total-value">
-            <span class="history-total-number">{{ historyWatchTimeCounter().value }}</span>
-            <span class="history-total-unit">{{ historyWatchTimeCounter().unit }}</span>
+            <span class="history-total-number">{{ historyWatchTimeCounter().primaryValue }}</span>
+            <span class="history-total-unit">{{ historyWatchTimeCounter().primaryUnit }}</span>
+            @if (historyWatchTimeCounter().secondaryValue && historyWatchTimeCounter().secondaryUnit) {
+              <span class="history-total-number history-total-number-secondary">{{ historyWatchTimeCounter().secondaryValue }}</span>
+              <span class="history-total-unit">{{ historyWatchTimeCounter().secondaryUnit }}</span>
+            }
           </div>
         }
       </section>
@@ -725,22 +731,29 @@ function mediaHintTarget(filter: MediaFilter): string {
 
 function formatWatchTimeCounter(totalSeconds: number): WatchTimeCounter {
   if (totalSeconds <= 0) {
-    return { value: '0', unit: 'min' };
+    return { primaryValue: '0', primaryUnit: 'min' };
   }
 
   if (totalSeconds >= 3600) {
-    const hours = totalSeconds / 3600;
-    const formatted = new Intl.NumberFormat('it-IT', {
-      minimumFractionDigits: hours < 10 ? 1 : 0,
-      maximumFractionDigits: hours < 10 ? 1 : 0
-    }).format(hours);
-    return { value: formatted, unit: 'ore' };
+    const totalMinutes = Math.round(totalSeconds / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return {
+      primaryValue: hours.toLocaleString('it-IT'),
+      primaryUnit: hours === 1 ? 'ora' : 'ore',
+      ...(minutes > 0
+        ? {
+            secondaryValue: minutes.toLocaleString('it-IT'),
+            secondaryUnit: 'min'
+          }
+        : {})
+    };
   }
 
   const minutes = Math.max(1, Math.round(totalSeconds / 60));
   return {
-    value: minutes.toLocaleString('it-IT'),
-    unit: 'min'
+    primaryValue: minutes.toLocaleString('it-IT'),
+    primaryUnit: 'min'
   };
 }
 
