@@ -643,6 +643,9 @@ export class UserListViewComponent {
           this.toast.show('Errore di rete, riprova');
           return;
         }
+        this.totalWatchTimeSeconds.update((total) => (
+          Math.max(0, total - historyItemWatchTimeSeconds(item))
+        ));
         this.toast.show(`${item.title}: rimosso dalla cronologia`);
       }
       this.items.update(arr => arr.filter(i => (
@@ -753,4 +756,13 @@ function formatWatchTimeAriaLabel(totalSeconds: number): string {
 
   const minutes = Math.max(1, Math.round(totalSeconds / 60));
   return `${minutes} minuti`;
+}
+
+function historyItemWatchTimeSeconds(item: CardItem): number {
+  const position = item.position ?? 0;
+  const duration = item.duration ?? 0;
+  if (item.completed && duration > 0) return Math.round(duration);
+  if (position > 0 && duration > 0) return Math.round(Math.min(position, duration));
+  if (position > 0) return Math.round(position);
+  return 0;
 }
