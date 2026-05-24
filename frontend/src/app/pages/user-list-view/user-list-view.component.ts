@@ -65,6 +65,11 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
   { value: 'movie', label: 'Film' }
 ];
 
+interface WatchTimeCounter {
+  value: string;
+  unit: string;
+}
+
 @Component({
   selector: 'app-user-list-view',
   standalone: true,
@@ -97,6 +102,20 @@ const MEDIA_TABS: ReadonlyArray<UiTab<MediaFilter>> = [
         </button>
       </div>
     </app-page-header>
+
+    @if (kind() === 'history') {
+      <section class="history-total-card" [attr.aria-label]="historyWatchTimeAriaLabel()">
+        <p class="history-total-label">WatchTime totale account</p>
+        @if (loading()) {
+          <div class="history-total-skeleton" aria-hidden="true"></div>
+        } @else {
+          <div class="history-total-value">
+            <span class="history-total-number">{{ historyWatchTimeCounter().value }}</span>
+            <span class="history-total-unit">{{ historyWatchTimeCounter().unit }}</span>
+          </div>
+        }
+      </section>
+    }
 
     <div class="filter-bar">
       @if (kind() === 'watchlist') {
@@ -358,6 +377,8 @@ export class UserListViewComponent {
   protected readonly items = signal<CardItem[]>([]);
   protected readonly loading = signal(false);
   protected readonly expandedFolders = signal<Record<string, boolean>>(loadExpandedFolders());
+  protected readonly totalWatchTimeSeconds = signal(0);
+  protected readonly animatedWatchTimeSeconds = signal(0);
   protected readonly title = computed(() => (
     this.kind() === 'watchlist' ? 'La mia lista' : 'Cronologia'
   ));
@@ -369,6 +390,12 @@ export class UserListViewComponent {
   ));
   protected readonly historySections = computed(() => (
     this.kind() === 'history' ? buildHistorySections(this.items()) : []
+  ));
+  protected readonly historyWatchTimeCounter = computed<WatchTimeCounter>(() => (
+    formatWatchTimeCounter(this.animatedWatchTimeSeconds())
+  ));
+  protected readonly historyWatchTimeAriaLabel = computed(() => (
+    `WatchTime totale account: ${formatWatchTimeAriaLabel(this.totalWatchTimeSeconds())}`
   ));
 
   protected readonly folderPopover = new FolderPopoverController({
@@ -458,6 +485,34 @@ export class UserListViewComponent {
       if (!this.folderFeatureEnabled() && this.folderPopover.open()) {
         this.folderPopover.close();
       }
+    });
+
+    effect((onCleanup) => {
+      if (this.kind() !== 'history') {
+        this.animatedWatchTimeSeconds.set(0);
+        return;
+      }
+
+      const target = this.totalWatchTimeSeconds();
+      const startValue = this.animatedWatchTimeSeconds();
+      if (target === startValue) return;
+
+      let frameId = 0;
+      const startedAt = performance.now();
+      const durationMs = 900;
+
+      const loop = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / durationMs);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const nextValue = Math.round(startValue + (target - startValue) * eased);
+        this.animatedWatchTimeSeconds.set(nextValue);
+        if (progress < 1) {
+          frameId = window.requestAnimationFrame(loop);
+        }
+      };
+
+      frameId = window.requestAnimationFrame(loop);
+      onCleanup(() => window.cancelAnimationFrame(frameId));
     });
   }
 
@@ -631,19 +686,21 @@ export class UserListViewComponent {
     this.items.set([]);
     const mediaType = media === 'all' ? undefined : media as BackendMediaFilter;
     if (kind === 'watchlist') {
+      this.totalWatchTimeSeconds.set(0);
       const list = await this.watchlist.list({ status, ...(mediaType ? { media_type: mediaType } : {}) });
       if (mySeq !== this.seq) return;
       const items = await enrichLibraryCardsWithTmdb(list.map(watchlistToCardItem), this.tmdb);
       if (mySeq !== this.seq) return;
       this.items.set(items);
     } else {
-      const [list, watchlist] = await Promise.all([
-        this.history.list(mediaType ? { media_type: mediaType } : undefined),
+      const [historyData, watchlist] = await Promise.all([
+        this.history.listWithSummary(mediaType ? { media_type: mediaType } : undefined),
         this.watchlist.list()
       ]);
       if (mySeq !== this.seq) return;
+      this.totalWatchTimeSeconds.set(historyData.account_watch_time_seconds ?? 0);
       const items = await enrichLibraryCardsWithTmdb(
-        applyWatchlistFlags(list.map(historyToCardItem), watchlist),
+        applyWatchlistFlags(historyData.items.map(historyToCardItem), watchlist),
         this.tmdb
       );
       if (mySeq !== this.seq) return;
@@ -661,4 +718,39 @@ function mediaHintTarget(filter: MediaFilter): string {
   if (filter === 'tv') return 'una serie TV';
   if (filter === 'movie') return 'un film';
   return 'un film o una serie';
+}
+
+function formatWatchTimeCounter(totalSeconds: number): WatchTimeCounter {
+  if (totalSeconds <= 0) {
+    return { value: '0', unit: 'min' };
+  }
+
+  if (totalSeconds >= 3600) {
+    const hours = totalSeconds / 3600;
+    const formatted = new Intl.NumberFormat('it-IT', {
+      minimumFractionDigits: hours < 10 ? 1 : 0,
+      maximumFractionDigits: hours < 10 ? 1 : 0
+    }).format(hours);
+    return { value: formatted, unit: 'ore' };
+  }
+
+  const minutes = Math.max(1, Math.round(totalSeconds / 60));
+  return {
+    value: minutes.toLocaleString('it-IT'),
+    unit: 'min'
+  };
+}
+
+function formatWatchTimeAriaLabel(totalSeconds: number): string {
+  if (totalSeconds <= 0) return '0 minuti';
+
+  if (totalSeconds >= 3600) {
+    const totalMinutes = Math.round(totalSeconds / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes > 0 ? `${hours} ore e ${minutes} minuti` : `${hours} ore`;
+  }
+
+  const minutes = Math.max(1, Math.round(totalSeconds / 60));
+  return `${minutes} minuti`;
 }

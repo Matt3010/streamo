@@ -1,1 +1,1 @@
-export type { HistoryItem } from '../../../../shared/types';
+export type { HistoryItem, HistoryListResponse } from '../../../../shared/types';

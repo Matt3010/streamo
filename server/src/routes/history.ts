@@ -5,7 +5,7 @@ import { requireAuth } from '../middleware/auth';
 import { toInt } from '../utils/validation';
 import { WATCHED_THRESHOLD, isMediaType } from '../config';
 import { resolveNextPlayable } from '../services/next-episode';
-import type { HistoryItem } from '../../../shared/types';
+import type { HistoryItem, HistoryListResponse } from '../../../shared/types';
 
 const router = Router();
 
@@ -29,6 +29,19 @@ function formatViewedMinutes(position: number | null | undefined): string | unde
 
 function isCompleted(position: number | null | undefined, duration: number | null | undefined): boolean {
   return !!duration && duration > 0 && !!position && position >= duration * WATCHED_THRESHOLD;
+}
+
+function watchTimeSecondsSql() {
+  return sql<number>`
+    COALESCE(SUM(
+      CASE
+        WHEN p.duration > 0 AND p.position >= p.duration * ${WATCHED_THRESHOLD} THEN p.duration
+        WHEN p.position > 0 AND p.duration > 0 THEN LEAST(p.position, p.duration)
+        WHEN p.position > 0 THEN p.position
+        ELSE 0
+      END
+    ), 0)::BIGINT
+  `;
 }
 
 router.post('/user/history', requireAuth, async (req, res) => {
@@ -91,6 +104,19 @@ router.get('/user/history', requireAuth, async (req, res) => {
     q = q.where('h.media_type', '=', mediaFilter);
   }
 
+  const totalWatchTimeRow = await kdb
+    .selectFrom('history as h')
+    .leftJoin('progress as p', (join) => join
+      .onRef('p.user_id', '=', 'h.user_id')
+      .onRef('p.tmdb_id', '=', 'h.tmdb_id')
+      .onRef('p.media_type', '=', 'h.media_type')
+      .onRef('p.season', '=', 'h.season')
+      .onRef('p.episode', '=', 'h.episode')
+      .on('p.synthetic', '=', 0))
+    .select(watchTimeSecondsSql().as('account_watch_time_seconds'))
+    .where('h.user_id', '=', req.user!.id)
+    .executeTakeFirst();
+
   const rows = await q
     .orderBy('h.watched_at', 'desc')
     .orderBy('h.id', 'desc')
@@ -134,7 +160,12 @@ router.get('/user/history', requireAuth, async (req, res) => {
     };
   }));
 
-  res.json({ items });
+  const response: HistoryListResponse = {
+    items,
+    account_watch_time_seconds: Number(totalWatchTimeRow?.account_watch_time_seconds ?? 0)
+  };
+
+  res.json(response);
 });
 
 router.delete('/user/history', requireAuth, async (req, res) => {

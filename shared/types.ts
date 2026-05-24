@@ -101,6 +101,11 @@ export interface HistoryItem {
   resume_episode?: number;
 }
 
+export interface HistoryListResponse {
+  items: HistoryItem[];
+  account_watch_time_seconds: number;
+}
+
 export interface WatchlistSeasonInfo {
   season_number: number;
   episode_count: number;

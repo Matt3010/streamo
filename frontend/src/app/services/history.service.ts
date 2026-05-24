@@ -1,15 +1,23 @@
 import { Injectable } from '@angular/core';
-import type { MediaType, HistoryItem } from '../models';
+import type { MediaType, HistoryItem, HistoryListResponse } from '../models';
 import { apiGetJson, apiOk, jsonRequest } from '../utils/api.util';
 
 @Injectable({ providedIn: 'root' })
 export class HistoryService {
   async list(filters?: { media_type?: MediaType }): Promise<HistoryItem[]> {
+    const data = await this.listWithSummary(filters);
+    return data.items ?? [];
+  }
+
+  async listWithSummary(filters?: { media_type?: MediaType }): Promise<HistoryListResponse> {
     const qs = new URLSearchParams();
     if (filters?.media_type) qs.set('media_type', filters.media_type);
     const url = qs.size ? `/api/user/history?${qs.toString()}` : '/api/user/history';
-    const data = await apiGetJson<{ items: HistoryItem[] }>(url);
-    return data?.items ?? [];
+    const data = await apiGetJson<HistoryListResponse>(url);
+    return {
+      items: data?.items ?? [],
+      account_watch_time_seconds: data?.account_watch_time_seconds ?? 0
+    };
   }
 
   /** Fire-and-forget — auto-record from the player when an episode is
