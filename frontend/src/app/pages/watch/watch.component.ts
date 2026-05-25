@@ -400,6 +400,7 @@ type ConfirmAction =
       <ui-popover [(open)]="extrasPopoverOpen"
                   [anchor]="extrasPopoverAnchor()"
                   [width]="360"
+                  horizontalAlign="start"
                   [preferredHeight]="320"
                   icon="play-circle"
                   title="Extra"
