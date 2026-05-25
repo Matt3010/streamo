@@ -98,6 +98,10 @@ peer_dir() {
   printf '%s/peer_%s' "$WIREGUARD_DIR" "$1"
 }
 
+peer_exists_on_disk() {
+  [ -d "$(peer_dir "$1")" ]
+}
+
 restart_wireguard() {
   (cd "$STACK_ROOT" && docker compose -f "$COMPOSE_FILE" up -d wireguard)
 }
@@ -114,31 +118,52 @@ case "$command_name" in
 
   revoke)
     require_peer_arg
-    if ! peer_exists_in_csv "$peer_name"; then
-      echo "Peer '$peer_name' is not present in WIREGUARD_PEERS" >&2
+    in_env=0
+    on_disk=0
+
+    if peer_exists_in_csv "$peer_name"; then
+      in_env=1
+    fi
+
+    if peer_exists_on_disk "$peer_name"; then
+      on_disk=1
+    fi
+
+    if [ "$in_env" -eq 0 ] && [ "$on_disk" -eq 0 ]; then
+      echo "Peer '$peer_name' is neither present in WIREGUARD_PEERS nor on disk" >&2
       exit 1
     fi
-    updated_peers=$(printf '%s' "$current_peers" | awk -F',' -v target="$peer_name" '
-      BEGIN { OFS="," }
-      {
-        out_count = 0
-        for (i = 1; i <= NF; i++) {
-          if ($i != target && $i != "") {
-            out[++out_count] = $i
+
+    updated_peers=$current_peers
+
+    if [ "$in_env" -eq 1 ]; then
+      updated_peers=$(printf '%s' "$current_peers" | awk -F',' -v target="$peer_name" '
+        BEGIN { OFS="," }
+        {
+          out_count = 0
+          for (i = 1; i <= NF; i++) {
+            if ($i != target && $i != "") {
+              out[++out_count] = $i
+            }
           }
-        }
-        for (i = 1; i <= out_count; i++) {
-          printf "%s%s", out[i], (i < out_count ? OFS : "")
-        }
-      }')
-    if [ -z "$updated_peers" ]; then
-      echo "Refusing to revoke the last remaining peer; edit .env intentionally if you really want zero peers." >&2
-      exit 1
+          for (i = 1; i <= out_count; i++) {
+            printf "%s%s", out[i], (i < out_count ? OFS : "")
+          }
+        }')
+      if [ -z "$updated_peers" ]; then
+        echo "Refusing to revoke the last remaining peer from .env; edit .env intentionally if you really want zero peers." >&2
+        exit 1
+      fi
+      write_peers_env "$updated_peers"
     fi
-    write_peers_env "$updated_peers"
+
     rm -rf "$(peer_dir "$peer_name")"
     restart_wireguard
-    echo "Revoked peer '$peer_name'. Updated WIREGUARD_PEERS=$updated_peers"
+    if [ "$in_env" -eq 1 ]; then
+      echo "Revoked peer '$peer_name'. Updated WIREGUARD_PEERS=$updated_peers"
+    else
+      echo "Removed orphan peer '$peer_name' from disk."
+    fi
     ;;
 
   regen)

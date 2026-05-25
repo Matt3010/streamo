@@ -44,6 +44,9 @@ sudo ./scripts/up.sh
 ./scripts/peer.sh show phone
 ```
 
+`./scripts/peer.sh revoke <peer>` also removes orphan peer folders that still
+exist on disk even if the peer is no longer present in `WIREGUARD_PEERS`.
+
 By default, `up.sh` automatically applies host firewall
 rules that allow only `HOST_IP` on the TCP ports listed in
 `ALLOWED_TCP_PORTS`, then starts the VPN stack.
