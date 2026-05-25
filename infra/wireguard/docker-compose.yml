@@ -22,15 +22,26 @@ services:
       - SERVERPORT=${WIREGUARD_PORT:-51820}
       # Use one peer name per physical device so revocation stays granular.
       - PEERS=${WIREGUARD_PEERS:?WIREGUARD_PEERS must list at least one peer}
-      - PEERDNS=${WIREGUARD_DNS:-1.1.1.1}
+      - PEERDNS=${WIREGUARD_DNS:-auto}
       - INTERNAL_SUBNET=${WIREGUARD_SUBNET:-10.13.13.0}
       # Route home-LAN traffic through the VPN; add more subnets comma-separated
-      # if you also want other private ranges reachable.
-      - ALLOWEDIPS=${WIREGUARD_ALLOWED_IPS:-192.168.1.0/24}
+      # if you also want other private ranges reachable. 10.13.13.0/24 is
+      # the WG internal subnet and MUST be in this list so DNS at
+      # 10.13.13.1 (CoreDNS) is reachable through the tunnel.
+      - ALLOWEDIPS=${WIREGUARD_ALLOWED_IPS:-192.168.1.0/24, 10.13.13.0/24}
       - LOG_CONFS=true
     volumes:
       - ./data:/config
       - /lib/modules:/lib/modules:ro
+      # Custom config files mounted read-only from the tracked `config/`
+      # directory. linuxserver/wireguard only writes its own default
+      # versions of these when they're missing, so providing them as bind
+      # mounts (which exist before init runs) takes precedence and keeps
+      # the customizations under version control. The hosts file is NOT
+      # mounted here — it's generated into ./data/coredns/hosts from
+      # LAN_IP/LAN_HOSTNAMES (.env) by scripts/prepare-state.sh.
+      - ./config/coredns/Corefile:/config/coredns/Corefile:ro
+      - ./config/templates/peer.conf:/config/templates/peer.conf:ro
     ports:
       - "${WIREGUARD_PORT:-51820}:${WIREGUARD_PORT:-51820}/udp"
     sysctls:

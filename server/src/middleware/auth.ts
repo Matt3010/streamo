@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../db';
-import { COOKIE_SECURE, TOKEN_TTL, SUPER_ADMIN_EMAIL } from '../config';
+import { TOKEN_TTL, SUPER_ADMIN_EMAIL } from '../config';
 import { authLogger } from '../services/auth-logs';
 
 export interface AuthedUser {
@@ -76,15 +76,21 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
   });
 }
 
-export function setAuthCookie(res: Response, user: AuthedUser): void {
+export function setAuthCookie(req: Request, res: Response, user: AuthedUser): void {
   const token = jwt.sign({ id: user.id, email: user.email }, getJwtSecret(), {
     expiresIn: TOKEN_TTL
   });
 
+  // `req.secure` is true when the request reached us over HTTPS, including
+  // when Caddy terminated TLS in front and forwarded X-Forwarded-Proto
+  // (we have `trust proxy: 1` in server.ts so Express honors it). On a
+  // plain HTTP request (e.g. troubleshooting via localhost:7549) Secure
+  // would prevent the browser from storing the cookie at all, so leave
+  // it off in that case.
   res.cookie('token', token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: COOKIE_SECURE,
+    secure: req.secure,
     maxAge: TOKEN_TTL * 1000,
     path: '/'
   });

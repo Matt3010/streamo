@@ -1,5 +1,16 @@
 #!/usr/bin/env sh
 
+# Single command that brings the streamingimmunity stack up. Always:
+#   1. git pull --rebase --autostash       (sync to latest)
+#   2. docker compose build backend streamo (cache-friendly, no-op if unchanged)
+#   3. docker compose up -d --scale ...    (recreate containers with new env/image)
+#   4. force-recreate caddy + cert-renew   (picks up Caddyfile / cert-loop.sh edits
+#                                           that aren't tracked by compose because
+#                                           they're bind-mounted, not in the image)
+#
+# Result: any code, config, or env change is picked up by running this one script.
+# No flags needed for the common case.
+
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -14,14 +25,9 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 WORKER_REPLICAS_ARG=""
-BUILD_FLAG=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --build)
-      BUILD_FLAG=1
-      shift
-      ;;
     --workers)
       if [ "$#" -lt 2 ]; then
         echo "Missing value for --workers" >&2
@@ -32,7 +38,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     *)
       echo "Unknown argument: $1" >&2
-      echo "Usage: ./scripts/up.sh [--build] [--workers N]" >&2
+      echo "Usage: ./scripts/up.sh [--workers N]" >&2
       exit 1
       ;;
   esac
@@ -58,13 +64,21 @@ if [ "$WORKER_REPLICAS" -le 0 ]; then
   exit 1
 fi
 
-set -- compose
-set -- "$@" up -d --scale "backend-worker=$WORKER_REPLICAS"
-
-echo "Starting stack with backend-worker replicas=$WORKER_REPLICAS"
 cd "$PROJECT_ROOT"
-if [ "$BUILD_FLAG" -eq 1 ]; then
-  git pull --rebase --autostash
-  docker compose build backend streamo
-fi
-docker "$@"
+
+echo "==> git pull"
+git pull --rebase --autostash
+
+echo "==> docker compose build (cache-friendly)"
+docker compose build backend streamo
+
+echo "==> docker compose up -d (backend-worker replicas=$WORKER_REPLICAS)"
+docker compose up -d --scale "backend-worker=$WORKER_REPLICAS"
+
+# Caddy mounts the Caddyfile and cert-renew mounts cert-loop.sh as bind
+# volumes, so file edits don't propagate into the running container until
+# it's recreated. compose up -d alone leaves them untouched (no config
+# diff). Force-recreate the two so any local change to those files takes
+# effect. Cost is ~2s of Caddy downtime, acceptable for a homelab.
+echo "==> force-recreate caddy + cert-renew (pick up bind-mount changes)"
+docker compose up -d --no-deps --force-recreate caddy cert-renew

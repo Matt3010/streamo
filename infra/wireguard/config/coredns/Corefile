@@ -1,0 +1,21 @@
+# CoreDNS config for the WireGuard internal resolver.
+#
+# Clients in the VPN use 10.13.13.1 as DNS (set via PEERDNS=auto on the
+# wireguard service). Names in /config/coredns/hosts resolve locally;
+# everything else is forwarded upstream via the container's resolv.conf.
+
+. {
+    loop
+    errors
+    health
+
+    # /config/coredns/hosts uses the standard /etc/hosts file format.
+    # Add lines there like "192.168.1.99 streamo.lan" to expose new
+    # hostnames inside the VPN. fallthrough means unmatched names go to
+    # the next plugin (forward) instead of NXDOMAIN.
+    hosts /config/coredns/hosts {
+        fallthrough
+    }
+
+    forward . /etc/resolv.conf
+}

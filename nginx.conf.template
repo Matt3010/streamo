@@ -15,6 +15,16 @@ upstream backend {
     server 127.0.0.1:3000;
 }
 
+# Preserve the original X-Forwarded-Proto when a trusted proxy is in front
+# (Caddy terminates TLS and connects to nginx on HTTP, so $scheme here is
+# always "http"). Without this map the backend's `req.secure` would be
+# false even for HTTPS requests from the client, and the cookie's Secure
+# flag would never be set.
+map $http_x_forwarded_proto $real_scheme {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
 server {
     listen 80;
     server_name localhost;
@@ -60,7 +70,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $real_scheme;
         proxy_read_timeout 1h;
         proxy_send_timeout 1h;
     }
@@ -74,7 +84,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $real_scheme;
     }
 
     # ---- Internal session check ----
@@ -86,7 +96,7 @@ server {
         proxy_set_header      Host             $host;
         proxy_set_header      X-Real-IP        $remote_addr;
         proxy_set_header      X-Forwarded-For  $remote_addr;
-        proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_set_header      X-Forwarded-Proto $real_scheme;
         # Forward the parent request's full URI so the backend can apply
         # short-lived signed-URL bypass (AirPlay/Cast) by reading
         # ?token=&expires= without seeing only "/auth-check" in this subrequest.
@@ -190,7 +200,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $real_scheme;
     }
 
     # ---- Core playback: referenced by playlist rewrite rules ----

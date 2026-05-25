@@ -1,8 +1,9 @@
 # WireGuard Access Stack
 
 This stack is intentionally separate from the Streamo app compose. It gives
-remote VPN access to the host or LAN. What a remote user can reach on the host
-is controlled by env, not by app-specific code.
+remote VPN access to the host or LAN. Once a peer is connected, it can reach
+any service on the host or `WIREGUARD_ALLOWED_IPS` subnet — no per-port
+restriction is enforced.
 
 ## Files
 
@@ -21,16 +22,11 @@ WIREGUARD_PORT=51820
 WIREGUARD_PEERS=phone,laptop
 WIREGUARD_ALLOWED_IPS=192.168.1.0/24
 TZ=Europe/Rome
-WIREGUARD_DNS=1.1.1.1
 WIREGUARD_SUBNET=10.13.13.0
 WIREGUARD_OWNER=matteoscanferla
 WIREGUARD_GROUP=matteoscanferla
 WIREGUARD_PUID=1000
 WIREGUARD_PGID=1000
-APPLY_HOST_FIREWALL=1
-HOST_IP=192.168.1.99
-ALLOWED_TCP_PORTS=22,5794
-WG_CONTAINER_IP=172.31.0.2
 ```
 
 Use `WIREGUARD_ALLOWED_IPS=192.168.1.99/32` if you only want the server
@@ -44,7 +40,7 @@ as a fallback for hosts where that username does not exist.
 
 ```bash
 cd infra/wireguard
-chmod +x scripts/up.sh scripts/peer.sh scripts/prepare-state.sh scripts/host-firewall.sh
+chmod +x scripts/up.sh scripts/peer.sh scripts/prepare-state.sh
 sudo ./scripts/up.sh
 ./scripts/peer.sh list
 ./scripts/peer.sh show phone
@@ -56,7 +52,6 @@ sudo ./scripts/up.sh
 
 - Reads `infra/wireguard/.env`
 - Tightens permissions on `infra/wireguard/data`
-- Applies host firewall rules if enabled
 - Starts or updates the WireGuard container
 
 `./scripts/peer.sh list`
@@ -85,24 +80,6 @@ sudo ./scripts/up.sh
 
 ### Maintenance commands
 
-These are support helpers. You normally do not need them in daily use because
-`up.sh` already prepares state and applies the firewall when enabled.
-
-`sudo ./scripts/host-firewall.sh apply`
-
-- Installs the host-side `iptables` chain for traffic coming from the WireGuard container
-- Allows only `HOST_IP` on the TCP ports listed in `ALLOWED_TCP_PORTS`
-- Drops every other port from remote VPN users to that host
-
-`sudo ./scripts/host-firewall.sh remove`
-
-- Removes the dedicated `iptables` chain and detaches it from `INPUT`
-- Use it if you want to disable the host-side restriction logic
-
-`sudo ./scripts/host-firewall.sh help`
-
-- Prints usage examples and the env variables used by the firewall helper
-
 `./scripts/prepare-state.sh`
 
 - Creates `infra/wireguard/data` if missing
@@ -112,28 +89,8 @@ These are support helpers. You normally do not need them in daily use because
 `./scripts/peer.sh revoke <peer>` also removes orphan peer folders that still
 exist on disk even if the peer is no longer present in `WIREGUARD_PEERS`.
 
-By default, `up.sh` automatically applies host firewall
-rules that allow only `HOST_IP` on the TCP ports listed in
-`ALLOWED_TCP_PORTS`, then starts the VPN stack.
-
-`ALLOWED_TCP_PORTS` has no default on purpose: set it explicitly in `.env`.
-
-If you prefer to manage the host firewall separately, set
-`APPLY_HOST_FIREWALL=0` and run the helper manually:
-
-```bash
-cd infra/wireguard
-sudo HOST_IP=192.168.1.99 ALLOWED_TCP_PORTS=22,5794 ./scripts/host-firewall.sh apply
-```
-
-This helper assumes the WireGuard container keeps its fixed Docker IP
-`172.31.0.2` and drops every other port from remote VPN users to `HOST_IP`.
-Use `./scripts/host-firewall.sh remove` to uninstall the chain.
-
 ## Notes
 
 - Forward only `${WIREGUARD_PORT}/udp` on the router.
 - Do not forward the app port if remote app access should remain VPN-only.
 - Keep one peer per physical device for clean revocation.
-- Persist the resulting iptables rules with your distro's preferred mechanism
-  (`iptables-persistent`, `netfilter-persistent`, firewalld, etc.).

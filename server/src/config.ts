@@ -8,8 +8,8 @@ export function isMediaType(value: unknown): value is MediaType {
 
 export const PORT = Number(process.env.PORT) || 3000;
 export const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
-export const COOKIE_SECURE =
-  process.env.COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production';
+// Cookie `Secure` is decided per-request in setAuthCookie using `req.secure`
+// (with `trust proxy: 1`), so there is no static env-driven flag here.
 export const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 export const TMDB_CACHE_TTL = 6 * 60 * 60; // 6 hours
 export const TMDB_REFRESH_INTERVAL_SECONDS = Number(process.env.TMDB_REFRESH_INTERVAL_SECONDS) || (30 * 60);

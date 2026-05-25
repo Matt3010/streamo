@@ -52,7 +52,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     background_pattern_data_url: row.background_pattern_data_url,
     is_admin: isAdmin
   };
-  setAuthCookie(res, user);
+  setAuthCookie(req, res, user);
   res.json({ user });
 });
 
