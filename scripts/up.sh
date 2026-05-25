@@ -82,3 +82,15 @@ docker compose up -d --scale "backend-worker=$WORKER_REPLICAS"
 # effect. Cost is ~2s of Caddy downtime, acceptable for a homelab.
 echo "==> force-recreate caddy + cert-renew (pick up bind-mount changes)"
 docker compose up -d --no-deps --force-recreate caddy cert-renew
+
+# Realign ownership/permissions on sensitive files. Containers can leave
+# fresh logs root-owned, and APP_OWNER_UID/GID may have changed since
+# last run. fix-perms.sh needs sudo for docker-owned files; if sudo
+# isn't available passwordless, skip with a hint (the user can run it
+# manually later).
+echo "==> realign ownership/permissions"
+if sudo -n true 2>/dev/null; then
+  sudo sh "$SCRIPT_DIR/fix-perms.sh"
+else
+  echo "  (skipped: sudo would prompt for password — run \`sudo sh ./scripts/fix-perms.sh\` separately)"
+fi
