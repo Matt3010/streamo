@@ -52,12 +52,6 @@ for log in auth.log nginx-playback-access.log playback.log provider-resolve.log;
   chmod 600 "$f"
 done
 
-echo "==> Removing stale SQLite leftovers from data/ (Postgres migration done)"
-rm -f "$PROJECT_ROOT/data/vixstream.db.bak" \
-      "$PROJECT_ROOT/data/vixstream.db.migrated" \
-      "$PROJECT_ROOT/data/vixstream.db-wal" \
-      "$PROJECT_ROOT/data/vixstream.db-shm"
-
 echo "==> Chowning data/ root dir (subdirs pg/ and warp/ stay container-owned)"
 chown "$OWNER_UID:$OWNER_GID" "$PROJECT_ROOT/data"
 
