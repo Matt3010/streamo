@@ -38,11 +38,70 @@ itself reachable over VPN, or `192.168.1.0/24` for the whole LAN.
 
 ```bash
 cd infra/wireguard
-chmod +x scripts/up.sh scripts/prepare-state.sh scripts/peer.sh scripts/host-firewall.sh
+chmod +x scripts/up.sh scripts/peer.sh scripts/prepare-state.sh scripts/host-firewall.sh
 sudo ./scripts/up.sh
 ./scripts/peer.sh list
 ./scripts/peer.sh show phone
 ```
+
+### Main commands
+
+`sudo ./scripts/up.sh`
+
+- Reads `infra/wireguard/.env`
+- Tightens permissions on `infra/wireguard/data`
+- Applies host firewall rules if enabled
+- Starts or updates the WireGuard container
+
+`./scripts/peer.sh list`
+
+- Prints peers currently declared in `WIREGUARD_PEERS`
+- Lists `peer_*` folders currently present on disk
+- Useful to spot drift between `.env` and generated state
+
+`./scripts/peer.sh show <peer>`
+
+- Asks the running container to print the config or QR output again for a peer
+- Use it when you need to re-import a profile on a device
+
+`./scripts/peer.sh regen <peer>`
+
+- Ensures the peer exists in `WIREGUARD_PEERS`
+- Deletes only that peer's generated folder
+- Restarts WireGuard so the peer config is regenerated
+
+`./scripts/peer.sh revoke <peer>`
+
+- Removes the peer from `WIREGUARD_PEERS` if it is still declared there
+- Deletes the local `data/peer_<peer>` folder
+- Also works for orphan peers that still exist on disk but are no longer in `.env`
+- Restarts WireGuard after cleanup
+
+### Maintenance commands
+
+These are support helpers. You normally do not need them in daily use because
+`up.sh` already prepares state and applies the firewall when enabled.
+
+`sudo ./scripts/host-firewall.sh apply`
+
+- Installs the host-side `iptables` chain for traffic coming from the WireGuard container
+- Allows only `HOST_IP` on the TCP ports listed in `ALLOWED_TCP_PORTS`
+- Drops every other port from remote VPN users to that host
+
+`sudo ./scripts/host-firewall.sh remove`
+
+- Removes the dedicated `iptables` chain and detaches it from `INPUT`
+- Use it if you want to disable the host-side restriction logic
+
+`sudo ./scripts/host-firewall.sh help`
+
+- Prints usage examples and the env variables used by the firewall helper
+
+`./scripts/prepare-state.sh`
+
+- Creates `infra/wireguard/data` if missing
+- Sets restrictive permissions on the generated state directory
+- Normally called automatically by `up.sh`; run it manually only if you need to fix permissions
 
 `./scripts/peer.sh revoke <peer>` also removes orphan peer folders that still
 exist on disk even if the peer is no longer present in `WIREGUARD_PEERS`.
