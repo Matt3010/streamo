@@ -1,3 +1,10 @@
+networks:
+  wg_access:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
 services:
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest
@@ -28,3 +35,6 @@ services:
       - "${WIREGUARD_PORT:-51820}:${WIREGUARD_PORT:-51820}/udp"
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      wg_access:
+        ipv4_address: 172.31.0.2

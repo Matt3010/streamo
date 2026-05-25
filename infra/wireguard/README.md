@@ -34,14 +34,28 @@ itself reachable over VPN, or `192.168.1.0/24` for the whole LAN.
 
 ```bash
 cd infra/wireguard
-chmod +x scripts/up.sh scripts/prepare-state.sh scripts/peer.sh
+chmod +x scripts/up.sh scripts/prepare-state.sh scripts/peer.sh scripts/host-firewall.sh
 ./scripts/up.sh
 ./scripts/peer.sh list
 ./scripts/peer.sh show phone
 ```
+
+If you want VPN users to reach only the app port and SSH on the host, apply
+the host firewall helper after the VPN is up:
+
+```bash
+cd infra/wireguard
+sudo HOST_IP=192.168.1.99 APP_PORT=5794 SSH_PORT=22 ./scripts/host-firewall.sh apply
+```
+
+This helper assumes the WireGuard container keeps its fixed Docker IP
+`172.31.0.2` and drops every other port from remote VPN users to `HOST_IP`.
+Use `./scripts/host-firewall.sh remove` to uninstall the chain.
 
 ## Notes
 
 - Forward only `${WIREGUARD_PORT}/udp` on the router.
 - Do not forward the app port if remote app access should remain VPN-only.
 - Keep one peer per physical device for clean revocation.
+- Persist the resulting iptables rules with your distro's preferred mechanism
+  (`iptables-persistent`, `netfilter-persistent`, firewalld, etc.).
