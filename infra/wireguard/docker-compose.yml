@@ -22,10 +22,12 @@ services:
       - SERVERPORT=${WIREGUARD_PORT:-51820}
       # Use one peer name per physical device so revocation stays granular.
       - PEERS=${WIREGUARD_PEERS:?WIREGUARD_PEERS must list at least one peer}
+      - PEERDNS=${WIREGUARD_DNS:-auto}
       - INTERNAL_SUBNET=${WIREGUARD_SUBNET:-10.13.13.0}
       # /32 sul Pi: clients tunnel only Pi-bound traffic; other LAN
       # devices stay reachable directly via WiFi so AirPlay/mDNS work.
-      - ALLOWEDIPS=${WIREGUARD_ALLOWED_IPS:-192.168.1.99/32}
+      # 10.13.13.0/24 added so DNS at 10.13.13.1 is reachable in tunnel.
+      - ALLOWEDIPS=${WIREGUARD_ALLOWED_IPS:-192.168.1.99/32, 10.13.13.0/24}
       - LOG_CONFS=true
     volumes:
       - ./data:/config

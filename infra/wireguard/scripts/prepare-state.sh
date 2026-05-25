@@ -26,6 +26,22 @@ umask 077
 mkdir -p "$WIREGUARD_DIR"
 chmod 700 "$WIREGUARD_DIR"
 
+# Render the CoreDNS hosts file from LAN_IP / LAN_HOSTNAMES in .env. This
+# is the source of truth for what names resolve inside the VPN — keeping
+# it env-driven so adding a hostname is a one-line edit.
+LAN_IP=${LAN_IP:-}
+LAN_HOSTNAMES=${LAN_HOSTNAMES:-}
+HOSTS_FILE="$WIREGUARD_DIR/coredns/hosts"
+
+mkdir -p "$WIREGUARD_DIR/coredns"
+{
+  echo "# Auto-generated from infra/wireguard/.env (LAN_IP, LAN_HOSTNAMES)."
+  echo "# Do not edit by hand — edit the env file and re-run scripts/up.sh."
+  if [ -n "$LAN_IP" ] && [ -n "$LAN_HOSTNAMES" ]; then
+    echo "$LAN_IP $LAN_HOSTNAMES"
+  fi
+} > "$HOSTS_FILE"
+
 # Prefer the explicit Linux user/group for this host. If they don't exist,
 # fall back to numeric ids so the stack stays portable.
 if ! chown -R "$WIREGUARD_OWNER:$WIREGUARD_GROUP" "$WIREGUARD_DIR" 2>/dev/null; then

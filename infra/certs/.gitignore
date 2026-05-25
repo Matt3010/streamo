@@ -1,3 +1,0 @@
-# All cert material is local-only; never commit private keys.
-*
-!.gitignore
