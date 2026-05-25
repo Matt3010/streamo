@@ -67,8 +67,6 @@ private key → base64 del file).
 | `WIREGUARD_HOST` | IP pubblico di casa o DDNS hostname |
 | `WIREGUARD_PEERS` | comma-separated lista dei device (es. `phone,laptop`) |
 | `WIREGUARD_OWNER` / `WIREGUARD_GROUP` | utente Linux che owna `data/` (es. `matteoscanferla`) |
-| `LAN_IP` | IP della LAN del Pi (es. `192.168.1.99`) |
-| `LAN_HOSTNAMES` | hostname privati da risolvere via VPN (es. `streamo.lan`) |
 
 ## 4. Permessi (one-shot)
 
@@ -85,7 +83,7 @@ imposta `0600` su `.env`, log, e chiavi private.
 # Streamo (app + caddy + cert-renew)
 ./scripts/up.sh
 
-# WireGuard (VPN + CoreDNS)
+# WireGuard (VPN)
 cd infra/wireguard
 sudo ./scripts/up.sh
 cd ../..
@@ -93,7 +91,7 @@ cd ../..
 
 Al primo avvio:
 - `cert-renew` daemon vede che `infra/certs/` è vuota → genera CA + cert
-  (firma `streamo.lan`)
+  (firma gli IP in `CERT_SAN`)
 - Il container WireGuard genera nuove chiavi server + peer (in `data/`)
 - Postgres parte vuoto, AUTO_MIGRATE crea le tabelle
 
@@ -139,8 +137,9 @@ Poi installalo come trusted root sul dispositivo:
 
 ### 6c. Verifica
 
-Connetti il device alla VPN, apri `https://streamo.lan` — deve mostrare
-l'app con lucchetto verde e senza warning.
+Connetti il device alla VPN, apri `https://192.168.1.99` — deve mostrare
+l'app con lucchetto verde e senza warning. Da LAN (senza VPN) puoi anche
+usare `http://192.168.1.99:7549` per AirPlay/Cast.
 
 ## 7. (opzionale) Ripristino dati
 

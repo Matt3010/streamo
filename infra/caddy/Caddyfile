@@ -9,17 +9,14 @@
 {
 	auto_https off
 	admin off
-	# Clients without SNI (raw IP) still pick up the streamo cert via this
-	# fallback. They'll get HTTP 421 from the site block below because IPs
-	# aren't matched anymore, but at least the TLS handshake completes
-	# instead of failing with an "internal error".
-	default_sni {$CADDY_DEFAULT_SNI:streamo.lan}
+	# Clients hitting https://IP send no SNI; Caddy needs a default name
+	# to pick the right cert. Any value in CERT_SAN works.
+	default_sni {$CADDY_DEFAULT_SNI:192.168.1.99}
 }
 
-# Hostnames accepted on :443. Driven by .env so adding a new host is a
-# one-line change (add to CADDY_HOSTS and CERT_SAN, then restart caddy
-# + cert-renew).
-{$CADDY_HOSTS:https://streamo.lan} {
+# Addresses accepted on :443. Driven by .env so adding a new IP/host
+# requires only editing CADDY_HOSTS (and CERT_SAN to cover the cert).
+{$CADDY_HOSTS:https://192.168.1.99, https://192.168.1.36} {
 	tls /certs/streamo.pem /certs/streamo-key.pem
 
 	# warp shares its network namespace with streamo (nginx on :80) and

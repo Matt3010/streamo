@@ -171,8 +171,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      - CADDY_HOSTS=${CADDY_HOSTS:-https://streamo.lan}
-      - CADDY_DEFAULT_SNI=${CADDY_DEFAULT_SNI:-streamo.lan}
+      - CADDY_HOSTS=${CADDY_HOSTS:-https://192.168.1.99, https://192.168.1.36}
+      - CADDY_DEFAULT_SNI=${CADDY_DEFAULT_SNI:-192.168.1.99}
     depends_on:
       warp:
         condition: service_healthy
@@ -193,7 +193,7 @@ services:
       - DAYS_THRESHOLD=${CERT_DAYS_THRESHOLD:-60}
       - CHECK_INTERVAL_SEC=${CERT_CHECK_INTERVAL_SEC:-86400}
       - CADDY_CONTAINER=${CERT_CADDY_CONTAINER:-streamingimmunity-caddy-1}
-      - CERT_SAN=${CERT_SAN:-streamo.lan localhost 127.0.0.1}
+      - CERT_SAN=${CERT_SAN:-192.168.1.99 192.168.1.36 localhost 127.0.0.1}
       - APP_OWNER_UID=${APP_OWNER_UID:-1000}
       - APP_OWNER_GID=${APP_OWNER_GID:-1000}
     # Invoke via `sh` so the script doesn't need a +x bit on the host
@@ -220,7 +220,7 @@ services:
       - ./infra/certs:/certs
     environment:
       - CAROOT=/certs
-      - CERT_SAN=${CERT_SAN:-streamo.lan localhost 127.0.0.1}
+      - CERT_SAN=${CERT_SAN:-192.168.1.99 192.168.1.36 localhost 127.0.0.1}
       - APP_OWNER_UID=${APP_OWNER_UID:-1000}
       - APP_OWNER_GID=${APP_OWNER_GID:-1000}
     command:
