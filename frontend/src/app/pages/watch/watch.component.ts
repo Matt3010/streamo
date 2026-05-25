@@ -5,6 +5,7 @@ import { faCommentDots, faThumbsUp } from '@fortawesome/free-solid-svg-icons';
 import { ConfirmModalComponent } from '../../ui/confirm-modal/confirm-modal.component';
 import { UiModalComponent } from '../../ui/modal/modal.component';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { UiPopoverComponent } from '../../ui/popover/popover.component';
 import { MediaRankBadgeComponent } from '../../ui/media-rank-badge/media-rank-badge.component';
 import { PendingButtonDirective } from '../../ui/pending-button.directive';
 import { SectionHeaderComponent } from '../../ui/section-header/section-header.component';
@@ -29,13 +30,10 @@ type ConfirmAction =
   | { type: 'clear-progress'; season?: number; episode?: number }
   | { type: 'refresh-provider' };
 
-const EXTRA_SEASON_VALUE = 'extras';
-type SeasonSelectValue = number | typeof EXTRA_SEASON_VALUE;
-
 @Component({
   selector: 'app-watch',
   standalone: true,
-  imports: [IconComponent, ConfirmModalComponent, UiModalComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiSurfaceDirective, UiSelectComponent],
+  imports: [IconComponent, ConfirmModalComponent, UiModalComponent, UiPopoverComponent, MediaRankBadgeComponent, PendingButtonDirective, SectionHeaderComponent, SectionRowComponent, UiButtonDirective, UiSurfaceDirective, UiSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="watch-page">
@@ -77,7 +75,7 @@ type SeasonSelectValue = number | typeof EXTRA_SEASON_VALUE;
               <span class="select-label">Stagione</span>
               <ui-select
                 [options]="seasonOptions()"
-                [value]="selectedSeasonView()"
+                [value]="player.selectedSeason()"
                 (valueChange)="onSeasonChange($event)" />
             </label>
           </div>
@@ -202,7 +200,7 @@ type SeasonSelectValue = number | typeof EXTRA_SEASON_VALUE;
               }
             </div>
           </div>
-        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0 && !episodesPlayDisabled() && !showTvExtras()) {
+        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0 && !episodesPlayDisabled()) {
           <div class="episode-grid-section">
             <div class="episode-grid-heading">
               <h3 class="episode-grid-title">Episodi</h3>
@@ -252,62 +250,17 @@ type SeasonSelectValue = number | typeof EXTRA_SEASON_VALUE;
           </div>
         }
 
-        @if (showExtrasSection()) {
-          <section class="watch-extras">
-            <div class="watch-extras-heading">
-              <h3 class="watch-extras-title">Extra</h3>
-              <p class="watch-extras-note">Tutti i video disponibili da TMDB per questo titolo.</p>
-            </div>
-            @if (activeExtraVideo()) {
-              <div class="watch-extra-player-block">
-                <div class="watch-extra-player-heading">
-                  <p class="watch-extra-player-kicker">{{ extraVideoKicker(activeExtraVideo()!) }}</p>
-                  <h4 class="watch-extra-player-title">{{ extraVideoTitle(activeExtraVideo()) }}</h4>
-                </div>
-                @if (extraVideoEmbedUrlSafe()) {
-                  <div class="player-wrapper watch-extra-player-wrapper">
-                    <iframe [src]="extraVideoEmbedUrlSafe()"
-                            allowfullscreen
-                            referrerpolicy="no-referrer"
-                            allow="autoplay; encrypted-media; fullscreen"></iframe>
-                  </div>
-                } @else {
-                  <div class="watch-extra-unavailable">
-                    <p>Questo video non supporta l'embed diretto.</p>
-                  </div>
-                }
-                <div class="player-actions watch-extra-player-actions">
-                  <button uiButton type="button" (click)="closeExtraVideo()">
-                    <app-icon name="close"></app-icon>
-                    <span>Chiudi extra</span>
-                  </button>
-                  @if (activeExtraVideoUrl()) {
-                    <button uiButton type="button" (click)="openExtraVideoInNewTab()">
-                      <app-icon name="play"></app-icon>
-                      <span>Apri nel sito originale</span>
-                    </button>
-                  }
-                </div>
-              </div>
-            }
-            <div class="watch-extras-grid">
-              @for (video of watchVideos(); track video.id + '-' + (video.key ?? '')) {
-                <article uiSurface="card" class="watch-extra-card" [class.is-active]="isActiveExtraVideo(video)">
-                  <div class="watch-extra-copy">
-                    <p class="watch-extra-kicker">{{ extraVideoKicker(video) }}</p>
-                    <h4 class="watch-extra-name">{{ extraVideoTitle(video) }}</h4>
-                    @if (extraVideoMeta(video)) {
-                      <p class="watch-extra-meta">{{ extraVideoMeta(video) }}</p>
-                    }
-                  </div>
-                  <button uiButton type="button" [disabled]="!canOpenExtraVideo(video)" (click)="openExtraVideo(video)">
-                    <app-icon name="play"></app-icon>
-                    <span>{{ extraVideoButtonLabel(video) }}</span>
-                  </button>
-                </article>
-              }
-            </div>
-          </section>
+        @if (!loading() && hasExtraVideos()) {
+          <div class="watch-extras-bar">
+            <button uiButton
+                    type="button"
+                    class="watch-extras-trigger"
+                    [attr.aria-expanded]="extrasPopoverOpen()"
+                    (click)="toggleExtrasPopover($event)">
+              <app-icon name="play-circle"></app-icon>
+              <span>{{ extrasButtonLabel() }}</span>
+            </button>
+          </div>
         }
 
         <div class="player-info">
@@ -444,6 +397,35 @@ type SeasonSelectValue = number | typeof EXTRA_SEASON_VALUE;
         </div>
       </ui-modal>
 
+      <ui-popover [(open)]="extrasPopoverOpen"
+                  [anchor]="extrasPopoverAnchor()"
+                  [width]="360"
+                  [preferredHeight]="320"
+                  icon="play-circle"
+                  title="Extra"
+                  [secondary]="extrasPopoverSecondary()"
+                  (closed)="closeExtrasPopover()">
+        <div class="watch-extras-popover">
+          @for (video of watchVideos(); track video.id + '-' + (video.key ?? '')) {
+            <button type="button"
+                    class="watch-extras-popover-item"
+                    [disabled]="!canOpenExtraVideo(video)"
+                    (click)="openExtraVideo(video)">
+              <span class="watch-extras-popover-copy">
+                <span class="watch-extras-popover-kicker">{{ extraVideoKicker(video) }}</span>
+                <span class="watch-extras-popover-title">{{ extraVideoTitle(video) }}</span>
+                @if (extraVideoMeta(video)) {
+                  <span class="watch-extras-popover-meta">{{ extraVideoMeta(video) }}</span>
+                }
+              </span>
+              <span class="watch-extras-popover-action">
+                {{ canOpenExtraVideo(video) ? 'Apri' : 'Non supportato' }}
+              </span>
+            </button>
+          }
+        </div>
+      </ui-popover>
+
       <ui-confirm-modal
         [(open)]="confirmModalOpen"
         [title]="confirmModalTitle()"
@@ -471,8 +453,8 @@ export class WatchComponent {
   protected readonly recommendationsLoading = signal(false);
   protected readonly reviews = signal<TmdbReview[]>([]);
   protected readonly reviewsLoading = signal(false);
-  protected readonly selectedSeasonView = signal<SeasonSelectValue | null>(null);
-  protected readonly activeExtraVideo = signal<TmdbVideo | null>(null);
+  protected readonly extrasPopoverOpen = signal(false);
+  protected readonly extrasPopoverAnchor = signal<HTMLElement | null>(null);
   protected readonly confirmModalOpen = signal(false);
   protected readonly watchlistPending = signal(false);
   protected readonly clearProgressPendingKey = signal<string | null>(null);
@@ -496,8 +478,6 @@ export class WatchComponent {
   // jumps between titles before the previous fetch resolves.
   private recommendationsSeq = 0;
   private reviewsSeq = 0;
-  private lastSelectedSeasonItemId = 0;
-
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
   readonly id = input.required<string>();
@@ -573,25 +553,13 @@ export class WatchComponent {
   protected readonly showNextButton = computed(() => this.player.nextEpisode() !== null);
   protected readonly watchVideos = computed<TmdbVideo[]>(() => sortTmdbVideos(this.player.currentItem()?.videos?.results ?? []));
   protected readonly hasExtraVideos = computed(() => this.watchVideos().length > 0);
-  protected readonly showTvExtras = computed(() => (
-    this.player.currentItemType() === 'tv'
-    && this.selectedSeasonView() === EXTRA_SEASON_VALUE
-    && this.hasExtraVideos()
-  ));
-  protected readonly showMovieExtras = computed(() => (
-    this.player.currentItemType() === 'movie' && this.hasExtraVideos()
-  ));
-  protected readonly showExtrasSection = computed(() => this.showTvExtras() || this.showMovieExtras());
-  protected readonly activeExtraVideoUrl = computed(() => {
-    const video = this.activeExtraVideo();
-    return video ? tmdbVideoUrl(video) : null;
+  protected readonly extrasButtonLabel = computed(() => {
+    const count = this.watchVideos().length;
+    return count === 1 ? '1 extra' : `${count} extra`;
   });
-  protected readonly extraVideoEmbedUrlSafe = computed<SafeResourceUrl | null>(() => {
-    const video = this.activeExtraVideo();
-    if (!video) return null;
-    const url = tmdbVideoEmbedUrl(video);
-    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null;
-  });
+  protected readonly extrasPopoverSecondary = computed(() => (
+    'Apre sempre il video sul sito esterno'
+  ));
 
   protected readonly canClearProgress = computed(() => {
     if (this.loading() || this.isUpcomingTitle()) return false;
@@ -814,34 +782,8 @@ export class WatchComponent {
 
     effect(() => {
       this.player.currentItem()?.id;
-      this.activeExtraVideo.set(null);
-    });
-
-    effect(() => {
-      const itemId = this.player.currentItem()?.id ?? 0;
-      const type = this.player.currentItemType();
-      const season = this.player.selectedSeason();
-      const current = this.selectedSeasonView();
-
-      if (type !== 'tv') {
-        this.lastSelectedSeasonItemId = 0;
-        if (current !== null) {
-          this.selectedSeasonView.set(null);
-        }
-        return;
-      }
-
-      if (this.lastSelectedSeasonItemId !== itemId) {
-        this.lastSelectedSeasonItemId = itemId;
-        if (current !== season) {
-          this.selectedSeasonView.set(season);
-        }
-        return;
-      }
-
-      if (current !== EXTRA_SEASON_VALUE && current !== season) {
-        this.selectedSeasonView.set(season);
-      }
+      this.extrasPopoverOpen.set(false);
+      this.extrasPopoverAnchor.set(null);
     });
 
     this.destroyRef.onDestroy(() => {
@@ -1039,21 +981,15 @@ export class WatchComponent {
     }
   }
 
-  protected readonly seasonOptions = computed<UiSelectOption<SeasonSelectValue>[]>(() => {
-    const options: UiSelectOption<SeasonSelectValue>[] = this.player.seasons().map((s) => ({
+  protected readonly seasonOptions = computed<UiSelectOption<number>[]>(() =>
+    this.player.seasons().map((s) => ({
       value: s,
       label: `Stagione ${s}`
-    }));
-    if (this.hasExtraVideos()) {
-      options.push({ value: EXTRA_SEASON_VALUE, label: 'EXTRA' });
-    }
-    return options;
-  });
+    }))
+  );
 
-  protected onSeasonChange(season: SeasonSelectValue | null): void {
+  protected onSeasonChange(season: number | null): void {
     if (season === null) return;
-    this.selectedSeasonView.set(season);
-    if (season === EXTRA_SEASON_VALUE) return;
     void this.player.changeSeason(season);
   }
 
@@ -1086,29 +1022,26 @@ export class WatchComponent {
     return !!tmdbVideoUrl(video);
   }
 
-  protected isActiveExtraVideo(video: TmdbVideo): boolean {
-    const active = this.activeExtraVideo();
-    return !!active && active.id === video.id && active.key === video.key;
+  protected toggleExtrasPopover(event: MouseEvent): void {
+    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    if (!anchor) return;
+    if (this.extrasPopoverOpen() && this.extrasPopoverAnchor() === anchor) {
+      this.closeExtrasPopover();
+      return;
+    }
+    this.extrasPopoverAnchor.set(anchor);
+    this.extrasPopoverOpen.set(true);
   }
 
-  protected extraVideoButtonLabel(video: TmdbVideo): string {
-    if (!this.canOpenExtraVideo(video)) return 'Video non apribile';
-    return this.isActiveExtraVideo(video) ? 'In riproduzione' : 'Apri nel player extra';
+  protected closeExtrasPopover(): void {
+    this.extrasPopoverOpen.set(false);
+    this.extrasPopoverAnchor.set(null);
   }
 
   protected openExtraVideo(video: TmdbVideo): void {
     const url = tmdbVideoUrl(video);
     if (!url) return;
-    this.activeExtraVideo.set(video);
-  }
-
-  protected closeExtraVideo(): void {
-    this.activeExtraVideo.set(null);
-  }
-
-  protected openExtraVideoInNewTab(): void {
-    const url = this.activeExtraVideoUrl();
-    if (!url) return;
+    this.extrasPopoverOpen.set(false);
     const opened = window.open(url, '_blank', 'noopener,noreferrer');
     if (!opened) {
       window.location.assign(url);
