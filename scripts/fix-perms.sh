@@ -55,4 +55,13 @@ done
 echo "==> Chowning data/ root dir (subdirs pg/ and warp/ stay container-owned)"
 chown "$OWNER_UID:$OWNER_GID" "$PROJECT_ROOT/data"
 
+echo "==> Ensuring scripts are executable (+x)"
+# Defensive: filesystems that don't preserve the exec bit (e.g. NTFS,
+# some SMB mounts, fresh archive extraction) would otherwise break
+# direct invocation like `./scripts/up.sh`.
+for d in "$PROJECT_ROOT/scripts" "$PROJECT_ROOT/infra/wireguard/scripts"; do
+  [ -d "$d" ] || continue
+  find "$d" -maxdepth 1 -name '*.sh' -type f -exec chmod +x {} \;
+done
+
 echo "Done."
