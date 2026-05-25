@@ -1,8 +1,8 @@
 # WireGuard Access Stack
 
 This stack is intentionally separate from the Streamo app compose. It gives
-remote VPN access to the host or LAN; once connected, you reach Streamo on its
-normal LAN bind such as `http://192.168.1.99:5794`.
+remote VPN access to the host or LAN. What a remote user can reach on the host
+is controlled by env, not by app-specific code.
 
 ## Files
 
@@ -27,8 +27,7 @@ WIREGUARD_PUID=1000
 WIREGUARD_PGID=1000
 APPLY_HOST_FIREWALL=1
 HOST_IP=192.168.1.99
-APP_PORT=5794
-SSH_PORT=22
+ALLOWED_TCP_PORTS=22,5794
 WG_CONTAINER_IP=172.31.0.2
 ```
 
@@ -46,15 +45,17 @@ sudo ./scripts/up.sh
 ```
 
 By default, `up.sh` automatically applies host firewall
-rules that allow only `HOST_IP:SSH_PORT` and `HOST_IP:APP_PORT` from remote
-VPN users, then starts the VPN stack.
+rules that allow only `HOST_IP` on the TCP ports listed in
+`ALLOWED_TCP_PORTS`, then starts the VPN stack.
+
+`ALLOWED_TCP_PORTS` has no default on purpose: set it explicitly in `.env`.
 
 If you prefer to manage the host firewall separately, set
 `APPLY_HOST_FIREWALL=0` and run the helper manually:
 
 ```bash
 cd infra/wireguard
-sudo HOST_IP=192.168.1.99 APP_PORT=5794 SSH_PORT=22 ./scripts/host-firewall.sh apply
+sudo HOST_IP=192.168.1.99 ALLOWED_TCP_PORTS=22,5794 ./scripts/host-firewall.sh apply
 ```
 
 This helper assumes the WireGuard container keeps its fixed Docker IP

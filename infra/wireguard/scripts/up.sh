@@ -34,6 +34,10 @@ if [ "${APPLY_HOST_FIREWALL:-1}" = "1" ]; then
     echo "APPLY_HOST_FIREWALL=1 requires running ./scripts/up.sh with sudo." >&2
     exit 1
   fi
+  if [ -z "${ALLOWED_TCP_PORTS:-}" ]; then
+    echo "ALLOWED_TCP_PORTS must be set in infra/wireguard/.env when APPLY_HOST_FIREWALL=1." >&2
+    exit 1
+  fi
   sh "$HOST_FIREWALL_SCRIPT" apply
 fi
 
