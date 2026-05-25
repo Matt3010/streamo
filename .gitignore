@@ -14,7 +14,7 @@ frontend/dist/
 frontend/.angular/
 frontend/out-tsc/
 
-# Local data (SQLite DB + WAL files)
+# Local data (databases, VPN state, runtime logs)
 data/
 
 # OS / IDE

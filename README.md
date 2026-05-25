@@ -1,24 +1,30 @@
 # Streamo
 
 Personal web app to browse movies and TV shows (TMDB catalog) and stream
-them. Angular frontend, Express + SQLite backend, both packaged as Docker
+them. Angular frontend, Express backend, both packaged as Docker
 containers behind an nginx reverse proxy.
 
 ## Stack
 
 - **Frontend**: Angular 21 standalone components + signals
-- **Backend**: Node 20 + Express + better-sqlite3
+- **Backend**: Node 22 + Express + TypeScript
+- **Database**: Postgres 16
+- **Queue**: Redis + BullMQ worker
 - **Reverse proxy**: nginx (template processed with `envsubst`)
 - **Catalog**: [TMDB](https://www.themoviedb.org/) (requires an API key)
 - **Player**: vixcloud.co iframe proxied through nginx
+- **App ingress**: LAN host bind
+- **Remote access**: separate stack under `infra/wireguard`
 
 ## Getting started
 
 Create a `.env` file at the project root with your TMDB API key:
 
-```
+``` 
 TMDB_API_KEY=your_key_here
 WORKER_REPLICAS=1
+APP_HOST_BIND=192.168.1.99
+APP_PORT=5794
 ```
 
 Then:
@@ -41,15 +47,22 @@ it explicitly:
 The script reads `.env` from the project root before starting, so
 `WORKER_REPLICAS` and the other variables can stay there.
 
-The app is available at `http://localhost:7549`. The backend (port 3000)
-is not exposed directly — nginx reverse-proxies `/api/auth`, `/api/user`,
-`/api/tmdb`, and `/player`.
+The backend (port 3000) is not exposed directly — nginx reverse-proxies
+`/api/auth`, `/api/user`, `/api/tmdb`, and `/player`.
+
+Ingress paths:
+
+- On your home LAN, open `http://192.168.1.99:5794` or whatever you set in
+  `APP_HOST_BIND` and `APP_PORT`.
+- From the Internet, use the separate WireGuard stack under
+  [`infra/wireguard`](./infra/wireguard/README.md), then open
+  `http://192.168.1.99:5794` over the VPN.
 
 If you are logged in as the super admin, the BullMQ dashboard is available at
 `/api/admin/queues`.
 
-State (users, watchlist, progress, history, JWT secret, TMDB cache) lives
-in `./data/vixstream.db` (volume mounted on the backend container; legacy filename kept to preserve existing data).
+State lives under `./data/`, including Postgres data, Redis-backed queues,
+WARP state, logs, and application metadata.
 
 ## Features
 
@@ -76,8 +89,10 @@ in `./data/vixstream.db` (volume mounted on the backend container; legacy filena
 
 ```
 .
-├── docker-compose.yml          # 2 services: backend + streamo (nginx)
+├── docker-compose.yml          # postgres, redis, warp, backend, worker, streamo
 ├── Dockerfile                  # multi-stage Angular + nginx build
+├── infra/
+│   └── wireguard/              # separate remote-access stack with its own .env
 ├── nginx.conf.template         # reverse proxy + streaming iframe
 ├── frontend/                   # Angular app
 │   └── src/app/
@@ -88,8 +103,7 @@ in `./data/vixstream.db` (volume mounted on the backend container; legacy filena
 │       ├── services/           # auth, tmdb, watchlist, history, progress, player
 │       └── models/             # type definitions
 ├── server/                     # Express backend
-│   ├── server.js               # routes
-│   └── db.js                   # SQLite schema + migrations
+│   └── src/                    # routes, services, DB access, worker
 └── data/                       # DB volume (gitignored)
 ```
 
@@ -114,61 +128,62 @@ The backend caches TV details (season/episode counts) for 24 hours in the
 
 ## Network architecture
 
-Inbound user traffic is fronted by a Cloudflare-proxied domain (TLS
-terminated at the CF edge). Outbound traffic from the backend / worker /
-streamo containers exits via a Cloudflare WARP tunnel running in a
-dedicated container — every other service joins its network namespace
-through `network_mode: "service:warp"`. postgres/redis stay on a private
-Docker bridge with static IPs (`172.30.0.0/24`) and never leave the host.
+Ingress is split in two:
+
+- Home LAN clients reach the app directly on the host bind, usually
+  `http://192.168.1.99:5794`
+- Internet clients use the separate WireGuard access stack and then reach
+  `http://192.168.1.99:5794` over the VPN
+
+Outbound traffic from the backend / worker / streamo containers exits via a
+Cloudflare WARP tunnel running in a dedicated container. postgres/redis stay
+on a private Docker bridge with static IPs (`172.30.0.0/24`) and never leave
+the host.
+
+- LAN peers can use the host bind directly without VPN
+- VPN peers get routed to your home LAN by the separate access stack
+- Streamo stays reachable on `http://192.168.1.99:5794` inside the VPN
 
 ```
 ═══════════════════════════════════════════════════════════════════
-INGRESS — external user → site
+INGRESS — LAN direct, Internet via VPN
 ═══════════════════════════════════════════════════════════════════
 
-  User browser
+  Home LAN device
        │
-       │ DNS: example.tld → <CF proxy IP>
-       ▼
-  ┌──────────────────────────────────────────┐
-  │  Cloudflare Edge (proxy mode)            │
-  │  • Terminates TLS  ➜  sees plaintext     │
-  │  • JWT cookie, API bodies, client IP     │
-  │  • Cache, WAF, rate-limit                │
-  └──────────────────────────────────────────┘
-       │ HTTPS (re-encrypted to origin)
-       ▼
-  ┌──────────────────────────────────────────┐
-  │  Home router (ISP NAT)                   │
-  │  Port forward 7549 → server LAN IP       │
-  └──────────────────────────────────────────┘
-       │
+       │ HTTP http://192.168.1.99:5794
        ▼
   ┌──────────────────────────────────────────┐
   │  Docker host                             │
+  │  host bind 192.168.1.99:5794 → warp:80   │
+  └──────────────────────────────────────────┘
+
+  Remote device on Internet
+       │
+       │ WireGuard tunnel (UDP 51820)
+       ▼
+  ┌──────────────────────────────────────────┐
+  │  Home router (ISP NAT)                   │
+  │  Port forward 51820/udp → server LAN IP  │
+  └──────────────────────────────────────────┘
+       │
+       ▼
+  ┌──────────────────────────────────────────┐
+  │  Docker host + separate access stack     │
   │                                          │
-  │  ╔════════════════════════════════════╗  │
-  │  ║ warp network namespace             ║  │
-  │  ║                                    ║  │
-  │  ║ host:7549 ──→ warp:80              ║  │
-  │  ║       │                            ║  │
-  │  ║       ▼                            ║  │
-  │  ║ ┌────────────────────────────────┐ ║  │
-  │  ║ │ streamo (nginx)                │ ║  │
-  │  ║ │ proxy_pass → 127.0.0.1:3000    │ ║  │
-  │  ║ └────────────────────────────────┘ ║  │
-  │  ║       │ loopback                   ║  │
-  │  ║       ▼                            ║  │
-  │  ║ ┌────────────────────────────────┐ ║  │
-  │  ║ │ backend (node, :3000)          │ ║  │
-  │  ║ └────────────────────────────────┘ ║  │
-  │  ╚════════════════════════════════════╝  │
-  │             │                            │
-  │             ▼ docker bridge `internal`   │
-  │  ┌──────────────────────────────────┐    │
-  │  │ postgres 172.30.0.11 (5432)      │    │
-  │  │ redis    172.30.0.10 (6379)      │    │
-  │  └──────────────────────────────────┘    │
+  │  infra/wireguard                         │
+  │       │ routes VPN peers to 192.168.1.0/24
+  │       ▼                                  │
+  │  host bind 192.168.1.99:5794 → warp:80   │
+  │       │ shared namespace                 │
+  │       ▼                                  │
+  │  streamo (nginx)                         │
+  │       │ proxy_pass → 127.0.0.1:3000      │
+  │       ▼                                  │
+  │  backend (node, :3000)                   │
+  │                                          │
+  │  postgres 172.30.0.11                    │
+  │  redis    172.30.0.10                    │
   └──────────────────────────────────────────┘
 
 

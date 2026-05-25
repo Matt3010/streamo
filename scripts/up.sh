@@ -58,7 +58,8 @@ if [ "$WORKER_REPLICAS" -le 0 ]; then
   exit 1
 fi
 
-set -- compose up -d --scale "backend-worker=$WORKER_REPLICAS"
+set -- compose
+set -- "$@" up -d --scale "backend-worker=$WORKER_REPLICAS"
 
 echo "Starting stack with backend-worker replicas=$WORKER_REPLICAS"
 cd "$PROJECT_ROOT"

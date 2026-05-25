@@ -1,0 +1,30 @@
+services:
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges=true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=${WIREGUARD_PUID:-1000}
+      - PGID=${WIREGUARD_PGID:-1000}
+      - TZ=${TZ:-UTC}
+      - SERVERURL=${WIREGUARD_HOST:?WIREGUARD_HOST must be set in .env}
+      - SERVERPORT=${WIREGUARD_PORT:-51820}
+      # Use one peer name per physical device so revocation stays granular.
+      - PEERS=${WIREGUARD_PEERS:?WIREGUARD_PEERS must list at least one peer}
+      - PEERDNS=${WIREGUARD_DNS:-1.1.1.1}
+      - INTERNAL_SUBNET=${WIREGUARD_SUBNET:-10.13.13.0}
+      # Route home-LAN traffic through the VPN; add more subnets comma-separated
+      # if you also want other private ranges reachable.
+      - ALLOWEDIPS=${WIREGUARD_ALLOWED_IPS:-192.168.1.0/24}
+      - LOG_CONFS=true
+    volumes:
+      - ./data:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "${WIREGUARD_PORT:-51820}:${WIREGUARD_PORT:-51820}/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
