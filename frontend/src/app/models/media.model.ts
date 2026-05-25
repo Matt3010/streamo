@@ -40,10 +40,25 @@ export interface TmdbItem {
   status?: string;
   genres?: TmdbGenre[];
   credits?: TmdbCredits;
+  videos?: TmdbVideoCollection;
   seasons?: TmdbSeasonInfo[];
   /** Latest episode that has already aired — used to compute "X usciti su Y". */
   last_episode_to_air?: TmdbEpisodeRef | null;
   next_episode_to_air?: TmdbEpisodeRef | null;
+}
+
+export interface TmdbVideoCollection {
+  results?: TmdbVideo[];
+}
+
+export interface TmdbVideo {
+  id: string;
+  key?: string;
+  name?: string;
+  site?: string;
+  type?: string;
+  official?: boolean;
+  published_at?: string;
 }
 
 export interface TmdbEpisodeRef {

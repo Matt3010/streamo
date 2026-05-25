@@ -16,7 +16,7 @@ export class TmdbService {
     const cached = this.cacheGet(key);
     if (cached) return cached;
 
-    const data = await apiGetJson<TmdbItem>(`${TMDB_BASE}/${type}/${tmdbId}?language=it-IT&append_to_response=credits`);
+    const data = await apiGetJson<TmdbItem>(`${TMDB_BASE}/${type}/${tmdbId}?language=it-IT&append_to_response=credits,videos`);
     if (data) this.cacheSet(key, data);
     return data;
   }

@@ -22,12 +22,15 @@ import { getFullReleaseStatusText, isTitleUpcoming } from '../../utils/media-rel
 import { getAiredEpisodesCount } from '../../utils/aired-episodes.util';
 import { runWithPending } from '../../utils/pending.util';
 import { formatTime, formatRuntime, progressKey } from '../../utils/time.util';
-import type { CardItem, MediaType, TmdbReview } from '../../models';
+import type { CardItem, MediaType, TmdbReview, TmdbVideo } from '../../models';
 
 type ConfirmAction =
   | { type: 'remove-watchlist' }
   | { type: 'clear-progress'; season?: number; episode?: number }
   | { type: 'refresh-provider' };
+
+const EXTRA_SEASON_VALUE = 'extras';
+type SeasonSelectValue = number | typeof EXTRA_SEASON_VALUE;
 
 @Component({
   selector: 'app-watch',
@@ -74,7 +77,7 @@ type ConfirmAction =
               <span class="select-label">Stagione</span>
               <ui-select
                 [options]="seasonOptions()"
-                [value]="player.selectedSeason()"
+                [value]="selectedSeasonView()"
                 (valueChange)="onSeasonChange($event)" />
             </label>
           </div>
@@ -199,7 +202,7 @@ type ConfirmAction =
               }
             </div>
           </div>
-        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0 && !episodesPlayDisabled()) {
+        } @else if (!isUpcomingTitle() && player.currentItemType() === 'tv' && player.episodes().length > 0 && !episodesPlayDisabled() && !showTvExtras()) {
           <div class="episode-grid-section">
             <div class="episode-grid-heading">
               <h3 class="episode-grid-title">Episodi</h3>
@@ -247,6 +250,64 @@ type ConfirmAction =
               }
             </div>
           </div>
+        }
+
+        @if (showExtrasSection()) {
+          <section class="watch-extras">
+            <div class="watch-extras-heading">
+              <h3 class="watch-extras-title">Extra</h3>
+              <p class="watch-extras-note">Tutti i video disponibili da TMDB per questo titolo.</p>
+            </div>
+            @if (activeExtraVideo()) {
+              <div class="watch-extra-player-block">
+                <div class="watch-extra-player-heading">
+                  <p class="watch-extra-player-kicker">{{ extraVideoKicker(activeExtraVideo()!) }}</p>
+                  <h4 class="watch-extra-player-title">{{ extraVideoTitle(activeExtraVideo()) }}</h4>
+                </div>
+                @if (extraVideoEmbedUrlSafe()) {
+                  <div class="player-wrapper watch-extra-player-wrapper">
+                    <iframe [src]="extraVideoEmbedUrlSafe()"
+                            allowfullscreen
+                            referrerpolicy="no-referrer"
+                            allow="autoplay; encrypted-media; fullscreen"></iframe>
+                  </div>
+                } @else {
+                  <div class="watch-extra-unavailable">
+                    <p>Questo video non supporta l'embed diretto.</p>
+                  </div>
+                }
+                <div class="player-actions watch-extra-player-actions">
+                  <button uiButton type="button" (click)="closeExtraVideo()">
+                    <app-icon name="close"></app-icon>
+                    <span>Chiudi extra</span>
+                  </button>
+                  @if (activeExtraVideoUrl()) {
+                    <button uiButton type="button" (click)="openExtraVideoInNewTab()">
+                      <app-icon name="play"></app-icon>
+                      <span>Apri nel sito originale</span>
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+            <div class="watch-extras-grid">
+              @for (video of watchVideos(); track video.id + '-' + (video.key ?? '')) {
+                <article uiSurface="card" class="watch-extra-card" [class.is-active]="isActiveExtraVideo(video)">
+                  <div class="watch-extra-copy">
+                    <p class="watch-extra-kicker">{{ extraVideoKicker(video) }}</p>
+                    <h4 class="watch-extra-name">{{ extraVideoTitle(video) }}</h4>
+                    @if (extraVideoMeta(video)) {
+                      <p class="watch-extra-meta">{{ extraVideoMeta(video) }}</p>
+                    }
+                  </div>
+                  <button uiButton type="button" [disabled]="!canOpenExtraVideo(video)" (click)="openExtraVideo(video)">
+                    <app-icon name="play"></app-icon>
+                    <span>{{ extraVideoButtonLabel(video) }}</span>
+                  </button>
+                </article>
+              }
+            </div>
+          </section>
         }
 
         <div class="player-info">
@@ -410,6 +471,8 @@ export class WatchComponent {
   protected readonly recommendationsLoading = signal(false);
   protected readonly reviews = signal<TmdbReview[]>([]);
   protected readonly reviewsLoading = signal(false);
+  protected readonly selectedSeasonView = signal<SeasonSelectValue | null>(null);
+  protected readonly activeExtraVideo = signal<TmdbVideo | null>(null);
   protected readonly confirmModalOpen = signal(false);
   protected readonly watchlistPending = signal(false);
   protected readonly clearProgressPendingKey = signal<string | null>(null);
@@ -433,6 +496,7 @@ export class WatchComponent {
   // jumps between titles before the previous fetch resolves.
   private recommendationsSeq = 0;
   private reviewsSeq = 0;
+  private lastSelectedSeasonItemId = 0;
 
   // Bound from route params/query via withComponentInputBinding().
   readonly type = input.required<MediaType>();
@@ -507,6 +571,27 @@ export class WatchComponent {
   });
 
   protected readonly showNextButton = computed(() => this.player.nextEpisode() !== null);
+  protected readonly watchVideos = computed<TmdbVideo[]>(() => sortTmdbVideos(this.player.currentItem()?.videos?.results ?? []));
+  protected readonly hasExtraVideos = computed(() => this.watchVideos().length > 0);
+  protected readonly showTvExtras = computed(() => (
+    this.player.currentItemType() === 'tv'
+    && this.selectedSeasonView() === EXTRA_SEASON_VALUE
+    && this.hasExtraVideos()
+  ));
+  protected readonly showMovieExtras = computed(() => (
+    this.player.currentItemType() === 'movie' && this.hasExtraVideos()
+  ));
+  protected readonly showExtrasSection = computed(() => this.showTvExtras() || this.showMovieExtras());
+  protected readonly activeExtraVideoUrl = computed(() => {
+    const video = this.activeExtraVideo();
+    return video ? tmdbVideoUrl(video) : null;
+  });
+  protected readonly extraVideoEmbedUrlSafe = computed<SafeResourceUrl | null>(() => {
+    const video = this.activeExtraVideo();
+    if (!video) return null;
+    const url = tmdbVideoEmbedUrl(video);
+    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null;
+  });
 
   protected readonly canClearProgress = computed(() => {
     if (this.loading() || this.isUpcomingTitle()) return false;
@@ -727,6 +812,38 @@ export class WatchComponent {
       void this.loadReviews(id, type);
     });
 
+    effect(() => {
+      this.player.currentItem()?.id;
+      this.activeExtraVideo.set(null);
+    });
+
+    effect(() => {
+      const itemId = this.player.currentItem()?.id ?? 0;
+      const type = this.player.currentItemType();
+      const season = this.player.selectedSeason();
+      const current = this.selectedSeasonView();
+
+      if (type !== 'tv') {
+        this.lastSelectedSeasonItemId = 0;
+        if (current !== null) {
+          this.selectedSeasonView.set(null);
+        }
+        return;
+      }
+
+      if (this.lastSelectedSeasonItemId !== itemId) {
+        this.lastSelectedSeasonItemId = itemId;
+        if (current !== season) {
+          this.selectedSeasonView.set(season);
+        }
+        return;
+      }
+
+      if (current !== EXTRA_SEASON_VALUE && current !== season) {
+        this.selectedSeasonView.set(season);
+      }
+    });
+
     this.destroyRef.onDestroy(() => {
       this.player.cleanup();
       this.background.clear();
@@ -922,13 +1039,80 @@ export class WatchComponent {
     }
   }
 
-  protected readonly seasonOptions = computed<UiSelectOption<number>[]>(() =>
-    this.player.seasons().map((s) => ({ value: s, label: `Stagione ${s}` }))
-  );
+  protected readonly seasonOptions = computed<UiSelectOption<SeasonSelectValue>[]>(() => {
+    const options: UiSelectOption<SeasonSelectValue>[] = this.player.seasons().map((s) => ({
+      value: s,
+      label: `Stagione ${s}`
+    }));
+    if (this.hasExtraVideos()) {
+      options.push({ value: EXTRA_SEASON_VALUE, label: 'EXTRA' });
+    }
+    return options;
+  });
 
-  protected onSeasonChange(season: number | null): void {
+  protected onSeasonChange(season: SeasonSelectValue | null): void {
     if (season === null) return;
+    this.selectedSeasonView.set(season);
+    if (season === EXTRA_SEASON_VALUE) return;
     void this.player.changeSeason(season);
+  }
+
+  protected extraVideoTitle(video: TmdbVideo | null | undefined): string {
+    const name = video?.name?.trim();
+    return name || 'Video extra';
+  }
+
+  protected extraVideoKicker(video: TmdbVideo): string {
+    const parts = [video.type?.trim() || 'Video'];
+    const site = video.site?.trim();
+    if (site) parts.push(site);
+    if (video.official) parts.push('Ufficiale');
+    return parts.join(' · ');
+  }
+
+  protected extraVideoMeta(video: TmdbVideo): string {
+    const raw = video.published_at;
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('it-IT', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(date);
+  }
+
+  protected canOpenExtraVideo(video: TmdbVideo): boolean {
+    return !!tmdbVideoUrl(video);
+  }
+
+  protected isActiveExtraVideo(video: TmdbVideo): boolean {
+    const active = this.activeExtraVideo();
+    return !!active && active.id === video.id && active.key === video.key;
+  }
+
+  protected extraVideoButtonLabel(video: TmdbVideo): string {
+    if (!this.canOpenExtraVideo(video)) return 'Video non apribile';
+    return this.isActiveExtraVideo(video) ? 'In riproduzione' : 'Apri nel player extra';
+  }
+
+  protected openExtraVideo(video: TmdbVideo): void {
+    const url = tmdbVideoUrl(video);
+    if (!url) return;
+    this.activeExtraVideo.set(video);
+  }
+
+  protected closeExtraVideo(): void {
+    this.activeExtraVideo.set(null);
+  }
+
+  protected openExtraVideoInNewTab(): void {
+    const url = this.activeExtraVideoUrl();
+    if (!url) return;
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      window.location.assign(url);
+    }
   }
 
   protected selectEpisode(episodeNumber: number): void {
@@ -972,3 +1156,62 @@ export class WatchComponent {
   }
 }
 
+function sortTmdbVideos(videos: readonly TmdbVideo[]): TmdbVideo[] {
+  return [...videos]
+    .filter((video) => !!video.id)
+    .sort((a, b) => {
+      const typeDiff = videoTypePriority(a.type) - videoTypePriority(b.type);
+      if (typeDiff !== 0) return typeDiff;
+      const officialDiff = Number(!!b.official) - Number(!!a.official);
+      if (officialDiff !== 0) return officialDiff;
+      const siteDiff = videoSitePriority(a.site) - videoSitePriority(b.site);
+      if (siteDiff !== 0) return siteDiff;
+      return videoPublishedTimestamp(b.published_at) - videoPublishedTimestamp(a.published_at);
+    });
+}
+
+function videoTypePriority(type?: string): number {
+  switch ((type ?? '').toLowerCase()) {
+    case 'trailer': return 0;
+    case 'teaser': return 1;
+    case 'behind the scenes': return 2;
+    case 'clip': return 3;
+    case 'featurette': return 4;
+    default: return 5;
+  }
+}
+
+function videoSitePriority(site?: string): number {
+  switch ((site ?? '').toLowerCase()) {
+    case 'youtube': return 0;
+    default: return 1;
+  }
+}
+
+function videoPublishedTimestamp(raw?: string): number {
+  if (!raw) return 0;
+  const ts = Date.parse(raw);
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function tmdbVideoEmbedUrl(video: TmdbVideo): string | null {
+  const key = video.key?.trim();
+  if (!key) return null;
+  switch ((video.site ?? '').toLowerCase()) {
+    case 'youtube':
+      return `https://www.youtube.com/embed/${encodeURIComponent(key)}`;
+    default:
+      return null;
+  }
+}
+
+function tmdbVideoUrl(video: TmdbVideo): string | null {
+  const key = video.key?.trim();
+  if (!key) return null;
+  switch ((video.site ?? '').toLowerCase()) {
+    case 'youtube':
+      return `https://www.youtube.com/watch?v=${encodeURIComponent(key)}`;
+    default:
+      return null;
+  }
+}
