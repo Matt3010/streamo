@@ -25,6 +25,11 @@ WIREGUARD_DNS=1.1.1.1
 WIREGUARD_SUBNET=10.13.13.0
 WIREGUARD_PUID=1000
 WIREGUARD_PGID=1000
+APPLY_HOST_FIREWALL=1
+HOST_IP=192.168.1.99
+APP_PORT=5794
+SSH_PORT=22
+WG_CONTAINER_IP=172.31.0.2
 ```
 
 Use `WIREGUARD_ALLOWED_IPS=192.168.1.99/32` if you only want the server
@@ -35,13 +40,17 @@ itself reachable over VPN, or `192.168.1.0/24` for the whole LAN.
 ```bash
 cd infra/wireguard
 chmod +x scripts/up.sh scripts/prepare-state.sh scripts/peer.sh scripts/host-firewall.sh
-./scripts/up.sh
+sudo ./scripts/up.sh
 ./scripts/peer.sh list
 ./scripts/peer.sh show phone
 ```
 
-If you want VPN users to reach only the app port and SSH on the host, apply
-the host firewall helper after the VPN is up:
+By default, `up.sh` automatically applies host firewall
+rules that allow only `HOST_IP:SSH_PORT` and `HOST_IP:APP_PORT` from remote
+VPN users, then starts the VPN stack.
+
+If you prefer to manage the host firewall separately, set
+`APPLY_HOST_FIREWALL=0` and run the helper manually:
 
 ```bash
 cd infra/wireguard
