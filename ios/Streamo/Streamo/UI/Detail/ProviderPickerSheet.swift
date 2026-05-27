@@ -83,7 +83,7 @@ private struct CandidateRow: View {
     private var thumb: some View {
         Group {
             if let url = TmdbImage.url(poster, .w92) {
-                AsyncImage(url: url) { $0.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemBackground) }
+                PosterImage(url: url, contentMode: .fill)
             } else {
                 ZStack { Color(.secondarySystemBackground); Image(systemName: "film").foregroundStyle(.secondary) }
             }

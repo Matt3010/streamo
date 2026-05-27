@@ -10,12 +10,36 @@ struct SearchView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
 
+    // Recent searches, persisted (web `streamo.search.recent`, max 8).
+    @AppStorage("recentSearches") private var recentsRaw = "[]"
+    private let recentsLimit = 8
+
+    private var recents: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(recentsRaw.utf8))) ?? []
+    }
+    private func setRecents(_ arr: [String]) {
+        let data = (try? JSONEncoder().encode(arr)) ?? Data("[]".utf8)
+        recentsRaw = String(decoding: data, as: UTF8.self)
+    }
+    private func addRecent(_ term: String) {
+        let t = term.trimmingCharacters(in: .whitespaces)
+        guard t.count >= 2 else { return }
+        var arr = recents.filter { $0.lowercased() != t.lowercased() }   // dedupe, case-insensitive
+        arr.insert(t, at: 0)                                             // newest first
+        setRecents(Array(arr.prefix(recentsLimit)))
+    }
+    private func removeRecent(_ term: String) { setRecents(recents.filter { $0 != term }) }
+
     var body: some View {
         let _ = library.version
         ScrollView {
             if query.trimmingCharacters(in: .whitespaces).count < 2 {
-                ContentUnavailableView("Cerca film e serie TV", systemImage: "magnifyingglass")
-                    .padding(.top, 80)
+                if recents.isEmpty {
+                    ContentUnavailableView("Cerca film e serie TV", systemImage: "magnifyingglass")
+                        .padding(.top, 80)
+                } else {
+                    recentsView
+                }
             } else if isSearching && results.isEmpty {
                 LazyVGrid(columns: columns, spacing: 18) {
                     ForEach(0..<9, id: \.self) { _ in SkeletonCard() }
@@ -34,7 +58,8 @@ struct SearchView: View {
             }
         }
         .navigationTitle("Cerca")
-        .searchable(text: $query, prompt: "Titolo, serie, film…")
+        .searchable(text: $query, prompt: "Titolo, film o serie TV")
+        .onSubmit(of: .search) { addRecent(query) }
         .confirmationDialog("Rimuovere \(pendingRemove?.displayTitle ?? "questo titolo") dalla lista?",
                             isPresented: Binding(get: { pendingRemove != nil }, set: { if !$0 { pendingRemove = nil } }),
                             titleVisibility: .visible) {
@@ -55,6 +80,43 @@ struct SearchView: View {
             guard !Task.isCancelled, current == query else { return }
             await runSearch(current)
         }
+    }
+
+    private var recentsView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Recenti").font(.headline)
+                Spacer()
+                Button("Cancella") { setRecents([]) }
+                    .font(.subheadline).foregroundStyle(Theme.red)
+            }
+            .padding(.horizontal).padding(.top, 12).padding(.bottom, 6)
+
+            ForEach(recents, id: \.self) { term in
+                Button {
+                    addRecent(term)   // move to front
+                    query = term      // re-runs via the debounce task
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                        Text(term).foregroundStyle(.primary).lineLimit(1)
+                        Spacer()
+                        Button { removeRecent(term) } label: {
+                            Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal).padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                Divider().padding(.leading, 44)
+            }
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.10)))
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     @ViewBuilder

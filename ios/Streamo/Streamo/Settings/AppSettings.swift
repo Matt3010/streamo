@@ -19,7 +19,14 @@ final class AppSettings {
         static let notifyNewSeason = "notifyNewSeason"
         static let notifyResumeReminder = "notifyResumeReminder"
         static let foldersEnabled = "foldersEnabled"
+        static let autoDeleteWatchedDownloads = "autoDeleteWatchedDownloads"
+        static let accentR = "accentR"
+        static let accentG = "accentG"
+        static let accentB = "accentB"
     }
+
+    /// Default accent — the web brand red #E50914.
+    static let defaultAccent = (r: 0.898, g: 0.035, b: 0.078)
 
     /// Default baked from the existing web `.env`. Overridable in Settings.
     static let defaultTmdbApiKey = "42b62dc72918b626d8ea3e33c35e16a6"
@@ -60,6 +67,17 @@ final class AppSettings {
         didSet { defaults.set(foldersEnabled, forKey: Keys.foldersEnabled) }
     }
 
+    /// Auto-delete a downloaded title once it's been watched (≥90%).
+    var autoDeleteWatchedDownloads: Bool {
+        didSet { defaults.set(autoDeleteWatchedDownloads, forKey: Keys.autoDeleteWatchedDownloads) }
+    }
+
+    /// User-chosen accent colour, stored as RGB components (0…1). `Theme.red`
+    /// reads these, so changing them re-tints the whole app.
+    var accentR: Double { didSet { defaults.set(accentR, forKey: Keys.accentR) } }
+    var accentG: Double { didSet { defaults.set(accentG, forKey: Keys.accentG) } }
+    var accentB: Double { didSet { defaults.set(accentB, forKey: Keys.accentB) } }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.tmdbApiKey = defaults.string(forKey: Keys.tmdbApiKey) ?? Self.defaultTmdbApiKey
@@ -70,6 +88,10 @@ final class AppSettings {
         self.notifyNewSeason = defaults.object(forKey: Keys.notifyNewSeason) as? Bool ?? true
         self.notifyResumeReminder = defaults.object(forKey: Keys.notifyResumeReminder) as? Bool ?? true
         self.foldersEnabled = defaults.object(forKey: Keys.foldersEnabled) as? Bool ?? true
+        self.autoDeleteWatchedDownloads = defaults.object(forKey: Keys.autoDeleteWatchedDownloads) as? Bool ?? false
+        self.accentR = defaults.object(forKey: Keys.accentR) as? Double ?? Self.defaultAccent.r
+        self.accentG = defaults.object(forKey: Keys.accentG) as? Double ?? Self.defaultAccent.g
+        self.accentB = defaults.object(forKey: Keys.accentB) as? Double ?? Self.defaultAccent.b
     }
 
     var hasTmdbKey: Bool { !tmdbApiKey.trimmingCharacters(in: .whitespaces).isEmpty }

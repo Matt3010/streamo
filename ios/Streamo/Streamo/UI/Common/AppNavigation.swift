@@ -12,9 +12,14 @@ final class AppNavigation {
 
     enum Tab: Hashable { case home, search, watchlist, history, settings }
 
+    /// The global utility pages reachable from the toolbar on every tab.
+    enum SheetRoute: String, Identifiable { case history, settings, downloads; var id: String { rawValue } }
+
     var selectedTab: Tab = .home
     /// Navigation path for the Home tab's stack (used for deep links).
     var homePath: [MediaRef] = []
+    /// Currently presented utility sheet (History / Settings / Downloads).
+    var presentedSheet: SheetRoute?
 
     private init() {}
 

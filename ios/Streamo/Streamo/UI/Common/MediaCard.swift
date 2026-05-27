@@ -172,11 +172,7 @@ struct MediaCard: View {
     private var poster_view: some View {
         Group {
             if let url = TmdbImage.url(poster, .w342) {
-                AsyncImage(url: url) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Color(.secondarySystemBackground)
-                }
+                PosterImage(url: url, contentMode: .fill)
             } else {
                 ZStack {
                     Color(.secondarySystemBackground)

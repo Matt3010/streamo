@@ -89,7 +89,22 @@ struct PlayerScreen: View {
             }
             await controller.start(request)
         }
-        .onDisappear { controller.teardown() }
+        .onDisappear {
+            let req = controller.activeRequest
+            controller.teardown()   // flushes final progress before we check
+            autoDeleteIfWatched(req)
+        }
+    }
+
+    /// If enabled, delete a download once it's been watched (≥90%). Runs after
+    /// teardown so the player no longer references the file.
+    private func autoDeleteIfWatched(_ req: PlaybackRequest?) {
+        guard AppSettings.shared.autoDeleteWatchedDownloads, let r = req,
+              let p = library.progress(r.tmdbId, r.mediaType, season: r.season, episode: r.episode),
+              p.duration > 0, p.position >= p.duration * TVLogic.watchedThreshold,
+              let dl = library.download(r.tmdbId, r.mediaType, season: r.season, episode: r.episode),
+              dl.state == .completed else { return }
+        DownloadManager.shared.delete(dl)
     }
 
     /// Blurred title artwork shown behind the loading / error states.

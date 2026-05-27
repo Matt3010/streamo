@@ -657,11 +657,7 @@ private struct EpisodeCard: View {
     @ViewBuilder
     private var still: some View {
         if let url = TmdbImage.url(episode.stillPath, .w300) {
-            AsyncImage(url: url) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Rectangle().fill(Color(.secondarySystemBackground))
-            }
+            PosterImage(url: url, contentMode: .fill)
         } else {
             ZStack {
                 Color(.secondarySystemBackground)

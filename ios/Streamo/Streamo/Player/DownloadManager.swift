@@ -191,7 +191,8 @@ final class DownloadManager: NSObject {
                 }
                 return
             }
-            if let entry { library.setDownloadState(entry, .failed, error: nsError.localizedDescription) }
+            // Don't surface the raw system error — the UI shows a generic message.
+            if let entry { library.setDownloadState(entry, .failed) }
         } else if let entry, let rel = pendingLocations[k] {
             library.completeDownload(entry, localPath: rel)
             liveProgress[k] = 1

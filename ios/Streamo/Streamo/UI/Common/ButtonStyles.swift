@@ -44,7 +44,8 @@ struct BrandButtonStyle: ButtonStyle {
             case .primary:
                 LinearGradient(colors: [Theme.red, Theme.redBright], startPoint: .topLeading, endPoint: .bottomTrailing)
             case .secondary:
-                Color.white.opacity(configuration.isPressed ? 0.10 : 0.06)
+                Rectangle().fill(.ultraThinMaterial)
+                    .overlay(Color.white.opacity(configuration.isPressed ? 0.10 : 0))
             }
         }
     }

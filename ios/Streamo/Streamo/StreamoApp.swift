@@ -43,8 +43,10 @@ struct StreamoApp: App {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
 
         // SwiftUI's pull-to-refresh spinner ignores `.tint`; color it via the
-        // UIKit appearance proxy so it shows the brand red instead of grey.
-        UIRefreshControl.appearance().tintColor = UIColor(Theme.red)
+        // UIKit appearance proxy so it shows the accent instead of grey.
+        let a = AppSettings.shared
+        UIRefreshControl.appearance().tintColor =
+            UIColor(red: a.accentR, green: a.accentG, blue: a.accentB, alpha: 1)
     }
 
     var body: some Scene {

@@ -12,6 +12,8 @@ struct RootTabView: View {
             NavigationStack(path: Binding(get: { nav.homePath }, set: { nav.homePath = $0 })) {
                 HomeView()
                     .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
+                    .toolbarActions()
+                    .background { AmbientBackground() }
             }
             .tabItem { Label("Home", systemImage: "house.fill") }
             .tag(AppNavigation.Tab.home)
@@ -19,6 +21,8 @@ struct RootTabView: View {
             NavigationStack {
                 SearchView()
                     .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
+                    .toolbarActions()
+                    .background { AmbientBackground() }
             }
             .tabItem { Label("Cerca", systemImage: "magnifyingglass") }
             .tag(AppNavigation.Tab.search)
@@ -26,23 +30,28 @@ struct RootTabView: View {
             NavigationStack {
                 WatchlistView()
                     .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
+                    .toolbarActions()
+                    .background { AmbientBackground() }
             }
             .tabItem { Label("Lista", systemImage: "bookmark.fill") }
             .tag(AppNavigation.Tab.watchlist)
-
-            NavigationStack {
-                HistoryView()
-                    .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
-            }
-            .tabItem { Label("Cronologia", systemImage: "clock.fill") }
-            .tag(AppNavigation.Tab.history)
-
-            NavigationStack {
-                SettingsView()
-            }
-            .tabItem { Label("Impostazioni", systemImage: "gearshape.fill") }
-            .tag(AppNavigation.Tab.settings)
         }
+        .sheet(item: Binding(get: { nav.presentedSheet }, set: { nav.presentedSheet = $0 })) { route in
+            NavigationStack {
+                Group {
+                    switch route {
+                    case .history:
+                        HistoryView().navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
+                    case .settings:
+                        SettingsView()
+                    case .downloads:
+                        DownloadsView()
+                    }
+                }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Chiudi") { nav.presentedSheet = nil } } }
+            }
+        }
+        .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
         .safeAreaInset(edge: .top) {
             if !network.isOnline { OfflineBanner() }
         }

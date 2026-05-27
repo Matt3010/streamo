@@ -17,7 +17,7 @@ struct FilterChip: View {
                 .padding(.vertical, compact ? 6 : 9)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(selected ? Theme.red : Color.clear)
+                        .fill(selected ? AnyShapeStyle(Theme.red) : AnyShapeStyle(.ultraThinMaterial))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)

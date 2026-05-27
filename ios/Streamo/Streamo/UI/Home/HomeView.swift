@@ -11,7 +11,6 @@ struct HomeView: View {
     @State private var pendingAction: (() -> Void)?
     @State private var continueItems: [Library.ContinueRow] = []
     @State private var continueLoaded = false
-    @State private var showDownloads = false
 
     private func askConfirm(_ message: String, _ actionLabel: String, _ action: @escaping () -> Void) {
         confirmMessage = message
@@ -34,7 +33,7 @@ struct HomeView: View {
                             Button("Riprova") { Task { await model.reload() } }
                                 .buttonStyle(BrandButtonStyle(kind: .primary, fullWidth: false))
                         } else {
-                            Button("Apri Impostazioni") { nav.selectedTab = .settings }
+                            Button("Apri Impostazioni") { nav.presentedSheet = .settings }
                                 .buttonStyle(BrandButtonStyle(kind: .primary, fullWidth: false))
                         }
                     }
@@ -51,18 +50,6 @@ struct HomeView: View {
         }
         .navigationTitle("Streamo")
         .toolbarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showDownloads = true } label: { Image(systemName: "arrow.down.circle") }
-                    .accessibilityLabel("Download")
-            }
-        }
-        .sheet(isPresented: $showDownloads) {
-            NavigationStack {
-                DownloadsView()
-                    .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Chiudi") { showDownloads = false } } }
-            }
-        }
         // No full-page spinner: the section rows render skeleton cards while
         // loading (web is skeleton-first, never a centered spinner).
         .task { await model.loadIfNeeded() }
@@ -160,7 +147,8 @@ struct HomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.10)))
             .padding(.horizontal)
         }
     }
