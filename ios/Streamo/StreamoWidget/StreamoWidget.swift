@@ -93,7 +93,7 @@ struct StreamoWidgetView: View {
                     .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
             }
 
-            if item.percent > 0 {
+            if Int(item.percent.rounded()) > 0 {
                 HStack(spacing: 8) {
                     progress(item.percent)
                     Text("\(Int(item.percent.rounded()))%")

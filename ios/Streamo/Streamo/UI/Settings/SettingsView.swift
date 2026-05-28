@@ -1,10 +1,17 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable private var settings = AppSettings.shared
     @Environment(Library.self) private var library
     @State private var confirmRecalc = false
+    @State private var backupFile: BackupFile?
+    @State private var showImporter = false
+    @State private var pendingRestoreData: Data?
+    @State private var confirmRestoreStep1 = false
+    @State private var confirmRestoreStep2 = false
+    @State private var restoreError: String?
 
     var body: some View {
         Form {
@@ -71,25 +78,21 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Notifiche", isOn: $settings.notificationsEnabled)
-                    .onChange(of: settings.notificationsEnabled) { _, on in
-                        if on { Task { await NotificationService.shared.requestAuthorizationIfNeeded() } }
-                    }
-                if settings.notificationsEnabled {
-                    Toggle("Nuovi episodi", isOn: $settings.notifyNewEpisodes)
-                    Toggle("Nuove stagioni", isOn: $settings.notifyNewSeason)
-                    Toggle("Promemoria ripresa", isOn: $settings.notifyResumeReminder)
-                }
-            } footer: {
-                Text("Avvisi per nuovi episodi/stagioni dei titoli in lista e promemoria per riprendere ciò che hai lasciato a metà.")
-            }
-
-            Section {
                 Button("Ricalcola libreria") { confirmRecalc = true }
             } header: {
                 Text("Manutenzione")
             } footer: {
                 Text("Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla cronologia e dalla lista, e aggiorna le statistiche e \"Continua a guardare\".")
+            }
+
+            Section {
+                Button("Crea backup") { createBackup() }
+                Button("Ripristina da backup") { showImporter = true }
+                    .foregroundStyle(.red)
+            } header: {
+                Text("Backup")
+            } footer: {
+                Text("Il backup esporta lista, cronologia, progressi, segnalibri e impostazioni in un file .json che puoi salvare dove vuoi. Il ripristino sostituisce TUTTI i dati attuali. I file dei download non sono inclusi: andranno riscaricati.")
             }
 
             Section {
@@ -109,6 +112,77 @@ struct SettingsView: View {
         } message: {
             Text("Elimina i progressi dei titoli non più in cronologia né in lista. La cronologia e la lista non vengono toccate.")
         }
+        .sheet(item: $backupFile) { file in
+            ShareSheet(items: [file.url])
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+            handleImport(result)
+        }
+        // First confirmation: explain consequences.
+        .confirmationDialog("Ripristinare dal backup?",
+                            isPresented: $confirmRestoreStep1, titleVisibility: .visible) {
+            Button("Continua", role: .destructive) { confirmRestoreStep2 = true }
+            Button("Annulla", role: .cancel) { pendingRestoreData = nil }
+        } message: {
+            Text("Tutti i dati attuali (lista, cronologia, progressi, download) verranno sostituiti con quelli del backup. L'operazione non è reversibile.")
+        }
+        // Second confirmation: final go/no-go.
+        .confirmationDialog("Confermi il ripristino?",
+                            isPresented: $confirmRestoreStep2, titleVisibility: .visible) {
+            Button("Ripristina", role: .destructive) { performRestore() }
+            Button("Annulla", role: .cancel) { pendingRestoreData = nil }
+        } message: {
+            Text("Sei sicuro? I dati attuali andranno persi definitivamente.")
+        }
+        .alert("Backup non valido", isPresented: Binding(
+            get: { restoreError != nil }, set: { if !$0 { restoreError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreError ?? "")
+        }
+    }
+
+    // MARK: - Backup / Restore
+
+    private func createBackup() {
+        guard let data = library.exportBackup() else {
+            ToastCenter.shared.show("Backup non riuscito")
+            return
+        }
+        let stamp = ISO8601DateFormatter().string(from: .now)
+            .replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("streamo-backup-\(stamp).json")
+        do {
+            try data.write(to: url, options: .atomic)
+            backupFile = BackupFile(url: url)
+        } catch {
+            ToastCenter.shared.show("Backup non riuscito")
+        }
+    }
+
+    private func handleImport(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        // iOS hands back a security-scoped URL — we must claim access to read it.
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else {
+            restoreError = "Impossibile leggere il file selezionato."
+            return
+        }
+        pendingRestoreData = data
+        confirmRestoreStep1 = true
+    }
+
+    private func performRestore() {
+        guard let data = pendingRestoreData else { return }
+        pendingRestoreData = nil
+        if library.restoreBackup(from: data) {
+            ToastCenter.shared.show("Libreria ripristinata")
+        } else {
+            restoreError = "Il file non sembra un backup di Streamo valido."
+        }
     }
 
     /// Whether a preset matches the current accent (within a small tolerance).
@@ -123,4 +197,21 @@ struct SettingsView: View {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         return v
     }
+}
+
+/// Wraps a temporary backup file URL so the share sheet can be triggered via
+/// `.sheet(item:)` (which needs an Identifiable payload).
+private struct BackupFile: Identifiable {
+    let url: URL
+    var id: String { url.lastPathComponent }
+}
+
+/// Thin UIActivityViewController bridge: SwiftUI's `ShareLink` doesn't expose
+/// `Data` cleanly as a named .json file, so we go through UIKit.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

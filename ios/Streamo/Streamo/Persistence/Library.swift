@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import Observation
+import WidgetKit
 
 /// On-device library: watchlist / progress / history backed by SwiftData.
 /// Replaces the web app's /user/* endpoints. Lives on the main actor and is
@@ -9,7 +10,7 @@ import Observation
 @MainActor
 @Observable
 final class Library {
-    private let context: ModelContext
+    let context: ModelContext
     /// Increment to nudge observers after a write.
     private(set) var version = 0
 
@@ -17,20 +18,27 @@ final class Library {
         self.context = context
     }
 
-    private func touch() { version &+= 1 }
-    private func save() { try? context.save(); touch(); updateWidgetSnapshot() }
+    func touch() { version &+= 1 }
+    func save() {
+        try? context.save()
+        touch()
+        Task { await updateWidgetSnapshot() }
+    }
 
     /// Mirror the current "Continua a guardare" list into the App Group so the
-    /// widget can render it. Cheap UserDefaults write.
-    private func updateWidgetSnapshot() {
-        let items = continueWatching(limit: 10).map { p in
+    /// widget can render it. Uses the same rows as Home, so a finished TV
+    /// episode can advance the widget to the next unstarted episode at 0%.
+    private func updateWidgetSnapshot() async {
+        let rows = await continueRows(limit: 10)
+        let items = rows.map { p in
             WidgetShared.ContinueItem(
-                tmdbId: p.tmdbId, mediaTypeRaw: p.mediaTypeRaw, title: p.title ?? "—",
+                tmdbId: p.tmdbId, mediaTypeRaw: p.mediaType.rawValue, title: p.title ?? "—",
                 poster: p.poster ?? p.backdrop, season: p.season, episode: p.episode,
                 percent: p.duration > 0 ? min(100, max(0, p.position / p.duration * 100)) : 0
             )
         }
         WidgetShared.saveContinue(items)
+        WidgetCenter.shared.reloadTimelines(ofKind: "StreamoContinue")
     }
 
     // MARK: - Watchlist

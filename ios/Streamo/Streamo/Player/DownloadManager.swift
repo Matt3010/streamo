@@ -23,6 +23,9 @@ final class DownloadManager: NSObject {
     @ObservationIgnored private var library: Library?
     @ObservationIgnored private var activeTask: AVAssetDownloadTask?
     @ObservationIgnored private var pendingLocations: [String: String] = [:]
+    /// Keys whose task was cancelled by `delete(_:)`: when the delegate surfaces
+    /// the partial .movpkg location we remove it from disk instead of stashing.
+    @ObservationIgnored private var pendingDeletions: Set<String> = []
     /// Per-download retry counter for the token-refresh recovery.
     @ObservationIgnored private var retryCount: [String: Int] = [:]
     @ObservationIgnored private let maxRetries = 3
@@ -85,12 +88,19 @@ final class DownloadManager: NSObject {
     /// Cancel + delete a download (and its on-disk media).
     func delete(_ entry: DownloadEntry) {
         let k = key(for: entry)
+        // Wipe whatever's already on disk for this key: the completed .movpkg
+        // (if any) and any partial bundle reported by the delegate so far.
+        if let rel = entry.localPath { try? FileManager.default.removeItem(at: Self.fileURL(rel)) }
+        if let rel = pendingLocations[k] { try? FileManager.default.removeItem(at: Self.fileURL(rel)) }
         if k == activeKey {
+            // The active task hasn't reported its partial location yet — flag
+            // the key so the delegate removes it when it does, instead of just
+            // stashing it in `pendingLocations`. cancel() doesn't free the .movpkg.
+            pendingDeletions.insert(k)
             activeTask?.cancel()
             activeTask = nil
             activeKey = nil
         }
-        if let rel = entry.localPath { try? FileManager.default.removeItem(at: Self.fileURL(rel)) }
         liveProgress[k] = nil
         pendingLocations[k] = nil
         library?.removeDownload(entry)
@@ -200,6 +210,7 @@ final class DownloadManager: NSObject {
         }
 
         pendingLocations[k] = nil
+        pendingDeletions.remove(k)
         if activeKey == k {
             activeKey = nil
             activeTask = nil
@@ -220,7 +231,13 @@ extension DownloadManager: AVAssetDownloadDelegate {
         let rel = location.relativePath
         let key = assetDownloadTask.taskDescription
         MainActor.assumeIsolated {
-            if let key { pendingLocations[key] = rel }
+            guard let key else { return }
+            if pendingDeletions.contains(key) {
+                try? FileManager.default.removeItem(at: Self.fileURL(rel))
+                pendingDeletions.remove(key)
+            } else {
+                pendingLocations[key] = rel
+            }
         }
     }
 

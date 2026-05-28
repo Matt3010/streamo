@@ -130,7 +130,8 @@ export class CardComponent {
   protected readonly progressPct = computed(() => {
     const it = this.item();
     if (typeof it.duration !== 'number' || typeof it.position !== 'number' || it.duration <= 0) return null;
-    return Math.min(100, (it.position / it.duration) * 100);
+    const pct = Math.min(100, (it.position / it.duration) * 100);
+    return Math.round(pct) > 0 ? pct : null;
   });
 
   protected readonly progressPctRounded = computed(() => {

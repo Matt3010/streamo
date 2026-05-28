@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import UserNotifications
 import UIKit
 
 @main
@@ -18,29 +17,16 @@ struct StreamoApp: App {
             ProviderMapping.self,
             DownloadEntry.self,
         ])
-        // Prefer iCloud (CloudKit) sync when the capability is configured;
-        // otherwise fall back to a local-only store so the app still works.
-        // To enable sync: add the iCloud → CloudKit capability in Xcode
-        // (Signing & Capabilities) with your team. No code change needed.
-        let container: ModelContainer
-        if let cloud = try? ModelContainer(
-            for: schema,
-            configurations: [ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)]
-        ) {
-            container = cloud
-        } else if let local = try? ModelContainer(
+        // Local-only store. Sync across devices is not used; the user can
+        // back up / restore the library manually from Settings.
+        guard let container = try? ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)]
-        ) {
-            container = local
-        } else {
+        ) else {
             fatalError("Impossibile creare il ModelContainer")
         }
         modelContainer = container
         _library = State(initialValue: Library(context: container.mainContext))
-
-        // Route notification taps into the app (deep link to the title).
-        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
 
         // SwiftUI's pull-to-refresh spinner ignores `.tint`; color it via the
         // UIKit appearance proxy so it shows the accent instead of grey.

@@ -191,7 +191,8 @@ struct DetailView: View {
             .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
         }
 
-        if ref.mediaType == .movie, let p = movieResume(item), p.duration > 0 {
+        if ref.mediaType == .movie, let p = movieResume(item), p.duration > 0,
+           Int(Format.percent(position: p.position, duration: p.duration).rounded()) > 0 {
             ProgressView(value: Format.percent(position: p.position, duration: p.duration), total: 100)
                 .tint(Theme.red)
             HStack {
@@ -455,19 +456,23 @@ struct DetailView: View {
     }
 
     /// Build a playback request, seeding `startAt` from saved progress when the
-    /// title isn't already finished (≥90%).
+    /// title isn't already finished (≥90%). If a completed download exists for
+    /// this coordinate, route it through the local `.movpkg` so the title plays
+    /// in airplane mode too — otherwise we'd hit the provider needlessly.
     private func request(for item: TmdbItem, season: Int, episode: Int) -> PlaybackRequest {
-        let p = library.progress(item.id, ref.mediaType, season: season, episode: episode)
+        let s = ref.mediaType == .tv ? season : 0
+        let e = ref.mediaType == .tv ? episode : 0
+        let p = library.progress(item.id, ref.mediaType, season: s, episode: e)
         var startAt = 0.0
         if let p, p.position > 10, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
             startAt = p.position
         }
+        let offlineURL: URL? = library.download(item.id, ref.mediaType, season: s, episode: e)
+            .flatMap { DownloadManager.shared.offlineURL(for: $0) }
         return PlaybackRequest(
             tmdbId: item.id, mediaType: ref.mediaType, title: item.displayTitle, releaseDate: item.primaryDate,
             poster: item.posterPath, backdrop: item.backdropPath,
-            season: ref.mediaType == .tv ? season : 0,
-            episode: ref.mediaType == .tv ? episode : 0,
-            startAt: startAt
+            season: s, episode: e, startAt: startAt, offlineURL: offlineURL
         )
     }
 

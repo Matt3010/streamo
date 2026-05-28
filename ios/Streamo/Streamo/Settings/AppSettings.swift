@@ -14,10 +14,6 @@ final class AppSettings {
         static let tmdbApiKey = "tmdbApiKey"
         static let autoplayNext = "autoplayNext"
         static let providerLocale = "providerLocale"
-        static let notificationsEnabled = "notificationsEnabled"
-        static let notifyNewEpisodes = "notifyNewEpisodes"
-        static let notifyNewSeason = "notifyNewSeason"
-        static let notifyResumeReminder = "notifyResumeReminder"
         static let foldersEnabled = "foldersEnabled"
         static let autoDeleteWatchedDownloads = "autoDeleteWatchedDownloads"
         static let accentR = "accentR"
@@ -47,21 +43,6 @@ final class AppSettings {
         didSet { defaults.set(providerLocale, forKey: Keys.providerLocale) }
     }
 
-    /// Master switch for local notifications. The two sub-toggles below only
-    /// take effect when this is on.
-    var notificationsEnabled: Bool {
-        didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
-    }
-    var notifyNewEpisodes: Bool {
-        didSet { defaults.set(notifyNewEpisodes, forKey: Keys.notifyNewEpisodes) }
-    }
-    var notifyNewSeason: Bool {
-        didSet { defaults.set(notifyNewSeason, forKey: Keys.notifyNewSeason) }
-    }
-    var notifyResumeReminder: Bool {
-        didSet { defaults.set(notifyResumeReminder, forKey: Keys.notifyResumeReminder) }
-    }
-
     /// Whether the watchlist groups titles into folders.
     var foldersEnabled: Bool {
         didSet { defaults.set(foldersEnabled, forKey: Keys.foldersEnabled) }
@@ -83,10 +64,6 @@ final class AppSettings {
         self.tmdbApiKey = defaults.string(forKey: Keys.tmdbApiKey) ?? Self.defaultTmdbApiKey
         self.autoplayNext = defaults.object(forKey: Keys.autoplayNext) as? Bool ?? true
         self.providerLocale = defaults.string(forKey: Keys.providerLocale) ?? "it"
-        self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? false
-        self.notifyNewEpisodes = defaults.object(forKey: Keys.notifyNewEpisodes) as? Bool ?? true
-        self.notifyNewSeason = defaults.object(forKey: Keys.notifyNewSeason) as? Bool ?? true
-        self.notifyResumeReminder = defaults.object(forKey: Keys.notifyResumeReminder) as? Bool ?? true
         self.foldersEnabled = defaults.object(forKey: Keys.foldersEnabled) as? Bool ?? true
         self.autoDeleteWatchedDownloads = defaults.object(forKey: Keys.autoDeleteWatchedDownloads) as? Bool ?? false
         self.accentR = defaults.object(forKey: Keys.accentR) as? Double ?? Self.defaultAccent.r

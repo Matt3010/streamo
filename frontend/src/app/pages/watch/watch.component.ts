@@ -616,7 +616,8 @@ export class WatchComponent {
     if (this.player.currentItemType() !== 'movie') return null;
     const progress = this.player.resumeProgress();
     if (!progress || progress.duration <= 0) return null;
-    return Math.min(100, Math.max(0, (progress.position / progress.duration) * 100));
+    const pct = Math.min(100, Math.max(0, (progress.position / progress.duration) * 100));
+    return Math.round(pct) > 0 ? pct : null;
   });
 
   protected readonly movieProgressLabel = computed(() => {
@@ -1064,7 +1065,8 @@ export class WatchComponent {
   protected episodeProgress(episodeNumber: number): number {
     const p = this.player.seriesProgress().get(progressKey(this.player.selectedSeason(), episodeNumber));
     if (!p || p.duration <= 0) return 0;
-    return Math.min(100, Math.max(0, (p.position / p.duration) * 100));
+    const pct = Math.min(100, Math.max(0, (p.position / p.duration) * 100));
+    return Math.round(pct) > 0 ? pct : 0;
   }
 
   protected episodeProgressLabel(ep: { episode_number: number; runtime?: number | null }): string {

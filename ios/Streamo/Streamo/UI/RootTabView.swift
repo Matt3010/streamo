@@ -57,16 +57,8 @@ struct RootTabView: View {
         }
         .toastOverlay()
         .task { DownloadManager.shared.configure(library: library) }
-        .task { await NotificationService.shared.refresh(library: library) }
         .onChange(of: scenePhase) { _, phase in
-            switch phase {
-            case .active:
-                Task { await NotificationService.shared.refresh(library: library) }
-            case .background:
-                WidgetCenter.shared.reloadAllTimelines()
-            default:
-                break
-            }
+            if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
         }
         .onOpenURL { url in handleDeepLink(url) }
     }

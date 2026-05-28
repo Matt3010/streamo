@@ -92,7 +92,7 @@ struct SearchView: View {
             }
             .padding(.horizontal).padding(.top, 12).padding(.bottom, 6)
 
-            ForEach(recents, id: \.self) { term in
+            ForEach(Array(recents.enumerated()), id: \.element) { index, term in
                 Button {
                     addRecent(term)   // move to front
                     query = term      // re-runs via the debounce task
@@ -110,7 +110,9 @@ struct SearchView: View {
                     .padding(.horizontal).padding(.vertical, 12)
                 }
                 .buttonStyle(.plain)
-                Divider().padding(.leading, 44)
+                if index < recents.count - 1 {
+                    Divider().padding(.leading, 44)
+                }
             }
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

@@ -35,8 +35,7 @@ final class WatchlistEnrichment {
     /// watchlist read-path + maybeAutoCompleteWatchlist:
     /// - done with no baseline → back-fill the mark to the current aired count.
     /// - done → in_progress when new episodes aired beyond the mark.
-    /// - todo/in_progress → done once caught up with every aired episode
-    ///   (fires the "serie completata" notification on the transition).
+    /// - todo/in_progress → done once caught up with every aired episode.
     private func autoFlipStatus(_ e: WatchlistEntry, aired: Int, baseline: Int, doneAired: Int, library: Library) {
         guard aired > 0 else { return }
         if e.status == .done {
@@ -47,7 +46,6 @@ final class WatchlistEnrichment {
             }
         } else if baseline >= aired {           // todo/in_progress and caught up
             library.setWatchlistStatus(e.tmdbId, e.mediaType, .done, doneAiredEpisodes: aired)
-            NotificationService.shared.notifySeriesCompleted(tmdbId: e.tmdbId, title: e.title)
         }
     }
 }
