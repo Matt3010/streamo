@@ -74,7 +74,8 @@ struct HomeView: View {
                             NavigationLink(value: MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType,
                                                            resumeSeason: entry.season, resumeEpisode: entry.episode)) {
                                 MediaCard(card: CardItem(continue: entry), showProgress: true, showWatchStatus: true,
-                                          library: library, width: MediaCard.rowWidth(hSizeClass))
+                                          library: library, width: MediaCard.continueWidth(hSizeClass),
+                                          aspectRatio: 16.0 / 9.0)
                             }
                             .buttonStyle(.plain)
                             .contextMenu {

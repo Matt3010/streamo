@@ -7,6 +7,7 @@ struct CardItem: Identifiable, Equatable {
     let mediaType: MediaType
     let title: String
     var poster: String?
+    var backdrop: String?
     var year: String?
     var rating: String?
     var season: Int?
@@ -57,6 +58,7 @@ struct CardItem: Identifiable, Equatable {
         self.mediaType = r.mediaType
         self.title = r.title ?? "Senza titolo"
         self.poster = r.poster
+        self.backdrop = r.backdrop
         if r.mediaType == .tv { self.season = r.season; self.episode = r.episode }
         self.position = r.position
         self.duration = r.duration
@@ -92,6 +94,12 @@ struct MediaCard: View {
         sizeClass == .regular ? 168 : 124
     }
 
+    /// Wide cards for "Continua a guardare": same approximate height as the
+    /// compact poster row, but with a landscape image instead of a cropped poster.
+    static func continueWidth(_ sizeClass: UserInterfaceSizeClass?) -> CGFloat {
+        sizeClass == .regular ? 300 : 220
+    }
+
     var card: CardItem
     var showProgress: Bool = false
     /// When true, computes/shows the red "watch status" line (continue/watchlist).
@@ -100,6 +108,9 @@ struct MediaCard: View {
     var library: Library? = nil
     /// Fixed width for horizontal rows; nil → fill the grid cell.
     var width: CGFloat? = nil
+    /// Visual ratio for the card surface. Default is a poster; continue cards
+    /// pass a landscape ratio and prefer the backdrop artwork.
+    var aspectRatio: CGFloat = 2.0 / 3.0
     /// When true (history completed TV), the grey line shows "Riprendi da S/E"
     /// instead of a release note — port of the history `resume_text`.
     var wantsResumeHint: Bool = false
@@ -113,6 +124,10 @@ struct MediaCard: View {
     // MARK: Display values (stored value, falling back to fetched detail)
 
     private var poster: String? { (card.poster?.isEmpty == false ? card.poster : nil) ?? detail?.posterPath }
+    private var backdrop: String? { (card.backdrop?.isEmpty == false ? card.backdrop : nil) ?? detail?.backdropPath }
+    private var imagePath: String? {
+        aspectRatio > 1 ? (backdrop ?? poster) : poster
+    }
     private var year: String? { card.year ?? detail?.year.map(String.init) }
     private var rating: String? {
         if let r = card.rating { return r }
@@ -159,7 +174,7 @@ struct MediaCard: View {
                 actions.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(6)
             }
         }
-        .aspectRatio(2.0/3.0, contentMode: .fit)
+        .aspectRatio(aspectRatio, contentMode: .fit)
         .frame(width: width)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.08)))
@@ -171,7 +186,7 @@ struct MediaCard: View {
     @ViewBuilder
     private var poster_view: some View {
         Group {
-            if let url = TmdbImage.url(poster, .w342) {
+            if let url = imageURL {
                 PosterImage(url: url, contentMode: .fill)
             } else {
                 ZStack {
@@ -184,6 +199,13 @@ struct MediaCard: View {
         .clipped()
         .saturation(isUpcoming ? 0.82 : 1)
         .brightness(isUpcoming ? -0.12 : 0)
+    }
+
+    private var imageURL: URL? {
+        if aspectRatio > 1, backdrop != nil {
+            return TmdbImage.backdropURL(backdrop, .w780)
+        }
+        return TmdbImage.posterURL(imagePath, .w342)
     }
 
     private var bottomGradient: some View {
@@ -226,9 +248,10 @@ struct MediaCard: View {
         // Only hit the network when something's actually missing.
         let needYearRating = card.year == nil || card.rating == nil
         let needPoster = card.poster == nil || card.poster?.isEmpty == true
+        let needBackdrop = aspectRatio > 1 && (card.backdrop == nil || card.backdrop?.isEmpty == true)
         let needStatus = showWatchStatus && card.watchStatus == nil
         let needResumeHint = wantsResumeHint && card.mediaType == .tv
-        guard needYearRating || needPoster || needStatus || needResumeHint else { return }
+        guard needYearRating || needPoster || needBackdrop || needStatus || needResumeHint else { return }
 
         guard let item = try? await TMDBClient.shared.details(id: card.tmdbId, type: card.mediaType) else { return }
         detail = item
