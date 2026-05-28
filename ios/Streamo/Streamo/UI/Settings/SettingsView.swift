@@ -12,6 +12,8 @@ struct SettingsView: View {
     @State private var confirmRestoreStep1 = false
     @State private var confirmRestoreStep2 = false
     @State private var restoreError: String?
+    @State private var lanIP: String?
+    @State private var lanPort: UInt16 = 0
 
     var body: some View {
         Form {
@@ -85,6 +87,8 @@ struct SettingsView: View {
                 Text("Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla cronologia e dalla lista, e aggiorna le statistiche e \"Continua a guardare\".")
             }
 
+            lanShareSection
+
             Section {
                 Button("Crea backup") { createBackup() }
                 Button("Ripristina da backup") { showImporter = true }
@@ -102,6 +106,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Impostazioni")
+        .task { refreshLANInfo() }
         .confirmationDialog("Ricalcolare la libreria?", isPresented: $confirmRecalc, titleVisibility: .visible) {
             Button("Ricalcola", role: .destructive) {
                 let n = library.recalculate()
@@ -141,6 +146,95 @@ struct SettingsView: View {
         } message: {
             Text(restoreError ?? "")
         }
+    }
+
+    // MARK: - LAN sharing
+
+    @ViewBuilder
+    private var lanShareSection: some View {
+        Section {
+            Toggle("Permetti accesso LAN", isOn: Binding(
+                get: { settings.lanShareEnabled },
+                set: { on in
+                    LANShareCoordinator.setEnabled(on)
+                    if on { refreshLANInfo() }
+                }
+            ))
+            if settings.lanShareEnabled {
+                Picker("Spegnimento automatico", selection: $settings.lanShareAutoOffMinutes) {
+                    Text("Mai").tag(0)
+                    Text("15 minuti").tag(15)
+                    Text("30 minuti").tag(30)
+                    Text("1 ora").tag(60)
+                    Text("2 ore").tag(120)
+                    Text("4 ore").tag(240)
+                }
+                .onChange(of: settings.lanShareAutoOffMinutes) { _, _ in
+                    LANShareCoordinator.applyAutoOff()
+                }
+                if let deadline = settings.lanShareDeadline, settings.lanShareAutoOffMinutes > 0 {
+                    LabeledContent("Si spegne", value: Self.relativeShutoff(deadline))
+                        .foregroundStyle(.secondary)
+                }
+                if let ip = lanIP, lanPort != 0 {
+                    let url = "http://\(ip):\(lanPort)/\(settings.lanToken)/"
+                    LabeledContent("IP del telefono", value: ip)
+                    LabeledContent("Porta", value: String(lanPort))
+                    VStack(spacing: 10) {
+                        QRCodeView(payload: url, size: 200)
+                        Text(url)
+                            .font(.system(.footnote, design: .monospaced))
+                            .textSelection(.enabled)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    Button("Copia URL") {
+                        UIPasteboard.general.string = url
+                        ToastCenter.shared.show("URL copiato")
+                    }
+                    Button("Genera nuovo token") {
+                        settings.rotateLANToken()
+                        LocalHLSServer.shared.setLANConfig(enabled: true, token: settings.lanToken)
+                        ToastCenter.shared.show("Token aggiornato — i vecchi link non funzioneranno più")
+                    }
+                    .foregroundStyle(.red)
+                } else {
+                    Text("Connetti il telefono al Wi-Fi per ottenere un indirizzo LAN.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("Riprova") { refreshLANInfo() }
+                }
+            }
+        } header: {
+            Text("Condivisione LAN")
+        } footer: {
+            Text("Quando attiva, i download sono accessibili dal PC sulla stessa Wi-Fi aprendo il link in VLC o nel browser. Il server resta raggiungibile anche con telefono bloccato grazie a un audio silenzioso in background — vedrai l'indicatore audio nel Centro di Controllo e ci sarà un piccolo consumo di batteria extra. Lo spegnimento automatico serve a evitare di lasciarla attiva tutta la notte. Lascia spento fuori casa per non esporre i file su reti sconosciute.")
+        }
+    }
+
+    /// "Tra 1 ora e 59 minuti" / "tra 2 ore" / "tra 30 minuti". We avoid
+    /// `RelativeDateTimeFormatter` because it floors to a single unit (a 2h
+    /// deadline read a second later would show "tra 1 ora"), and pair the
+    /// localised `DateComponentsFormatter` with our own "tra " prefix.
+    private static let lanShutoffFormatter: DateComponentsFormatter = {
+        let f = DateComponentsFormatter()
+        f.allowedUnits = [.hour, .minute]
+        f.unitsStyle = .full
+        f.zeroFormattingBehavior = .dropAll
+        return f
+    }()
+
+    private static func relativeShutoff(_ date: Date) -> String {
+        let interval = date.timeIntervalSinceNow
+        guard interval > 0 else { return "Adesso" }
+        guard let s = lanShutoffFormatter.string(from: interval) else { return "—" }
+        return "tra \(s)"
+    }
+
+    private func refreshLANInfo() {
+        lanIP = LANAddress.currentWiFiIPv4()
+        // Best-effort: the server warms up at launch, so wait briefly here.
+        lanPort = LocalHLSServer.shared.waitForReady(timeout: 0.5)
     }
 
     // MARK: - Backup / Restore

@@ -61,7 +61,76 @@ final class DownloadManager {
                 break
             }
         }
+        refreshCatalog()
+        installLibraryObserver()
+        installLANProgressBridge()
         startNextIfIdle()
+    }
+
+    /// Forward LAN-reported playback positions into `Library.saveProgress` so
+    /// "Continua a guardare", history, and the resume marker on the next
+    /// page-open match what was watched from the PC.
+    private func installLANProgressBridge() {
+        LocalHLSServer.shared.setProgressHandler { [weak self] report in
+            Task { @MainActor in
+                guard let self, let library = self.library else { return }
+                let type = MediaType(rawValue: report.mediaType) ?? .movie
+                library.saveProgress(
+                    tmdbId: report.tmdbId,
+                    type: type,
+                    season: report.season,
+                    episode: report.episode,
+                    position: report.position,
+                    duration: report.duration,
+                    title: report.title,
+                    poster: report.poster,
+                    backdrop: report.backdrop
+                )
+                // saveProgress bumps library.version → the observer rearm
+                // below picks it up and refreshes the LAN catalog.
+            }
+        }
+    }
+
+    /// Re-arm a one-shot observation on `library.version`: every time the
+    /// library mutates (in-app playback, LAN report, manual edits) we push a
+    /// fresh catalog snapshot so the next browser play.html load sees the
+    /// up-to-date resume position.
+    private func installLibraryObserver() {
+        guard let library else { return }
+        withObservationTracking {
+            _ = library.version
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.refreshCatalog()
+                self?.installLibraryObserver()
+            }
+        }
+    }
+
+    /// Snapshot the current download list and hand it to `LocalHLSServer` so
+    /// the LAN-shared index page reflects the user's library and the browser
+    /// player can resume from the saved position.
+    func refreshCatalog() {
+        guard let library else { return }
+        let items = library.downloads().map { entry in
+            let p = library.progress(entry.tmdbId, entry.mediaType,
+                                     season: entry.season, episode: entry.episode)
+            return DownloadEntrySnapshot(
+                key: key(for: entry),
+                title: entry.title ?? "Senza titolo",
+                mediaType: entry.mediaTypeRaw,
+                season: entry.season,
+                episode: entry.episode,
+                episodeTitle: entry.episodeTitle,
+                poster: entry.poster,
+                backdrop: entry.backdrop,
+                isCompleted: entry.state == .completed,
+                position: p?.position ?? 0,
+                duration: p?.duration ?? 0
+            )
+        }
+        LocalHLSServer.shared.setCatalog(items)
     }
 
     // MARK: - Public actions
@@ -82,6 +151,7 @@ final class DownloadManager {
                              episodeStill: episodeStill, episodeRuntime: episodeRuntime,
                              itemJSON: json)
         prefetchArtwork(poster: poster, backdrop: backdrop, still: episodeStill)
+        refreshCatalog()
         startNextIfIdle()
     }
 
@@ -133,6 +203,7 @@ final class DownloadManager {
         try? FileManager.default.removeItem(at: Self.downloadDirectory(for: k))
         liveProgress[k] = nil
         library?.removeDownload(entry)
+        refreshCatalog()
         startNextIfIdle()
     }
 
@@ -252,6 +323,7 @@ final class DownloadManager {
         retryCount[k] = nil
         activeKey = nil
         activeTask = nil
+        refreshCatalog()
         startNextIfIdle()
     }
 

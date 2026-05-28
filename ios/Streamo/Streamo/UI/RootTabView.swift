@@ -32,7 +32,13 @@ struct RootTabView: View {
         }
         .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
         .toastOverlay()
-        .task { DownloadManager.shared.configure(library: library) }
+        .task {
+            DownloadManager.shared.configure(library: library)
+            let s = AppSettings.shared
+            LocalHLSServer.shared.setLANConfig(enabled: s.lanShareEnabled, token: s.lanToken)
+            if s.lanShareEnabled { BackgroundKeepAlive.shared.start() }
+            LANAutoShutoff.shared.reschedule()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
         }

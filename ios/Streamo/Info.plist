@@ -9,6 +9,12 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- Local network access for the LAN-share HTTP server in
+	     LocalHLSServer.swift. The prompt fires the first time a non-loopback
+	     peer hits the listener (i.e. after the user enables LAN sharing in
+	     Settings); without this key iOS silently drops LAN traffic. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Permette di condividere i download su Wi-Fi (es. per riprodurli da un PC con VLC). Si attiva solo quando abiliti "Condivisione LAN" nelle Impostazioni.</string>
 	<!-- Deep-link scheme used by the widget (streamo://open?type=&id=&s=&e=). -->
 	<key>CFBundleURLTypes</key>
 	<array>

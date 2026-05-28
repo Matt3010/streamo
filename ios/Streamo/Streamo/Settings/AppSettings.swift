@@ -19,6 +19,10 @@ final class AppSettings {
         static let accentR = "accentR"
         static let accentG = "accentG"
         static let accentB = "accentB"
+        static let lanShareEnabled = "lanShareEnabled"
+        static let lanToken = "lanToken"
+        static let lanShareAutoOffMinutes = "lanShareAutoOffMinutes"
+        static let lanShareDeadline = "lanShareDeadline"
     }
 
     /// Default accent — the web brand red #E50914.
@@ -59,6 +63,38 @@ final class AppSettings {
     var accentG: Double { didSet { defaults.set(accentG, forKey: Keys.accentG) } }
     var accentB: Double { didSet { defaults.set(accentB, forKey: Keys.accentB) } }
 
+    /// When true, the local HLS server accepts connections from non-loopback
+    /// peers on the LAN. Authentication uses `lanToken` baked into the URL.
+    var lanShareEnabled: Bool {
+        didSet { defaults.set(lanShareEnabled, forKey: Keys.lanShareEnabled) }
+    }
+
+    /// Random secret embedded in shareable URLs. Generated on first use and
+    /// persisted; rotated only via the Settings UI.
+    var lanToken: String {
+        didSet { defaults.set(lanToken, forKey: Keys.lanToken) }
+    }
+
+    /// Auto-shutoff window for LAN sharing in minutes — `0` disables the
+    /// timer ("Mai" in the UI). The active deadline is persisted separately
+    /// so app relaunches mid-window still honour the original cutoff.
+    var lanShareAutoOffMinutes: Int {
+        didSet { defaults.set(lanShareAutoOffMinutes, forKey: Keys.lanShareAutoOffMinutes) }
+    }
+
+    /// Absolute time at which LAN sharing should be auto-disabled. `nil`
+    /// when no timer is pending. Persisted across launches so a deadline
+    /// set with the app open still fires after the user closes it.
+    var lanShareDeadline: Date? {
+        didSet {
+            if let lanShareDeadline {
+                defaults.set(lanShareDeadline, forKey: Keys.lanShareDeadline)
+            } else {
+                defaults.removeObject(forKey: Keys.lanShareDeadline)
+            }
+        }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.tmdbApiKey = defaults.string(forKey: Keys.tmdbApiKey) ?? Self.defaultTmdbApiKey
@@ -69,7 +105,22 @@ final class AppSettings {
         self.accentR = defaults.object(forKey: Keys.accentR) as? Double ?? Self.defaultAccent.r
         self.accentG = defaults.object(forKey: Keys.accentG) as? Double ?? Self.defaultAccent.g
         self.accentB = defaults.object(forKey: Keys.accentB) as? Double ?? Self.defaultAccent.b
+        self.lanShareEnabled = defaults.object(forKey: Keys.lanShareEnabled) as? Bool ?? false
+        self.lanToken = defaults.string(forKey: Keys.lanToken) ?? Self.makeLANToken()
+        self.lanShareAutoOffMinutes = defaults.object(forKey: Keys.lanShareAutoOffMinutes) as? Int ?? 0
+        self.lanShareDeadline = defaults.object(forKey: Keys.lanShareDeadline) as? Date
     }
+
+    /// 16-char URL-safe token (≈96 bits of entropy). Plenty for a LAN-only
+    /// secret that the user can read off a Settings screen.
+    static func makeLANToken() -> String {
+        let chars = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        return String((0..<16).map { _ in chars.randomElement()! })
+    }
+
+    /// Rotate the token (used when the user wants to revoke existing shared
+    /// links). The new value is persisted via `didSet`.
+    func rotateLANToken() { lanToken = Self.makeLANToken() }
 
     var hasTmdbKey: Bool { !tmdbApiKey.trimmingCharacters(in: .whitespaces).isEmpty }
 }
