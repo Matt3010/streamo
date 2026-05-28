@@ -1,16 +1,16 @@
 import Foundation
-import AVFoundation
-import CoreMedia
 import Observation
 
 /// Drives offline HLS downloads with a strictly SERIAL queue (one active
 /// transfer at a time) and pauses the active download while the user is
-/// watching something. The media is stored as an `.movpkg` bundle that
-/// AVPlayer can play offline; `DownloadEntry` (SwiftData, via `Library`) holds
-/// the persisted records, this object owns the live transfer + progress.
+/// watching something. Media is fetched manually via `HLSDownloader` into
+/// `Documents/Downloads/<key>/` and served back to AVPlayer through
+/// `LocalHLSServer` — we don't use `AVAssetDownloadTask` because AVFoundation
+/// refuses to play the resulting `.movpkg` in airplane mode.
+/// `DownloadEntry` (SwiftData, via `Library`) holds the persisted records.
 @MainActor
 @Observable
-final class DownloadManager: NSObject {
+final class DownloadManager {
     static let shared = DownloadManager()
 
     /// Live progress (0…1) per download key, while a transfer is running.
@@ -21,23 +21,11 @@ final class DownloadManager: NSObject {
     private(set) var playbackActive = false
 
     @ObservationIgnored private var library: Library?
-    @ObservationIgnored private var activeTask: AVAssetDownloadTask?
-    @ObservationIgnored private var pendingLocations: [String: String] = [:]
-    /// Keys whose task was cancelled by `delete(_:)`: when the delegate surfaces
-    /// the partial .movpkg location we remove it from disk instead of stashing.
-    @ObservationIgnored private var pendingDeletions: Set<String> = []
-    /// Per-download retry counter for the token-refresh recovery.
+    @ObservationIgnored private var activeTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount: [String: Int] = [:]
     @ObservationIgnored private let maxRetries = 3
 
-    @ObservationIgnored private lazy var session: AVAssetDownloadURLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: "com.streamo.app.downloads")
-        return AVAssetDownloadURLSession(configuration: config,
-                                         assetDownloadDelegate: self,
-                                         delegateQueue: .main)
-    }()
-
-    private override init() { super.init() }
+    private init() {}
 
     func key(for entry: DownloadEntry) -> String {
         "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)"
@@ -47,71 +35,119 @@ final class DownloadManager: NSObject {
     func configure(library: Library) {
         guard self.library == nil else { return }
         self.library = library
-        // After a relaunch we don't reattach to background tasks; anything left
-        // mid-flight is simply re-queued and restarted from scratch.
-        for e in library.downloads() where e.state == .downloading {
-            library.setDownloadState(e, .queued, progress: 0)
+
+        // Warm up the loopback HLS server so the first play tap doesn't pay
+        // the bind latency.
+        Task { _ = try? await LocalHLSServer.shared.ensureRunning() }
+
+        for e in library.downloads() {
+            switch e.state {
+            case .downloading:
+                // We don't reattach to in-flight tasks; HLSDownloader resumes
+                // from on-disk segments anyway.
+                library.setDownloadState(e, .queued, progress: e.progress)
+            case .completed:
+                // Reset entries left over from the old `.movpkg` implementation:
+                // their localPath doesn't point at our new layout, and the file
+                // it points to (if it still exists at all) won't play offline.
+                let expected = "Documents/Downloads/\(key(for: e))/master.m3u8"
+                if e.localPath != expected
+                    || !FileManager.default.fileExists(atPath: Self.downloadDirectory(for: key(for: e)).appendingPathComponent("master.m3u8").path) {
+                    e.localPath = nil
+                    e.localBookmark = nil
+                    library.setDownloadState(e, .queued, progress: 0)
+                }
+            default:
+                break
+            }
         }
         startNextIfIdle()
     }
 
     // MARK: - Public actions
 
-    /// Queue a movie / episode for download and kick the serial queue.
+    /// Queue a movie / episode for download and kick the serial queue. Pass
+    /// `item` to snapshot the parent TMDB item — that's what lets the detail
+    /// screen render fully offline (synopsis, runtime, genres, …).
     func enqueue(tmdbId: Int, type: MediaType, season: Int = 0, episode: Int = 0,
-                 title: String?, poster: String?, releaseDate: String?) {
+                 title: String?, poster: String?, backdrop: String? = nil, releaseDate: String?,
+                 episodeTitle: String? = nil, episodeOverview: String? = nil,
+                 episodeStill: String? = nil, episodeRuntime: Int? = nil,
+                 item: TmdbItem? = nil) {
+        let json = item.flatMap { try? JSONEncoder().encode($0) }
+            .flatMap { String(data: $0, encoding: .utf8) }
         library?.addDownload(tmdbId: tmdbId, type: type, season: season, episode: episode,
-                             title: title, poster: poster, releaseDate: releaseDate)
+                             title: title, poster: poster, backdrop: backdrop, releaseDate: releaseDate,
+                             episodeTitle: episodeTitle, episodeOverview: episodeOverview,
+                             episodeStill: episodeStill, episodeRuntime: episodeRuntime,
+                             itemJSON: json)
+        prefetchArtwork(poster: poster, backdrop: backdrop, still: episodeStill)
         startNextIfIdle()
     }
 
+    /// Pull poster/backdrop into the disk image cache so the Downloads page and
+    /// any cached detail screens still render in airplane mode.
+    private func prefetchArtwork(poster: String?, backdrop: String?, still: String?) {
+        let urls: [URL] = [
+            TmdbImage.url(poster, .w92),
+            TmdbImage.url(poster, .w342),
+            TmdbImage.url(backdrop, .w1280),
+            TmdbImage.url(still, .w300),
+        ].compactMap { $0 }
+        guard !urls.isEmpty else { return }
+        let cache = ImageCache.disk
+        Task.detached(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for url in urls {
+                    group.addTask { await cache.prefetch(url) }
+                }
+            }
+        }
+    }
+
     /// Manually pause the active download (halts the queue until resumed).
+    /// Partial segment files stay on disk and are skipped on resume.
     func pause(_ entry: DownloadEntry) {
-        guard key(for: entry) == activeKey, let task = activeTask else { return }
-        task.suspend()
+        guard key(for: entry) == activeKey else { return }
+        activeTask?.cancel()
+        activeTask = nil
+        activeKey = nil
         library?.setDownloadState(entry, .paused)
     }
 
     /// Resume a manually-paused download.
     func resume(_ entry: DownloadEntry) {
-        let k = key(for: entry)
-        if k == activeKey, let task = activeTask, entry.state == .paused {
-            library?.setDownloadState(entry, .downloading)
-            if !playbackActive { task.resume() }
-        } else if entry.state == .paused {
-            // Lost its task (e.g. after relaunch): re-queue it.
-            library?.setDownloadState(entry, .queued)
-            startNextIfIdle()
-        }
+        guard entry.state == .paused else { return }
+        library?.setDownloadState(entry, .queued)
+        startNextIfIdle()
     }
 
     /// Cancel + delete a download (and its on-disk media).
     func delete(_ entry: DownloadEntry) {
         let k = key(for: entry)
-        // Wipe whatever's already on disk for this key: the completed .movpkg
-        // (if any) and any partial bundle reported by the delegate so far.
-        if let rel = entry.localPath { try? FileManager.default.removeItem(at: Self.fileURL(rel)) }
-        if let rel = pendingLocations[k] { try? FileManager.default.removeItem(at: Self.fileURL(rel)) }
         if k == activeKey {
-            // The active task hasn't reported its partial location yet — flag
-            // the key so the delegate removes it when it does, instead of just
-            // stashing it in `pendingLocations`. cancel() doesn't free the .movpkg.
-            pendingDeletions.insert(k)
             activeTask?.cancel()
             activeTask = nil
             activeKey = nil
         }
+        try? FileManager.default.removeItem(at: Self.downloadDirectory(for: k))
         liveProgress[k] = nil
-        pendingLocations[k] = nil
         library?.removeDownload(entry)
         startNextIfIdle()
     }
 
-    /// Local file URL of a completed download, if playable offline.
+    /// Loopback URL of a completed download, or nil if its files are missing
+    /// or the local HLS server failed to bind. AVPlayer plays this through
+    /// `LocalHLSServer` — which is why offline playback works in airplane
+    /// mode (loopback bypasses AVFoundation's network-presence preflight).
     func offlineURL(for entry: DownloadEntry) -> URL? {
-        guard entry.state == .completed, let rel = entry.localPath else { return nil }
-        let url = Self.fileURL(rel)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        guard entry.state == .completed else { return nil }
+        let k = key(for: entry)
+        let master = Self.downloadDirectory(for: k).appendingPathComponent("master.m3u8")
+        guard FileManager.default.fileExists(atPath: master.path) else { return nil }
+        let port = LocalHLSServer.shared.waitForReady()
+        guard port != 0 else { return nil }
+        return LocalHLSServer.url(port: port, relativePath: "\(k)/master.m3u8")
     }
 
     func progress(for entry: DownloadEntry) -> Double {
@@ -122,36 +158,47 @@ final class DownloadManager: NSObject {
 
     func pauseForPlayback() {
         playbackActive = true
-        activeTask?.suspend()
+        // Stash the running task so it can be restarted from disk after
+        // playback ends (resume picks up existing segments).
+        if activeTask != nil, let library, let k = activeKey,
+           let entry = library.downloads().first(where: { self.key(for: $0) == k }),
+           entry.state == .downloading {
+            activeTask?.cancel()
+            activeTask = nil
+            library.setDownloadState(entry, .queued, progress: liveProgress[k] ?? entry.progress)
+            activeKey = nil
+        }
     }
 
     func resumeAfterPlayback() {
         playbackActive = false
-        // Only auto-resume a download that's meant to be running (not one the
-        // user paused by hand).
-        if let key = activeKey, let task = activeTask,
-           let entry = library?.downloads().first(where: { self.key(for: $0) == key }),
-           entry.state == .downloading {
-            task.resume()
-        }
         startNextIfIdle()
     }
 
     // MARK: - Serial queue
 
     private func startNextIfIdle() {
-        // `activeKey == nil` keeps the slot reserved during the retry backoff
-        // window (when activeTask is briefly nil) so we never start two at once.
         guard !playbackActive, activeTask == nil, activeKey == nil, let library,
               let entry = library.firstQueuedDownload() else { return }
         let k = key(for: entry)
         activeKey = k
-        retryCount[k] = 0   // fresh download → full retry budget
-        library.setDownloadState(entry, .downloading)
-        Task { await beginDownload(entry, key: k) }
+        retryCount[k] = 0
+        library.setDownloadState(entry, .downloading, progress: entry.progress)
+        activeTask = Task { [weak self] in
+            await self?.runDownload(key: k)
+        }
     }
 
-    private func beginDownload(_ entry: DownloadEntry, key k: String) async {
+    /// Run the download for the entry identified by `k`. Looks the entry up
+    /// from the library on every callback rather than capturing it — SwiftData
+    /// `@Model` instances aren't `Sendable` so they can't cross the boundary
+    /// into the `HLSDownloader`'s `@Sendable` progress closure.
+    private func runDownload(key k: String) async {
+        guard let library, let entry = library.downloads().first(where: { key(for: $0) == k }) else {
+            cleanupActive(key: k)
+            return
+        }
+
         let resolution: ProviderResolver.PlaybackResolution
         if entry.mediaType == .movie {
             resolution = await ProviderResolver.shared.movieSource(
@@ -162,107 +209,71 @@ final class DownloadManager: NSObject {
                 season: entry.season, episode: entry.episode)
         }
         guard let source = resolution.sources.first else {
-            library?.setDownloadState(entry, .failed, error: resolution.message ?? "Sorgente non disponibile")
-            activeKey = nil
-            activeTask = nil
-            startNextIfIdle()
+            fail(key: k, error: resolution.message ?? "Sorgente non disponibile")
             return
         }
-        let asset = AVURLAsset(url: source.playlistURL,
-                               options: ["AVURLAssetHTTPHeaderFieldsKey": source.headers])
-        let config = AVAssetDownloadConfiguration(asset: asset, title: entry.title ?? "Streamo")
-        let task = session.makeAssetDownloadTask(downloadConfiguration: config)
-        task.taskDescription = k
-        liveProgress[k] = 0   // reset for this (re)attempt
-        activeTask = task
-        if playbackActive { task.suspend() } else { task.resume() }
-    }
 
-    private func handleCompletion(taskKey: String?, error: Error?) {
-        guard let k = taskKey, let library else { return }
-        let entry = library.downloads().first { self.key(for: $0) == k }
-
-        if let nsError = error as NSError? {
-            // User paused/deleted → leave it; the cancel was deliberate.
-            if nsError.code == NSURLErrorCancelled {
-                pendingLocations[k] = nil
-                if activeKey == k { activeKey = nil; activeTask = nil; startNextIfIdle() }
-                return
-            }
-            // Otherwise it's likely an expired token / transient CDN error:
-            // re-resolve the embed (fresh token) and restart, up to maxRetries.
-            if let entry, retryCount[k, default: 0] < maxRetries {
-                retryCount[k, default: 0] += 1
-                pendingLocations[k] = nil
-                activeTask = nil   // keep activeKey: this slot is still ours
-                Task {
-                    try? await Task.sleep(for: .seconds(2))   // small backoff
-                    await beginDownload(entry, key: k)
+        let outputDir = Self.downloadDirectory(for: k)
+        do {
+            try await HLSDownloader.download(masterURL: source.playlistURL,
+                                             headers: source.headers,
+                                             outputDirectory: outputDir,
+                                             progress: { [weak self] frac in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let prev = self.liveProgress[k] ?? 0
+                    if frac > prev { self.liveProgress[k] = frac }
+                }
+            })
+        } catch is CancellationError {
+            // Pause / playback / delete cancelled this download. State is
+            // already updated by the caller; nothing else to do.
+            return
+        } catch {
+            // Transient errors: bounded retry with fresh source resolution.
+            let next = retryCount[k, default: 0] + 1
+            retryCount[k] = next
+            if next <= maxRetries {
+                activeTask = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    await self?.runDownload(key: k)
                 }
                 return
             }
-            // Don't surface the raw system error — the UI shows a generic message.
-            if let entry { library.setDownloadState(entry, .failed) }
-        } else if let entry, let rel = pendingLocations[k] {
-            library.completeDownload(entry, localPath: rel)
+            fail(key: k, error: nil)
+            return
+        }
+
+        // Success — re-fetch the entry (it might have been mutated meanwhile).
+        if let entry = library.downloads().first(where: { key(for: $0) == k }) {
             liveProgress[k] = 1
-            retryCount[k] = nil
+            library.completeDownload(entry, localPath: "Documents/Downloads/\(k)/master.m3u8")
         }
-
-        pendingLocations[k] = nil
-        pendingDeletions.remove(k)
-        if activeKey == k {
-            activeKey = nil
-            activeTask = nil
-            startNextIfIdle()
-        }
+        retryCount[k] = nil
+        activeKey = nil
+        activeTask = nil
+        startNextIfIdle()
     }
 
-    static func fileURL(_ relativePath: String) -> URL {
-        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(relativePath)
-    }
-}
-
-// MARK: - AVAssetDownloadDelegate (delegateQueue is .main → assume isolation)
-
-extension DownloadManager: AVAssetDownloadDelegate {
-    nonisolated func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask,
-                                didFinishDownloadingTo location: URL) {
-        let rel = location.relativePath
-        let key = assetDownloadTask.taskDescription
-        MainActor.assumeIsolated {
-            guard let key else { return }
-            if pendingDeletions.contains(key) {
-                try? FileManager.default.removeItem(at: Self.fileURL(rel))
-                pendingDeletions.remove(key)
-            } else {
-                pendingLocations[key] = rel
-            }
+    private func fail(key k: String, error: String?) {
+        if let library, let entry = library.downloads().first(where: { key(for: $0) == k }) {
+            library.setDownloadState(entry, .failed, error: error)
         }
+        cleanupActive(key: k)
     }
 
-    nonisolated func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask,
-                                didLoad timeRange: CMTimeRange,
-                                totalTimeRangesLoaded loadedTimeRanges: [NSValue],
-                                timeRangeExpectedToLoad: CMTimeRange) {
-        var loaded = 0.0
-        for value in loadedTimeRanges { loaded += value.timeRangeValue.duration.seconds }
-        let total = timeRangeExpectedToLoad.duration.seconds
-        let pct = total > 0 ? min(1, loaded / total) : 0
-        let key = assetDownloadTask.taskDescription
-        MainActor.assumeIsolated {
-            // Keep progress monotonic: AVAssetDownloadTask's expected-range can
-            // shift between callbacks (multiple passes), making the raw value
-            // bounce backwards. Only ever move forward.
-            if let key, pct > (liveProgress[key] ?? 0) { liveProgress[key] = pct }
-        }
+    private func cleanupActive(key k: String) {
+        liveProgress[k] = nil
+        retryCount[k] = nil
+        activeKey = nil
+        activeTask = nil
+        startNextIfIdle()
     }
 
-    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask,
-                                didCompleteWithError error: Error?) {
-        let key = task.taskDescription
-        MainActor.assumeIsolated {
-            handleCompletion(taskKey: key, error: error)
-        }
+    // MARK: - Paths
+
+    /// Per-download folder under `Documents/Downloads/<key>/`.
+    nonisolated static func downloadDirectory(for key: String) -> URL {
+        LocalHLSServer.shared.documentsRoot.appendingPathComponent(key, isDirectory: true)
     }
 }

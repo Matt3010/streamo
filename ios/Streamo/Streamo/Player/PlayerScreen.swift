@@ -56,7 +56,15 @@ struct PlayerScreen: View {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.yellow)
                     Text(request.title).font(.headline).foregroundStyle(.white)
-                    Text(message).foregroundStyle(.white.opacity(0.85)).multilineTextAlignment(.center).padding(.horizontal, 40)
+                    ScrollView {
+                        Text(message)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .textSelection(.enabled)
+                            .multilineTextAlignment(.leading)
+                            .padding(.horizontal, 24)
+                    }
+                    .frame(maxHeight: 360)
                     Button("Chiudi") { dismiss() }.buttonStyle(BrandButtonStyle(kind: .primary, fullWidth: false))
                 }
             }
@@ -75,6 +83,7 @@ struct PlayerScreen: View {
             }
         }
         .task {
+            OrientationLock.unlockForPlayer()
             controller.onProgress = { position, duration in
                 persist(position: position, duration: duration)
                 onProgress?(position, duration)
@@ -93,6 +102,7 @@ struct PlayerScreen: View {
             let req = controller.activeRequest
             controller.teardown()   // flushes final progress before we check
             autoDeleteIfWatched(req)
+            OrientationLock.lockPortrait()
         }
     }
 

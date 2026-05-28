@@ -3,6 +3,9 @@ import SwiftUI
 struct DetailView: View {
     let ref: MediaRef
     @State private var model: DetailViewModel
+    @State private var downloads = DownloadManager.shared
+    @State private var downloadUIVersion = 0
+    @State private var locallyRemovedDownloadKeys = Set<String>()
     @State private var pendingRequest: PlaybackRequest?
     @State private var showPicker = false
     @State private var confirmRemoveFromList = false
@@ -19,6 +22,11 @@ struct DetailView: View {
         // Subscribe to library writes so CTA / grid / bookmark refresh after
         // playback or watchlist changes.
         let _ = library.version
+        let _ = downloadUIVersion
+        // Also subscribe to download mutations so delete/enqueue updates the
+        // detail page immediately even when SwiftUI keeps the toolbar/menu
+        // subtree alive across the same presentation frame.
+        let _ = downloadSnapshot
 
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -104,11 +112,33 @@ struct DetailView: View {
         }
     }
 
+    private var downloadSnapshot: String {
+        library.downloads().map { entry in
+            "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)-\(entry.stateRaw)-\(Int(downloads.progress(for: entry) * 100))"
+        }
+        .joined(separator: "|")
+    }
+
+    private func invalidateDownloadUI() {
+        downloadUIVersion &+= 1
+    }
+
+    private func downloadKey(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) -> String {
+        "\(type.rawValue)-\(tmdbId)-\(season)-\(episode)"
+    }
+
+    private func downloadFor(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) -> DownloadEntry? {
+        let key = downloadKey(tmdbId, type, season: season, episode: episode)
+        guard !locallyRemovedDownloadKeys.contains(key) else { return nil }
+        return library.download(tmdbId, type, season: season, episode: episode)
+    }
+
     // MARK: - Action row (CTA + watchlist)
 
     private func reloadDetail() async {
         await model.load(
             initialSeason: ref.resumeSeason > 0 ? ref.resumeSeason : nil,
+            library: library,
             resolveSeason: { item in library.nextUnwatched(item: item)?.season }
         )
         await model.resolveProvider(library: library)
@@ -134,14 +164,15 @@ struct DetailView: View {
     @ViewBuilder
     private func releasedActions(for item: TmdbItem, inList: Bool) -> some View {
         let availability = model.providerAvailability
-        let ready = availability == .ready
+        let offlineReady = primaryOfflineURL(for: item) != nil
+        let ready = availability == .ready || offlineReady
 
         // Big red primary play button (full width), like the web.
         Button {
             pendingRequest = primaryRequest(for: item)
         } label: {
             HStack(spacing: 8) {
-                if availability == .resolving { ProgressView().controlSize(.small).tint(.white) }
+                if availability == .resolving && !offlineReady { ProgressView().controlSize(.small).tint(.white) }
                 else { Image(systemName: "play.fill") }
                 Text(playButtonLabel(for: item))
             }
@@ -171,7 +202,7 @@ struct DetailView: View {
                           systemImage: "rectangle.stack")
                 }
                 .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
-            } else if availability == .unavailable {
+            } else if availability == .unavailable && !offlineReady {
                 Button {
                     Task { await model.refreshProvider(library: library) }
                 } label: {
@@ -179,7 +210,7 @@ struct DetailView: View {
                 }
                 .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
             }
-            if let msg = model.providerMessage, !ready {
+            if let msg = model.providerMessage, availability != .ready && !offlineReady {
                 Text(msg).font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -273,15 +304,21 @@ struct DetailView: View {
 
     @ViewBuilder
     private func movieDownloadButton(_ item: TmdbItem) -> some View {
-        if let dl = library.download(item.id, .movie, season: 0, episode: 0) {
+        if let dl = downloadFor(item.id, .movie, season: 0, episode: 0) {
             Button(role: .destructive) {
-                DownloadManager.shared.delete(dl)
+                locallyRemovedDownloadKeys.insert(downloadKey(item.id, .movie, season: 0, episode: 0))
+                downloads.delete(dl)
+                invalidateDownloadUI()
                 ToastCenter.shared.show("Download rimosso")
             } label: { Label(dl.state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
         } else {
             Button {
-                DownloadManager.shared.enqueue(tmdbId: item.id, type: .movie,
-                    title: item.displayTitle, poster: item.posterPath, releaseDate: item.primaryDate)
+                locallyRemovedDownloadKeys.remove(downloadKey(item.id, .movie, season: 0, episode: 0))
+                downloads.enqueue(tmdbId: item.id, type: .movie,
+                    title: item.displayTitle, poster: item.posterPath,
+                    backdrop: item.backdropPath, releaseDate: item.primaryDate,
+                    item: item)
+                invalidateDownloadUI()
                 ToastCenter.shared.show("Download avviato")
             } label: { Label("Scarica", systemImage: "arrow.down.circle") }
         }
@@ -289,15 +326,24 @@ struct DetailView: View {
 
     @ViewBuilder
     private func episodeDownloadButton(_ item: TmdbItem, episode: Int) -> some View {
-        if let dl = library.download(item.id, .tv, season: model.selectedSeason, episode: episode) {
+        if let dl = downloadFor(item.id, .tv, season: model.selectedSeason, episode: episode) {
             Button(role: .destructive) {
-                DownloadManager.shared.delete(dl)
+                locallyRemovedDownloadKeys.insert(downloadKey(item.id, .tv, season: model.selectedSeason, episode: episode))
+                downloads.delete(dl)
+                invalidateDownloadUI()
                 ToastCenter.shared.show("Download rimosso")
             } label: { Label(dl.state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
         } else {
             Button {
-                DownloadManager.shared.enqueue(tmdbId: item.id, type: .tv, season: model.selectedSeason, episode: episode,
-                    title: item.displayTitle, poster: item.posterPath, releaseDate: item.primaryDate)
+                locallyRemovedDownloadKeys.remove(downloadKey(item.id, .tv, season: model.selectedSeason, episode: episode))
+                let ep = model.episodes.first { $0.episodeNumber == episode }
+                downloads.enqueue(tmdbId: item.id, type: .tv, season: model.selectedSeason, episode: episode,
+                    title: item.displayTitle, poster: item.posterPath,
+                    backdrop: item.backdropPath, releaseDate: item.primaryDate,
+                    episodeTitle: ep?.name, episodeOverview: ep?.overview,
+                    episodeStill: ep?.stillPath, episodeRuntime: ep?.runtime,
+                    item: item)
+                invalidateDownloadUI()
                 ToastCenter.shared.show("Download avviato")
             } label: { Label("Scarica episodio", systemImage: "arrow.down.circle") }
         }
@@ -314,6 +360,10 @@ struct DetailView: View {
 
     private func playButtonLabel(for item: TmdbItem) -> String {
         if model.isUpcoming { return "Non ancora disponibile" }
+        // A completed download always wins: even if the provider hasn't
+        // resolved (or failed), the button is enabled and should describe the
+        // target episode/movie instead of the resolver state.
+        if primaryOfflineURL(for: item) != nil { return primaryLabel(for: item) }
         switch model.providerAvailability {
         case .resolving: return "Caricamento…"
         case .unavailable: return model.providerMessage ?? "Non disponibile"
@@ -340,7 +390,7 @@ struct DetailView: View {
            !(model.providerAvailability == .unavailable && !model.isUpcoming) {
             Text(model.releaseStatusText).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
         }
-        if ref.mediaType == .movie, let dl = library.download(item.id, .movie, season: 0, episode: 0) {
+        if ref.mediaType == .movie, let dl = downloadFor(item.id, .movie, season: 0, episode: 0) {
             Label(downloadStatusLabel(dl.state),
                   systemImage: dl.state == .completed ? "arrow.down.circle.fill" : "arrow.down.circle")
                 .font(.caption.weight(.semibold))
@@ -394,15 +444,18 @@ struct DetailView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                     .padding(.horizontal)
             } else {
-                let disabled = model.providerAvailability == .unavailable && !model.isUpcoming
+                let providerDisabled = model.providerAvailability == .unavailable && !model.isUpcoming
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(model.episodes) { ep in
+                            let offlineReady = offlineURL(for: item, season: model.selectedSeason, episode: ep.episodeNumber) != nil
+                            let disabled = providerDisabled && !offlineReady
                             EpisodeCard(
                                 episode: ep,
                                 progress: progressMap[ep.episodeNumber],
                                 isHighlighted: ep.episodeNumber == highlight,
-                                downloadState: library.download(item.id, .tv, season: model.selectedSeason, episode: ep.episodeNumber)?.state
+                                download: downloadFor(item.id, .tv, season: model.selectedSeason, episode: ep.episodeNumber),
+                                downloads: downloads
                             )
                             .opacity(disabled ? 0.5 : 1)
                             .onTapGesture {
@@ -436,12 +489,17 @@ struct DetailView: View {
 
     // MARK: - CTA helpers
 
+    /// Same label format whether playback will use the provider or a local
+    /// download — the user shouldn't have to read "Guarda offline" to know
+    /// which coordinate is about to play.
     private func primaryLabel(for item: TmdbItem) -> String {
         if ref.mediaType == .tv {
-            if let next = library.nextUnwatched(item: item) {
-                return "Riprendi da S\(next.season) E\(next.episode)"
+            let target = primaryPlaybackTarget(for: item)
+            if let p = library.progress(item.id, .tv, season: target.season, episode: target.episode),
+               p.position > 10, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
+                return "Riprendi da S\(target.season) E\(target.episode)"
             }
-            return "Guarda"
+            return "Guarda S\(target.season) E\(target.episode)"
         }
         if let p = movieResume(item) { return "Riprendi da \(Format.time(p.position))" }
         return "Guarda"
@@ -449,7 +507,7 @@ struct DetailView: View {
 
     private func primaryRequest(for item: TmdbItem) -> PlaybackRequest {
         if ref.mediaType == .tv {
-            let target = library.nextUnwatched(item: item) ?? (model.seasons.first ?? 1, 1)
+            let target = primaryPlaybackTarget(for: item)
             return request(for: item, season: target.season, episode: target.episode)
         }
         return request(for: item, season: 0, episode: 0)
@@ -467,13 +525,51 @@ struct DetailView: View {
         if let p, p.position > 10, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
             startAt = p.position
         }
-        let offlineURL: URL? = library.download(item.id, ref.mediaType, season: s, episode: e)
-            .flatMap { DownloadManager.shared.offlineURL(for: $0) }
+        let offlineURL = offlineURL(for: item, season: s, episode: e)
         return PlaybackRequest(
             tmdbId: item.id, mediaType: ref.mediaType, title: item.displayTitle, releaseDate: item.primaryDate,
             poster: item.posterPath, backdrop: item.backdropPath,
             season: s, episode: e, startAt: startAt, offlineURL: offlineURL
         )
+    }
+
+    private func primaryOfflineURL(for item: TmdbItem) -> URL? {
+        if ref.mediaType == .tv {
+            return offlineTarget(for: item).flatMap {
+                offlineURL(for: item, season: $0.season, episode: $0.episode)
+            }
+        }
+        return offlineURL(for: item, season: 0, episode: 0)
+    }
+
+    private func primaryPlaybackTarget(for item: TmdbItem) -> (season: Int, episode: Int) {
+        if model.providerAvailability != .ready, let offline = offlineTarget(for: item) {
+            return offline
+        }
+        return library.nextUnwatched(item: item) ?? offlineTarget(for: item) ?? (model.seasons.first ?? 1, 1)
+    }
+
+    private func offlineTarget(for item: TmdbItem) -> (season: Int, episode: Int)? {
+        if ref.resumeSeason > 0, ref.resumeEpisode > 0,
+           offlineURL(for: item, season: ref.resumeSeason, episode: ref.resumeEpisode) != nil {
+            return (ref.resumeSeason, ref.resumeEpisode)
+        }
+        if let next = library.nextUnwatched(item: item),
+           offlineURL(for: item, season: next.season, episode: next.episode) != nil {
+            return next
+        }
+        return library.downloads()
+            .filter { $0.tmdbId == item.id && $0.mediaType == .tv && downloads.offlineURL(for: $0) != nil }
+            .sorted { ($0.season, $0.episode) < ($1.season, $1.episode) }
+            .first
+            .map { ($0.season, $0.episode) }
+    }
+
+    private func offlineURL(for item: TmdbItem, season: Int, episode: Int) -> URL? {
+        let s = ref.mediaType == .tv ? season : 0
+        let e = ref.mediaType == .tv ? episode : 0
+        return downloadFor(item.id, ref.mediaType, season: s, episode: e)
+            .flatMap { downloads.offlineURL(for: $0) }
     }
 
     /// Episode after the resume point (for "Vai al prossimo"), or nil.
@@ -597,7 +693,8 @@ private struct EpisodeCard: View {
     let episode: TmdbEpisodeDetail
     let progress: ProgressEntry?
     let isHighlighted: Bool
-    var downloadState: DownloadState? = nil
+    var download: DownloadEntry? = nil
+    var downloads: DownloadManager? = nil
 
     private let w: CGFloat = 220
 
@@ -608,6 +705,10 @@ private struct EpisodeCard: View {
     private var watchedSeconds: Double { max(0, progress?.position ?? 0) }
     private var pct: Double { Format.percent(position: watchedSeconds, duration: totalSeconds) }
     private var isWatched: Bool { totalSeconds > 0 && watchedSeconds >= totalSeconds * TVLogic.watchedThreshold }
+    private var downloadPct: Double {
+        guard let download else { return 0 }
+        return min(100, max(0, (downloads?.progress(for: download) ?? download.progress) * 100))
+    }
 
     private var timeLabel: String? {
         guard totalSeconds > 0 else { return nil }
@@ -628,7 +729,9 @@ private struct EpisodeCard: View {
                             Text(label).font(.caption2.monospacedDigit()).foregroundStyle(.white.opacity(0.9))
                         }
                     }
-                    if watchedSeconds > 0 { ProgressBar(percent: pct) }
+                    if watchedSeconds > 0 {
+                        ProgressBar(percent: pct)
+                    }
                 }
                 .padding(8)
             }
@@ -639,13 +742,9 @@ private struct EpisodeCard: View {
                     .strokeBorder(isHighlighted ? Theme.red : .clear, lineWidth: 2.5)
             }
             .overlay(alignment: .topTrailing) {
-                if let ds = downloadState {
-                    Image(systemName: ds == .completed ? "arrow.down.circle.fill" : "arrow.down.circle")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(ds == .completed ? Theme.red : .white)
-                        .padding(5)
-                        .background(.black.opacity(0.4), in: Circle())
-                        .padding(6)
+                if let download {
+                    downloadBadge(download)
+                        .padding(7)
                 }
             }
 
@@ -657,6 +756,55 @@ private struct EpisodeCard: View {
             }
         }
         .frame(width: w)
+    }
+
+    @ViewBuilder
+    private func downloadBadge(_ download: DownloadEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: downloadIcon(download.state))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(download.state == .completed ? Theme.red : .white)
+
+                Text(downloadBadgeText(download))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+            }
+
+            if download.state == .queued || download.state == .downloading || download.state == .paused {
+                ProgressBar(percent: downloadPct)
+                    .frame(width: 44)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(download.state == .failed ? Color.red.opacity(0.85) : Theme.red.opacity(0.48), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
+    }
+
+    private func downloadIcon(_ state: DownloadState) -> String {
+        switch state {
+        case .completed: return "arrow.down.circle.fill"
+        case .paused: return "pause.fill"
+        case .queued: return "clock.fill"
+        case .downloading: return "arrow.down"
+        case .failed: return "exclamationmark"
+        }
+    }
+
+    private func downloadBadgeText(_ download: DownloadEntry) -> String {
+        switch download.state {
+        case .completed: return "Offline"
+        case .paused: return "\(Int(downloadPct.rounded()))%"
+        case .queued: return "Coda"
+        case .downloading: return "\(Int(downloadPct.rounded()))%"
+        case .failed: return "Errore"
+        }
     }
 
     @ViewBuilder
@@ -677,6 +825,8 @@ private struct EpisodeCard: View {
 private struct ReviewCard: View {
     let review: TmdbReview
     @Environment(\.openURL) private var openURL
+    private let width: CGFloat = 300
+    private let height: CGFloat = 220
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -690,14 +840,18 @@ private struct ReviewCard: View {
                     Text("★ \(r)").font(.caption.weight(.semibold)).foregroundStyle(Color(red: 1, green: 0.76, blue: 0.03))
                 }
             }
-            Text(excerpt).font(.footnote).foregroundStyle(.secondary)
+            Text(excerpt)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(8)
+            Spacer(minLength: 0)
             if let url = review.url.flatMap(URL.init(string:)) {
                 Button("Leggi su TMDB") { openURL(url) }
                     .font(.caption.weight(.semibold)).foregroundStyle(Theme.red)
             }
         }
         .padding()
-        .frame(width: 300, alignment: .leading)
+        .frame(width: width, height: height, alignment: .topLeading)
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
     }
 

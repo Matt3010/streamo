@@ -22,7 +22,7 @@ struct CardItem: Identifiable, Equatable {
     /// Grey tertiary line (release/resume note).
     var nextReleaseText: String?
 
-    var id: String { "\(mediaType.rawValue)-\(tmdbId)" }
+    var id: String { "\(mediaType.rawValue)-\(tmdbId)-\(season ?? 0)-\(episode ?? 0)" }
 
     init(tmdbId: Int, mediaType: MediaType, title: String, poster: String? = nil) {
         self.tmdbId = tmdbId; self.mediaType = mediaType; self.title = title; self.poster = poster

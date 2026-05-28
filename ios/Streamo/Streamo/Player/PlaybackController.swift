@@ -16,8 +16,9 @@ struct PlaybackRequest: Equatable, Identifiable {
     var episode: Int = 0
     /// Resume position in seconds (0 = start from the beginning).
     var startAt: Double = 0
-    /// When set, play this local `.movpkg` instead of resolving the provider
-    /// (offline playback of a completed download).
+    /// When set, play this URL instead of resolving the provider — it's a
+    /// loopback `http://127.0.0.1:<port>/.../master.m3u8` served by
+    /// `LocalHLSServer` from a completed offline download.
     var offlineURL: URL? = nil
 }
 
@@ -47,6 +48,9 @@ final class PlaybackController {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
+    /// Latched once the current item reaches the real end, so teardown's final
+    /// flush cannot overwrite the 100% save with a slightly-short currentTime.
+    private var didReachEnd = false
     /// The request currently playing — updated by autoplay-next so callers
     /// persist progress under the right episode.
     private(set) var activeRequest: PlaybackRequest?
@@ -106,6 +110,7 @@ final class PlaybackController {
         self.sources = sources
         sourceIndex = 0
         pendingStartAt = request.startAt
+        didReachEnd = false
         loadCurrentSource(request: request)
     }
 
@@ -119,14 +124,21 @@ final class PlaybackController {
         let source = sources[sourceIndex]
         configureAudioSession()
 
-        // AVURLAssetHTTPHeaderFieldsKey is undocumented but the standard way to
-        // attach headers to every request AVPlayer makes for this asset.
-        let options: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": source.headers]
+        let isOffline = request.offlineURL != nil
+        // Headers are only useful for remote provider requests (Referer /
+        // Origin for vixcloud). The local HLS server doesn't care, and
+        // attaching options at all interferes with the loopback codepath.
+        let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": source.headers]
         let asset = AVURLAsset(url: source.playlistURL, options: options)
         let item = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: item)
-        player.allowsExternalPlayback = true       // AirPlay
-        player.usesExternalPlaybackWhileExternalScreenIsActive = true
+        // AirPlay routes a loopback URL nowhere useful, so leave it off for
+        // offline playback. Keep the default `automaticallyWaitsToMinimizeStalling`
+        // (true): turning it off makes `play()` no-op until the item is ready,
+        // which is what was causing the "tap play/pause a few times to start"
+        // behaviour on offline launches.
+        player.allowsExternalPlayback = !isOffline
+        player.usesExternalPlaybackWhileExternalScreenIsActive = !isOffline
         self.player = player
 
         installTimeObserver(on: player)
@@ -187,11 +199,12 @@ final class PlaybackController {
     private func installStatusObserver(for item: AVPlayerItem) {
         statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let status = item.status
-            Task { @MainActor in self?.handleStatus(status) }
+            let error = item.error
+            Task { @MainActor in self?.handleStatus(status, error: error) }
         }
     }
 
-    private func handleStatus(_ status: AVPlayerItem.Status) {
+    private func handleStatus(_ status: AVPlayerItem.Status, error: Error? = nil) {
         switch status {
         case .readyToPlay:
             // Apply the resume seek once, when the item can actually seek.
@@ -200,11 +213,67 @@ final class PlaybackController {
                 pendingStartAt = 0
             }
         case .failed:
+            let isOffline = activeRequest?.offlineURL != nil
+            print("[PlaybackController] AVPlayerItem failed (offline=\(isOffline)): \(String(describing: error))")
+            dumpPlayerItemLogs()
+            if isOffline, let request = activeRequest {
+                // Offline playback has a single source — fall through to a
+                // specific user-facing error instead of generic "non disponibile".
+                state = .failed(offlineFailureMessage(for: request, error: error))
+                return
+            }
             // This mirror failed — fall through to the next server.
             advanceToNextSource()
         default:
             break
         }
+    }
+
+    /// Dump AVPlayerItem error/access logs to the console. These contain the
+    /// exact URLs AVPlayer touched (or tried to touch) and the per-request
+    /// status/error codes — the only reliable way to see what's missing from
+    /// a `.movpkg` that fails offline.
+    private func dumpPlayerItemLogs() {
+        guard let item = player?.currentItem else { return }
+        if let errorLog = item.errorLog() {
+            for event in errorLog.events {
+                print("[PlayerItemErrorLog] uri=\(event.uri ?? "?") status=\(event.errorStatusCode) domain=\(event.errorDomain) comment=\(event.errorComment ?? "")")
+            }
+        }
+        if let accessLog = item.accessLog() {
+            for event in accessLog.events {
+                print("[PlayerItemAccessLog] uri=\(event.uri ?? "?") indicatedBitrate=\(event.indicatedBitrate) numStalls=\(event.numberOfStalls) downloadBytes=\(event.numberOfBytesTransferred)")
+            }
+        }
+    }
+
+    /// Surface the actual cause for offline playback failures. The loopback
+    /// server has already accepted the connection if AVPlayer got this far,
+    /// so any failure is now a real media-level issue (bad playlist, missing
+    /// segment, codec mismatch) and showing the failing URIs makes it easy
+    /// to diagnose without dropping to Console.app.
+    private func offlineFailureMessage(for request: PlaybackRequest, error: Error?) -> String {
+        var lines: [String] = []
+        if let ns = error as NSError? { lines.append("\(ns.domain) \(ns.code)") }
+        if let events = player?.currentItem?.errorLog()?.events, !events.isEmpty {
+            for event in events.prefix(5) {
+                let uri = event.uri ?? "(nil)"
+                lines.append("ERR: \(trunc(uri))\n  \(event.errorDomain) \(event.errorStatusCode) \(event.errorComment ?? "")")
+            }
+        }
+        if let events = player?.currentItem?.accessLog()?.events, !events.isEmpty {
+            for event in events.prefix(3) {
+                lines.append("ACC: " + trunc(event.uri ?? "(nil)"))
+            }
+        }
+        if lines.isEmpty {
+            lines.append("Riproduzione offline non riuscita.")
+        }
+        return lines.joined(separator: "\n\n")
+    }
+
+    private func trunc(_ s: String, max: Int = 100) -> String {
+        s.count > max ? String(s.prefix(max)) + "…" : s
     }
 
     private func installTimeObserver(on player: AVPlayer) {
@@ -216,10 +285,10 @@ final class PlaybackController {
 
     private func flushProgress() {
         guard let player, let item = player.currentItem else { return }
-        let position = player.currentTime().seconds
         let duration = item.duration.seconds
-        guard position.isFinite, position > 0 else { return }
         let safeDuration = duration.isFinite ? duration : 0
+        let position = didReachEnd && safeDuration > 0 ? safeDuration : player.currentTime().seconds
+        guard position.isFinite, position > 0 else { return }
         NowPlayingCenter.shared.update(position: position, duration: safeDuration, rate: player.rate)
         onProgress?(position, safeDuration)
     }
@@ -233,6 +302,7 @@ final class PlaybackController {
     }
 
     private func handleEnded() {
+        didReachEnd = true
         if let item = player?.currentItem {
             let duration = item.duration.seconds
             if duration.isFinite, duration > 0 { onProgress?(duration, duration) }
@@ -253,6 +323,7 @@ final class PlaybackController {
         statusObserver = nil
         player?.pause()
         player = nil
+        didReachEnd = false
     }
 
     private func configureAudioSession() {

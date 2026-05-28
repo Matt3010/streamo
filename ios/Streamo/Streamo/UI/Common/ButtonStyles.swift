@@ -21,9 +21,9 @@ struct BrandButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .font(kind == .primary ? .headline : .subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: fullWidth ? .infinity : nil)
-                .padding(.vertical, kind == .primary ? 15 : 13)
+                .padding(.vertical, 13)
                 .padding(.horizontal, 18)
                 .background(background)
                 .foregroundStyle(.white)

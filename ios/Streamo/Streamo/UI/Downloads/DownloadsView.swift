@@ -113,6 +113,7 @@ struct DownloadsView: View {
 struct SeriesDownloadsView: View {
     let tmdbId: Int
     let title: String
+    @Environment(\.dismiss) private var dismiss
     @Environment(Library.self) private var library
     @State private var downloads = DownloadManager.shared
     @State private var pendingRequest: PlaybackRequest?
@@ -130,7 +131,7 @@ struct SeriesDownloadsView: View {
                         DownloadRow(entry: e, downloads: downloads, library: library,
                                     episodeLabel: "Episodio \(e.episode)",
                                     onPlay: { pendingRequest = playRequest(e) },
-                                    onDelete: { pendingDelete = e })
+                                    onDelete: { deleteOrConfirm(e) })
                     }
                 }
             }
@@ -143,10 +144,24 @@ struct SeriesDownloadsView: View {
                             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
-                if let e = pendingDelete { downloads.delete(e) }
+                if let e = pendingDelete { deleteEpisode(e) }
                 pendingDelete = nil
             }
             Button("Annulla", role: .cancel) { pendingDelete = nil }
+        }
+    }
+
+    private func deleteOrConfirm(_ entry: DownloadEntry) {
+        pendingDelete = entry
+    }
+
+    private func deleteEpisode(_ entry: DownloadEntry) {
+        downloads.delete(entry)
+        let remaining = library.downloads().contains {
+            $0.mediaType == .tv && $0.tmdbId == tmdbId && $0.persistentModelID != entry.persistentModelID
+        }
+        if !remaining {
+            dismiss()
         }
     }
 
@@ -222,19 +237,41 @@ private struct DownloadRow: View {
     private var control: some View {
         switch entry.state {
         case .completed:
-            Button(action: onPlay) { Image(systemName: "play.circle.fill").font(.title2).foregroundStyle(Theme.red) }
+            Button(action: onPlay) {
+                Image(systemName: "play.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(Theme.red)
+                    .frame(width: 32, height: 32)
+            }
                 .buttonStyle(.plain)
         case .downloading:
-            Button { downloads.pause(entry) } label: { Image(systemName: "pause.circle").font(.title2).foregroundStyle(.secondary) }
+            Button { downloads.pause(entry) } label: {
+                Image(systemName: "pause.circle")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+            }
                 .buttonStyle(.plain)
         case .paused:
-            Button { downloads.resume(entry) } label: { Image(systemName: "arrow.down.circle").font(.title2).foregroundStyle(Theme.red) }
+            Button { downloads.resume(entry) } label: {
+                Image(systemName: "arrow.down.circle")
+                    .font(.title2)
+                    .foregroundStyle(Theme.red)
+                    .frame(width: 32, height: 32)
+            }
                 .buttonStyle(.plain)
         case .failed:
-            Button { retry() } label: { Image(systemName: "arrow.clockwise.circle").font(.title2).foregroundStyle(Theme.red) }
+            Button { retry() } label: {
+                Image(systemName: "arrow.clockwise.circle")
+                    .font(.title2)
+                    .foregroundStyle(Theme.red)
+                    .frame(width: 32, height: 32)
+            }
                 .buttonStyle(.plain)
         case .queued:
-            Image(systemName: "clock").foregroundStyle(.secondary)
+            Image(systemName: "clock")
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
         }
     }
 
@@ -242,7 +279,9 @@ private struct DownloadRow: View {
         library.setDownloadState(entry, .queued, progress: 0)
         downloads.enqueue(tmdbId: entry.tmdbId, type: entry.mediaType, season: entry.season,
                           episode: entry.episode, title: entry.title, poster: entry.poster,
-                          releaseDate: entry.releaseDate)
+                          backdrop: entry.backdrop, releaseDate: entry.releaseDate,
+                          episodeTitle: entry.episodeTitle, episodeOverview: entry.episodeOverview,
+                          episodeStill: entry.episodeStill, episodeRuntime: entry.episodeRuntime)
     }
 }
 

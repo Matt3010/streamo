@@ -175,6 +175,43 @@ struct TmdbItem: Codable, Hashable, Identifiable, Sendable {
         case nextEpisodeToAir = "next_episode_to_air"
     }
 
+    init(
+        id: Int,
+        mediaType: MediaType,
+        title: String?,
+        posterPath: String?,
+        backdropPath: String? = nil,
+        releaseDate: String? = nil,
+        seasons: [TmdbSeasonInfo]? = nil,
+        numberOfSeasons: Int? = nil,
+        numberOfEpisodes: Int? = nil
+    ) {
+        self.id = id
+        self.mediaType = mediaType.rawValue
+        self.title = mediaType == .movie ? title : nil
+        self.name = mediaType == .tv ? title : nil
+        self.posterPath = posterPath
+        self.backdropPath = backdropPath
+        self.popularity = nil
+        self.voteAverage = nil
+        self.voteCount = nil
+        self.releaseDate = mediaType == .movie ? releaseDate : nil
+        self.firstAirDate = mediaType == .tv ? releaseDate : nil
+        self.overview = nil
+        self.tagline = nil
+        self.runtime = nil
+        self.episodeRunTime = nil
+        self.numberOfSeasons = numberOfSeasons
+        self.numberOfEpisodes = numberOfEpisodes
+        self.status = nil
+        self.genres = nil
+        self.credits = nil
+        self.videos = nil
+        self.seasons = seasons
+        self.lastEpisodeToAir = nil
+        self.nextEpisodeToAir = nil
+    }
+
     // MARK: Convenience
 
     /// Display title — movies use `title`, TV uses `name`.

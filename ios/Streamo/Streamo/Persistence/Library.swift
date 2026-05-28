@@ -416,10 +416,28 @@ final class Library {
     /// Enqueue a download (no-op if one already exists for this coordinate).
     @discardableResult
     func addDownload(tmdbId: Int, type: MediaType, season: Int, episode: Int,
-                     title: String?, poster: String?, releaseDate: String?) -> DownloadEntry {
-        if let existing = download(tmdbId, type, season: season, episode: episode) { return existing }
+                     title: String?, poster: String?, backdrop: String? = nil, releaseDate: String?,
+                     episodeTitle: String? = nil, episodeOverview: String? = nil,
+                     episodeStill: String? = nil, episodeRuntime: Int? = nil,
+                     itemJSON: String? = nil) -> DownloadEntry {
+        if let existing = download(tmdbId, type, season: season, episode: episode) {
+            if let title { existing.title = title }
+            if let poster { existing.poster = poster }
+            if let backdrop { existing.backdrop = backdrop }
+            if let releaseDate { existing.releaseDate = releaseDate }
+            if let episodeTitle { existing.episodeTitle = episodeTitle }
+            if let episodeOverview { existing.episodeOverview = episodeOverview }
+            if let episodeStill { existing.episodeStill = episodeStill }
+            if let episodeRuntime { existing.episodeRuntime = episodeRuntime }
+            if let itemJSON { existing.itemJSON = itemJSON }
+            save()
+            return existing
+        }
         let e = DownloadEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
-                              title: title, poster: poster, releaseDate: releaseDate)
+                              title: title, poster: poster, backdrop: backdrop, releaseDate: releaseDate,
+                              episodeTitle: episodeTitle, episodeOverview: episodeOverview,
+                              episodeStill: episodeStill, episodeRuntime: episodeRuntime)
+        e.itemJSON = itemJSON
         context.insert(e)
         save()
         return e
@@ -433,11 +451,14 @@ final class Library {
         save()
     }
 
-    /// Mark a download completed and record its on-disk location.
-    func completeDownload(_ entry: DownloadEntry, localPath: String) {
+    /// Mark a download completed and record its on-disk location. We persist
+    /// both a bookmark (canonical, survives sandbox UUID changes) and the
+    /// relative path string as a fallback.
+    func completeDownload(_ entry: DownloadEntry, localPath: String, bookmark: Data? = nil) {
         entry.state = .completed
         entry.progress = 1
         entry.localPath = localPath
+        entry.localBookmark = bookmark
         entry.errorMessage = nil
         save()
     }

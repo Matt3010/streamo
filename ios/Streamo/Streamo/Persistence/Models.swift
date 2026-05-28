@@ -108,10 +108,12 @@ final class HistoryEntry {
     }
 }
 
-/// An offline download of a movie or a single TV episode. The actual media is
-/// an HLS `.movpkg` bundle on disk; `localPath` is its path relative to the
-/// app home dir (the container path changes across launches, so we never store
-/// an absolute URL).
+/// An offline download of a movie or a single TV episode. The media is a
+/// plain directory of HLS files at `Documents/Downloads/<key>/`, served back
+/// to AVPlayer by `LocalHLSServer`. `localPath` is a sentinel pointing at the
+/// rewritten master playlist inside that folder; `localBookmark` is a leftover
+/// field from the previous `.movpkg`-based implementation, kept to avoid a
+/// SwiftData migration but no longer written.
 @Model
 final class DownloadEntry {
     var tmdbId: Int = 0
@@ -120,14 +122,25 @@ final class DownloadEntry {
     var episode: Int = 0
     var title: String?
     var poster: String?
+    var backdrop: String?
     var releaseDate: String?
+    var episodeTitle: String?
+    var episodeOverview: String?
+    var episodeStill: String?
+    var episodeRuntime: Int?
     var stateRaw: String = DownloadState.queued.rawValue
     /// Last persisted progress (0…1). Live progress while active is held in
     /// DownloadManager; this is the value shown when nothing is running.
     var progress: Double = 0
     var localPath: String?
+    var localBookmark: Data?
     var errorMessage: String?
     var addedAt: Date = Date.now
+    /// Snapshot of the parent `TmdbItem` (series for TV, movie for movies)
+    /// at download time, serialized as JSON. Lets the detail screen render
+    /// fully offline — synopsis, runtime, genres, vote, cast — without
+    /// hitting TMDB when there's no network.
+    var itemJSON: String?
 
     var mediaType: MediaType { MediaType(rawValue: mediaTypeRaw) ?? .movie }
     var state: DownloadState {
@@ -136,7 +149,9 @@ final class DownloadEntry {
     }
 
     init(tmdbId: Int, mediaType: MediaType, season: Int = 0, episode: Int = 0,
-         title: String?, poster: String?, releaseDate: String?,
+         title: String?, poster: String?, backdrop: String? = nil, releaseDate: String?,
+         episodeTitle: String? = nil, episodeOverview: String? = nil,
+         episodeStill: String? = nil, episodeRuntime: Int? = nil,
          state: DownloadState = .queued, progress: Double = 0,
          localPath: String? = nil, addedAt: Date = .now) {
         self.tmdbId = tmdbId
@@ -145,7 +160,12 @@ final class DownloadEntry {
         self.episode = episode
         self.title = title
         self.poster = poster
+        self.backdrop = backdrop
         self.releaseDate = releaseDate
+        self.episodeTitle = episodeTitle
+        self.episodeOverview = episodeOverview
+        self.episodeStill = episodeStill
+        self.episodeRuntime = episodeRuntime
         self.stateRaw = state.rawValue
         self.progress = progress
         self.localPath = localPath

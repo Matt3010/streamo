@@ -87,7 +87,12 @@ struct LibraryBackupPayload: Codable {
         var episode: Int
         var title: String?
         var poster: String?
+        var backdrop: String?
         var releaseDate: String?
+        var episodeTitle: String?
+        var episodeOverview: String?
+        var episodeStill: String?
+        var episodeRuntime: Int?
         var addedAt: Date
     }
 }
@@ -123,7 +128,9 @@ extension Library {
         } ?? []
         payload.downloads = downloads().map {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, season: $0.season, episode: $0.episode,
-                  title: $0.title, poster: $0.poster, releaseDate: $0.releaseDate, addedAt: $0.addedAt)
+                  title: $0.title, poster: $0.poster, backdrop: $0.backdrop, releaseDate: $0.releaseDate,
+                  episodeTitle: $0.episodeTitle, episodeOverview: $0.episodeOverview,
+                  episodeStill: $0.episodeStill, episodeRuntime: $0.episodeRuntime, addedAt: $0.addedAt)
         }
         let s = AppSettings.shared
         payload.settings = .init(
@@ -202,7 +209,9 @@ extension Library {
             context.insert(DownloadEntry(
                 tmdbId: d.tmdbId, mediaType: MediaType(rawValue: d.mediaType) ?? .movie,
                 season: d.season, episode: d.episode,
-                title: d.title, poster: d.poster, releaseDate: d.releaseDate,
+                title: d.title, poster: d.poster, backdrop: d.backdrop, releaseDate: d.releaseDate,
+                episodeTitle: d.episodeTitle, episodeOverview: d.episodeOverview,
+                episodeStill: d.episodeStill, episodeRuntime: d.episodeRuntime,
                 state: .queued, progress: 0, localPath: nil, addedAt: d.addedAt
             ))
         }

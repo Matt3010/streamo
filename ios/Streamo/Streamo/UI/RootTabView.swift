@@ -8,6 +8,38 @@ struct RootTabView: View {
     @State private var network = NetworkMonitor.shared
 
     var body: some View {
+        Group {
+            if network.isOnline {
+                onlineTabs
+            } else {
+                offlineRoot
+            }
+        }
+        .sheet(item: Binding(get: { nav.presentedSheet }, set: { nav.presentedSheet = $0 })) { route in
+            NavigationStack {
+                Group {
+                    switch route {
+                    case .history:
+                        HistoryView().navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
+                    case .settings:
+                        SettingsView()
+                    case .downloads:
+                        DownloadsView()
+                    }
+                }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Chiudi") { nav.presentedSheet = nil } } }
+            }
+        }
+        .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
+        .toastOverlay()
+        .task { DownloadManager.shared.configure(library: library) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
+        }
+        .onOpenURL { url in handleDeepLink(url) }
+    }
+
+    private var onlineTabs: some View {
         TabView(selection: Binding(get: { nav.selectedTab }, set: { nav.selectedTab = $0 })) {
             NavigationStack(path: Binding(get: { nav.homePath }, set: { nav.homePath = $0 })) {
                 HomeView()
@@ -36,31 +68,21 @@ struct RootTabView: View {
             .tabItem { Label("Lista", systemImage: "bookmark.fill") }
             .tag(AppNavigation.Tab.watchlist)
         }
-        .sheet(item: Binding(get: { nav.presentedSheet }, set: { nav.presentedSheet = $0 })) { route in
-            NavigationStack {
-                Group {
-                    switch route {
-                    case .history:
-                        HistoryView().navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
-                    case .settings:
-                        SettingsView()
-                    case .downloads:
-                        DownloadsView()
+    }
+
+    /// Offline mode collapses the app to the one thing that still works:
+    /// the Downloads list (with Settings reachable for local-only options).
+    private var offlineRoot: some View {
+        NavigationStack {
+            DownloadsView()
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { nav.presentedSheet = .settings } label: { Image(systemName: "gearshape") }
+                            .accessibilityLabel("Impostazioni")
                     }
                 }
-                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Chiudi") { nav.presentedSheet = nil } } }
-            }
+                .background { AmbientBackground() }
         }
-        .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
-        .safeAreaInset(edge: .top) {
-            if !network.isOnline { OfflineBanner() }
-        }
-        .toastOverlay()
-        .task { DownloadManager.shared.configure(library: library) }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
-        }
-        .onOpenURL { url in handleDeepLink(url) }
     }
 
     /// streamo://open?type=tv&id=123&s=1&e=2 → open the title's detail.
@@ -71,6 +93,12 @@ struct RootTabView: View {
         func value(_ name: String) -> String? { q.first { $0.name == name }?.value }
         guard let id = value("id").flatMap(Int.init),
               let typeRaw = value("type"), let type = MediaType(rawValue: typeRaw) else { return }
+        // Offline mode only renders Downloads, so a tab/stack-based open would
+        // silently land nowhere. Surface that to the user instead.
+        guard network.isOnline else {
+            ToastCenter.shared.show("Sei offline — apertura disponibile al ritorno della connessione")
+            return
+        }
         let season = value("s").flatMap(Int.init) ?? 0
         let episode = value("e").flatMap(Int.init) ?? 0
         nav.open(MediaRef(tmdbId: id, mediaType: type, resumeSeason: season, resumeEpisode: episode))

@@ -5,6 +5,7 @@ struct SearchView: View {
     @State private var query = ""
     @State private var results: [TmdbItem] = []
     @State private var isSearching = false
+    @State private var isSearchPresented = false
     @State private var pendingRemove: TmdbItem?
     @State private var pendingRemoveType: MediaType = .movie
 
@@ -58,7 +59,12 @@ struct SearchView: View {
             }
         }
         .navigationTitle("Cerca")
-        .searchable(text: $query, prompt: "Titolo, film o serie TV")
+        .searchable(text: $query, isPresented: $isSearchPresented, prompt: "Titolo, film o serie TV")
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                isSearchPresented = true
+            }
+        }
         .onSubmit(of: .search) { addRecent(query) }
         .confirmationDialog("Rimuovere \(pendingRemove?.displayTitle ?? "questo titolo") dalla lista?",
                             isPresented: Binding(get: { pendingRemove != nil }, set: { if !$0 { pendingRemove = nil } }),

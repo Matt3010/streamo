@@ -40,7 +40,11 @@ final class DetailViewModel {
     /// `explicitSeason` is the season from a deep link (e.g. continue-watching);
     /// when absent, `resolveSeason` derives it from the user's progress so the
     /// dropdown lands on where they left off, not season 1.
-    func load(initialSeason explicitSeason: Int?, resolveSeason: (TmdbItem) -> Int? = { _ in nil }) async {
+    func load(
+        initialSeason explicitSeason: Int?,
+        library: Library? = nil,
+        resolveSeason: (TmdbItem) -> Int? = { _ in nil }
+    ) async {
         isLoading = true
         loadError = nil
         do {
@@ -54,7 +58,13 @@ final class DetailViewModel {
                 await loadSeason(target)
             }
         } catch {
-            loadError = (error as? LocalizedError)?.errorDescription ?? "Errore di caricamento."
+            if let fallback = offlineFallbackItem(library: library, explicitSeason: explicitSeason) {
+                item = fallback
+                providerAvailability = .unavailable
+                providerMessage = nil
+            } else {
+                loadError = (error as? LocalizedError)?.errorDescription ?? "Errore di caricamento."
+            }
         }
         isLoading = false
 
@@ -64,6 +74,84 @@ final class DetailViewModel {
         recommendations = Array((await recs ?? []).prefix(20))
         reviews = Array((await revs ?? []).prefix(10))
         extrasLoading = false
+    }
+
+    private func offlineFallbackItem(library: Library?, explicitSeason: Int?) -> TmdbItem? {
+        guard let library else { return nil }
+        let downloads = library.downloads().filter { $0.tmdbId == ref.tmdbId && $0.mediaType == ref.mediaType }
+        let progress = library.progress(ref.tmdbId, ref.mediaType, season: ref.resumeSeason, episode: ref.resumeEpisode)
+        let watchlist = library.watchlist().first { $0.tmdbId == ref.tmdbId && $0.mediaType == ref.mediaType }
+
+        // Prefer the JSON snapshot we stored at download time — it carries
+        // synopsis, runtime, genres, vote, cast, videos. Falls back to the
+        // sparse construction below when no download has been done yet.
+        let cachedItem: TmdbItem? = downloads.lazy
+            .compactMap(\.itemJSON)
+            .compactMap { $0.data(using: .utf8) }
+            .compactMap { try? JSONDecoder().decode(TmdbItem.self, from: $0) }
+            .first
+
+        let sourceTitle = cachedItem?.displayTitle
+            ?? downloads.first?.title ?? progress?.title ?? watchlist?.title
+        guard let sourceTitle, !sourceTitle.isEmpty else { return nil }
+
+        if ref.mediaType == .tv {
+            let downloadedSeasons = Set(downloads.map(\.season))
+            let progressSeason = progress.map { [$0.season] } ?? []
+            let seasonNumbers = Array(downloadedSeasons.union(progressSeason)).filter { $0 > 0 }.sorted()
+            seasons = seasonNumbers.isEmpty ? [max(1, explicitSeason ?? ref.resumeSeason)] : seasonNumbers
+            selectedSeason = explicitSeason.flatMap { seasons.contains($0) ? $0 : nil } ?? seasons.first ?? 1
+
+            let downloadedEpisodes = downloads
+                .filter { $0.season == selectedSeason }
+                .sorted { $0.episode < $1.episode }
+            let episodeNumbers = downloadedEpisodes
+                .map(\.episode)
+                .filter { $0 > 0 }
+            episodes = episodeNumbers.isEmpty
+                ? [TmdbEpisodeDetail.stub(max(1, ref.resumeEpisode))]
+                : downloadedEpisodes.map {
+                    TmdbEpisodeDetail(
+                        episodeNumber: $0.episode,
+                        seasonNumber: $0.season,
+                        name: $0.episodeTitle,
+                        overview: $0.episodeOverview,
+                        stillPath: $0.episodeStill,
+                        airDate: nil,
+                        runtime: $0.episodeRuntime
+                    )
+                }
+
+            // If we have a cached series item, prefer its season list (real
+            // TMDB ordering with names/dates) but only keep seasons we have
+            // data for locally.
+            if let cached = cachedItem {
+                return cached
+            }
+            let seasonInfos = seasons.map {
+                TmdbSeasonInfo(seasonNumber: $0, episodeCount: nil, name: "Stagione \($0)", airDate: nil)
+            }
+            return TmdbItem(
+                id: ref.tmdbId,
+                mediaType: ref.mediaType,
+                title: sourceTitle,
+                posterPath: downloads.first?.poster ?? progress?.poster ?? watchlist?.poster,
+                backdropPath: downloads.first?.backdrop ?? progress?.backdrop,
+                seasons: seasonInfos,
+                numberOfSeasons: seasons.count,
+                numberOfEpisodes: episodes.count
+            )
+        }
+
+        if let cached = cachedItem { return cached }
+        return TmdbItem(
+            id: ref.tmdbId,
+            mediaType: ref.mediaType,
+            title: sourceTitle,
+            posterPath: downloads.first?.poster ?? progress?.poster ?? watchlist?.poster,
+            backdropPath: downloads.first?.backdrop ?? progress?.backdrop,
+            releaseDate: downloads.first?.releaseDate
+        )
     }
 
     /// True when the title (or whole series) hasn't released yet.

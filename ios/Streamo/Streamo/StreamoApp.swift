@@ -4,6 +4,8 @@ import UIKit
 
 @main
 struct StreamoApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     /// On-device store for watchlist / progress / history / provider mappings.
     private let modelContainer: ModelContainer
     @State private var library: Library
