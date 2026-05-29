@@ -494,6 +494,22 @@ async function proxyPassthrough(req, res, upstreamURL) {
         res.status(502).json({ error: 'proxy_failed', detail });
         return;
     }
+    // Nested variant/media playlists (referenced from an already-rewritten
+    // master) can themselves carry absolute vixcloud.co / vix-content.net URLs.
+    // Rewrite those too so every sub-playlist, segment and key is pulled back
+    // through this proxy. Otherwise the client — notably the offline downloader,
+    // which fetches *every* track rather than the single variant AVPlayer
+    // streams — would hit the CDN directly and require its own WARP egress.
+    const contentType = upstream.headers.get('content-type') ?? '';
+    const isPlaylist = contentType.includes('mpegurl')
+        || contentType.includes('m3u8')
+        || /\.m3u8(?:$|\?)/i.test(upstreamURL);
+    if (isPlaylist) {
+        const body = await upstream.text();
+        copyProxyHeaders(upstream, res, true);
+        res.status(upstream.status).send(rewritePlaylist(body));
+        return;
+    }
     await forwardResponse(upstream, res);
 }
 async function forwardResponse(upstream, res) {
