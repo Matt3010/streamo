@@ -2,15 +2,16 @@ import Foundation
 
 /// Download an HLS asset (master + variants + segments + AES keys) to a
 /// directory of plain files, with playlist URIs rewritten to local names.
-/// Replaces `AVAssetDownloadTask` — we need full control because vixcloud
-/// requires custom Referer/Origin headers and AVFoundation's offline player
-/// refuses to play the resulting `.movpkg` in airplane mode.
+/// Replaces `AVAssetDownloadTask` because we need full control over custom
+/// headers and because AVFoundation's offline player refuses to play the
+/// resulting `.movpkg` in airplane mode.
 ///
-/// Resume works for free: existing segment files are skipped on re-entry.
+/// Resume works for free: existing files are skipped on re-entry.
 enum HLSDownloader {
     enum DownloadError: Error, LocalizedError {
         case fetchFailed(URL, Int?)
         case emptyMaster
+
         var errorDescription: String? {
             switch self {
             case .fetchFailed(let url, let code):
@@ -21,11 +22,13 @@ enum HLSDownloader {
         }
     }
 
-    /// Progress reported as a 0…1 fraction of segments completed (we don't
-    /// know byte totals up-front and segments are roughly uniform per track).
+    /// Progress reported as a 0...1 fraction of the downloadable HLS resources
+    /// completed. We weight sub-playlists by actual work item count
+    /// (keys/maps + media files) instead of giving each playlist an equal
+    /// slice, so mixed audio/subtitle/video masters stay much smoother.
     typealias ProgressHandler = @Sendable (Double) -> Void
 
-    /// Run the download. Honours `Task` cancellation between segments.
+    /// Run the download. Honours `Task` cancellation between resources.
     static func download(masterURL: URL,
                          headers: [String: String],
                          outputDirectory: URL,
@@ -39,7 +42,7 @@ enum HLSDownloader {
 
         // Pre-pass: identify every video variant (`#EXT-X-STREAM-INF` + URI
         // line) and keep only the one with the highest BANDWIDTH. Downloading
-        // every quality would multiply data + time by 3-4×; AVPlayer only
+        // every quality would multiply data + time by 3-4x; AVPlayer only
         // needs one variant for offline. Other variant blocks are blanked.
         var variantBlocks: [(infIndex: Int, uriIndex: Int, bandwidth: Int)] = []
         do {
@@ -83,14 +86,15 @@ enum HLSDownloader {
                     subPlaylists.append((resolved, localName))
                     masterLines[i] = replaceURIAttribute(line, with: localName)
                 }
-            } else if line.hasPrefix("#EXT-X-I-FRAME-STREAM-INF"), let uri = extractURIAttribute(line) {
+            } else if line.hasPrefix("#EXT-X-I-FRAME-STREAM-INF"),
+                      let uri = extractURIAttribute(line) {
                 trackIndex += 1
                 let resolved = resolveURL(uri, relativeTo: masterURL)
                 let localName = "track-\(trackIndex).m3u8"
                 subPlaylists.append((resolved, localName))
                 masterLines[i] = replaceURIAttribute(line, with: localName)
             } else if !line.isEmpty && !line.hasPrefix("#") {
-                // Variant URI line (kept video variant only — others are "" now).
+                // Variant URI line (kept video variant only; others are blank).
                 trackIndex += 1
                 let resolved = resolveURL(line, relativeTo: masterURL)
                 let localName = "track-\(trackIndex).m3u8"
@@ -100,37 +104,45 @@ enum HLSDownloader {
         }
 
         if subPlaylists.isEmpty {
-            // Master IS the variant playlist (single-stream case). Treat it
-            // as one sub-playlist by reusing the master text directly.
+            // Master is already the media playlist (single-stream case).
             try await downloadVariant(text: masterText,
                                       sourceURL: masterURL,
                                       trackPrefix: "t1",
                                       headers: headers,
                                       outputDirectory: outputDirectory,
                                       session: session,
-                                      progressBase: 0, progressSpan: 1,
+                                      progressBase: 0,
+                                      progressSpan: 1,
                                       progress: progress,
                                       writeAs: "master.m3u8")
             progress(1)
             return
         }
 
-        // 2. Fetch + rewrite + download each sub-playlist sequentially. We
-        // distribute progress evenly across sub-playlists.
-        let span = 1.0 / Double(subPlaylists.count)
-        for (idx, sub) in subPlaylists.enumerated() {
+        // 2. Fetch every kept sub-playlist first so we can weight progress by
+        // actual work units instead of giving each playlist an equal slice.
+        var fetched: [(sub: (absoluteURL: URL, localName: String), text: String, weight: Int)] = []
+        fetched.reserveCapacity(subPlaylists.count)
+        for sub in subPlaylists {
             try Task.checkCancellation()
             let subText = try await fetchString(sub.absoluteURL, headers: headers, session: session)
-            try await downloadVariant(text: subText,
-                                      sourceURL: sub.absoluteURL,
+            fetched.append((sub: sub, text: subText, weight: max(1, resourceCount(inVariantText: subText))))
+        }
+
+        let totalWeight = max(1, fetched.reduce(0) { $0 + $1.weight })
+        var completedWeight = 0
+        for (idx, item) in fetched.enumerated() {
+            try await downloadVariant(text: item.text,
+                                      sourceURL: item.sub.absoluteURL,
                                       trackPrefix: "t\(idx + 1)",
                                       headers: headers,
                                       outputDirectory: outputDirectory,
                                       session: session,
-                                      progressBase: Double(idx) * span,
-                                      progressSpan: span,
+                                      progressBase: Double(completedWeight) / Double(totalWeight),
+                                      progressSpan: Double(item.weight) / Double(totalWeight),
                                       progress: progress,
-                                      writeAs: sub.localName)
+                                      writeAs: item.sub.localName)
+            completedWeight += item.weight
         }
 
         // 3. Save the rewritten master last so a partial download never leaves
@@ -185,24 +197,32 @@ enum HLSDownloader {
         let out = outputDirectory.appendingPathComponent(filename)
         try lines.joined(separator: "\n").write(to: out, atomically: true, encoding: .utf8)
 
-        // Keys are small but mandatory — fetch them all first, sequentially.
+        let allResourceNames = keyDownloads.map { $0.localName } + segmentDownloads.map { $0.localName }
+        let totalResources = max(1, allResourceNames.count)
+        var completedResources = allResourceNames.reduce(0) { partial, name in
+            let target = outputDirectory.appendingPathComponent(name)
+            return partial + (FileManager.default.fileExists(atPath: target.path) ? 1 : 0)
+        }
+        progress(progressBase + progressSpan * Double(completedResources) / Double(totalResources))
+
+        // Keys are small but mandatory. Fetch them first and count them toward
+        // progress so resume does not jump late from already-present segments.
         for (url, name) in keyDownloads {
             try Task.checkCancellation()
             let target = outputDirectory.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: target.path) { continue }
             let data = try await fetchData(url, headers: headers, session: session)
             try data.write(to: target, options: .atomic)
+            completedResources += 1
+            progress(progressBase + progressSpan * Double(completedResources) / Double(totalResources))
         }
 
-        // Segments in parallel with bounded concurrency. Mirrors what
-        // AVAssetDownloadTask does internally — modern HLS players pipeline
-        // 4-8 segment fetches. We sit at 6 to balance throughput against
-        // hitting per-token connection limits on vixcloud.
-        let total = max(1, segmentDownloads.count)
+        // Segments in parallel with bounded concurrency.
         let maxConcurrent = 6
-        let counter = SegmentCounter()
+        let counter = SegmentCounter(initialValue: completedResources)
         try await withThrowingTaskGroup(of: Void.self) { group in
             var index = 0
+
             func enqueue() {
                 guard index < segmentDownloads.count else { return }
                 let (url, name) = segmentDownloads[index]
@@ -210,29 +230,39 @@ enum HLSDownloader {
                 group.addTask {
                     try Task.checkCancellation()
                     let target = outputDirectory.appendingPathComponent(name)
-                    if !FileManager.default.fileExists(atPath: target.path) {
-                        let data = try await fetchData(url, headers: headers, session: session)
-                        try data.write(to: target, options: .atomic)
-                    }
+                    guard !FileManager.default.fileExists(atPath: target.path) else { return }
+                    let data = try await fetchData(url, headers: headers, session: session)
+                    try data.write(to: target, options: .atomic)
                     let done = await counter.increment()
-                    progress(progressBase + progressSpan * Double(done) / Double(total))
+                    progress(progressBase + progressSpan * Double(done) / Double(totalResources))
                 }
             }
+
             for _ in 0..<min(maxConcurrent, segmentDownloads.count) { enqueue() }
             while try await group.next() != nil { enqueue() }
         }
     }
 
-    /// Tiny actor-backed counter for thread-safe progress reporting across
-    /// the parallel segment task group.
+    /// Tiny actor-backed counter for thread-safe progress reporting across the
+    /// parallel segment task group.
     private actor SegmentCounter {
-        var done = 0
-        func increment() -> Int { done += 1; return done }
+        var done: Int
+
+        init(initialValue: Int = 0) {
+            self.done = initialValue
+        }
+
+        func increment() -> Int {
+            done += 1
+            return done
+        }
     }
 
     // MARK: - Networking
 
-    private static func fetchString(_ url: URL, headers: [String: String], session: URLSession) async throws -> String {
+    private static func fetchString(_ url: URL,
+                                    headers: [String: String],
+                                    session: URLSession) async throws -> String {
         let data = try await fetchData(url, headers: headers, session: session)
         guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
             throw DownloadError.emptyMaster
@@ -240,9 +270,13 @@ enum HLSDownloader {
         return text
     }
 
-    private static func fetchData(_ url: URL, headers: [String: String], session: URLSession) async throws -> Data {
+    private static func fetchData(_ url: URL,
+                                  headers: [String: String],
+                                  session: URLSession) async throws -> Data {
         var request = URLRequest(url: url)
-        for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
+        for (k, v) in headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
         request.timeoutInterval = 30
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
@@ -251,7 +285,7 @@ enum HLSDownloader {
         return data
     }
 
-    // MARK: - URI parsing helpers
+    // MARK: - URI Parsing
 
     /// Extract the `URI="..."` attribute value from an HLS tag line.
     private static func extractURIAttribute(_ line: String) -> String? {
@@ -272,7 +306,7 @@ enum HLSDownloader {
         return rewritten
     }
 
-    /// Extract the integer `BANDWIDTH=N` attribute from a `#EXT-X-STREAM-INF`.
+    /// Extract the integer `BANDWIDTH=N` attribute from `#EXT-X-STREAM-INF`.
     private static func bandwidthAttribute(_ line: String) -> Int? {
         guard let range = line.range(of: "BANDWIDTH=") else { return nil }
         let after = line[range.upperBound...]
@@ -281,15 +315,36 @@ enum HLSDownloader {
     }
 
     private static func resolveURL(_ candidate: String, relativeTo base: URL) -> URL {
-        if let absolute = URL(string: candidate), absolute.scheme != nil { return absolute }
+        if let absolute = URL(string: candidate), absolute.scheme != nil {
+            return absolute
+        }
         return URL(string: candidate, relativeTo: base)?.absoluteURL ?? base
     }
 
-    /// Pick a reasonable file extension for an URL (segments/keys may carry
-    /// query strings or no extension at all).
+    /// Pick a reasonable file extension for a URL. Segments/keys may carry
+    /// query strings or no extension at all.
     private static func inferExtension(from url: URL, fallback: String) -> String {
         let ext = url.pathExtension
-        if !ext.isEmpty, ext.count <= 5, !ext.contains("?") { return ext }
+        if !ext.isEmpty, ext.count <= 5, !ext.contains("?") {
+            return ext
+        }
         return fallback
+    }
+
+    /// Count the resources this variant will actually download so the caller
+    /// can give it a fair share of the overall progress bar.
+    private static func resourceCount(inVariantText text: String) -> Int {
+        var count = 0
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#EXT-X-KEY") || line.hasPrefix("#EXT-X-SESSION-KEY") || line.hasPrefix("#EXT-X-MAP") {
+                if extractURIAttribute(line) != nil {
+                    count += 1
+                }
+            } else if !line.isEmpty && !line.hasPrefix("#") {
+                count += 1
+            }
+        }
+        return count
     }
 }

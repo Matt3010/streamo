@@ -64,8 +64,6 @@ final class DownloadManager {
                 if resumed > e.progress {
                     library.setDownloadState(e, e.state, progress: resumed, error: e.errorMessage)
                 }
-            default:
-                break
             }
         }
         refreshCatalog()
