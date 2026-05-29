@@ -1,12 +1,69 @@
 import { fetchWithTimeout } from '../utils/fetch';
 import type { AdminEgressCheck } from '../../../shared/types';
 
+const EGRESS_CACHE_TTL_MS = 60_000;
+let latestEgressCheck: AdminEgressCheck | null = null;
+let latestEgressCheckAtMs = 0;
+let latestTrustedEgressCheck: AdminEgressCheck | null = null;
+let latestTrustedEgressCheckAtMs = 0;
+let inFlightCheck: Promise<AdminEgressCheck> | null = null;
+
 // Probe the egress path: Cloudflare's own trace endpoint reports whether
 // the current outbound IP is going through WARP, plus ipinfo.io adds the
 // ASN/org so we can verify it's really Cloudflare's AS13335 and not some
 // other tunnel. Both the admin route (manual refresh) and the periodic
 // health scan call this — keeps the probe logic in one place.
 export async function runEgressCheck(): Promise<AdminEgressCheck> {
+  if (inFlightCheck) {
+    return inFlightCheck;
+  }
+
+  inFlightCheck = performEgressCheck()
+    .then((result) => {
+      latestEgressCheck = result;
+      latestEgressCheckAtMs = Date.now();
+      if (isTrustedEgressCheck(result)) {
+        latestTrustedEgressCheck = result;
+        latestTrustedEgressCheckAtMs = latestEgressCheckAtMs;
+      }
+      return result;
+    })
+    .finally(() => {
+      inFlightCheck = null;
+    });
+
+  return inFlightCheck;
+}
+
+export function getCachedEgressCheck(): AdminEgressCheck | null {
+  return latestEgressCheck;
+}
+
+export function getTrustedCachedEgressCheck(): AdminEgressCheck | null {
+  return latestTrustedEgressCheck;
+}
+
+export function refreshEgressCheckInBackground(force = false): void {
+  const cacheFresh = latestEgressCheckAtMs > 0 && (Date.now() - latestEgressCheckAtMs) < EGRESS_CACHE_TTL_MS;
+  if (!force && (cacheFresh || inFlightCheck)) {
+    return;
+  }
+
+  void runEgressCheck().catch(() => {
+    // Best-effort cache refresh for request logging only.
+  });
+}
+
+export function startEgressCheckRefreshLoop(intervalMs = EGRESS_CACHE_TTL_MS): () => void {
+  refreshEgressCheckInBackground(true);
+  const timer = setInterval(() => {
+    refreshEgressCheckInBackground(true);
+  }, intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+async function performEgressCheck(): Promise<AdminEgressCheck> {
   const errors: string[] = [];
 
   let trace: Record<string, string> = {};
@@ -85,4 +142,8 @@ function isCloudflareIp(ip: string): boolean {
     return CLOUDFLARE_IPV6_PREFIXES.some((p) => lower.startsWith(p));
   }
   return CLOUDFLARE_IPV4_PREFIXES.some((p) => lower.startsWith(p));
+}
+
+function isTrustedEgressCheck(result: AdminEgressCheck): boolean {
+  return !result.errors.some((error) => error.startsWith('trace:')) && !!result.ip;
 }

@@ -8,6 +8,22 @@ import Foundation
 ///
 /// Resume works for free: existing files are skipped on re-entry.
 enum HLSDownloader {
+    /// Dedicated session for offline downloads. A higher per-host connection
+    /// cap lets a single title saturate the available bandwidth better than
+    /// `URLSession.shared`, which is conservative for generic app traffic.
+    private static let downloadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 16
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 300
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
+    /// Bounded segment fan-out for a single title download.
+    private static let maxConcurrentSegmentDownloads = 12
+
     enum DownloadError: Error, LocalizedError {
         case fetchFailed(URL, Int?)
         case emptyMaster
@@ -32,7 +48,7 @@ enum HLSDownloader {
     static func download(masterURL: URL,
                          headers: [String: String],
                          outputDirectory: URL,
-                         session: URLSession = .shared,
+                         session: URLSession = downloadSession,
                          progress: @escaping ProgressHandler) async throws {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
@@ -121,17 +137,26 @@ enum HLSDownloader {
 
         // 2. Fetch every kept sub-playlist first so we can weight progress by
         // actual work units instead of giving each playlist an equal slice.
-        var fetched: [(sub: (absoluteURL: URL, localName: String), text: String, weight: Int)] = []
-        fetched.reserveCapacity(subPlaylists.count)
-        for sub in subPlaylists {
-            try Task.checkCancellation()
-            let subText = try await fetchString(sub.absoluteURL, headers: headers, session: session)
-            fetched.append((sub: sub, text: subText, weight: max(1, HLSPlaylistParser.resourceCount(inVariantText: subText))))
-        }
+        var fetched = Array<(sub: (absoluteURL: URL, localName: String), text: String, weight: Int)?>(repeating: nil, count: subPlaylists.count)
+        try await withThrowingTaskGroup(of: (Int, (absoluteURL: URL, localName: String), String, Int).self) { group in
+            for (index, sub) in subPlaylists.enumerated() {
+                group.addTask {
+                    try Task.checkCancellation()
+                    let subText = try await fetchString(sub.absoluteURL, headers: headers, session: session)
+                    let weight = max(1, HLSPlaylistParser.resourceCount(inVariantText: subText))
+                    return (index, sub, subText, weight)
+                }
+            }
 
-        let totalWeight = max(1, fetched.reduce(0) { $0 + $1.weight })
+            for try await (index, sub, subText, weight) in group {
+                fetched[index] = (sub: sub, text: subText, weight: weight)
+            }
+        }
+        let resolvedPlaylists = fetched.compactMap { $0 }
+
+        let totalWeight = max(1, resolvedPlaylists.reduce(0) { $0 + $1.weight })
         var completedWeight = 0
-        for (idx, item) in fetched.enumerated() {
+        for (idx, item) in resolvedPlaylists.enumerated() {
             try await downloadVariant(text: item.text,
                                       sourceURL: item.sub.absoluteURL,
                                       trackPrefix: "t\(idx + 1)",
@@ -218,7 +243,6 @@ enum HLSDownloader {
         }
 
         // Segments in parallel with bounded concurrency.
-        let maxConcurrent = 6
         let counter = SegmentCounter(initialValue: completedResources)
         try await withThrowingTaskGroup(of: Void.self) { group in
             var index = 0
@@ -238,7 +262,7 @@ enum HLSDownloader {
                 }
             }
 
-            for _ in 0..<min(maxConcurrent, segmentDownloads.count) { enqueue() }
+            for _ in 0..<min(maxConcurrentSegmentDownloads, segmentDownloads.count) { enqueue() }
             while try await group.next() != nil { enqueue() }
         }
     }
