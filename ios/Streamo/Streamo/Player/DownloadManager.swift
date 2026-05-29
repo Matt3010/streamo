@@ -32,6 +32,10 @@ final class DownloadManager {
         "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)"
     }
 
+    private func debugLog(_ message: String) {
+        print("[DownloadManager] \(message)")
+    }
+
     /// Wire up the store and resume the queue (called once at launch).
     func configure(library: Library) {
         guard self.library == nil else { return }
@@ -186,6 +190,7 @@ final class DownloadManager {
         guard key(for: entry) == activeKey else { return }
         let k = key(for: entry)
         let persisted = liveProgress[k] ?? entry.progress
+        debugLog("pause key=\(k) persisted=\(String(format: "%.3f", persisted)) activeTask=\(activeTask != nil) activeKey=\(activeKey ?? "nil") playbackActive=\(playbackActive)")
         activeTask?.cancel()
         activeTask = nil
         activeKey = nil
@@ -202,10 +207,12 @@ final class DownloadManager {
         normalizeQueueState()
         let k = key(for: entry)
         let resumed = resumedProgress(forKey: k, fallback: liveProgress[k] ?? entry.progress)
+        debugLog("resume requested key=\(k) entryState=\(entry.state.rawValue) resumed=\(String(format: "%.3f", resumed)) activeTask=\(activeTask != nil) activeKey=\(activeKey ?? "nil") playbackActive=\(playbackActive)")
         liveProgress[k] = resumed
         lastPersistedProgress[k] = resumed
         library?.setDownloadState(entry, .queued, progress: resumed)
         if !startQueuedDownloadIfIdle(key: k) {
+            debugLog("resume key=\(k) did not start immediately; falling back to startNextIfIdle")
             startNextIfIdle()
         }
     }
@@ -271,8 +278,19 @@ final class DownloadManager {
 
     private func startNextIfIdle() {
         normalizeQueueState()
+        debugLog("startNextIfIdle activeTask=\(activeTask != nil) activeKey=\(activeKey ?? "nil") playbackActive=\(playbackActive)")
         guard !playbackActive, activeTask == nil, activeKey == nil, let library,
-              let entry = library.firstQueuedDownload() else { return }
+              let entry = library.firstQueuedDownload() else {
+            if let library {
+                let queued = library.downloads()
+                    .filter { $0.state == .queued }
+                    .map { self.key(for: $0) }
+                    .joined(separator: ",")
+                debugLog("startNextIfIdle no-op queued=[\(queued)]")
+            }
+            return
+        }
+        debugLog("startNextIfIdle starting key=\(key(for: entry))")
         start(entry)
     }
 
@@ -283,6 +301,7 @@ final class DownloadManager {
         normalizeQueueState()
         guard !playbackActive, activeTask == nil, activeKey == nil else { return false }
         guard entry.state == .queued else { return false }
+        debugLog("startEntryIfIdle starting key=\(key(for: entry))")
         start(entry)
         return true
     }
@@ -296,7 +315,12 @@ final class DownloadManager {
         guard !playbackActive, activeTask == nil, activeKey == nil,
               let library,
               let entry = library.downloads().first(where: { key(for: $0) == k }),
-              entry.state == .queued else { return false }
+              entry.state == .queued else {
+            let state = library?.downloads().first(where: { key(for: $0) == k })?.state.rawValue ?? "missing"
+            debugLog("startQueuedDownloadIfIdle blocked key=\(k) state=\(state) activeTask=\(activeTask != nil) activeKey=\(activeKey ?? "nil") playbackActive=\(playbackActive)")
+            return false
+        }
+        debugLog("startQueuedDownloadIfIdle starting key=\(k)")
         start(entry)
         return true
     }
@@ -306,9 +330,11 @@ final class DownloadManager {
     /// recover without requiring an app relaunch.
     private func normalizeQueueState() {
         if activeTask == nil, activeKey != nil {
+            debugLog("normalizeQueueState clearing stale activeKey=\(activeKey ?? "nil")")
             activeKey = nil
         }
         if activeTask != nil, activeKey == nil {
+            debugLog("normalizeQueueState cancelling task with missing activeKey")
             activeTask?.cancel()
             activeTask = nil
         }
@@ -321,6 +347,7 @@ final class DownloadManager {
         let initial = max(liveProgress[k] ?? 0, entry.progress)
         liveProgress[k] = initial
         lastPersistedProgress[k] = entry.progress
+        debugLog("start key=\(k) initial=\(String(format: "%.3f", initial)) entryProgress=\(String(format: "%.3f", entry.progress))")
         library?.setDownloadState(entry, .downloading, progress: initial)
         activeTask = Task { [weak self] in
             await self?.runDownload(key: k)
@@ -333,9 +360,11 @@ final class DownloadManager {
     /// into the `HLSDownloader`'s `@Sendable` progress closure.
     private func runDownload(key k: String) async {
         guard let library, let entry = library.downloads().first(where: { key(for: $0) == k }) else {
+            debugLog("runDownload missing entry key=\(k)")
             cleanupActive(key: k)
             return
         }
+        debugLog("runDownload begin key=\(k) state=\(entry.state.rawValue) progress=\(String(format: "%.3f", entry.progress))")
 
         let resolution: ProviderResolver.PlaybackResolution
         if entry.mediaType == .movie {
@@ -347,6 +376,7 @@ final class DownloadManager {
                 season: entry.season, episode: entry.episode)
         }
         guard let source = resolution.sources.first else {
+            debugLog("runDownload no source key=\(k) message=\(resolution.message ?? "nil")")
             fail(key: k, error: resolution.message ?? "Sorgente non disponibile")
             return
         }
@@ -368,11 +398,13 @@ final class DownloadManager {
         } catch is CancellationError {
             // Pause / playback / delete cancelled this download. State is
             // already updated by the caller; nothing else to do.
+            debugLog("runDownload cancelled key=\(k)")
             return
         } catch {
             // Transient errors: bounded retry with fresh source resolution.
             let next = retryCount[k, default: 0] + 1
             retryCount[k] = next
+            debugLog("runDownload error key=\(k) retry=\(next) error=\(error.localizedDescription)")
             if next <= maxRetries {
                 activeTask = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
@@ -389,6 +421,7 @@ final class DownloadManager {
             liveProgress[k] = 1
             library.completeDownload(entry, localPath: "Documents/Downloads/\(k)/master.m3u8")
         }
+        debugLog("runDownload success key=\(k)")
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
         activeKey = nil
@@ -398,6 +431,7 @@ final class DownloadManager {
     }
 
     private func fail(key k: String, error: String?) {
+        debugLog("fail key=\(k) error=\(error ?? "nil")")
         if let library, let entry = library.downloads().first(where: { key(for: $0) == k }) {
             library.setDownloadState(entry, .failed, error: error)
         }
@@ -405,6 +439,7 @@ final class DownloadManager {
     }
 
     private func cleanupActive(key k: String) {
+        debugLog("cleanupActive key=\(k)")
         liveProgress[k] = nil
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
