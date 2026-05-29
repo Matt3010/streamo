@@ -746,17 +746,28 @@ final class DownloadManager {
     }
 
     /// Title / subtitle shown in the Live Activity. Movies have no subtitle;
-    /// episodes get "S1 · E2 · Episode title".
+    /// episodes get "S1 · E2 · Episode title" — but a generic placeholder name
+    /// like "Episodio 2" is dropped so it doesn't repeat the "E2" we already
+    /// show.
     private func activityLabels(for entry: DownloadEntry) -> (String, String?) {
         let title = entry.title ?? "Download"
         guard entry.mediaType != .movie else { return (title, nil) }
         var parts: [String] = []
         if entry.season > 0 { parts.append("S\(entry.season)") }
         parts.append("E\(entry.episode)")
-        if let episodeTitle = entry.episodeTitle, !episodeTitle.isEmpty {
+        let episodeTitle = entry.episodeTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !episodeTitle.isEmpty, !isGenericEpisodeTitle(episodeTitle, episode: entry.episode) {
             parts.append(episodeTitle)
         }
         return (title, parts.joined(separator: " · "))
+    }
+
+    /// True for placeholder episode names that just restate the number
+    /// ("Episodio 2", "Episode 2", "Ep. 2"), so we don't show "E2 · Episodio 2".
+    private func isGenericEpisodeTitle(_ name: String, episode: Int) -> Bool {
+        let normalized = name.lowercased()
+        return ["episodio \(episode)", "episode \(episode)",
+                "ep \(episode)", "ep. \(episode)"].contains(normalized)
     }
 
     // MARK: - Paths

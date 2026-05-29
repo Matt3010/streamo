@@ -9,7 +9,8 @@ struct DownloadLiveActivity: Widget {
         ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
             // Lock screen / banner.
             LockScreenView(state: context.state)
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
                 .activityBackgroundTint(Color.black.opacity(0.6))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
@@ -46,8 +47,10 @@ struct DownloadLiveActivity: Widget {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
                 }
             } compactLeading: {
                 Image(systemName: style.icon)
