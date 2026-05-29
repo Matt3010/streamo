@@ -114,7 +114,7 @@ struct DetailView: View {
 
     private var downloadSnapshot: String {
         library.downloads().map { entry in
-            "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)-\(entry.stateRaw)-\(Int(downloads.progress(for: entry) * 100))"
+            "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)-\(downloads.displayState(for: entry).rawValue)-\(Int(downloads.progress(for: entry) * 100))"
         }
         .joined(separator: "|")
     }
@@ -305,12 +305,13 @@ struct DetailView: View {
     @ViewBuilder
     private func movieDownloadButton(_ item: TmdbItem) -> some View {
         if let dl = downloadFor(item.id, .movie, season: 0, episode: 0) {
+            let state = downloads.displayState(for: dl)
             Button(role: .destructive) {
                 locallyRemovedDownloadKeys.insert(downloadKey(item.id, .movie, season: 0, episode: 0))
                 downloads.delete(dl)
                 invalidateDownloadUI()
                 ToastCenter.shared.show("Download rimosso")
-            } label: { Label(dl.state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
+            } label: { Label(state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
         } else {
             Button {
                 locallyRemovedDownloadKeys.remove(downloadKey(item.id, .movie, season: 0, episode: 0))
@@ -327,12 +328,13 @@ struct DetailView: View {
     @ViewBuilder
     private func episodeDownloadButton(_ item: TmdbItem, episode: Int) -> some View {
         if let dl = downloadFor(item.id, .tv, season: model.selectedSeason, episode: episode) {
+            let state = downloads.displayState(for: dl)
             Button(role: .destructive) {
                 locallyRemovedDownloadKeys.insert(downloadKey(item.id, .tv, season: model.selectedSeason, episode: episode))
                 downloads.delete(dl)
                 invalidateDownloadUI()
                 ToastCenter.shared.show("Download rimosso")
-            } label: { Label(dl.state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
+            } label: { Label(state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
         } else {
             Button {
                 locallyRemovedDownloadKeys.remove(downloadKey(item.id, .tv, season: model.selectedSeason, episode: episode))
@@ -391,10 +393,11 @@ struct DetailView: View {
             Text(model.releaseStatusText).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
         }
         if ref.mediaType == .movie, let dl = downloadFor(item.id, .movie, season: 0, episode: 0) {
-            Label(downloadStatusLabel(dl.state),
-                  systemImage: dl.state == .completed ? "arrow.down.circle.fill" : "arrow.down.circle")
+            let state = downloads.displayState(for: dl)
+            Label(downloadStatusLabel(state),
+                  systemImage: state == .completed ? "arrow.down.circle.fill" : "arrow.down.circle")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(dl.state == .completed ? Theme.red : .secondary)
+                .foregroundStyle(state == .completed ? Theme.red : .secondary)
         }
         if let overview = item.overview, !overview.isEmpty {
             Text(overview).font(.body)
@@ -710,6 +713,11 @@ private struct EpisodeCard: View {
         return min(100, max(0, (downloads?.progress(for: download) ?? download.progress) * 100))
     }
 
+    private var downloadState: DownloadState? {
+        guard let download else { return nil }
+        return downloads?.displayState(for: download) ?? download.state
+    }
+
     private var timeLabel: String? {
         guard totalSeconds > 0 else { return nil }
         let base = "\(Format.time(watchedSeconds))/\(Format.time(totalSeconds))"
@@ -760,11 +768,12 @@ private struct EpisodeCard: View {
 
     @ViewBuilder
     private func downloadBadge(_ download: DownloadEntry) -> some View {
+        let state = downloadState ?? download.state
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
-                Image(systemName: downloadIcon(download.state))
+                Image(systemName: downloadIcon(state))
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(download.state == .completed ? Theme.red : .white)
+                    .foregroundStyle(state == .completed ? Theme.red : .white)
 
                 Text(downloadBadgeText(download))
                     .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -772,7 +781,7 @@ private struct EpisodeCard: View {
                     .foregroundStyle(.white)
             }
 
-            if download.state == .queued || download.state == .downloading || download.state == .paused {
+            if state == .queued || state == .downloading || state == .paused {
                 ProgressBar(percent: downloadPct)
                     .frame(width: 44)
             }
@@ -782,7 +791,7 @@ private struct EpisodeCard: View {
         .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(download.state == .failed ? Color.red.opacity(0.85) : Theme.red.opacity(0.48), lineWidth: 1)
+                .strokeBorder(state == .failed ? Color.red.opacity(0.85) : Theme.red.opacity(0.48), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
     }
@@ -798,7 +807,7 @@ private struct EpisodeCard: View {
     }
 
     private func downloadBadgeText(_ download: DownloadEntry) -> String {
-        switch download.state {
+        switch downloadState ?? download.state {
         case .completed: return "Offline"
         case .paused: return "\(Int(downloadPct.rounded()))%"
         case .queued: return "Coda"

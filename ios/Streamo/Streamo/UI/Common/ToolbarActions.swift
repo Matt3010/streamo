@@ -38,7 +38,7 @@ private struct DownloadToolbarButton: View {
 
     private var activeDownloads: [DownloadEntry] {
         library.downloads().filter { entry in
-            switch entry.state {
+            switch downloads.displayState(for: entry) {
             case .queued, .downloading, .paused:
                 return true
             case .completed, .failed:

@@ -251,10 +251,14 @@ private struct DownloadRow: View {
     var onShare: (() -> Void)? = nil
 
     private var watchPct: Double {
-        guard entry.state == .completed,
+        guard displayState == .completed,
               let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode),
               p.duration > 0 else { return 0 }
         return min(100, max(0, p.position / p.duration * 100))
+    }
+
+    private var displayState: DownloadState {
+        downloads.displayState(for: entry)
     }
 
     var body: some View {
@@ -264,9 +268,9 @@ private struct DownloadRow: View {
                 Text(episodeLabel ?? (entry.title ?? "Senza titolo"))
                     .font(.subheadline.weight(.semibold)).lineLimit(2)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                if entry.state == .downloading || entry.state == .paused {
+                if displayState == .downloading || displayState == .paused {
                     ProgressView(value: downloads.progress(for: entry)).tint(Theme.red)
-                } else if entry.state == .completed, watchPct > 0 {
+                } else if displayState == .completed, watchPct > 0 {
                     ProgressBar(percent: watchPct)
                 }
             }
@@ -278,7 +282,7 @@ private struct DownloadRow: View {
             Button(role: .destructive) { onDelete() } label: { Label("Elimina", systemImage: "trash") }
         }
         .contextMenu {
-            if entry.state == .completed {
+            if displayState == .completed {
                 Button { onPlay() } label: { Label("Riproduci", systemImage: "play.fill") }
             }
             if let onShare {
@@ -289,7 +293,7 @@ private struct DownloadRow: View {
     }
 
     private var subtitle: String {
-        switch entry.state {
+        switch displayState {
         case .queued:      return "In coda"
         case .downloading: return "\(Int(downloads.progress(for: entry) * 100))%"
         case .paused:      return "In pausa"
@@ -303,7 +307,7 @@ private struct DownloadRow: View {
 
     @ViewBuilder
     private var control: some View {
-        switch entry.state {
+        switch displayState {
         case .completed:
             Button(action: onPlay) {
                 Image(systemName: "play.circle.fill")

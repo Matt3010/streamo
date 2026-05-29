@@ -250,6 +250,13 @@ final class DownloadManager {
         liveProgress[key(for: entry)] ?? entry.progress
     }
 
+    /// UI-facing state that prefers the current in-memory active slot over the
+    /// last persisted SwiftData state. This avoids transient "queued/paused"
+    /// labels while a resumed download is already running again.
+    func displayState(for entry: DownloadEntry) -> DownloadState {
+        activeKey == key(for: entry) ? .downloading : entry.state
+    }
+
     // MARK: - Playback coupling (suspend while watching)
 
     func pauseForPlayback() {
