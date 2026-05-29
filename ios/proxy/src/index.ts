@@ -33,8 +33,11 @@ app.use((req, res, next) => {
     const health = getTrustedCachedHealthCheck();
     const egressIp = health?.ip ?? '-';
     const masked = health ? health.through_cloudflare && !sameIp(originIp, egressIp) : null;
+    // The app tags media requests as 'download' or 'player' (resolve/health
+    // calls carry no tag → '-'), so the log shows what each request is for.
+    const client = headerValue(req.headers['x-streamo-client'], '-');
     console.log(
-      `[ios-proxy] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`
+      `[ios-proxy][${client}] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`
       + ` origin_ip=${originIp} egress_ip=${egressIp} through_cf=${formatFlag(health?.through_cloudflare)}`
       + ` masked=${formatFlag(masked)} checked_at=${health?.checked_at ?? '-'}`
     );

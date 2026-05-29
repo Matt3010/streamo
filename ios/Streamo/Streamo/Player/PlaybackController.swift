@@ -68,9 +68,9 @@ final class PlaybackController {
 
     private func resolve(_ request: PlaybackRequest) async -> ProviderResolver.PlaybackResolution {
         if request.mediaType == .movie {
-            return await ProviderResolver.shared.movieSource(tmdbId: request.tmdbId, title: request.title, releaseDate: request.releaseDate)
+            return await ProviderResolver.shared.movieSource(tmdbId: request.tmdbId, title: request.title, releaseDate: request.releaseDate, client: .player)
         }
-        return await ProviderResolver.shared.episodeSource(tmdbId: request.tmdbId, title: request.title, releaseDate: request.releaseDate, season: request.season, episode: request.episode)
+        return await ProviderResolver.shared.episodeSource(tmdbId: request.tmdbId, title: request.title, releaseDate: request.releaseDate, season: request.season, episode: request.episode, client: .player)
     }
 
     func start(_ request: PlaybackRequest) async {
@@ -138,7 +138,11 @@ final class PlaybackController {
         // Headers are only useful for remote provider requests (Referer /
         // Origin for vixcloud). The local HLS server doesn't care, and
         // attaching options at all interferes with the loopback codepath.
-        let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": source.headers]
+        // Tag requests as 'player' so the proxy log distinguishes streaming
+        // from downloads (AVURLAsset propagates these to every sub-resource).
+        var streamHeaders = source.headers
+        streamHeaders["X-Streamo-Client"] = "player"
+        let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": streamHeaders]
         let asset = AVURLAsset(url: source.playlistURL, options: options)
         let item = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: item)

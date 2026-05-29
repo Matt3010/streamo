@@ -1,5 +1,13 @@
 import Foundation
 
+/// Identifies what a proxy request is for, sent as `X-Streamo-Client` so the
+/// proxy log can tell downloads, streaming and catalog browsing apart.
+enum ProxyClient: String, Sendable {
+    case download
+    case player
+    case browse
+}
+
 actor ProviderProxyClient {
     static let shared = ProviderProxyClient()
 
@@ -100,14 +108,15 @@ actor ProviderProxyClient {
         tmdbId: Int,
         mediaType: MediaType,
         title: String,
-        releaseDate: String?
+        releaseDate: String?,
+        client: ProxyClient
     ) async -> ProviderResolveTitleOutcome {
         let response: ProxyResponse<TitleResolveDTO> = await post("provider/resolve-title", body: ResolveTitleRequest(
             tmdbId: tmdbId,
             mediaType: mediaType,
             title: title,
             releaseDate: releaseDate
-        ))
+        ), client: client)
         guard let dto = response.value else {
             return ProviderResolveTitleOutcome(
                 resolved: nil,
@@ -132,21 +141,22 @@ actor ProviderProxyClient {
         providerTitleId: Int,
         providerSlug: String?,
         season: Int,
-        episode: Int
+        episode: Int,
+        client: ProxyClient
     ) async -> PlaybackSourcesResult {
         let dto: ProxyResponse<PlaybackSourcesDTO> = await post("provider/resolve-episode", body: ResolveEpisodeRequest(
             providerTitleId: providerTitleId,
             providerSlug: providerSlug,
             season: season,
             episode: episode
-        ))
+        ), client: client)
         return playbackResult(from: dto)
     }
 
-    func resolveMovieSources(providerTitleId: Int) async -> PlaybackSourcesResult {
+    func resolveMovieSources(providerTitleId: Int, client: ProxyClient) async -> PlaybackSourcesResult {
         let dto: ProxyResponse<PlaybackSourcesDTO> = await post("provider/resolve-movie", body: ResolveMovieRequest(
             providerTitleId: providerTitleId
-        ))
+        ), client: client)
         return playbackResult(from: dto)
     }
 
@@ -205,12 +215,13 @@ actor ProviderProxyClient {
         }
     }
 
-    private func post<T: Decodable, Body: Encodable>(_ path: String, body: Body) async -> ProxyResponse<T> {
+    private func post<T: Decodable, Body: Encodable>(_ path: String, body: Body, client: ProxyClient) async -> ProxyResponse<T> {
         guard let url = endpointURL(path) else { return ProxyResponse(value: nil, error: .invalidConfiguration) }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(client.rawValue, forHTTPHeaderField: "X-Streamo-Client")
         applyAuthHeaders(to: &request)
         do {
             request.httpBody = try encoder.encode(body)

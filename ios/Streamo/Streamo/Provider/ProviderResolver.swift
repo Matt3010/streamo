@@ -61,13 +61,13 @@ actor ProviderResolver {
     }
 
     /// Resolve (or reuse cached) the provider title for a TMDB id.
-    func resolveTitle(tmdbId: Int, mediaType: MediaType, title: String, releaseDate: String?, forceRefresh: Bool = false) async -> ProviderResolveTitleOutcome {
+    func resolveTitle(tmdbId: Int, mediaType: MediaType, title: String, releaseDate: String?, forceRefresh: Bool = false, client: ProxyClient = .browse) async -> ProviderResolveTitleOutcome {
         let useProxy = AppSettings.shared.providerProxyActive
         let key = cacheKey(tmdbId, mediaType, useProxy: useProxy)
         if !forceRefresh, let cached = titleCache[key] { return cached }
         let outcome: ProviderResolveTitleOutcome
         if useProxy {
-            outcome = await proxy.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
+            outcome = await proxy.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate, client: client)
         } else {
             outcome = await provider.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
         }
@@ -92,14 +92,14 @@ actor ProviderResolver {
 
     // MARK: - Playable source
 
-    func movieSource(tmdbId: Int, title: String, releaseDate: String?) async -> PlaybackResolution {
+    func movieSource(tmdbId: Int, title: String, releaseDate: String?, client: ProxyClient) async -> PlaybackResolution {
         let useProxy = AppSettings.shared.providerProxyActive
-        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .movie, title: title, releaseDate: releaseDate)
+        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .movie, title: title, releaseDate: releaseDate, client: client)
         guard let resolved = outcome.resolved else {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: useProxy)
         }
         if useProxy {
-            let proxied = await proxy.resolveMovieSources(providerTitleId: resolved.id)
+            let proxied = await proxy.resolveMovieSources(providerTitleId: resolved.id, client: client)
             return PlaybackResolution(
                 sources: proxied.sources,
                 reason: proxied.sources.isEmpty ? (proxied.reason ?? .temporarilyUnavailable) : nil,
@@ -113,9 +113,9 @@ actor ProviderResolver {
         return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates)
     }
 
-    func episodeSource(tmdbId: Int, title: String, releaseDate: String?, season: Int, episode: Int) async -> PlaybackResolution {
+    func episodeSource(tmdbId: Int, title: String, releaseDate: String?, season: Int, episode: Int, client: ProxyClient) async -> PlaybackResolution {
         let useProxy = AppSettings.shared.providerProxyActive
-        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .tv, title: title, releaseDate: releaseDate)
+        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .tv, title: title, releaseDate: releaseDate, client: client)
         guard let resolved = outcome.resolved else {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: useProxy)
         }
@@ -124,7 +124,8 @@ actor ProviderResolver {
                 providerTitleId: resolved.id,
                 providerSlug: resolved.slug,
                 season: season,
-                episode: episode
+                episode: episode,
+                client: client
             )
             return PlaybackResolution(
                 sources: proxied.sources,

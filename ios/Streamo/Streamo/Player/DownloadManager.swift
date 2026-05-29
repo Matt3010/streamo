@@ -463,11 +463,11 @@ final class DownloadManager {
         let resolution: ProviderResolver.PlaybackResolution
         if entry.mediaType == .movie {
             resolution = await ProviderResolver.shared.movieSource(
-                tmdbId: entry.tmdbId, title: entry.title ?? "", releaseDate: entry.releaseDate)
+                tmdbId: entry.tmdbId, title: entry.title ?? "", releaseDate: entry.releaseDate, client: .download)
         } else {
             resolution = await ProviderResolver.shared.episodeSource(
                 tmdbId: entry.tmdbId, title: entry.title ?? "", releaseDate: entry.releaseDate,
-                season: entry.season, episode: entry.episode)
+                season: entry.season, episode: entry.episode, client: .download)
         }
         guard isCurrentRun(key: k, runID: runID), !Task.isCancelled else {
             debugLog("runDownload stale after resolve key=\(k) run=\(runID)")
@@ -483,10 +483,14 @@ final class DownloadManager {
         // the Downloads list can show the WARP / Diretto badge.
         library.setDownloadViaProxy(entry, resolution.viaProxy)
 
+        // Tag every request so the proxy log can tell downloads from streaming.
+        var headers = source.headers
+        headers["X-Streamo-Client"] = "download"
+
         let outputDir = Self.downloadDirectory(for: k)
         do {
             try await HLSDownloader.download(masterURL: source.playlistURL,
-                                             headers: source.headers,
+                                             headers: headers,
                                              outputDirectory: outputDir,
                                              progress: { [weak self] frac in
                 Task { @MainActor in
