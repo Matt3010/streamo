@@ -18,7 +18,7 @@ ios/proxy/dist/
 
 # Local data (SQLite DB + WAL files)
 data/
-ios/proxy-data/
+ios/proxy/proxy-data/
 
 # OS / IDE
 .DS_Store
