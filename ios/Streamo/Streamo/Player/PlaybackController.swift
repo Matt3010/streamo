@@ -48,12 +48,23 @@ final class PlaybackController {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
+    /// Re-polls the proxy's WARP health while an online proxy stream plays, so
+    /// the badge flips to red if the server's WARP egress drops mid-watch.
+    private var healthPollTask: Task<Void, Never>?
+    private let healthPollInterval: Duration = .seconds(30)
     /// Latched once the current item reaches the real end, so teardown's final
     /// flush cannot overwrite the 100% save with a slightly-short currentTime.
     private var didReachEnd = false
     /// The request currently playing — updated by autoplay-next so callers
     /// persist progress under the right episode.
     private(set) var activeRequest: PlaybackRequest?
+    /// Whether the current online stream is going through the WARP proxy
+    /// (`true`) or direct (`false`). `nil` for offline playback (local files,
+    /// no provider involved). Drives the WARP / WARP-KO / Diretto badge.
+    private(set) var viaProxy: Bool?
+    /// When `viaProxy`, whether the proxy's WARP egress was up at resolve time.
+    /// `nil` while still resolving, when direct, or when health couldn't be read.
+    private(set) var warpHealthy: Bool?
 
     // Ordered CDN mirrors of the same vixcloud embed; we fall through them on
     // failure (Server1 → Server2 → …). Not multiple providers — same source.
@@ -71,6 +82,9 @@ final class PlaybackController {
 
     func start(_ request: PlaybackRequest) async {
         self.activeRequest = request
+        self.viaProxy = nil
+        self.warpHealthy = nil
+        stopHealthPolling()
         state = .resolving
         teardownPlayer()
 
@@ -83,13 +97,19 @@ final class PlaybackController {
 
         // Streaming uses the network/provider, so pause downloads while it plays.
         DownloadManager.shared.pauseForPlayback()
+        // Mode is known before resolving (it's just the setting), so the loading
+        // screen can show the WARP/Diretto badge for the whole resolve duration.
+        self.viaProxy = AppSettings.shared.providerProxyActive
 
         let resolution = await resolve(request)
+        self.viaProxy = resolution.viaProxy
+        self.warpHealthy = resolution.warpHealthy
         guard !resolution.sources.isEmpty else {
             state = .failed(resolution.message ?? "Titolo non disponibile")
             return
         }
         beginPlayback(request, sources: resolution.sources)
+        startHealthPolling()
     }
 
     /// Autoplay variant: resolve the next request first and only switch if it
@@ -101,8 +121,11 @@ final class PlaybackController {
         let resolution = await resolve(request)
         guard !resolution.sources.isEmpty else { return false }
         self.activeRequest = request
+        self.viaProxy = resolution.viaProxy
+        self.warpHealthy = resolution.warpHealthy
         teardownPlayer()
         beginPlayback(request, sources: resolution.sources)
+        startHealthPolling()
         return true
     }
 
@@ -190,8 +213,37 @@ final class PlaybackController {
         if activeRequest?.offlineURL == nil {
             DownloadManager.shared.resumeAfterPlayback()
         }
+        stopHealthPolling()
         activeRequest = nil
+        viaProxy = nil
+        warpHealthy = nil
         state = .idle
+    }
+
+    // MARK: - WARP health polling
+
+    /// Periodically refresh the proxy's WARP status while an online proxy stream
+    /// is playing. No-op for direct or offline playback (nothing to monitor).
+    private func startHealthPolling() {
+        stopHealthPolling()
+        guard viaProxy == true else { return }
+        healthPollTask = Task { [weak self] in
+            guard let interval = self?.healthPollInterval else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                if Task.isCancelled { break }
+                let health = await ProviderProxyClient.shared.healthCheck()
+                guard let self, self.viaProxy == true else { break }
+                // Only update on a definitive answer; a failed poll (nil) keeps
+                // the last known value rather than flapping the badge to green.
+                if let warp = health?.warp { self.warpHealthy = warp }
+            }
+        }
+    }
+
+    private func stopHealthPolling() {
+        healthPollTask?.cancel()
+        healthPollTask = nil
     }
 
     // MARK: - Private

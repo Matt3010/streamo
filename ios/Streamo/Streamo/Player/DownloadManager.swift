@@ -479,6 +479,10 @@ final class DownloadManager {
             return
         }
 
+        // Flag how this run is fetching (proxy + warp health, or direct) so the
+        // Downloads list can show the WARP / WARP-KO / Diretto badge.
+        library.setDownloadProxyInfo(entry, viaProxy: resolution.viaProxy, warpHealthy: resolution.warpHealthy)
+
         let outputDir = Self.downloadDirectory(for: k)
         do {
             try await HLSDownloader.download(masterURL: source.playlistURL,

@@ -47,6 +47,9 @@ struct PlayerScreen: View {
                     ProgressView().tint(.white)
                     Text(request.title).font(.headline).foregroundStyle(.white).multilineTextAlignment(.center).padding(.horizontal, 40)
                     Text("Caricamento stream…").font(.subheadline).foregroundStyle(.white.opacity(0.7))
+                    if let viaProxy = controller.viaProxy {
+                        WarpBadge(viaProxy: viaProxy, warpHealthy: controller.warpHealthy, streaming: true)
+                    }
                 }
             case .ready:
                 if let player = controller.player {
@@ -80,6 +83,27 @@ struct PlayerScreen: View {
                     }
                     Spacer()
                 }
+            }
+
+            // Persistent WARP/Diretto badge during online playback. Low-opacity,
+            // top-trailing, and non-interactive so it never steals taps from the
+            // native AVPlayer controls underneath. Offline playback (viaProxy nil)
+            // shows nothing — there's no provider involved.
+            if case .ready = controller.state, let viaProxy = controller.viaProxy {
+                VStack {
+                    HStack {
+                        Spacer()
+                        WarpBadge(viaProxy: viaProxy, warpHealthy: controller.warpHealthy)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.45), in: Capsule())
+                            .padding(.top, 10)
+                            .padding(.trailing, 14)
+                    }
+                    Spacer()
+                }
+                .opacity(0.8)
+                .allowsHitTesting(false)
             }
         }
         .task {

@@ -535,6 +535,17 @@ final class Library {
         save()
     }
 
+    /// Record how the active run is fetching: through the WARP proxy or direct,
+    /// and (when via proxy) whether the proxy's WARP egress was actually up. Set
+    /// once per run when the source resolves, so the Downloads list can flag
+    /// each title warped / warp-off / direct.
+    func setDownloadProxyInfo(_ entry: DownloadEntry, viaProxy: Bool, warpHealthy: Bool?) {
+        guard entry.viaProxy != viaProxy || entry.warpHealthy != warpHealthy else { return }
+        entry.viaProxy = viaProxy
+        entry.warpHealthy = warpHealthy
+        save()
+    }
+
     func removeDownload(_ entry: DownloadEntry) {
         context.delete(entry)
         save()

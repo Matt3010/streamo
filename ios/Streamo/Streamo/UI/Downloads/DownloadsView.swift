@@ -276,7 +276,12 @@ private struct DownloadRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(episodeLabel ?? (entry.title ?? "Senza titolo"))
                     .font(.subheadline.weight(.semibold)).lineLimit(2)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let viaProxy = entry.viaProxy {
+                        WarpBadge(viaProxy: viaProxy, warpHealthy: entry.warpHealthy)
+                    }
+                }
                 if displayState == .downloading || displayState == .paused {
                     if isReconstructingProgress {
                         ProgressView().tint(Theme.red)

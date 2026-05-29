@@ -135,6 +135,14 @@ final class DownloadEntry {
     var localPath: String?
     var localBookmark: Data?
     var errorMessage: String?
+    /// Whether the media was fetched through the WARP proxy (`true`) or pulled
+    /// directly from the provider/CDN (`false`). `nil` for entries downloaded
+    /// before this was tracked. Recorded at resolve time in `DownloadManager`.
+    var viaProxy: Bool?
+    /// When `viaProxy` is true, whether the proxy's WARP egress was actually up
+    /// at resolve time (`true`) or down (`false`). `nil` when direct or unknown.
+    /// Lets the badge warn (red) when the proxy is used but not actually warping.
+    var warpHealthy: Bool?
     var addedAt: Date = Date.now
     /// Snapshot of the parent `TmdbItem` (series for TV, movie for movies)
     /// at download time, serialized as JSON. Lets the detail screen render

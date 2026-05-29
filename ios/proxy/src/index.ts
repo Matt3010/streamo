@@ -671,7 +671,7 @@ async function proxyPassthrough(
   // through this proxy. Otherwise the client — notably the offline downloader,
   // which fetches *every* track rather than the single variant AVPlayer
   // streams — would hit the CDN directly and require its own WARP egress.
-  const contentType = upstream.headers.get('content-type') ?? '';
+  const contentType = (upstream.headers.get('content-type') ?? '').toLowerCase();
   const isPlaylist = contentType.includes('mpegurl')
     || contentType.includes('m3u8')
     || /\.m3u8(?:$|\?)/i.test(upstreamURL);
@@ -732,11 +732,11 @@ function rewritePlaylist(body: string): string {
       '/cdn/$1$2'
     )
     .replace(
-      /https?:\/\/vixcloud\.co(\/(?:playlist|storage|build)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
+      /https?:\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
       '$1'
     )
     .replace(
-      /\/\/vixcloud\.co(\/(?:playlist|storage|build)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
+      /\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
       '$1'
     )
     .replace(
