@@ -197,6 +197,9 @@ final class DownloadManager {
     /// Resume a manually-paused download.
     func resume(_ entry: DownloadEntry) {
         guard entry.state == .paused else { return }
+        // Explicit user intent wins over a stale "paused for playback" flag.
+        playbackActive = false
+        normalizeQueueState()
         let k = key(for: entry)
         let resumed = resumedProgress(forKey: k, fallback: liveProgress[k] ?? entry.progress)
         liveProgress[k] = resumed
@@ -267,6 +270,7 @@ final class DownloadManager {
     // MARK: - Serial queue
 
     private func startNextIfIdle() {
+        normalizeQueueState()
         guard !playbackActive, activeTask == nil, activeKey == nil, let library,
               let entry = library.firstQueuedDownload() else { return }
         start(entry)
@@ -276,6 +280,7 @@ final class DownloadManager {
     /// Returns true when this call consumed the idle slot.
     @discardableResult
     private func startEntryIfIdle(_ entry: DownloadEntry) -> Bool {
+        normalizeQueueState()
         guard !playbackActive, activeTask == nil, activeKey == nil else { return false }
         guard entry.state == .queued else { return false }
         start(entry)
@@ -287,12 +292,26 @@ final class DownloadManager {
     /// model instance after the queued-state write.
     @discardableResult
     private func startQueuedDownloadIfIdle(key k: String) -> Bool {
+        normalizeQueueState()
         guard !playbackActive, activeTask == nil, activeKey == nil,
               let library,
               let entry = library.downloads().first(where: { key(for: $0) == k }),
               entry.state == .queued else { return false }
         start(entry)
         return true
+    }
+
+    /// Repair impossible in-memory queue states. These should be rare, but if
+    /// one leaks through after a cancellation/race, manual resume should still
+    /// recover without requiring an app relaunch.
+    private func normalizeQueueState() {
+        if activeTask == nil, activeKey != nil {
+            activeKey = nil
+        }
+        if activeTask != nil, activeKey == nil {
+            activeTask?.cancel()
+            activeTask = nil
+        }
     }
 
     private func start(_ entry: DownloadEntry) {
