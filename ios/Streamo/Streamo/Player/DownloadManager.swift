@@ -260,6 +260,10 @@ final class DownloadManager {
         liveProgress[key(for: entry)] ?? entry.progress
     }
 
+    func progressPercent(for entry: DownloadEntry) -> Int {
+        Int((progress(for: entry) * 100).rounded())
+    }
+
     /// UI-facing state that prefers the current in-memory active slot over the
     /// last persisted SwiftData state. This avoids transient "queued/paused"
     /// labels while a resumed download is already running again.
@@ -319,18 +323,6 @@ final class DownloadManager {
         }
         debugLog("startNextIfIdle starting key=\(key(for: entry))")
         start(entry)
-    }
-
-    /// Start a specific queued entry immediately when the serial slot is free.
-    /// Returns true when this call consumed the idle slot.
-    @discardableResult
-    private func startEntryIfIdle(_ entry: DownloadEntry) -> Bool {
-        normalizeQueueState()
-        guard !playbackActive, activeTask == nil, activeKey == nil else { return false }
-        guard entry.state == .queued else { return false }
-        debugLog("startEntryIfIdle starting key=\(key(for: entry))")
-        start(entry)
-        return true
     }
 
     /// Like `startEntryIfIdle`, but re-fetches the entry from SwiftData by key

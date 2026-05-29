@@ -107,6 +107,6 @@ private struct DownloadToolbarButton: View {
         if isReconstructingAnyProgress {
             return "Download, \(count) attivi, ricostruzione progresso in corso"
         }
-        return "Download, \(count) in coda, progresso \(progressPercent)%"
+        return "Download, \(count) attivi, progresso \(progressPercent)%"
     }
 }

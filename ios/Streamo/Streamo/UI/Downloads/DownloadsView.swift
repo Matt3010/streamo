@@ -1,6 +1,37 @@
 import SwiftUI
 import UIKit
 
+private enum LANSharePreparation {
+    case ready(LANShareItem)
+    case missingLocalNetwork
+    case serverNotReady
+}
+
+private enum LANShareBuilder {
+    static func prepare(entry: DownloadEntry,
+                        downloads: DownloadManager,
+                        settings: AppSettings) -> LANSharePreparation {
+        let key = downloads.key(for: entry)
+        guard let ip = LANAddress.currentShareableIPv4() else {
+            return .missingLocalNetwork
+        }
+        let port = LocalHLSServer.shared.waitForReady(timeout: 0.5)
+        guard port != 0,
+              let playerURL = LocalHLSServer.lanURL(host: ip, port: port,
+                                                    token: settings.lanToken,
+                                                    relativePath: "\(key)/play.html"),
+              let manifestURL = LocalHLSServer.lanURL(host: ip, port: port,
+                                                      token: settings.lanToken,
+                                                      relativePath: "\(key)/master.m3u8") else {
+            return .serverNotReady
+        }
+        let title = LANShareItem.titleFor(entry: entry)
+        return .ready(LANShareItem(title: title,
+                                   url: playerURL.absoluteString,
+                                   manifestURL: manifestURL.absoluteString))
+    }
+}
+
 /// Offline downloads page. Movies are flat rows; TV series are grouped into one
 /// row that opens a per-season episode list. Completed items also show the
 /// viewing progress. Reached from the Home toolbar.
@@ -93,29 +124,15 @@ struct DownloadsView: View {
     private func shareAction(for entry: DownloadEntry) -> (() -> Void)? {
         guard settings.lanShareEnabled, entry.state == .completed else { return nil }
         return {
-            if let item = makeShareItem(for: entry) {
+            switch LANShareBuilder.prepare(entry: entry, downloads: downloads, settings: settings) {
+            case .ready(let item):
                 pendingShare = item
-            } else {
+            case .missingLocalNetwork:
                 ToastCenter.shared.show("Collega il telefono a una rete locale o attiva l'Hotspot personale")
+            case .serverNotReady:
+                ToastCenter.shared.show("Server non pronto, riprova")
             }
         }
-    }
-
-    private func makeShareItem(for entry: DownloadEntry) -> LANShareItem? {
-        let key = downloads.key(for: entry)
-        guard let ip = LANAddress.currentShareableIPv4() else { return nil }
-        let port = LocalHLSServer.shared.waitForReady(timeout: 0.5)
-        guard port != 0 else { return nil }
-        guard let playerURL = LocalHLSServer.lanURL(host: ip, port: port,
-                                                    token: settings.lanToken,
-                                                    relativePath: "\(key)/play.html"),
-              let manifestURL = LocalHLSServer.lanURL(host: ip, port: port,
-                                                     token: settings.lanToken,
-                                                     relativePath: "\(key)/master.m3u8") else { return nil }
-        let title = LANShareItem.titleFor(entry: entry)
-        return LANShareItem(title: title,
-                            url: playerURL.absoluteString,
-                            manifestURL: manifestURL.absoluteString)
     }
 
     private func seriesRow(title: String, poster: String?, episodes: [DownloadEntry]) -> some View {
@@ -193,25 +210,14 @@ struct SeriesDownloadsView: View {
     private func shareAction(for entry: DownloadEntry) -> (() -> Void)? {
         guard settings.lanShareEnabled, entry.state == .completed else { return nil }
         return {
-            let key = downloads.key(for: entry)
-            guard let ip = LANAddress.currentShareableIPv4() else {
+            switch LANShareBuilder.prepare(entry: entry, downloads: downloads, settings: settings) {
+            case .ready(let item):
+                pendingShare = item
+            case .missingLocalNetwork:
                 ToastCenter.shared.show("Collega il telefono a una rete locale o attiva l'Hotspot personale")
-                return
-            }
-            let port = LocalHLSServer.shared.waitForReady(timeout: 0.5)
-            guard port != 0,
-                  let playerURL = LocalHLSServer.lanURL(host: ip, port: port,
-                                                        token: settings.lanToken,
-                                                        relativePath: "\(key)/play.html"),
-                  let manifestURL = LocalHLSServer.lanURL(host: ip, port: port,
-                                                         token: settings.lanToken,
-                                                         relativePath: "\(key)/master.m3u8") else {
+            case .serverNotReady:
                 ToastCenter.shared.show("Server non pronto, riprova")
-                return
             }
-            pendingShare = LANShareItem(title: LANShareItem.titleFor(entry: entry),
-                                        url: playerURL.absoluteString,
-                                        manifestURL: manifestURL.absoluteString)
         }
     }
 
@@ -304,7 +310,7 @@ private struct DownloadRow: View {
         switch displayState {
         case .queued:      return "In coda"
         case .downloading:
-            return isReconstructingProgress ? "Ricostruendo progresso" : "\(Int(downloads.progress(for: entry) * 100))%"
+            return isReconstructingProgress ? "Ricostruendo progresso" : "\(downloads.progressPercent(for: entry))%"
         case .paused:      return "In pausa"
         case .completed:
             if watchPct >= 90 { return "Scaricato · visto" }

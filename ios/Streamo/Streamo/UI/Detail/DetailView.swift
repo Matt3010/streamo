@@ -114,7 +114,7 @@ struct DetailView: View {
 
     private var downloadSnapshot: String {
         library.downloads().map { entry in
-            "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)-\(downloads.displayState(for: entry).rawValue)-\(Int(downloads.progress(for: entry) * 100))"
+            "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)-\(downloads.displayState(for: entry).rawValue)-\(downloads.progressPercent(for: entry))"
         }
         .joined(separator: "|")
     }
