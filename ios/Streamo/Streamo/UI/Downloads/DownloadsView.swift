@@ -261,6 +261,10 @@ private struct DownloadRow: View {
         downloads.displayState(for: entry)
     }
 
+    private var isReconstructingProgress: Bool {
+        downloads.isReconstructingProgress(for: entry)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             if episodeLabel == nil { DownloadThumb(poster: entry.poster) }
@@ -269,7 +273,11 @@ private struct DownloadRow: View {
                     .font(.subheadline.weight(.semibold)).lineLimit(2)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 if displayState == .downloading || displayState == .paused {
-                    ProgressView(value: downloads.progress(for: entry)).tint(Theme.red)
+                    if isReconstructingProgress {
+                        ProgressView().tint(Theme.red)
+                    } else {
+                        ProgressView(value: downloads.progress(for: entry)).tint(Theme.red)
+                    }
                 } else if displayState == .completed, watchPct > 0 {
                     ProgressBar(percent: watchPct)
                 }
@@ -295,7 +303,8 @@ private struct DownloadRow: View {
     private var subtitle: String {
         switch displayState {
         case .queued:      return "In coda"
-        case .downloading: return "\(Int(downloads.progress(for: entry) * 100))%"
+        case .downloading:
+            return isReconstructingProgress ? "Ricostruendo progresso" : "\(Int(downloads.progress(for: entry) * 100))%"
         case .paused:      return "In pausa"
         case .completed:
             if watchPct >= 90 { return "Scaricato · visto" }

@@ -292,10 +292,10 @@ struct DetailView: View {
         ToastCenter.shared.show("Segnato come da vedere")
     }
 
-    private func downloadStatusLabel(_ state: DownloadState) -> String {
+    private func downloadStatusLabel(_ state: DownloadState, reconstructing: Bool = false) -> String {
         switch state {
         case .queued:      return "In coda per il download"
-        case .downloading: return "Download in corso…"
+        case .downloading: return reconstructing ? "Ricostruendo progresso..." : "Download in corso..."
         case .paused:      return "Download in pausa"
         case .completed:   return "Scaricato — disponibile offline"
         case .failed:      return "Download non riuscito"
@@ -394,7 +394,7 @@ struct DetailView: View {
         }
         if ref.mediaType == .movie, let dl = downloadFor(item.id, .movie, season: 0, episode: 0) {
             let state = downloads.displayState(for: dl)
-            Label(downloadStatusLabel(state),
+            Label(downloadStatusLabel(state, reconstructing: downloads.isReconstructingProgress(for: dl)),
                   systemImage: state == .completed ? "arrow.down.circle.fill" : "arrow.down.circle")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(state == .completed ? Theme.red : .secondary)
@@ -718,6 +718,11 @@ private struct EpisodeCard: View {
         return downloads?.displayState(for: download) ?? download.state
     }
 
+    private var isReconstructingProgress: Bool {
+        guard let download else { return false }
+        return downloads?.isReconstructingProgress(for: download) ?? false
+    }
+
     private var timeLabel: String? {
         guard totalSeconds > 0 else { return nil }
         let base = "\(Format.time(watchedSeconds))/\(Format.time(totalSeconds))"
@@ -781,7 +786,7 @@ private struct EpisodeCard: View {
                     .foregroundStyle(.white)
             }
 
-            if state == .queued || state == .downloading || state == .paused {
+            if !isReconstructingProgress && (state == .queued || state == .downloading || state == .paused) {
                 ProgressBar(percent: downloadPct)
                     .frame(width: 44)
             }
@@ -811,7 +816,7 @@ private struct EpisodeCard: View {
         case .completed: return "Offline"
         case .paused: return "\(Int(downloadPct.rounded()))%"
         case .queued: return "Coda"
-        case .downloading: return "\(Int(downloadPct.rounded()))%"
+        case .downloading: return isReconstructingProgress ? "..." : "\(Int(downloadPct.rounded()))%"
         case .failed: return "Errore"
         }
     }

@@ -58,6 +58,10 @@ private struct DownloadToolbarButton: View {
         Int((aggregateProgress * 100).rounded())
     }
 
+    private var isReconstructingAnyProgress: Bool {
+        activeDownloads.contains { downloads.isReconstructingProgress(for: $0) }
+    }
+
     var body: some View {
         let _ = library.version
         let count = activeDownloads.count
@@ -85,7 +89,7 @@ private struct DownloadToolbarButton: View {
                 .frame(width: count > 9 ? 32 : 28, height: 26)
 
                 if count > 0 {
-                    Text("\(progressPercent)%")
+                    Text(isReconstructingAnyProgress ? "..." : "\(progressPercent)%")
                         .font(.caption2.weight(.semibold))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
@@ -100,6 +104,9 @@ private struct DownloadToolbarButton: View {
 
     private func accessibilityLabel(count: Int) -> String {
         guard count > 0 else { return "Download" }
+        if isReconstructingAnyProgress {
+            return "Download, \(count) attivi, ricostruzione progresso in corso"
+        }
         return "Download, \(count) in coda, progresso \(progressPercent)%"
     }
 }

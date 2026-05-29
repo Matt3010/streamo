@@ -197,6 +197,9 @@ final class DownloadManager {
         activeTask?.cancel()
         activeTask = nil
         activeKey = nil
+        retryCount[k] = nil
+        awaitingFirstProgressSample.remove(k)
+        runGenerationByKey[k] = nil
         liveProgress[k] = persisted
         lastPersistedProgress[k] = persisted
         library?.setDownloadState(entry, .paused, progress: persisted)
@@ -230,6 +233,10 @@ final class DownloadManager {
         }
         try? FileManager.default.removeItem(at: Self.downloadDirectory(for: k))
         liveProgress[k] = nil
+        retryCount[k] = nil
+        lastPersistedProgress[k] = nil
+        awaitingFirstProgressSample.remove(k)
+        runGenerationByKey[k] = nil
         library?.removeDownload(entry)
         refreshCatalog()
         startNextIfIdle()
@@ -260,6 +267,13 @@ final class DownloadManager {
         activeKey == key(for: entry) ? .downloading : entry.state
     }
 
+    /// True while a resumed/relaunched download is still waiting for the
+    /// first real progress sample from the downloader.
+    func isReconstructingProgress(for entry: DownloadEntry) -> Bool {
+        let k = key(for: entry)
+        return activeKey == k && awaitingFirstProgressSample.contains(k)
+    }
+
     // MARK: - Playback coupling (suspend while watching)
 
     func pauseForPlayback() {
@@ -272,6 +286,9 @@ final class DownloadManager {
             activeTask?.cancel()
             activeTask = nil
             let persisted = liveProgress[k] ?? entry.progress
+            retryCount[k] = nil
+            awaitingFirstProgressSample.remove(k)
+            runGenerationByKey[k] = nil
             liveProgress[k] = persisted
             lastPersistedProgress[k] = persisted
             library.setDownloadState(entry, .queued, progress: persisted)
