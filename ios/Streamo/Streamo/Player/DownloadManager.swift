@@ -23,6 +23,7 @@ final class DownloadManager {
     @ObservationIgnored private var library: Library?
     @ObservationIgnored private var activeTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount: [String: Int] = [:]
+    @ObservationIgnored private var lastPersistedProgress: [String: Double] = [:]
     @ObservationIgnored private let maxRetries = 3
 
     private init() {}
@@ -45,7 +46,8 @@ final class DownloadManager {
             case .downloading:
                 // We don't reattach to in-flight tasks; HLSDownloader resumes
                 // from on-disk segments anyway.
-                library.setDownloadState(e, .queued, progress: e.progress)
+                let resumed = resumedProgress(forKey: key(for: e), fallback: e.progress)
+                library.setDownloadState(e, .queued, progress: resumed)
             case .completed:
                 // Reset entries left over from the old `.movpkg` implementation:
                 // their localPath doesn't point at our new layout, and the file
@@ -56,6 +58,11 @@ final class DownloadManager {
                     e.localPath = nil
                     e.localBookmark = nil
                     library.setDownloadState(e, .queued, progress: 0)
+                }
+            case .queued, .paused, .failed:
+                let resumed = resumedProgress(forKey: key(for: e), fallback: e.progress)
+                if resumed > e.progress {
+                    library.setDownloadState(e, e.state, progress: resumed, error: e.errorMessage)
                 }
             default:
                 break
@@ -179,17 +186,27 @@ final class DownloadManager {
     /// Partial segment files stay on disk and are skipped on resume.
     func pause(_ entry: DownloadEntry) {
         guard key(for: entry) == activeKey else { return }
+        let k = key(for: entry)
+        let persisted = liveProgress[k] ?? entry.progress
         activeTask?.cancel()
         activeTask = nil
         activeKey = nil
-        library?.setDownloadState(entry, .paused)
+        liveProgress[k] = persisted
+        lastPersistedProgress[k] = persisted
+        library?.setDownloadState(entry, .paused, progress: persisted)
     }
 
     /// Resume a manually-paused download.
     func resume(_ entry: DownloadEntry) {
         guard entry.state == .paused else { return }
-        library?.setDownloadState(entry, .queued)
-        startNextIfIdle()
+        let k = key(for: entry)
+        let resumed = resumedProgress(forKey: k, fallback: liveProgress[k] ?? entry.progress)
+        liveProgress[k] = resumed
+        lastPersistedProgress[k] = resumed
+        library?.setDownloadState(entry, .queued, progress: resumed)
+        if !startEntryIfIdle(entry) {
+            startNextIfIdle()
+        }
     }
 
     /// Cancel + delete a download (and its on-disk media).
@@ -236,7 +253,10 @@ final class DownloadManager {
            entry.state == .downloading {
             activeTask?.cancel()
             activeTask = nil
-            library.setDownloadState(entry, .queued, progress: liveProgress[k] ?? entry.progress)
+            let persisted = liveProgress[k] ?? entry.progress
+            liveProgress[k] = persisted
+            lastPersistedProgress[k] = persisted
+            library.setDownloadState(entry, .queued, progress: persisted)
             activeKey = nil
         }
     }
@@ -251,10 +271,27 @@ final class DownloadManager {
     private func startNextIfIdle() {
         guard !playbackActive, activeTask == nil, activeKey == nil, let library,
               let entry = library.firstQueuedDownload() else { return }
+        start(entry)
+    }
+
+    /// Start a specific queued entry immediately when the serial slot is free.
+    /// Returns true when this call consumed the idle slot.
+    @discardableResult
+    private func startEntryIfIdle(_ entry: DownloadEntry) -> Bool {
+        guard !playbackActive, activeTask == nil, activeKey == nil else { return false }
+        guard entry.state == .queued else { return false }
+        start(entry)
+        return true
+    }
+
+    private func start(_ entry: DownloadEntry) {
         let k = key(for: entry)
         activeKey = k
         retryCount[k] = 0
-        library.setDownloadState(entry, .downloading, progress: entry.progress)
+        let initial = max(liveProgress[k] ?? 0, entry.progress)
+        liveProgress[k] = initial
+        lastPersistedProgress[k] = entry.progress
+        library?.setDownloadState(entry, .downloading, progress: initial)
         activeTask = Task { [weak self] in
             await self?.runDownload(key: k)
         }
@@ -293,7 +330,9 @@ final class DownloadManager {
                 Task { @MainActor in
                     guard let self else { return }
                     let prev = self.liveProgress[k] ?? 0
-                    if frac > prev { self.liveProgress[k] = frac }
+                    let next = max(frac, prev)
+                    if next > prev { self.liveProgress[k] = next }
+                    self.persistLiveProgressIfNeeded(key: k, value: next)
                 }
             })
         } catch is CancellationError {
@@ -321,6 +360,7 @@ final class DownloadManager {
             library.completeDownload(entry, localPath: "Documents/Downloads/\(k)/master.m3u8")
         }
         retryCount[k] = nil
+        lastPersistedProgress[k] = nil
         activeKey = nil
         activeTask = nil
         refreshCatalog()
@@ -337,9 +377,62 @@ final class DownloadManager {
     private func cleanupActive(key k: String) {
         liveProgress[k] = nil
         retryCount[k] = nil
+        lastPersistedProgress[k] = nil
         activeKey = nil
         activeTask = nil
         startNextIfIdle()
+    }
+
+    /// Persist live progress sparingly so relaunch/resume has an accurate base
+    /// without turning every segment completion into a SwiftData write.
+    private func persistLiveProgressIfNeeded(key k: String, value: Double) {
+        guard let library,
+              let entry = library.downloads().first(where: { key(for: $0) == k }),
+              entry.state == .downloading else { return }
+        let previous = lastPersistedProgress[k] ?? entry.progress
+        guard value >= previous + 0.02 || value >= 0.995 else { return }
+        lastPersistedProgress[k] = value
+        library.setDownloadState(entry, .downloading, progress: value)
+    }
+
+    /// Best-effort progress rebuild from already-downloaded files on disk.
+    /// This keeps the UI honest after pause/resume or app relaunch, even
+    /// though we don't persist every live tick into SwiftData.
+    private func resumedProgress(forKey key: String, fallback: Double) -> Double {
+        let dir = Self.downloadDirectory(for: key)
+        guard FileManager.default.fileExists(atPath: dir.path) else { return fallback }
+
+        let fm = FileManager.default
+        let playlists = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))
+            ?.filter { $0.pathExtension.lowercased() == "m3u8" } ?? []
+        guard !playlists.isEmpty else { return fallback }
+
+        let trackPlaylists = playlists.filter { $0.lastPathComponent != "master.m3u8" }
+        let sources = trackPlaylists.isEmpty
+            ? playlists.filter { $0.lastPathComponent == "master.m3u8" }
+            : trackPlaylists
+        guard !sources.isEmpty else { return fallback }
+
+        var playlistProgress: [Double] = []
+        for playlist in sources {
+            guard let text = try? String(contentsOf: playlist, encoding: .utf8) else { continue }
+            var total = 0
+            var done = 0
+            for raw in text.components(separatedBy: .newlines) {
+                let line = raw.trimmingCharacters(in: .whitespaces)
+                guard !line.isEmpty, !line.hasPrefix("#"), !line.hasSuffix(".m3u8") else { continue }
+                total += 1
+                if fm.fileExists(atPath: dir.appendingPathComponent(line).path) {
+                    done += 1
+                }
+            }
+            if total > 0 {
+                playlistProgress.append(Double(done) / Double(total))
+            }
+        }
+        guard !playlistProgress.isEmpty else { return fallback }
+        let average = playlistProgress.reduce(0, +) / Double(playlistProgress.count)
+        return max(fallback, min(1, average))
     }
 
     // MARK: - Paths
