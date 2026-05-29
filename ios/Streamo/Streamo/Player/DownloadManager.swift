@@ -21,7 +21,6 @@ final class DownloadManager {
     private(set) var playbackActive = false
 
     @ObservationIgnored private var library: Library?
-    @ObservationIgnored private let activity = DownloadActivityController()
     @ObservationIgnored private var activeTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount: [String: Int] = [:]
     @ObservationIgnored private var lastPersistedProgress: [String: Double] = [:]
@@ -44,11 +43,6 @@ final class DownloadManager {
     func configure(library: Library) {
         guard self.library == nil else { return }
         self.library = library
-
-        // Adopt any Live Activity left over from a previous launch so we
-        // update it in place instead of stacking a stale duplicate on the
-        // lock screen.
-        activity.reconnect()
 
         // Warm up the loopback HLS server so the first play tap doesn't pay
         // the bind latency.
@@ -84,9 +78,6 @@ final class DownloadManager {
         installLANProgressBridge()
         startNextIfIdle()
         syncDownloadKeepAlive()
-        // If nothing resumed, restore a paused item's activity or end one
-        // adopted from a previous launch.
-        presentIdleState()
     }
 
     /// Forward LAN-reported playback positions into `Library.saveProgress` so
@@ -241,12 +232,6 @@ final class DownloadManager {
         }
         refreshCatalog()
         startNextIfIdle()
-        // New queued items lower the aggregate average and add to the queue
-        // count — push that to the Live Activity right away rather than waiting
-        // for the next segment tick.
-        if activeKey != nil {
-            activity.update(progress: aggregateProgress(), queuedCount: queuedRemaining())
-        }
         return inserted + requeued
     }
 
@@ -286,12 +271,8 @@ final class DownloadManager {
         liveProgress[k] = persisted
         lastPersistedProgress[k] = persisted
         library?.setDownloadState(entry, .paused, progress: persisted)
-        // Manual pause halts the serial queue; drop the keep-alive but keep the
-        // Live Activity visible in a paused state.
+        // Manual pause halts the serial queue; drop the background keep-alive.
         syncDownloadKeepAlive()
-        let (title, subtitle) = activityLabels(for: entry)
-        activity.pause(title: title, subtitle: subtitle,
-                       progress: aggregateProgress(), queuedCount: queuedRemaining())
     }
 
     /// Resume a manually-paused download.
@@ -330,7 +311,6 @@ final class DownloadManager {
         refreshCatalog()
         startNextIfIdle()
         syncDownloadKeepAlive()
-        presentIdleState()
     }
 
     /// Loopback URL of a completed download, or nil if its files are missing
@@ -389,18 +369,14 @@ final class DownloadManager {
             library.setDownloadState(entry, .queued, progress: persisted)
             activeKey = nil
         }
-        // Player drives its own audio session; drop the download keep-alive
-        // and clear the activity (it re-appears when the download resumes).
+        // Player drives its own audio session; drop the download keep-alive.
         syncDownloadKeepAlive()
-        activity.endImmediately()
     }
 
     func resumeAfterPlayback() {
         playbackActive = false
         startNextIfIdle()
         syncDownloadKeepAlive()
-        // Restore a paused item's activity that was hidden while watching.
-        presentIdleState()
     }
 
     // MARK: - Serial queue
@@ -470,11 +446,8 @@ final class DownloadManager {
         lastPersistedProgress[k] = entry.progress
         debugLog("start key=\(k) run=\(runID) initial=\(String(format: "%.3f", initial)) entryProgress=\(String(format: "%.3f", entry.progress))")
         library?.setDownloadState(entry, .downloading, progress: initial)
-        // Keep the process alive in the background and start/retarget the
-        // download Live Activity for this item.
+        // Keep the process alive so the download continues in the background.
         BackgroundKeepAlive.shared.setReason(.activeDownload, active: true)
-        let (title, subtitle) = activityLabels(for: entry)
-        activity.show(title: title, subtitle: subtitle, progress: aggregateProgress(), queuedCount: queuedRemaining())
         activeTask = Task { [weak self] in
             await self?.runDownload(key: k, runID: runID)
         }
@@ -488,7 +461,6 @@ final class DownloadManager {
         guard let library, let entry = library.downloads().first(where: { key(for: $0) == k }) else {
             debugLog("runDownload missing entry key=\(k) run=\(runID)")
             cleanupActive(key: k, runID: runID)
-            presentIdleState()
             return
         }
         guard isCurrentRun(key: k, runID: runID) else {
@@ -538,7 +510,6 @@ final class DownloadManager {
                     let next = isFirstSample ? frac : max(frac, prev)
                     self.liveProgress[k] = next
                     self.persistLiveProgressIfNeeded(key: k, value: next, force: isFirstSample)
-                    self.activity.update(progress: self.aggregateProgress(), queuedCount: self.queuedRemaining())
                 }
             })
         } catch is CancellationError {
@@ -589,9 +560,6 @@ final class DownloadManager {
         refreshCatalog()
         startNextIfIdle()
         syncDownloadKeepAlive()
-        // If startNextIfIdle picked up another item, show() already retargeted
-        // the activity; only show the "completed" frame when the queue drained.
-        if activeKey == nil { activity.finish() }
     }
 
     private func fail(key k: String, runID: Int, error: String?) {
@@ -600,21 +568,10 @@ final class DownloadManager {
             return
         }
         debugLog("fail key=\(k) run=\(runID) error=\(error ?? "nil")")
-        // Capture the failed item's labels/progress before cleanup wipes them,
-        // so we can surface a warning if the queue ends up idle.
-        var failedLabels: (String, String?)?
-        var failedProgress = 0.0
         if let library, let entry = library.downloads().first(where: { key(for: $0) == k }) {
-            failedLabels = activityLabels(for: entry)
-            failedProgress = liveProgress[k] ?? entry.progress
             library.setDownloadState(entry, .failed, error: error)
         }
         cleanupActive(key: k, runID: runID)
-        // If nothing else started, keep a warning on screen so the user knows
-        // a download broke. Otherwise the next item's show() takes over.
-        if activeKey == nil, let failedLabels {
-            activity.fail(title: failedLabels.0, subtitle: failedLabels.1, progress: failedProgress)
-        }
     }
 
     private func cleanupActive(key k: String, runID: Int? = nil) {
@@ -699,75 +656,13 @@ final class DownloadManager {
         return max(fallback, min(1, fraction))
     }
 
-    // MARK: - Background keep-alive + Live Activity
+    // MARK: - Background keep-alive
 
     /// Hold the silent-audio keep-alive exactly while a download is actively
-    /// transferring (not while paused or watching). Safe to call after any
-    /// transition.
+    /// transferring (not while paused or watching), so it continues when the
+    /// app is backgrounded. Safe to call after any transition.
     private func syncDownloadKeepAlive() {
         BackgroundKeepAlive.shared.setReason(.activeDownload, active: activeKey != nil && !playbackActive)
-    }
-
-    /// When nothing is downloading, decide what stays on the Live Activity:
-    /// a paused item keeps showing "In pausa" (the user asked to still see it);
-    /// otherwise the activity is cleared. No-op while a download is active —
-    /// `start()` already shows the running item.
-    private func presentIdleState() {
-        guard activeKey == nil else { return }
-        if let paused = library?.downloads().first(where: { $0.state == .paused }) {
-            let (title, subtitle) = activityLabels(for: paused)
-            activity.pause(title: title, subtitle: subtitle,
-                           progress: aggregateProgress(), queuedCount: queuedRemaining())
-        } else {
-            activity.endImmediately()
-        }
-    }
-
-    /// Number of items still waiting behind the active download.
-    private func queuedRemaining() -> Int {
-        library?.downloads().filter { $0.state == .queued }.count ?? 0
-    }
-
-    /// Overall progress across every active download (queued + downloading +
-    /// paused), averaged the same way as the in-app toolbar badge
-    /// (`ToolbarActions.aggregateProgress`) so the Live Activity percentage
-    /// matches what the app shows.
-    private func aggregateProgress() -> Double {
-        guard let library else { return 0 }
-        let entries = library.downloads().filter { entry in
-            switch displayState(for: entry) {
-            case .queued, .downloading, .paused: return true
-            case .completed, .failed: return false
-            }
-        }
-        guard !entries.isEmpty else { return 0 }
-        let total = entries.reduce(0) { $0 + progress(for: $1) }
-        return min(1, max(0, total / Double(entries.count)))
-    }
-
-    /// Title / subtitle shown in the Live Activity. Movies have no subtitle;
-    /// episodes get "S1 · E2 · Episode title" — but a generic placeholder name
-    /// like "Episodio 2" is dropped so it doesn't repeat the "E2" we already
-    /// show.
-    private func activityLabels(for entry: DownloadEntry) -> (String, String?) {
-        let title = entry.title ?? "Download"
-        guard entry.mediaType != .movie else { return (title, nil) }
-        var parts: [String] = []
-        if entry.season > 0 { parts.append("S\(entry.season)") }
-        parts.append("E\(entry.episode)")
-        let episodeTitle = entry.episodeTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !episodeTitle.isEmpty, !isGenericEpisodeTitle(episodeTitle, episode: entry.episode) {
-            parts.append(episodeTitle)
-        }
-        return (title, parts.joined(separator: " · "))
-    }
-
-    /// True for placeholder episode names that just restate the number
-    /// ("Episodio 2", "Episode 2", "Ep. 2"), so we don't show "E2 · Episodio 2".
-    private func isGenericEpisodeTitle(_ name: String, episode: Int) -> Bool {
-        let normalized = name.lowercased()
-        return ["episodio \(episode)", "episode \(episode)",
-                "ep \(episode)", "ep. \(episode)"].contains(normalized)
     }
 
     // MARK: - Paths

@@ -55,7 +55,6 @@
 		B1E34F632FC6EC3E0089E72A /* Exceptions for "Streamo" folder in "StreamoWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Widget/DownloadActivityAttributes.swift,
 				Widget/WidgetSnapshot.swift,
 			);
 			target = B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */;
