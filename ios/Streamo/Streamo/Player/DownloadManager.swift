@@ -403,8 +403,8 @@ final class DownloadManager {
         guard FileManager.default.fileExists(atPath: dir.path) else { return fallback }
 
         let fm = FileManager.default
-        let playlists = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))
-            ?.filter { $0.pathExtension.lowercased() == "m3u8" } ?? []
+        let directoryContents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        let playlists = directoryContents?.filter { $0.pathExtension.lowercased() == "m3u8" } ?? []
         guard !playlists.isEmpty else { return fallback }
 
         let trackPlaylists = playlists.filter { $0.lastPathComponent != "master.m3u8" }
