@@ -25,6 +25,8 @@ final class DownloadManager {
     @ObservationIgnored private var retryCount: [String: Int] = [:]
     @ObservationIgnored private var lastPersistedProgress: [String: Double] = [:]
     @ObservationIgnored private var awaitingFirstProgressSample = Set<String>()
+    @ObservationIgnored private var runGenerationByKey: [String: Int] = [:]
+    @ObservationIgnored private var nextRunGeneration = 0
     @ObservationIgnored private let maxRetries = 3
 
     private init() {}
@@ -353,13 +355,16 @@ final class DownloadManager {
         activeKey = k
         retryCount[k] = 0
         awaitingFirstProgressSample.insert(k)
+        nextRunGeneration += 1
+        let runID = nextRunGeneration
+        runGenerationByKey[k] = runID
         let initial = max(liveProgress[k] ?? 0, entry.progress)
         liveProgress[k] = initial
         lastPersistedProgress[k] = entry.progress
-        debugLog("start key=\(k) initial=\(String(format: "%.3f", initial)) entryProgress=\(String(format: "%.3f", entry.progress))")
+        debugLog("start key=\(k) run=\(runID) initial=\(String(format: "%.3f", initial)) entryProgress=\(String(format: "%.3f", entry.progress))")
         library?.setDownloadState(entry, .downloading, progress: initial)
         activeTask = Task { [weak self] in
-            await self?.runDownload(key: k)
+            await self?.runDownload(key: k, runID: runID)
         }
     }
 
@@ -367,13 +372,17 @@ final class DownloadManager {
     /// from the library on every callback rather than capturing it — SwiftData
     /// `@Model` instances aren't `Sendable` so they can't cross the boundary
     /// into the `HLSDownloader`'s `@Sendable` progress closure.
-    private func runDownload(key k: String) async {
+    private func runDownload(key k: String, runID: Int) async {
         guard let library, let entry = library.downloads().first(where: { key(for: $0) == k }) else {
-            debugLog("runDownload missing entry key=\(k)")
-            cleanupActive(key: k)
+            debugLog("runDownload missing entry key=\(k) run=\(runID)")
+            cleanupActive(key: k, runID: runID)
             return
         }
-        debugLog("runDownload begin key=\(k) state=\(entry.state.rawValue) progress=\(String(format: "%.3f", entry.progress))")
+        guard isCurrentRun(key: k, runID: runID) else {
+            debugLog("runDownload stale before begin key=\(k) run=\(runID)")
+            return
+        }
+        debugLog("runDownload begin key=\(k) run=\(runID) state=\(entry.state.rawValue) progress=\(String(format: "%.3f", entry.progress))")
 
         let resolution: ProviderResolver.PlaybackResolution
         if entry.mediaType == .movie {
@@ -384,9 +393,13 @@ final class DownloadManager {
                 tmdbId: entry.tmdbId, title: entry.title ?? "", releaseDate: entry.releaseDate,
                 season: entry.season, episode: entry.episode)
         }
+        guard isCurrentRun(key: k, runID: runID), !Task.isCancelled else {
+            debugLog("runDownload stale after resolve key=\(k) run=\(runID)")
+            return
+        }
         guard let source = resolution.sources.first else {
-            debugLog("runDownload no source key=\(k) message=\(resolution.message ?? "nil")")
-            fail(key: k, error: resolution.message ?? "Sorgente non disponibile")
+            debugLog("runDownload no source key=\(k) run=\(runID) message=\(resolution.message ?? "nil")")
+            fail(key: k, runID: runID, error: resolution.message ?? "Sorgente non disponibile")
             return
         }
 
@@ -398,6 +411,7 @@ final class DownloadManager {
                                              progress: { [weak self] frac in
                 Task { @MainActor in
                     guard let self else { return }
+                    guard self.isCurrentRun(key: k, runID: runID) else { return }
                     let isFirstSample = self.awaitingFirstProgressSample.remove(k) != nil
                     let prev = self.liveProgress[k] ?? 0
                     let next = isFirstSample ? frac : max(frac, prev)
@@ -408,60 +422,82 @@ final class DownloadManager {
         } catch is CancellationError {
             // Pause / playback / delete cancelled this download. State is
             // already updated by the caller; nothing else to do.
-            debugLog("runDownload cancelled key=\(k)")
+            debugLog("runDownload cancelled key=\(k) run=\(runID)")
             return
         } catch {
             if isCancellationLike(error) || Task.isCancelled {
-                debugLog("runDownload cancelled-like key=\(k) error=\(error.localizedDescription)")
+                debugLog("runDownload cancelled-like key=\(k) run=\(runID) error=\(error.localizedDescription)")
+                return
+            }
+            guard isCurrentRun(key: k, runID: runID) else {
+                debugLog("runDownload stale error key=\(k) run=\(runID) error=\(error.localizedDescription)")
                 return
             }
             // Transient errors: bounded retry with fresh source resolution.
             let next = retryCount[k, default: 0] + 1
             retryCount[k] = next
-            debugLog("runDownload error key=\(k) retry=\(next) error=\(error.localizedDescription)")
+            debugLog("runDownload error key=\(k) run=\(runID) retry=\(next) error=\(error.localizedDescription)")
             if next <= maxRetries {
                 activeTask = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
-                    await self?.runDownload(key: k)
+                    await self?.runDownload(key: k, runID: runID)
                 }
                 return
             }
-            fail(key: k, error: nil)
+            fail(key: k, runID: runID, error: nil)
             return
         }
 
         // Success — re-fetch the entry (it might have been mutated meanwhile).
+        guard isCurrentRun(key: k, runID: runID) else {
+            debugLog("runDownload stale success key=\(k) run=\(runID)")
+            return
+        }
         if let entry = library.downloads().first(where: { key(for: $0) == k }) {
             liveProgress[k] = 1
             library.completeDownload(entry, localPath: "Documents/Downloads/\(k)/master.m3u8")
         }
-        debugLog("runDownload success key=\(k)")
+        debugLog("runDownload success key=\(k) run=\(runID)")
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
         awaitingFirstProgressSample.remove(k)
+        runGenerationByKey[k] = nil
         activeKey = nil
         activeTask = nil
         refreshCatalog()
         startNextIfIdle()
     }
 
-    private func fail(key k: String, error: String?) {
-        debugLog("fail key=\(k) error=\(error ?? "nil")")
+    private func fail(key k: String, runID: Int, error: String?) {
+        guard isCurrentRun(key: k, runID: runID) else {
+            debugLog("fail ignored stale key=\(k) run=\(runID) error=\(error ?? "nil")")
+            return
+        }
+        debugLog("fail key=\(k) run=\(runID) error=\(error ?? "nil")")
         if let library, let entry = library.downloads().first(where: { key(for: $0) == k }) {
             library.setDownloadState(entry, .failed, error: error)
         }
-        cleanupActive(key: k)
+        cleanupActive(key: k, runID: runID)
     }
 
-    private func cleanupActive(key k: String) {
-        debugLog("cleanupActive key=\(k)")
+    private func cleanupActive(key k: String, runID: Int? = nil) {
+        if let runID, !isCurrentRun(key: k, runID: runID) {
+            debugLog("cleanupActive ignored stale key=\(k) run=\(runID)")
+            return
+        }
+        debugLog("cleanupActive key=\(k)\(runID.map { " run=\($0)" } ?? "")")
         liveProgress[k] = nil
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
         awaitingFirstProgressSample.remove(k)
+        runGenerationByKey[k] = nil
         activeKey = nil
         activeTask = nil
         startNextIfIdle()
+    }
+
+    private func isCurrentRun(key k: String, runID: Int) -> Bool {
+        runGenerationByKey[k] == runID
     }
 
     /// Persist live progress sparingly so relaunch/resume has an accurate base
