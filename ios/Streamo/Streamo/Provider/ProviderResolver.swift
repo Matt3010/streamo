@@ -49,7 +49,7 @@ actor ProviderResolver {
         let key = cacheKey(tmdbId, mediaType)
         if !forceRefresh, let cached = titleCache[key] { return cached }
         let outcome: ProviderResolveTitleOutcome
-        if AppSettings.shared.providerProxyEnabled {
+        if AppSettings.shared.providerProxyActive {
             outcome = await proxy.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
         } else {
             outcome = await provider.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
@@ -75,7 +75,7 @@ actor ProviderResolver {
         guard let resolved = outcome.resolved else {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates)
         }
-        if AppSettings.shared.providerProxyEnabled {
+        if AppSettings.shared.providerProxyActive {
             let proxied = await proxy.resolveMovieSources(providerTitleId: resolved.id)
             return PlaybackResolution(
                 sources: proxied.sources,
@@ -94,7 +94,7 @@ actor ProviderResolver {
         guard let resolved = outcome.resolved else {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates)
         }
-        if AppSettings.shared.providerProxyEnabled {
+        if AppSettings.shared.providerProxyActive {
             let proxied = await proxy.resolveEpisodeSources(
                 providerTitleId: resolved.id,
                 providerSlug: resolved.slug,

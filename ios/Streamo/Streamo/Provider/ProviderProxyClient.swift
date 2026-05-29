@@ -161,9 +161,13 @@ actor ProviderProxyClient {
             )
         }
 
+        // AVPlayer must send the proxy bearer on every request (master playlist,
+        // sub-playlists, segments, key files). `AVURLAssetHTTPHeaderFieldsKey`
+        // propagates these to all sub-resource loads.
+        let headers = proxyAuthHeaders()
         let sources = dto.sources.compactMap { source -> VixcloudClient.PlaybackSource? in
             guard let url = URL(string: source.url) else { return nil }
-            return VixcloudClient.PlaybackSource(playlistURL: url, headers: [:])
+            return VixcloudClient.PlaybackSource(playlistURL: url, headers: headers)
         }
 
         return PlaybackSourcesResult(
@@ -171,6 +175,12 @@ actor ProviderProxyClient {
             reason: dto.reason,
             message: dto.message
         )
+    }
+
+    private func proxyAuthHeaders() -> [String: String] {
+        let token = AppSettings.shared.providerProxyToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return [:] }
+        return ["Authorization": "Bearer \(token)"]
     }
 
     private func get<T: Decodable>(_ path: String) async -> ProxyResponse<T> {

@@ -49,6 +49,11 @@ struct AdvancedSettingsView: View {
     @ViewBuilder
     private var proxySection: some View {
         Section {
+            Toggle("Usa proxy", isOn: $settings.providerProxyEnabled)
+                .onChange(of: settings.providerProxyEnabled) { _, _ in
+                    proxyTestState = .idle
+                }
+
             TextField("URL proxy WARP", text: $settings.providerProxyURL)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
@@ -75,15 +80,6 @@ struct AdvancedSettingsView: View {
                 Task { await runProxyTest() }
             }
             .disabled(isTesting)
-
-            if !settings.providerProxyURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Button("Disattiva proxy") {
-                    settings.providerProxyURL = ""
-                    settings.providerProxyToken = ""
-                    proxyTestState = .idle
-                }
-                .foregroundStyle(.red)
-            }
 
             switch proxyTestState {
             case .idle:

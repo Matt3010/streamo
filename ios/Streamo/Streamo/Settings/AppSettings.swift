@@ -16,6 +16,7 @@ final class AppSettings {
         static let providerLocale = "providerLocale"
         static let providerProxyURL = "providerProxyURL"
         static let providerProxyToken = "providerProxyToken"
+        static let providerProxyEnabled = "providerProxyEnabled"
         static let foldersEnabled = "foldersEnabled"
         static let autoDeleteWatchedDownloads = "autoDeleteWatchedDownloads"
         static let accentR = "accentR"
@@ -60,6 +61,12 @@ final class AppSettings {
     /// manually copied into the app by the user.
     var providerProxyToken: String {
         didSet { defaults.set(providerProxyToken, forKey: Keys.providerProxyToken) }
+    }
+
+    /// User-facing master switch for the proxy. When off, requests go straight
+    /// to streamingcommunity/vixcloud even if URL+token are still saved.
+    var providerProxyEnabled: Bool {
+        didSet { defaults.set(providerProxyEnabled, forKey: Keys.providerProxyEnabled) }
     }
 
     /// Whether the watchlist groups titles into folders.
@@ -117,6 +124,7 @@ final class AppSettings {
         self.providerLocale = defaults.string(forKey: Keys.providerLocale) ?? "it"
         self.providerProxyURL = defaults.string(forKey: Keys.providerProxyURL) ?? ""
         self.providerProxyToken = defaults.string(forKey: Keys.providerProxyToken) ?? ""
+        self.providerProxyEnabled = defaults.object(forKey: Keys.providerProxyEnabled) as? Bool ?? true
         self.foldersEnabled = defaults.object(forKey: Keys.foldersEnabled) as? Bool ?? true
         self.autoDeleteWatchedDownloads = defaults.object(forKey: Keys.autoDeleteWatchedDownloads) as? Bool ?? false
         self.accentR = defaults.object(forKey: Keys.accentR) as? Double ?? Self.defaultAccent.r
@@ -142,7 +150,8 @@ final class AppSettings {
     var hasTmdbKey: Bool { !tmdbApiKey.trimmingCharacters(in: .whitespaces).isEmpty }
     var providerProxyBaseURL: URL? { Self.normalizeHTTPBaseURL(providerProxyURL) }
     var hasProviderProxyToken: Bool { !providerProxyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var providerProxyEnabled: Bool { providerProxyBaseURL != nil && hasProviderProxyToken }
+    var providerProxyConfigured: Bool { providerProxyBaseURL != nil && hasProviderProxyToken }
+    var providerProxyActive: Bool { providerProxyEnabled && providerProxyConfigured }
 
     static func normalizeHTTPBaseURL(_ value: String) -> URL? {
         var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
