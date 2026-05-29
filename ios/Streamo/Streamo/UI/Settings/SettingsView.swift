@@ -12,7 +12,7 @@ struct SettingsView: View {
     @State private var confirmRestoreStep1 = false
     @State private var confirmRestoreStep2 = false
     @State private var restoreError: String?
-    @State private var lanIP: String?
+    @State private var lanCandidates: [LANAddress.Candidate] = []
     @State private var lanPort: UInt16 = 0
 
     var body: some View {
@@ -176,9 +176,10 @@ struct SettingsView: View {
                     LabeledContent("Si spegne", value: Self.relativeShutoff(deadline))
                         .foregroundStyle(.secondary)
                 }
-                if let ip = lanIP, lanPort != 0 {
-                    let url = "http://\(ip):\(lanPort)/\(settings.lanToken)/"
-                    LabeledContent("IP del telefono", value: ip)
+                if let candidate = lanCandidates.first, lanPort != 0 {
+                    let url = "http://\(candidate.address):\(lanPort)/\(settings.lanToken)/"
+                    LabeledContent("Rete", value: candidate.interfaceLabel)
+                    LabeledContent("IP del telefono", value: candidate.address)
                     LabeledContent("Porta", value: String(lanPort))
                     VStack(spacing: 10) {
                         QRCodeView(payload: url, size: 200)
@@ -199,8 +200,21 @@ struct SettingsView: View {
                         ToastCenter.shared.show("Token aggiornato — i vecchi link non funzioneranno più")
                     }
                     .foregroundStyle(.red)
+                    if lanCandidates.count > 1 {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Indirizzi alternativi")
+                                .font(.footnote.weight(.semibold))
+                            ForEach(Array(lanCandidates.dropFirst())) { alt in
+                                Text("\(alt.interfaceLabel): \(alt.address)")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                    }
                 } else {
-                    Text("Connetti il telefono al Wi-Fi per ottenere un indirizzo LAN.")
+                    Text("Collega il telefono a una rete locale o attiva l'Hotspot personale per ottenere un indirizzo LAN.")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button("Riprova") { refreshLANInfo() }
                 }
@@ -232,7 +246,7 @@ struct SettingsView: View {
     }
 
     private func refreshLANInfo() {
-        lanIP = LANAddress.currentWiFiIPv4()
+        lanCandidates = LANAddress.shareableIPv4Candidates()
         // Best-effort: the server warms up at launch, so wait briefly here.
         lanPort = LocalHLSServer.shared.waitForReady(timeout: 0.5)
     }

@@ -96,14 +96,14 @@ struct DownloadsView: View {
             if let item = makeShareItem(for: entry) {
                 pendingShare = item
             } else {
-                ToastCenter.shared.show("Connetti il telefono al Wi-Fi per condividere")
+                ToastCenter.shared.show("Collega il telefono a una rete locale o attiva l'Hotspot personale")
             }
         }
     }
 
     private func makeShareItem(for entry: DownloadEntry) -> LANShareItem? {
         let key = downloads.key(for: entry)
-        guard let ip = LANAddress.currentWiFiIPv4() else { return nil }
+        guard let ip = LANAddress.currentShareableIPv4() else { return nil }
         let port = LocalHLSServer.shared.waitForReady(timeout: 0.5)
         guard port != 0 else { return nil }
         guard let playerURL = LocalHLSServer.lanURL(host: ip, port: port,
@@ -194,8 +194,8 @@ struct SeriesDownloadsView: View {
         guard settings.lanShareEnabled, entry.state == .completed else { return nil }
         return {
             let key = downloads.key(for: entry)
-            guard let ip = LANAddress.currentWiFiIPv4() else {
-                ToastCenter.shared.show("Connetti il telefono al Wi-Fi per condividere")
+            guard let ip = LANAddress.currentShareableIPv4() else {
+                ToastCenter.shared.show("Collega il telefono a una rete locale o attiva l'Hotspot personale")
                 return
             }
             let port = LocalHLSServer.shared.waitForReady(timeout: 0.5)
