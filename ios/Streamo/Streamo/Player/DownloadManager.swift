@@ -245,7 +245,7 @@ final class DownloadManager {
         // count — push that to the Live Activity right away rather than waiting
         // for the next segment tick.
         if activeKey != nil {
-            activity.update(progress: aggregateProgress(), queuedCount: queuedRemaining(), force: true)
+            activity.update(progress: aggregateProgress(), queuedCount: queuedRemaining())
         }
         return inserted + requeued
     }
@@ -398,6 +398,9 @@ final class DownloadManager {
     func resumeAfterPlayback() {
         playbackActive = false
         startNextIfIdle()
+        syncDownloadKeepAlive()
+        // Restore a paused item's activity that was hidden while watching.
+        presentIdleState()
     }
 
     // MARK: - Serial queue

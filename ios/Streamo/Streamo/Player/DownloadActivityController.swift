@@ -10,40 +10,48 @@ import ActivityKit
 /// `reconnect()` adopts an activity left over from a previous app launch so we
 /// never stack a stale duplicate on the lock screen.
 ///
-/// Paused and failed downloads keep the activity on screen (the user asked to
-/// still see a paused download, and to get a warning when something breaks);
-/// only `finish`/`endImmediately` remove it.
+/// ### Update cadence
+/// ActivityKit rate-limits how often a Live Activity may be updated; flooding
+/// it (e.g. one push per downloaded segment) makes the system *drop* updates,
+/// so the bar lurches 40 → 49 instead of moving smoothly. Updates are therefore
+/// funneled through a single serialized "pump": every call just records the
+/// latest desired state, and one task applies the most recent state at a fixed
+/// cadence (`minInterval`). This keeps us inside the budget, preserves order,
+/// and lets the system animate the bar between steps.
 ///
-/// All calls are no-ops when the user has Live Activities disabled, so the
-/// caller never has to guard.
+/// All calls are no-ops when the user has Live Activities disabled.
 @MainActor
 final class DownloadActivityController {
     typealias Phase = DownloadActivityAttributes.Phase
+    typealias State = DownloadActivityAttributes.ContentState
 
     private var activity: Activity<DownloadActivityAttributes>?
-    /// Progress we last pushed, so `update` can throttle ActivityKit traffic.
-    private var lastPushedProgress: Double = -1
-    /// Last phase pushed — a phase change always bypasses the progress throttle.
-    private var lastPhase: Phase?
     /// Title / subtitle of the item currently shown, reused across updates.
     private var title = ""
     private var subtitle: String?
 
-    /// Adopt an activity from a previous launch (call once at app start). The
-    /// new process gets no reference automatically, so without this an old
-    /// activity lingers on the lock screen, never updates, and a fresh `show`
-    /// would create a second one beside it. We keep the most recent and end
-    /// extras.
+    /// Most recent state we want on screen; applied by the pump.
+    private var pendingState: State?
+    /// The serialized applier. Nil when idle.
+    private var pumpTask: Task<Void, Never>?
+    /// Minimum spacing between applied updates — ~2/sec stays well inside
+    /// ActivityKit's budget while still looking live.
+    private let minInterval: Duration = .milliseconds(500)
+
+    /// Adopt an activity from a previous launch (call once at app start). Only
+    /// adopt one that's still alive — an `.ended`/`.dismissed` activity (e.g. a
+    /// "completed" frame mid dismissal) would silently swallow every future
+    /// update, leaving the download running with a dead activity.
     func reconnect() {
-        let existing = Activity<DownloadActivityAttributes>.activities
-        activity = existing.first
-        lastPushedProgress = -1
-        lastPhase = existing.first?.content.state.phase
-        if let state = existing.first?.content.state {
+        let live = Activity<DownloadActivityAttributes>.activities.filter {
+            $0.activityState == .active || $0.activityState == .stale
+        }
+        activity = live.first
+        if let state = live.first?.content.state {
             title = state.title
             subtitle = state.subtitle
         }
-        for extra in existing.dropFirst() {
+        for extra in live.dropFirst() {
             Task { await extra.end(nil, dismissalPolicy: .immediate) }
         }
     }
@@ -53,21 +61,20 @@ final class DownloadActivityController {
     func show(title: String, subtitle: String?, progress: Double, queuedCount: Int) {
         self.title = title
         self.subtitle = subtitle
-        render(progress: progress, phase: .downloading, queuedCount: queuedCount, force: true)
+        enqueue(progress: progress, phase: .downloading, queuedCount: queuedCount)
     }
 
-    /// Progress tick for the current item. Throttled to ~1% steps (absolute,
-    /// so a drop when a new item is enqueued still shows). Pass `force` for
-    /// queue changes that must show immediately.
-    func update(progress: Double, queuedCount: Int, force: Bool = false) {
-        render(progress: progress, phase: .downloading, queuedCount: queuedCount, force: force)
+    /// Progress tick for the current item. Cheap — just records the latest
+    /// state; the pump applies it at cadence.
+    func update(progress: Double, queuedCount: Int) {
+        enqueue(progress: progress, phase: .downloading, queuedCount: queuedCount)
     }
 
     /// Manual pause: keep the activity visible in a paused state.
     func pause(title: String, subtitle: String?, progress: Double, queuedCount: Int) {
         self.title = title
         self.subtitle = subtitle
-        render(progress: progress, phase: .paused, queuedCount: queuedCount, force: true)
+        enqueue(progress: progress, phase: .paused, queuedCount: queuedCount)
     }
 
     /// A download failed and nothing else is running: show a warning that
@@ -75,54 +82,58 @@ final class DownloadActivityController {
     func fail(title: String, subtitle: String?, progress: Double) {
         self.title = title
         self.subtitle = subtitle
-        render(progress: progress, phase: .failed, queuedCount: 0, force: true)
+        enqueue(progress: progress, phase: .failed, queuedCount: 0)
     }
 
-    private func render(progress: Double, phase: Phase, queuedCount: Int, force: Bool) {
-        let state = DownloadActivityAttributes.ContentState(
-            title: title,
-            subtitle: subtitle,
-            progress: progress,
-            phase: phase,
-            queuedCount: queuedCount
-        )
-        if let activity {
-            let phaseChanged = lastPhase != phase
-            guard force || phaseChanged
-                    || abs(progress - lastPushedProgress) >= 0.01
-                    || progress >= 0.999 else { return }
-            lastPushedProgress = progress
-            lastPhase = phase
-            Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
-        } else {
-            guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-            do {
-                activity = try Activity.request(
-                    attributes: DownloadActivityAttributes(),
-                    content: ActivityContent(state: state, staleDate: nil),
-                    pushType: nil
-                )
-                lastPushedProgress = progress
-                lastPhase = phase
-            } catch {
-                NSLog("[DownloadActivity] start failed: %@", error.localizedDescription)
-            }
+    private func enqueue(progress: Double, phase: Phase, queuedCount: Int) {
+        let state = State(title: title, subtitle: subtitle, progress: progress,
+                          phase: phase, queuedCount: queuedCount)
+        guard let activity else {
+            create(initial: state)
+            return
         }
+        pendingState = state
+        startPumpIfIdle(activity)
+    }
+
+    private func create(initial state: State) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        do {
+            activity = try Activity.request(
+                attributes: DownloadActivityAttributes(),
+                content: ActivityContent(state: state, staleDate: nil),
+                pushType: nil
+            )
+        } catch {
+            NSLog("[DownloadActivity] start failed: %@", error.localizedDescription)
+        }
+    }
+
+    /// Apply the latest pending state immediately, then keep applying the most
+    /// recent state every `minInterval` until nothing new arrives.
+    private func startPumpIfIdle(_ activity: Activity<DownloadActivityAttributes>) {
+        guard pumpTask == nil else { return }
+        pumpTask = Task { [weak self] in
+            while let self, let state = self.consumePending() {
+                await activity.update(ActivityContent(state: state, staleDate: nil))
+                try? await Task.sleep(for: self.minInterval)
+            }
+            self?.pumpTask = nil
+        }
+    }
+
+    private func consumePending() -> State? {
+        defer { pendingState = nil }
+        return pendingState
     }
 
     /// Whole queue finished: brief "completed" frame, then dismiss.
     func finish() {
         guard let activity else { return }
+        stopPump()
         self.activity = nil
-        lastPushedProgress = -1
-        lastPhase = nil
-        let state = DownloadActivityAttributes.ContentState(
-            title: title,
-            subtitle: subtitle,
-            progress: 1,
-            phase: .completed,
-            queuedCount: 0
-        )
+        let state = State(title: title, subtitle: subtitle, progress: 1,
+                          phase: .completed, queuedCount: 0)
         Task {
             await activity.end(ActivityContent(state: state, staleDate: nil),
                                dismissalPolicy: .after(.now + 4))
@@ -133,9 +144,14 @@ final class DownloadActivityController {
     /// show).
     func endImmediately() {
         guard let activity else { return }
+        stopPump()
         self.activity = nil
-        lastPushedProgress = -1
-        lastPhase = nil
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    }
+
+    private func stopPump() {
+        pumpTask?.cancel()
+        pumpTask = nil
+        pendingState = nil
     }
 }
