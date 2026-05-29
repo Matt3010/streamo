@@ -33,7 +33,7 @@ final class DownloadManager {
     }
 
     private func debugLog(_ message: String) {
-        print("[DownloadManager] \(message)")
+        NSLog("[DownloadManager] %@", message)
     }
 
     /// Wire up the store and resume the queue (called once at launch).
@@ -401,6 +401,10 @@ final class DownloadManager {
             debugLog("runDownload cancelled key=\(k)")
             return
         } catch {
+            if isCancellationLike(error) || Task.isCancelled {
+                debugLog("runDownload cancelled-like key=\(k) error=\(error.localizedDescription)")
+                return
+            }
             // Transient errors: bounded retry with fresh source resolution.
             let next = retryCount[k, default: 0] + 1
             retryCount[k] = next
@@ -458,6 +462,13 @@ final class DownloadManager {
         guard value >= previous + 0.02 || value >= 0.995 else { return }
         lastPersistedProgress[k] = value
         library.setDownloadState(entry, .downloading, progress: value)
+    }
+
+    private func isCancellationLike(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
     }
 
     /// Best-effort progress rebuild from already-downloaded files on disk.
