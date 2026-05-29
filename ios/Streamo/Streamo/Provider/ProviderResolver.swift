@@ -32,9 +32,6 @@ actor ProviderResolver {
         /// Whether sources are served through the WARP proxy (`true`) or fetched
         /// directly from the provider/CDN (`false`). Drives the WARP/Diretto badge.
         var viaProxy: Bool = false
-        /// When `viaProxy`, whether the proxy's WARP egress was up at resolve
-        /// time. `nil` when direct or when the health check couldn't be read.
-        var warpHealthy: Bool? = nil
     }
 
     private func cacheKey(_ id: Int, _ type: MediaType, useProxy: Bool) -> String {
@@ -102,17 +99,14 @@ actor ProviderResolver {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: useProxy)
         }
         if useProxy {
-            async let healthTask = proxy.healthCheck()
             let proxied = await proxy.resolveMovieSources(providerTitleId: resolved.id)
-            let warpHealthy = (await healthTask)?.warp
             return PlaybackResolution(
                 sources: proxied.sources,
                 reason: proxied.sources.isEmpty ? (proxied.reason ?? .temporarilyUnavailable) : nil,
                 message: proxied.message,
                 providerTitle: resolved,
                 candidates: outcome.candidates,
-                viaProxy: true,
-                warpHealthy: warpHealthy
+                viaProxy: true
             )
         }
         let embed = await provider.movieEmbed(providerTitleId: resolved.id)
@@ -126,22 +120,19 @@ actor ProviderResolver {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: useProxy)
         }
         if useProxy {
-            async let healthTask = proxy.healthCheck()
             let proxied = await proxy.resolveEpisodeSources(
                 providerTitleId: resolved.id,
                 providerSlug: resolved.slug,
                 season: season,
                 episode: episode
             )
-            let warpHealthy = (await healthTask)?.warp
             return PlaybackResolution(
                 sources: proxied.sources,
                 reason: proxied.sources.isEmpty ? (proxied.reason ?? .temporarilyUnavailable) : nil,
                 message: proxied.message,
                 providerTitle: resolved,
                 candidates: outcome.candidates,
-                viaProxy: true,
-                warpHealthy: warpHealthy
+                viaProxy: true
             )
         }
         let embed = await provider.episodeEmbed(providerTitleId: resolved.id, slug: resolved.slug, season: season, episode: episode)

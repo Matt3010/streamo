@@ -479,9 +479,9 @@ final class DownloadManager {
             return
         }
 
-        // Flag how this run is fetching (proxy + warp health, or direct) so the
-        // Downloads list can show the WARP / WARP-KO / Diretto badge.
-        library.setDownloadProxyInfo(entry, viaProxy: resolution.viaProxy, warpHealthy: resolution.warpHealthy)
+        // Flag whether this run is fetching through the WARP proxy or direct, so
+        // the Downloads list can show the WARP / Diretto badge.
+        library.setDownloadViaProxy(entry, resolution.viaProxy)
 
         let outputDir = Self.downloadDirectory(for: k)
         do {

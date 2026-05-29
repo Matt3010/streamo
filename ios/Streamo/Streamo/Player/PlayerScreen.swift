@@ -48,7 +48,7 @@ struct PlayerScreen: View {
                     Text(request.title).font(.headline).foregroundStyle(.white).multilineTextAlignment(.center).padding(.horizontal, 40)
                     Text("Caricamento stream…").font(.subheadline).foregroundStyle(.white.opacity(0.7))
                     if let viaProxy = controller.viaProxy {
-                        WarpBadge(viaProxy: viaProxy, warpHealthy: controller.warpHealthy, streaming: true)
+                        WarpBadge(viaProxy: viaProxy, streaming: true)
                     }
                 }
             case .ready:
@@ -93,7 +93,7 @@ struct PlayerScreen: View {
                 VStack {
                     HStack {
                         Spacer()
-                        WarpBadge(viaProxy: viaProxy, warpHealthy: controller.warpHealthy)
+                        WarpBadge(viaProxy: viaProxy)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(.black.opacity(0.45), in: Capsule())

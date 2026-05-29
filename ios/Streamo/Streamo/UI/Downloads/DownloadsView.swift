@@ -279,7 +279,7 @@ private struct DownloadRow: View {
                 HStack(spacing: 6) {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     if let viaProxy = entry.viaProxy {
-                        WarpBadge(viaProxy: viaProxy, warpHealthy: entry.warpHealthy)
+                        WarpBadge(viaProxy: viaProxy)
                     }
                 }
                 if displayState == .downloading || displayState == .paused {
