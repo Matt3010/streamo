@@ -5,6 +5,12 @@ import AVKit
 /// controls, PiP, AirPlay route picker and fullscreen for free.
 struct AVPlayerContainer: UIViewControllerRepresentable {
     let player: AVPlayer
+    /// Fires on every tap inside the player surface. AVKit toggles its native
+    /// controls on the same tap; we use this to reveal our overlay badge in
+    /// sync. The recognizer doesn't consume the touch, so AVKit still gets it.
+    var onTap: () -> Void = {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onTap: onTap) }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let vc = AVPlayerViewController()
@@ -12,11 +18,26 @@ struct AVPlayerContainer: UIViewControllerRepresentable {
         vc.allowsPictureInPicturePlayback = true
         vc.canStartPictureInPictureAutomaticallyFromInline = true
         vc.videoGravity = .resizeAspect
+        let tap = UITapGestureRecognizer(target: context.coordinator,
+                                         action: #selector(Coordinator.handleTap))
+        tap.cancelsTouchesInView = false
+        tap.delegate = context.coordinator
+        vc.view.addGestureRecognizer(tap)
         return vc
     }
 
     func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
         if vc.player !== player { vc.player = player }
+        context.coordinator.onTap = onTap
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onTap: () -> Void
+        init(onTap: @escaping () -> Void) { self.onTap = onTap }
+        @objc func handleTap() { onTap() }
+        // Run alongside AVKit's own tap handling rather than blocking it.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 
@@ -30,6 +51,12 @@ struct PlayerScreen: View {
     @State private var controller = PlaybackController()
     @Environment(\.dismiss) private var dismiss
     @Environment(Library.self) private var library
+
+    /// Mirrors the native player-controls visibility for our overlay badge:
+    /// AVKit doesn't expose its controls state, so we reveal the badge on tap
+    /// and auto-hide it after a few idle seconds, matching the controls' rhythm.
+    @State private var controlsVisible = true
+    @State private var hideControlsTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -53,7 +80,8 @@ struct PlayerScreen: View {
                 }
             case .ready:
                 if let player = controller.player {
-                    AVPlayerContainer(player: player).ignoresSafeArea()
+                    AVPlayerContainer(player: player, onTap: { revealControlsTransiently() })
+                        .ignoresSafeArea()
                 }
             case .failed(let message):
                 VStack(spacing: 16) {
@@ -85,26 +113,33 @@ struct PlayerScreen: View {
                 }
             }
 
-            // Persistent WARP/Diretto badge during online playback. Low-opacity,
-            // top-trailing, and non-interactive so it never steals taps from the
-            // native AVPlayer controls underneath. Offline playback (viaProxy nil)
-            // shows nothing — there's no provider involved.
+            // WARP/Diretto badge during online playback. Top-leading, on the
+            // material chrome so it reads as part of the player, and shown/hidden
+            // in sync with the native controls (revealed on tap, auto-hidden).
+            // Non-interactive so it never steals taps from the controls below.
+            // Offline playback (viaProxy nil) shows nothing — no provider involved.
             if case .ready = controller.state, let viaProxy = controller.viaProxy {
                 VStack {
                     HStack {
-                        Spacer()
                         WarpBadge(viaProxy: viaProxy)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(.black.opacity(0.45), in: Capsule())
-                            .padding(.top, 10)
-                            .padding(.trailing, 14)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.leading, 16)
+                            .padding(.top, 12)
+                        Spacer()
                     }
                     Spacer()
                 }
-                .opacity(0.8)
+                .opacity(controlsVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.25), value: controlsVisible)
                 .allowsHitTesting(false)
             }
+        }
+        .onChange(of: controller.state) { _, newValue in
+            // AVKit shows its controls when playback becomes ready; mirror that
+            // initial reveal (and the subsequent auto-hide) for our badge.
+            if case .ready = newValue { revealControlsTransiently() }
         }
         .task {
             OrientationLock.unlockForPlayer()
@@ -123,10 +158,24 @@ struct PlayerScreen: View {
             await controller.start(request)
         }
         .onDisappear {
+            hideControlsTask?.cancel()
             let req = controller.activeRequest
             controller.teardown()   // flushes final progress before we check
             autoDeleteIfWatched(req)
             OrientationLock.lockPortrait()
+        }
+    }
+
+    /// Reveal the overlay badge and schedule its auto-hide, matching how the
+    /// native controls fade out after a few idle seconds. Re-tapping resets the
+    /// timer, so the badge stays up while the user is interacting.
+    private func revealControlsTransiently() {
+        hideControlsTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) { controlsVisible = true }
+        hideControlsTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.25)) { controlsVisible = false }
         }
     }
 

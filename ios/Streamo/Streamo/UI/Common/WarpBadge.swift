@@ -14,13 +14,13 @@ struct WarpBadge: View {
     var streaming: Bool = false
 
     var body: some View {
-        Label {
-            Text(label)
-        } icon: {
+        HStack(spacing: 3) {
             Image(systemName: viaProxy ? "lock.shield.fill" : "shield.slash")
+            Text(label)
         }
         .font(.caption2.weight(.semibold))
         .foregroundStyle(viaProxy ? Color.green : Color.gray)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(viaProxy ? "Tramite proxy WARP" : "Connessione diretta, senza WARP")
     }
 
