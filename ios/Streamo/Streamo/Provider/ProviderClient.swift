@@ -6,7 +6,7 @@ import Foundation
 actor ProviderClient {
     static let shared = ProviderClient()
 
-    // Same constants as the web config.
+    // Keep these in sync with the iOS proxy fallback in `ios/proxy/src/index.ts`.
     private let linkSourceURL = URL(string: "https://api.telegra.ph/getPage/Link-Aggiornato-StreamingCommunity-09-29?return_content=true")!
     private let requestTimeout: TimeInterval = 8
     static let strongMatchThreshold = 170
@@ -156,11 +156,7 @@ actor ProviderClient {
         guard let raw = Self.firstMatch(in: html, pattern: "<iframe[^>]+src=\"([^\"]+)\"")
                 ?? Self.firstMatch(in: html, pattern: "<iframe[^>]+src='([^']+)'") else { return nil }
         let embed = Self.decodeHTMLEntities(raw.trimmed)
-
-        guard let parsed = URL(string: embed),
-              parsed.host == "vixcloud.co",
-              parsed.path.hasPrefix("/embed/") else { return nil }
-        return embed
+        return Self.normalizeEmbedURL(embed, relativeTo: base)
     }
 
     // MARK: - Base URL (telegra.ph)
@@ -316,6 +312,17 @@ actor ProviderClient {
         var s = url.absoluteString
         if s.hasSuffix("/") { s.removeLast() }
         return s
+    }
+
+    /// Accept both absolute and provider-relative iframe src values, mirroring
+    /// the iOS proxy so local fallback and proxy mode don't diverge when the
+    /// provider changes its markup slightly.
+    static func normalizeEmbedURL(_ value: String, relativeTo baseURL: String) -> String? {
+        guard let base = URL(string: baseURL),
+              let parsed = URL(string: value, relativeTo: base)?.absoluteURL,
+              parsed.host == "vixcloud.co",
+              parsed.path.hasPrefix("/embed/") else { return nil }
+        return parsed.absoluteString
     }
 
     /// First capture group of `pattern` in `text`, or nil.

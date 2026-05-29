@@ -31,25 +31,39 @@ actor ProviderResolver {
         var candidates: [ProviderCandidate]
     }
 
-    private func cacheKey(_ id: Int, _ type: MediaType) -> String { "\(type.rawValue):\(id)" }
+    private func cacheKey(_ id: Int, _ type: MediaType, useProxy: Bool) -> String {
+        "\(type.rawValue):\(id):\(useProxy ? "proxy" : "local")"
+    }
+
+    private func cacheKeysForAllModes(_ id: Int, _ type: MediaType) -> [String] {
+        [
+            cacheKey(id, type, useProxy: false),
+            cacheKey(id, type, useProxy: true)
+        ]
+    }
 
     /// Seed the in-memory cache from a persisted mapping so a confirmed title
     /// is reused (and the embed resolve uses it) without re-searching.
     func prime(tmdbId: Int, mediaType: MediaType, outcome: ProviderResolveTitleOutcome) {
-        titleCache[cacheKey(tmdbId, mediaType)] = outcome
+        for key in cacheKeysForAllModes(tmdbId, mediaType) {
+            titleCache[key] = outcome
+        }
     }
 
     /// Drop the cached title outcome (forces the next resolve to re-search).
     func invalidate(tmdbId: Int, mediaType: MediaType) {
-        titleCache[cacheKey(tmdbId, mediaType)] = nil
+        for key in cacheKeysForAllModes(tmdbId, mediaType) {
+            titleCache[key] = nil
+        }
     }
 
     /// Resolve (or reuse cached) the provider title for a TMDB id.
     func resolveTitle(tmdbId: Int, mediaType: MediaType, title: String, releaseDate: String?, forceRefresh: Bool = false) async -> ProviderResolveTitleOutcome {
-        let key = cacheKey(tmdbId, mediaType)
+        let useProxy = AppSettings.shared.providerProxyActive
+        let key = cacheKey(tmdbId, mediaType, useProxy: useProxy)
         if !forceRefresh, let cached = titleCache[key] { return cached }
         let outcome: ProviderResolveTitleOutcome
-        if AppSettings.shared.providerProxyActive {
+        if useProxy {
             outcome = await proxy.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
         } else {
             outcome = await provider.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
@@ -61,11 +75,16 @@ actor ProviderResolver {
     /// Manually pin a candidate as the resolved title (provider picker).
     func confirmCandidate(_ candidate: ProviderCandidate, tmdbId: Int, mediaType: MediaType) {
         let resolved = ProviderResolvedTitle(id: candidate.providerTitleId, slug: candidate.providerSlug, title: candidate.title, mediaType: mediaType)
-        let existing = titleCache[cacheKey(tmdbId, mediaType)]
-        titleCache[cacheKey(tmdbId, mediaType)] = ProviderResolveTitleOutcome(
+        let existingCandidates = cacheKeysForAllModes(tmdbId, mediaType)
+            .compactMap { titleCache[$0]?.candidates }
+            .first(where: { !$0.isEmpty }) ?? []
+        let outcome = ProviderResolveTitleOutcome(
             resolved: resolved, reason: nil,
-            candidates: existing?.candidates ?? [], matchStatus: .manualConfirmed
+            candidates: existingCandidates, matchStatus: .manualConfirmed
         )
+        for key in cacheKeysForAllModes(tmdbId, mediaType) {
+            titleCache[key] = outcome
+        }
     }
 
     // MARK: - Playable source
