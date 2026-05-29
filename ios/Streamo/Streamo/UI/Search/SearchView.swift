@@ -59,6 +59,7 @@ struct SearchView: View {
             }
         }
         .navigationTitle("Cerca")
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, isPresented: $isSearchPresented, prompt: "Titolo, film o serie TV")
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {

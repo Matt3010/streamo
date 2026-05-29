@@ -48,6 +48,7 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("Cronologia")
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable { try? await Task.sleep(for: .milliseconds(250)) }
     }
 

@@ -49,7 +49,7 @@ struct HomeView: View {
             .padding(.vertical, 12)
         }
         .navigationTitle("Streamo")
-        .toolbarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         // No full-page spinner: the section rows render skeleton cards while
         // loading (web is skeleton-first, never a centered spinner).
         .task { await model.loadIfNeeded() }

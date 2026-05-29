@@ -49,6 +49,7 @@ struct WatchlistView: View {
             .padding(.vertical, 8)
         }
         .navigationTitle("La mia lista")
+        .navigationBarTitleDisplayMode(.inline)
         .task(id: library.version) { await enrichment.refresh(all, library: library) }
         .refreshable { await enrichment.refresh(library.watchlist(), library: library) }
         .alert("Segna come visto", isPresented: Binding(get: { pendingMarkDone != nil }, set: { if !$0 { pendingMarkDone = nil } })) {

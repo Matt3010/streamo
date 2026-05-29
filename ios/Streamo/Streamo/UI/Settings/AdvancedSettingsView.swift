@@ -34,6 +34,7 @@ struct AdvancedSettingsView: View {
             }
         }
         .navigationTitle("Avanzate")
+        .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Ricalcolare la libreria?", isPresented: $confirmRecalc, titleVisibility: .visible) {
             Button("Ricalcola", role: .destructive) {
                 let n = library.recalculate()

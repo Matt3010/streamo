@@ -116,6 +116,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Impostazioni")
+        .navigationBarTitleDisplayMode(.inline)
         .task { refreshLANInfo() }
         .sheet(item: $backupFile) { file in
             ShareSheet(items: [file.url])
