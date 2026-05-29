@@ -30,6 +30,22 @@ enum HLSPlaylistParser {
         return Int(digits)
     }
 
+    /// Local child playlist names a rewritten master refers to.
+    static func childPlaylistNames(in text: String) -> [String] {
+        var names: [String] = []
+        for raw in text.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#EXT-X-MEDIA") || line.hasPrefix("#EXT-X-I-FRAME-STREAM-INF") {
+                if let uri = extractURIAttribute(line), uri.hasSuffix(".m3u8") {
+                    names.append(uri)
+                }
+            } else if !line.isEmpty, !line.hasPrefix("#"), line.hasSuffix(".m3u8") {
+                names.append(line)
+            }
+        }
+        return names
+    }
+
     /// Resource names a rewritten local playlist refers to: keys/maps plus
     /// media files, excluding nested playlists.
     static func resourceNames(in text: String) -> [String] {

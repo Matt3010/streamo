@@ -24,6 +24,7 @@ final class DownloadManager {
     @ObservationIgnored private var activeTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount: [String: Int] = [:]
     @ObservationIgnored private var lastPersistedProgress: [String: Double] = [:]
+    @ObservationIgnored private var awaitingFirstProgressSample = Set<String>()
     @ObservationIgnored private let maxRetries = 3
 
     private init() {}
@@ -351,6 +352,7 @@ final class DownloadManager {
         let k = key(for: entry)
         activeKey = k
         retryCount[k] = 0
+        awaitingFirstProgressSample.insert(k)
         let initial = max(liveProgress[k] ?? 0, entry.progress)
         liveProgress[k] = initial
         lastPersistedProgress[k] = entry.progress
@@ -396,10 +398,11 @@ final class DownloadManager {
                                              progress: { [weak self] frac in
                 Task { @MainActor in
                     guard let self else { return }
+                    let isFirstSample = self.awaitingFirstProgressSample.remove(k) != nil
                     let prev = self.liveProgress[k] ?? 0
-                    let next = max(frac, prev)
-                    if next > prev { self.liveProgress[k] = next }
-                    self.persistLiveProgressIfNeeded(key: k, value: next)
+                    let next = isFirstSample ? frac : max(frac, prev)
+                    self.liveProgress[k] = next
+                    self.persistLiveProgressIfNeeded(key: k, value: next, force: isFirstSample)
                 }
             })
         } catch is CancellationError {
@@ -435,6 +438,7 @@ final class DownloadManager {
         debugLog("runDownload success key=\(k)")
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
+        awaitingFirstProgressSample.remove(k)
         activeKey = nil
         activeTask = nil
         refreshCatalog()
@@ -454,6 +458,7 @@ final class DownloadManager {
         liveProgress[k] = nil
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
+        awaitingFirstProgressSample.remove(k)
         activeKey = nil
         activeTask = nil
         startNextIfIdle()
@@ -461,12 +466,12 @@ final class DownloadManager {
 
     /// Persist live progress sparingly so relaunch/resume has an accurate base
     /// without turning every segment completion into a SwiftData write.
-    private func persistLiveProgressIfNeeded(key k: String, value: Double) {
+    private func persistLiveProgressIfNeeded(key k: String, value: Double, force: Bool = false) {
         guard let library,
               let entry = library.downloads().first(where: { key(for: $0) == k }),
               entry.state == .downloading else { return }
         let previous = lastPersistedProgress[k] ?? entry.progress
-        guard value >= previous + 0.02 || value >= 0.995 else { return }
+        guard force || value >= previous + 0.02 || value >= 0.995 else { return }
         lastPersistedProgress[k] = value
         library.setDownloadState(entry, .downloading, progress: value)
     }
@@ -490,10 +495,17 @@ final class DownloadManager {
         let playlists = directoryContents?.filter { $0.pathExtension.lowercased() == "m3u8" } ?? []
         guard !playlists.isEmpty else { return fallback }
 
+        let master = dir.appendingPathComponent("master.m3u8")
+        let referencedTrackNames = (try? String(contentsOf: master, encoding: .utf8))
+            .map { HLSPlaylistParser.childPlaylistNames(in: $0) } ?? []
+        let referencedTracks = referencedTrackNames.map { dir.appendingPathComponent($0) }
+            .filter { fm.fileExists(atPath: $0.path) }
         let trackPlaylists = playlists.filter { $0.lastPathComponent != "master.m3u8" }
-        let sources = trackPlaylists.isEmpty
-            ? playlists.filter { $0.lastPathComponent == "master.m3u8" }
-            : trackPlaylists
+        let sources = !referencedTracks.isEmpty
+            ? referencedTracks
+            : (trackPlaylists.isEmpty
+                ? playlists.filter { $0.lastPathComponent == "master.m3u8" }
+                : trackPlaylists)
         guard !sources.isEmpty else { return fallback }
 
         var totalResources = 0
