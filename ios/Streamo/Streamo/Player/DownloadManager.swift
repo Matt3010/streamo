@@ -45,6 +45,11 @@ final class DownloadManager {
         guard self.library == nil else { return }
         self.library = library
 
+        // Adopt any Live Activity left over from a previous launch so we
+        // update it in place instead of stacking a stale duplicate on the
+        // lock screen.
+        activity.reconnect()
+
         // Warm up the loopback HLS server so the first play tap doesn't pay
         // the bind latency.
         Task { _ = try? await LocalHLSServer.shared.ensureRunning() }
@@ -78,6 +83,10 @@ final class DownloadManager {
         installLibraryObserver()
         installLANProgressBridge()
         startNextIfIdle()
+        syncDownloadKeepAlive()
+        // If nothing resumed, restore a paused item's activity or end one
+        // adopted from a previous launch.
+        presentIdleState()
     }
 
     /// Forward LAN-reported playback positions into `Library.saveProgress` so
@@ -232,6 +241,12 @@ final class DownloadManager {
         }
         refreshCatalog()
         startNextIfIdle()
+        // New queued items lower the aggregate average and add to the queue
+        // count — push that to the Live Activity right away rather than waiting
+        // for the next segment tick.
+        if activeKey != nil {
+            activity.update(progress: aggregateProgress(), queuedCount: queuedRemaining(), force: true)
+        }
         return inserted + requeued
     }
 
@@ -271,8 +286,12 @@ final class DownloadManager {
         liveProgress[k] = persisted
         lastPersistedProgress[k] = persisted
         library?.setDownloadState(entry, .paused, progress: persisted)
-        // Manual pause halts the serial queue, so nothing else starts.
-        releaseBackgroundWorkIfIdle()
+        // Manual pause halts the serial queue; drop the keep-alive but keep the
+        // Live Activity visible in a paused state.
+        syncDownloadKeepAlive()
+        let (title, subtitle) = activityLabels(for: entry)
+        activity.pause(title: title, subtitle: subtitle,
+                       progress: aggregateProgress(), queuedCount: queuedRemaining())
     }
 
     /// Resume a manually-paused download.
@@ -310,7 +329,8 @@ final class DownloadManager {
         library?.removeDownload(entry)
         refreshCatalog()
         startNextIfIdle()
-        releaseBackgroundWorkIfIdle()
+        syncDownloadKeepAlive()
+        presentIdleState()
     }
 
     /// Loopback URL of a completed download, or nil if its files are missing
@@ -371,7 +391,8 @@ final class DownloadManager {
         }
         // Player drives its own audio session; drop the download keep-alive
         // and clear the activity (it re-appears when the download resumes).
-        releaseBackgroundWorkIfIdle()
+        syncDownloadKeepAlive()
+        activity.endImmediately()
     }
 
     func resumeAfterPlayback() {
@@ -450,7 +471,7 @@ final class DownloadManager {
         // download Live Activity for this item.
         BackgroundKeepAlive.shared.setReason(.activeDownload, active: true)
         let (title, subtitle) = activityLabels(for: entry)
-        activity.start(title: title, subtitle: subtitle, progress: initial, queuedCount: queuedRemaining())
+        activity.show(title: title, subtitle: subtitle, progress: aggregateProgress(), queuedCount: queuedRemaining())
         activeTask = Task { [weak self] in
             await self?.runDownload(key: k, runID: runID)
         }
@@ -464,6 +485,7 @@ final class DownloadManager {
         guard let library, let entry = library.downloads().first(where: { key(for: $0) == k }) else {
             debugLog("runDownload missing entry key=\(k) run=\(runID)")
             cleanupActive(key: k, runID: runID)
+            presentIdleState()
             return
         }
         guard isCurrentRun(key: k, runID: runID) else {
@@ -513,7 +535,7 @@ final class DownloadManager {
                     let next = isFirstSample ? frac : max(frac, prev)
                     self.liveProgress[k] = next
                     self.persistLiveProgressIfNeeded(key: k, value: next, force: isFirstSample)
-                    self.activity.update(progress: next, queuedCount: self.queuedRemaining())
+                    self.activity.update(progress: self.aggregateProgress(), queuedCount: self.queuedRemaining())
                 }
             })
         } catch is CancellationError {
@@ -563,9 +585,10 @@ final class DownloadManager {
         activeTask = nil
         refreshCatalog()
         startNextIfIdle()
-        // If startNextIfIdle picked up another item it re-armed both; only
-        // tear down when the whole queue is drained.
-        releaseBackgroundWorkIfIdle(finishedQueue: true)
+        syncDownloadKeepAlive()
+        // If startNextIfIdle picked up another item, show() already retargeted
+        // the activity; only show the "completed" frame when the queue drained.
+        if activeKey == nil { activity.finish() }
     }
 
     private func fail(key k: String, runID: Int, error: String?) {
@@ -574,10 +597,21 @@ final class DownloadManager {
             return
         }
         debugLog("fail key=\(k) run=\(runID) error=\(error ?? "nil")")
+        // Capture the failed item's labels/progress before cleanup wipes them,
+        // so we can surface a warning if the queue ends up idle.
+        var failedLabels: (String, String?)?
+        var failedProgress = 0.0
         if let library, let entry = library.downloads().first(where: { key(for: $0) == k }) {
+            failedLabels = activityLabels(for: entry)
+            failedProgress = liveProgress[k] ?? entry.progress
             library.setDownloadState(entry, .failed, error: error)
         }
         cleanupActive(key: k, runID: runID)
+        // If nothing else started, keep a warning on screen so the user knows
+        // a download broke. Otherwise the next item's show() takes over.
+        if activeKey == nil, let failedLabels {
+            activity.fail(title: failedLabels.0, subtitle: failedLabels.1, progress: failedProgress)
+        }
     }
 
     private func cleanupActive(key k: String, runID: Int? = nil) {
@@ -594,7 +628,7 @@ final class DownloadManager {
         activeKey = nil
         activeTask = nil
         startNextIfIdle()
-        releaseBackgroundWorkIfIdle()
+        syncDownloadKeepAlive()
     }
 
     private func isCurrentRun(key k: String, runID: Int) -> Bool {
@@ -664,16 +698,23 @@ final class DownloadManager {
 
     // MARK: - Background keep-alive + Live Activity
 
-    /// If no download occupies the active slot anymore, drop the silent-audio
-    /// keep-alive and clear the Live Activity. No-op while a download is still
-    /// running — `start()` already armed both for the current item. Pass
-    /// `finishedQueue: true` when the queue drained on success so the activity
-    /// shows a brief "completed" frame instead of vanishing instantly.
-    private func releaseBackgroundWorkIfIdle(finishedQueue: Bool = false) {
+    /// Hold the silent-audio keep-alive exactly while a download is actively
+    /// transferring (not while paused or watching). Safe to call after any
+    /// transition.
+    private func syncDownloadKeepAlive() {
+        BackgroundKeepAlive.shared.setReason(.activeDownload, active: activeKey != nil && !playbackActive)
+    }
+
+    /// When nothing is downloading, decide what stays on the Live Activity:
+    /// a paused item keeps showing "In pausa" (the user asked to still see it);
+    /// otherwise the activity is cleared. No-op while a download is active —
+    /// `start()` already shows the running item.
+    private func presentIdleState() {
         guard activeKey == nil else { return }
-        BackgroundKeepAlive.shared.setReason(.activeDownload, active: false)
-        if finishedQueue {
-            activity.finish()
+        if let paused = library?.downloads().first(where: { $0.state == .paused }) {
+            let (title, subtitle) = activityLabels(for: paused)
+            activity.pause(title: title, subtitle: subtitle,
+                           progress: aggregateProgress(), queuedCount: queuedRemaining())
         } else {
             activity.endImmediately()
         }
@@ -682,6 +723,23 @@ final class DownloadManager {
     /// Number of items still waiting behind the active download.
     private func queuedRemaining() -> Int {
         library?.downloads().filter { $0.state == .queued }.count ?? 0
+    }
+
+    /// Overall progress across every active download (queued + downloading +
+    /// paused), averaged the same way as the in-app toolbar badge
+    /// (`ToolbarActions.aggregateProgress`) so the Live Activity percentage
+    /// matches what the app shows.
+    private func aggregateProgress() -> Double {
+        guard let library else { return 0 }
+        let entries = library.downloads().filter { entry in
+            switch displayState(for: entry) {
+            case .queued, .downloading, .paused: return true
+            case .completed, .failed: return false
+            }
+        }
+        guard !entries.isEmpty else { return 0 }
+        let total = entries.reduce(0) { $0 + progress(for: $1) }
+        return min(1, max(0, total / Double(entries.count)))
     }
 
     /// Title / subtitle shown in the Live Activity. Movies have no subtitle;

@@ -62,6 +62,11 @@ private struct DownloadToolbarButton: View {
         activeDownloads.contains { downloads.isReconstructingProgress(for: $0) }
     }
 
+    /// Any download that failed and needs the user's attention.
+    private var hasFailedDownloads: Bool {
+        library.downloads().contains { $0.state == .failed }
+    }
+
     var body: some View {
         let _ = library.version
         let count = activeDownloads.count
@@ -85,6 +90,13 @@ private struct DownloadToolbarButton: View {
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     }
+                    if hasFailedDownloads {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .orange)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
                 }
                 .frame(width: count > 9 ? 32 : 28, height: 26)
 
@@ -103,10 +115,11 @@ private struct DownloadToolbarButton: View {
     }
 
     private func accessibilityLabel(count: Int) -> String {
-        guard count > 0 else { return "Download" }
+        let warning = hasFailedDownloads ? ", attenzione: un download non è riuscito" : ""
+        guard count > 0 else { return "Download\(warning)" }
         if isReconstructingAnyProgress {
-            return "Download, \(count) attivi, ricostruzione progresso in corso"
+            return "Download, \(count) attivi, ricostruzione progresso in corso\(warning)"
         }
-        return "Download, \(count) attivi, progresso \(progressPercent)%"
+        return "Download, \(count) attivi, progresso \(progressPercent)%\(warning)"
     }
 }
