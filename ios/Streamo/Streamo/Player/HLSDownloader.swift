@@ -50,7 +50,7 @@ enum HLSDownloader {
             while i < masterLines.count {
                 let line = masterLines[i].trimmingCharacters(in: .whitespaces)
                 if line.hasPrefix("#EXT-X-STREAM-INF") {
-                    let bw = bandwidthAttribute(line) ?? 0
+                    let bw = HLSPlaylistParser.bandwidthAttribute(line) ?? 0
                     var k = i + 1
                     while k < masterLines.count {
                         let next = masterLines[k].trimmingCharacters(in: .whitespaces)
@@ -79,20 +79,20 @@ enum HLSDownloader {
             let raw = masterLines[i]
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("#EXT-X-MEDIA") {
-                if let uri = extractURIAttribute(line) {
+                if let uri = HLSPlaylistParser.extractURIAttribute(line) {
                     trackIndex += 1
                     let resolved = resolveURL(uri, relativeTo: masterURL)
                     let localName = "track-\(trackIndex).m3u8"
                     subPlaylists.append((resolved, localName))
-                    masterLines[i] = replaceURIAttribute(line, with: localName)
+                    masterLines[i] = HLSPlaylistParser.replaceURIAttribute(line, with: localName)
                 }
             } else if line.hasPrefix("#EXT-X-I-FRAME-STREAM-INF"),
-                      let uri = extractURIAttribute(line) {
+                      let uri = HLSPlaylistParser.extractURIAttribute(line) {
                 trackIndex += 1
                 let resolved = resolveURL(uri, relativeTo: masterURL)
                 let localName = "track-\(trackIndex).m3u8"
                 subPlaylists.append((resolved, localName))
-                masterLines[i] = replaceURIAttribute(line, with: localName)
+                masterLines[i] = HLSPlaylistParser.replaceURIAttribute(line, with: localName)
             } else if !line.isEmpty && !line.hasPrefix("#") {
                 // Variant URI line (kept video variant only; others are blank).
                 trackIndex += 1
@@ -126,7 +126,7 @@ enum HLSDownloader {
         for sub in subPlaylists {
             try Task.checkCancellation()
             let subText = try await fetchString(sub.absoluteURL, headers: headers, session: session)
-            fetched.append((sub: sub, text: subText, weight: max(1, resourceCount(inVariantText: subText))))
+            fetched.append((sub: sub, text: subText, weight: max(1, HLSPlaylistParser.resourceCount(inVariantText: subText))))
         }
 
         let totalWeight = max(1, fetched.reduce(0) { $0 + $1.weight })
@@ -174,13 +174,13 @@ enum HLSDownloader {
             let raw = lines[i]
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("#EXT-X-KEY") || line.hasPrefix("#EXT-X-SESSION-KEY") || line.hasPrefix("#EXT-X-MAP") {
-                if let uri = extractURIAttribute(line) {
+                if let uri = HLSPlaylistParser.extractURIAttribute(line) {
                     keyCounter += 1
                     let resolved = resolveURL(uri, relativeTo: sourceURL)
                     let ext = inferExtension(from: resolved, fallback: line.hasPrefix("#EXT-X-MAP") ? "mp4" : "key")
                     let localName = "\(trackPrefix)-k\(keyCounter).\(ext)"
                     keyDownloads.append((resolved, localName))
-                    lines[i] = replaceURIAttribute(line, with: localName)
+                    lines[i] = HLSPlaylistParser.replaceURIAttribute(line, with: localName)
                 }
             } else if !line.isEmpty && !line.hasPrefix("#") {
                 segCounter += 1
@@ -285,35 +285,6 @@ enum HLSDownloader {
         return data
     }
 
-    // MARK: - URI Parsing
-
-    /// Extract the `URI="..."` attribute value from an HLS tag line.
-    private static func extractURIAttribute(_ line: String) -> String? {
-        guard let range = line.range(of: "URI=\"") else { return nil }
-        let afterQuote = line[range.upperBound...]
-        guard let end = afterQuote.firstIndex(of: "\"") else { return nil }
-        return String(afterQuote[..<end])
-    }
-
-    /// Replace the existing `URI="..."` value with `newValue` (re-quoted).
-    private static func replaceURIAttribute(_ line: String, with newValue: String) -> String {
-        guard let openRange = line.range(of: "URI=\"") else { return line }
-        let afterQuote = line[openRange.upperBound...]
-        guard let endRelative = afterQuote.firstIndex(of: "\"") else { return line }
-        let endIndex = endRelative
-        var rewritten = line
-        rewritten.replaceSubrange(openRange.upperBound..<endIndex, with: newValue)
-        return rewritten
-    }
-
-    /// Extract the integer `BANDWIDTH=N` attribute from `#EXT-X-STREAM-INF`.
-    private static func bandwidthAttribute(_ line: String) -> Int? {
-        guard let range = line.range(of: "BANDWIDTH=") else { return nil }
-        let after = line[range.upperBound...]
-        let digits = after.prefix(while: { $0.isNumber })
-        return Int(digits)
-    }
-
     private static func resolveURL(_ candidate: String, relativeTo base: URL) -> URL {
         if let absolute = URL(string: candidate), absolute.scheme != nil {
             return absolute
@@ -331,20 +302,4 @@ enum HLSDownloader {
         return fallback
     }
 
-    /// Count the resources this variant will actually download so the caller
-    /// can give it a fair share of the overall progress bar.
-    private static func resourceCount(inVariantText text: String) -> Int {
-        var count = 0
-        for raw in text.components(separatedBy: "\n") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("#EXT-X-KEY") || line.hasPrefix("#EXT-X-SESSION-KEY") || line.hasPrefix("#EXT-X-MAP") {
-                if extractURIAttribute(line) != nil {
-                    count += 1
-                }
-            } else if !line.isEmpty && !line.hasPrefix("#") {
-                count += 1
-            }
-        }
-        return count
-    }
 }

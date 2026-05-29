@@ -202,7 +202,7 @@ final class DownloadManager {
         liveProgress[k] = resumed
         lastPersistedProgress[k] = resumed
         library?.setDownloadState(entry, .queued, progress: resumed)
-        if !startEntryIfIdle(entry) {
+        if !startQueuedDownloadIfIdle(key: k) {
             startNextIfIdle()
         }
     }
@@ -278,6 +278,19 @@ final class DownloadManager {
     private func startEntryIfIdle(_ entry: DownloadEntry) -> Bool {
         guard !playbackActive, activeTask == nil, activeKey == nil else { return false }
         guard entry.state == .queued else { return false }
+        start(entry)
+        return true
+    }
+
+    /// Like `startEntryIfIdle`, but re-fetches the entry from SwiftData by key
+    /// so resume actions don't depend on the UI holding a perfectly-fresh
+    /// model instance after the queued-state write.
+    @discardableResult
+    private func startQueuedDownloadIfIdle(key k: String) -> Bool {
+        guard !playbackActive, activeTask == nil, activeKey == nil,
+              let library,
+              let entry = library.downloads().first(where: { key(for: $0) == k }),
+              entry.state == .queued else { return false }
         start(entry)
         return true
     }
@@ -411,26 +424,21 @@ final class DownloadManager {
             : trackPlaylists
         guard !sources.isEmpty else { return fallback }
 
-        var playlistProgress: [Double] = []
+        var totalResources = 0
+        var completedResources = 0
         for playlist in sources {
-            guard let text = try? String(contentsOf: playlist, encoding: .utf8) else { continue }
-            var total = 0
-            var done = 0
-            for raw in text.components(separatedBy: .newlines) {
-                let line = raw.trimmingCharacters(in: .whitespaces)
-                guard !line.isEmpty, !line.hasPrefix("#"), !line.hasSuffix(".m3u8") else { continue }
-                total += 1
-                if fm.fileExists(atPath: dir.appendingPathComponent(line).path) {
-                    done += 1
-                }
+            guard let text = try? String(contentsOf: playlist, encoding: .utf8) else {
+                continue
             }
-            if total > 0 {
-                playlistProgress.append(Double(done) / Double(total))
+            let resources = HLSPlaylistParser.resourceNames(in: text)
+            totalResources += resources.count
+            completedResources += resources.reduce(0) { partial, name in
+                partial + (fm.fileExists(atPath: dir.appendingPathComponent(name).path) ? 1 : 0)
             }
         }
-        guard !playlistProgress.isEmpty else { return fallback }
-        let average = playlistProgress.reduce(0, +) / Double(playlistProgress.count)
-        return max(fallback, min(1, average))
+        guard totalResources > 0 else { return fallback }
+        let fraction = Double(completedResources) / Double(totalResources)
+        return max(fallback, min(1, fraction))
     }
 
     // MARK: - Paths
