@@ -223,7 +223,7 @@ struct DetailView: View {
         }
 
         if ref.mediaType == .movie, let p = movieResume(item), p.duration > 0,
-           Int(Format.percent(position: p.position, duration: p.duration).rounded()) > 0 {
+           Format.percentValue(position: p.position, duration: p.duration) > 0 {
             ProgressView(value: Format.percent(position: p.position, duration: p.duration), total: 100)
                 .tint(Theme.red)
             HStack {
@@ -726,7 +726,7 @@ private struct EpisodeCard: View {
     private var timeLabel: String? {
         guard totalSeconds > 0 else { return nil }
         let base = "\(Format.time(watchedSeconds))/\(Format.time(totalSeconds))"
-        return watchedSeconds <= 0 ? base : "\(base) · \(Int(pct))%"
+        return watchedSeconds <= 0 ? base : "\(base) · \(Format.percentValue(pct))%"
     }
 
     var body: some View {

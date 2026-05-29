@@ -16,6 +16,15 @@ enum Format {
         return min(100, max(0, position / duration * 100))
     }
 
+    /// Integer UI percentage with one shared rounding rule everywhere.
+    static func percentValue(_ percent: Double) -> Int {
+        Int(percent.rounded())
+    }
+
+    static func percentValue(position: Double, duration: Double) -> Int {
+        percentValue(percent(position: position, duration: duration))
+    }
+
     /// "Visto 1 min" / "Visti N min" — port of the web `formatViewedMinutes`
     /// (history card red line for a not-yet-completed item). nil if not started.
     static func viewedMinutes(_ position: Double?) -> String? {

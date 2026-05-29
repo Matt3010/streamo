@@ -9,9 +9,8 @@ private enum LANSharePreparation {
 
 private enum LANShareBuilder {
     static func prepare(entry: DownloadEntry,
-                        downloads: DownloadManager,
+                        key: String,
                         settings: AppSettings) -> LANSharePreparation {
-        let key = downloads.key(for: entry)
         guard let ip = LANAddress.currentShareableIPv4() else {
             return .missingLocalNetwork
         }
@@ -124,7 +123,7 @@ struct DownloadsView: View {
     private func shareAction(for entry: DownloadEntry) -> (() -> Void)? {
         guard settings.lanShareEnabled, entry.state == .completed else { return nil }
         return {
-            switch LANShareBuilder.prepare(entry: entry, downloads: downloads, settings: settings) {
+            switch LANShareBuilder.prepare(entry: entry, key: downloads.key(for: entry), settings: settings) {
             case .ready(let item):
                 pendingShare = item
             case .missingLocalNetwork:
@@ -210,7 +209,7 @@ struct SeriesDownloadsView: View {
     private func shareAction(for entry: DownloadEntry) -> (() -> Void)? {
         guard settings.lanShareEnabled, entry.state == .completed else { return nil }
         return {
-            switch LANShareBuilder.prepare(entry: entry, downloads: downloads, settings: settings) {
+            switch LANShareBuilder.prepare(entry: entry, key: downloads.key(for: entry), settings: settings) {
             case .ready(let item):
                 pendingShare = item
             case .missingLocalNetwork:
@@ -314,7 +313,7 @@ private struct DownloadRow: View {
         case .paused:      return "In pausa"
         case .completed:
             if watchPct >= 90 { return "Scaricato · visto" }
-            if watchPct > 0 { return "Scaricato · visto al \(Int(watchPct))%" }
+            if watchPct > 0 { return "Scaricato · visto al \(Format.percentValue(watchPct))%" }
             return "Scaricato — disponibile offline"
         case .failed:      return "Download non riuscito"
         }

@@ -161,10 +161,10 @@ struct MediaCard: View {
             poster_view
             bottomGradient
             overlayText
-            if showProgress, Int(pct.rounded()) > 0 {
+            if showProgress, Format.percentValue(pct) > 0 {
                 HStack(spacing: 6) {
                     ProgressBar(percent: pct)
-                    Text("\(Int(pct.rounded()))%")
+                    Text("\(Format.percentValue(pct))%")
                         .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.85), radius: 2)
                 }
@@ -282,7 +282,7 @@ struct ProgressBar: View {
     let percent: Double
 
     var body: some View {
-        if Int(percent.rounded()) > 0 {
+        if Format.percentValue(percent) > 0 {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(.white.opacity(0.28))

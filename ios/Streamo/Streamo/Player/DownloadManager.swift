@@ -31,7 +31,7 @@ final class DownloadManager {
 
     private init() {}
 
-    func key(for entry: DownloadEntry) -> String {
+    nonisolated func key(for entry: DownloadEntry) -> String {
         "\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)"
     }
 
