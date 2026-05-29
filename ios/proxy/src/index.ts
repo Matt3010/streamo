@@ -19,6 +19,18 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '32kb' }));
 
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const upstream = typeof res.locals.upstream === 'string' ? ` -> ${res.locals.upstream}` : '';
+    const bytes = res.getHeader('content-length');
+    const size = typeof bytes === 'string' || typeof bytes === 'number' ? ` ${bytes}b` : '';
+    console.log(`[ios-proxy] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`);
+  });
+  next();
+});
+
 const PROVIDER_REQUEST_TIMEOUT_MS = 8000;
 const PLAYLIST_FETCH_TIMEOUT_MS = 30000;
 const BASE_URL_TTL_MS = 10 * 60 * 1000;
@@ -144,6 +156,7 @@ app.get(/^\/playlist\/(.*)$/i, requireAuth, async (req, res) => {
   const queryStart = req.url.indexOf('?');
   const search = queryStart >= 0 ? req.url.slice(queryStart) : '';
   const upstreamURL = `https://vixcloud.co/playlist/${tail}${search}`;
+  res.locals.upstream = upstreamURL;
 
   let upstream: globalThis.Response;
   try {
@@ -543,6 +556,7 @@ async function proxyPassthrough(
   res: ExpressResponse,
   upstreamURL: string
 ): Promise<void> {
+  res.locals.upstream = upstreamURL;
   let upstream: globalThis.Response;
   try {
     upstream = await fetchWithTimeout(upstreamURL, {
