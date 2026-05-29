@@ -398,6 +398,22 @@ final class Library {
 
     // MARK: - Downloads (offline HLS)
 
+    struct DownloadDraft {
+        let tmdbId: Int
+        let type: MediaType
+        let season: Int
+        let episode: Int
+        let title: String?
+        let poster: String?
+        let backdrop: String?
+        let releaseDate: String?
+        let episodeTitle: String?
+        let episodeOverview: String?
+        let episodeStill: String?
+        let episodeRuntime: Int?
+        let itemJSON: String?
+    }
+
     /// All downloads, oldest first (queue order).
     func downloads() -> [DownloadEntry] {
         let d = FetchDescriptor<DownloadEntry>(sortBy: [SortDescriptor(\.addedAt, order: .forward)])
@@ -411,6 +427,51 @@ final class Library {
         })
         d.fetchLimit = 1
         return try? context.fetch(d).first
+    }
+
+    /// Batch upsert for downloads. Existing rows keep their queue position and
+    /// state; only metadata gets refreshed. Returns how many brand-new rows
+    /// were inserted.
+    @discardableResult
+    func addDownloads(_ drafts: [DownloadDraft]) -> Int {
+        guard !drafts.isEmpty else { return 0 }
+
+        var inserted = 0
+        for draft in drafts {
+            if let existing = download(draft.tmdbId, draft.type, season: draft.season, episode: draft.episode) {
+                if let title = draft.title { existing.title = title }
+                if let poster = draft.poster { existing.poster = poster }
+                if let backdrop = draft.backdrop { existing.backdrop = backdrop }
+                if let releaseDate = draft.releaseDate { existing.releaseDate = releaseDate }
+                if let episodeTitle = draft.episodeTitle { existing.episodeTitle = episodeTitle }
+                if let episodeOverview = draft.episodeOverview { existing.episodeOverview = episodeOverview }
+                if let episodeStill = draft.episodeStill { existing.episodeStill = episodeStill }
+                if let episodeRuntime = draft.episodeRuntime { existing.episodeRuntime = episodeRuntime }
+                if let itemJSON = draft.itemJSON { existing.itemJSON = itemJSON }
+                continue
+            }
+
+            let entry = DownloadEntry(
+                tmdbId: draft.tmdbId,
+                mediaType: draft.type,
+                season: draft.season,
+                episode: draft.episode,
+                title: draft.title,
+                poster: draft.poster,
+                backdrop: draft.backdrop,
+                releaseDate: draft.releaseDate,
+                episodeTitle: draft.episodeTitle,
+                episodeOverview: draft.episodeOverview,
+                episodeStill: draft.episodeStill,
+                episodeRuntime: draft.episodeRuntime
+            )
+            entry.itemJSON = draft.itemJSON
+            context.insert(entry)
+            inserted += 1
+        }
+
+        save()
+        return inserted
     }
 
     /// Enqueue a download (no-op if one already exists for this coordinate).
@@ -433,14 +494,25 @@ final class Library {
             save()
             return existing
         }
-        let e = DownloadEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
-                              title: title, poster: poster, backdrop: backdrop, releaseDate: releaseDate,
-                              episodeTitle: episodeTitle, episodeOverview: episodeOverview,
-                              episodeStill: episodeStill, episodeRuntime: episodeRuntime)
-        e.itemJSON = itemJSON
-        context.insert(e)
+
+        let entry = DownloadEntry(
+            tmdbId: tmdbId,
+            mediaType: type,
+            season: season,
+            episode: episode,
+            title: title,
+            poster: poster,
+            backdrop: backdrop,
+            releaseDate: releaseDate,
+            episodeTitle: episodeTitle,
+            episodeOverview: episodeOverview,
+            episodeStill: episodeStill,
+            episodeRuntime: episodeRuntime
+        )
+        entry.itemJSON = itemJSON
+        context.insert(entry)
         save()
-        return e
+        return entry
     }
 
     /// Set a download's state (clears the error unless it's the failed state).

@@ -15,11 +15,9 @@ import notificationsRoutes from './routes/notifications';
 import fcmRoutes from './routes/fcm';
 import { attachAdminLiveSessions } from './services/admin-live';
 import { requireSuperAdmin } from './middleware/auth';
-import { ipMaskLogMiddleware } from './middleware/ip-mask-log';
 import { getAdminQueuesBoardRouter } from './services/admin-queues-board';
 import { assertRedisReady } from './services/redis';
 import { attachUserLiveSessions } from './services/user-live';
-import { startEgressCheckRefreshLoop } from './services/admin-egress-check';
 import {
   startUserNotificationsSubscription,
   startUserWatchlistEventsSubscription
@@ -29,7 +27,6 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
-app.use(ipMaskLogMiddleware);
 
 // Process-liveness probe for the docker-compose healthcheck. Intentionally
 // minimal — does not touch DB or Redis (those have their own healthchecks),
@@ -53,7 +50,6 @@ app.use(fcmRoutes);
 async function start(): Promise<void> {
   await initDb();
   await assertRedisReady();
-  startEgressCheckRefreshLoop();
 
   const server = http.createServer(app);
   attachAdminLiveSessions(server);

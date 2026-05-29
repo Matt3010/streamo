@@ -242,18 +242,28 @@ final class DetailViewModel {
     }
 
     func changeSeason(_ season: Int) async {
-        guard seasons.contains(season) else { return }
+        guard seasons.contains(season), season != selectedSeason else { return }
+        loadingEpisodes = true
+        episodes = []
         selectedSeason = season
-        await loadSeason(season)
+        await loadSeason(season, loadingAlreadyStarted: true)
     }
 
-    private func loadSeason(_ season: Int) async {
-        guard let item else { return }
-        loadingEpisodes = true
+    private func loadSeason(_ season: Int, loadingAlreadyStarted: Bool = false) async {
+        guard let item else {
+            loadingEpisodes = false
+            return
+        }
+        if !loadingAlreadyStarted {
+            loadingEpisodes = true
+        }
         let details = try? await client.seasonDetails(tvId: item.id, season: season)
         let aired = TVLogic.airedEpisodeList(details?.episodes ?? [], item: item, season: season)
         if aired.isEmpty {
-            let count = (item.seasons ?? []).first { $0.seasonNumber == season }?.episodeCount ?? 10
+            let airedCount = TVLogic.airedEpisodesInSeason(item, season: season)
+            let count = airedCount > 0
+                ? airedCount
+                : ((item.seasons ?? []).first { $0.seasonNumber == season }?.episodeCount ?? 10)
             episodes = (1...max(1, count)).map { TmdbEpisodeDetail.stub($0) }
         } else {
             episodes = aired

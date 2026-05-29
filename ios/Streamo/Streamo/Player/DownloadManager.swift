@@ -147,6 +147,22 @@ final class DownloadManager {
 
     // MARK: - Public actions
 
+    struct EnqueueRequest {
+        let tmdbId: Int
+        let type: MediaType
+        let season: Int
+        let episode: Int
+        let title: String?
+        let poster: String?
+        let backdrop: String?
+        let releaseDate: String?
+        let episodeTitle: String?
+        let episodeOverview: String?
+        let episodeStill: String?
+        let episodeRuntime: Int?
+        let item: TmdbItem?
+    }
+
     /// Queue a movie / episode for download and kick the serial queue. Pass
     /// `item` to snapshot the parent TMDB item — that's what lets the detail
     /// screen render fully offline (synopsis, runtime, genres, …).
@@ -155,16 +171,67 @@ final class DownloadManager {
                  episodeTitle: String? = nil, episodeOverview: String? = nil,
                  episodeStill: String? = nil, episodeRuntime: Int? = nil,
                  item: TmdbItem? = nil) {
-        let json = item.flatMap { try? JSONEncoder().encode($0) }
-            .flatMap { String(data: $0, encoding: .utf8) }
-        library?.addDownload(tmdbId: tmdbId, type: type, season: season, episode: episode,
-                             title: title, poster: poster, backdrop: backdrop, releaseDate: releaseDate,
-                             episodeTitle: episodeTitle, episodeOverview: episodeOverview,
-                             episodeStill: episodeStill, episodeRuntime: episodeRuntime,
-                             itemJSON: json)
-        prefetchArtwork(poster: poster, backdrop: backdrop, still: episodeStill)
+        _ = enqueueAll([
+            EnqueueRequest(
+                tmdbId: tmdbId,
+                type: type,
+                season: season,
+                episode: episode,
+                title: title,
+                poster: poster,
+                backdrop: backdrop,
+                releaseDate: releaseDate,
+                episodeTitle: episodeTitle,
+                episodeOverview: episodeOverview,
+                episodeStill: episodeStill,
+                episodeRuntime: episodeRuntime,
+                item: item
+            )
+        ])
+    }
+
+    /// Batch enqueue preserving the same serial-queue semantics used by single
+    /// items. Returns the number of rows that became queued work: brand-new
+    /// inserts plus failed entries that were requeued. Other duplicates simply
+    /// refresh metadata and keep their existing queue position/state.
+    @discardableResult
+    func enqueueAll(_ requests: [EnqueueRequest]) -> Int {
+        guard let library, !requests.isEmpty else { return 0 }
+
+        let drafts = requests.map { request in
+            let itemJSON = request.item
+                .flatMap { try? JSONEncoder().encode($0) }
+                .flatMap { String(data: $0, encoding: .utf8) }
+            return Library.DownloadDraft(
+                tmdbId: request.tmdbId,
+                type: request.type,
+                season: request.season,
+                episode: request.episode,
+                title: request.title,
+                poster: request.poster,
+                backdrop: request.backdrop,
+                releaseDate: request.releaseDate,
+                episodeTitle: request.episodeTitle,
+                episodeOverview: request.episodeOverview,
+                episodeStill: request.episodeStill,
+                episodeRuntime: request.episodeRuntime,
+                itemJSON: itemJSON
+            )
+        }
+
+        let inserted = library.addDownloads(drafts)
+        var requeued = 0
+        for request in requests {
+            prefetchArtwork(poster: request.poster, backdrop: request.backdrop, still: request.episodeStill)
+            if let entry = library.download(request.tmdbId, request.type, season: request.season, episode: request.episode),
+               entry.state == .failed {
+                library.setDownloadState(entry, .queued, progress: 0)
+                requeued += 1
+            }
+        }
         refreshCatalog()
         startNextIfIdle()
+        return inserted + requeued
     }
 
     /// Pull poster/backdrop into the disk image cache so the Downloads page and

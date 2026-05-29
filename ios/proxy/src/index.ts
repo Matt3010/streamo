@@ -20,13 +20,24 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '32kb' }));
 
 app.use((req, res, next) => {
+  if (req.path !== '/health') {
+    refreshHealthCheckInBackground();
+  }
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
     const upstream = typeof res.locals.upstream === 'string' ? ` -> ${res.locals.upstream}` : '';
     const bytes = res.getHeader('content-length');
     const size = typeof bytes === 'string' || typeof bytes === 'number' ? ` ${bytes}b` : '';
-    console.log(`[ios-proxy] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`);
+    const originIp = getOriginIp(req);
+    const health = getTrustedCachedHealthCheck();
+    const egressIp = health?.ip ?? '-';
+    const masked = health ? health.through_cloudflare && !sameIp(originIp, egressIp) : null;
+    console.log(
+      `[ios-proxy] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`
+      + ` origin_ip=${originIp} egress_ip=${egressIp} through_cf=${formatFlag(health?.through_cloudflare)}`
+      + ` masked=${formatFlag(masked)} checked_at=${health?.checked_at ?? '-'}`
+    );
   });
   next();
 });
@@ -34,11 +45,16 @@ app.use((req, res, next) => {
 const PROVIDER_REQUEST_TIMEOUT_MS = 8000;
 const PLAYLIST_FETCH_TIMEOUT_MS = 30000;
 const BASE_URL_TTL_MS = 10 * 60 * 1000;
+const HEALTH_CACHE_TTL_MS = 60_000;
 const STRONG_MATCH_THRESHOLD = 170;
 const MIN_CANDIDATE_SCORE = 40;
 const MAX_STORED_CANDIDATES = 10;
 
 let cachedBaseURL: { value: string; fetchedAt: number } | null = null;
+let latestHealthCheck: ProxyHealthResponse | null = null;
+let latestHealthCheckAtMs = 0;
+let latestTrustedHealthCheck: ProxyHealthResponse | null = null;
+let inFlightHealthCheck: Promise<ProxyHealthResponse> | null = null;
 const authToken = ensureAuthToken();
 
 type ProviderResolvedTitle = {
@@ -91,8 +107,13 @@ type ProviderLoadedSeason = {
 type ProxyHealthResponse = {
   checked_at: number;
   ok: boolean;
+  ip: string | null;
+  asn_org: string | null;
   warp: boolean;
   colo: string | null;
+  country: string | null;
+  city: string | null;
+  through_cloudflare: boolean;
   provider_catalog_base_url: string | null;
   provider_reachable: boolean;
   vixcloud_reachable: boolean;
@@ -213,20 +234,76 @@ app.get('/favicon.ico', requireAuth, async (req, res) => {
 });
 
 async function runHealthCheck(): Promise<ProxyHealthResponse> {
+  if (inFlightHealthCheck) {
+    return inFlightHealthCheck;
+  }
+
+  inFlightHealthCheck = performHealthCheck()
+    .then((result) => {
+      latestHealthCheck = result;
+      latestHealthCheckAtMs = Date.now();
+      if (isTrustedHealthCheck(result)) {
+        latestTrustedHealthCheck = result;
+      } else {
+        latestTrustedHealthCheck = null;
+      }
+      return result;
+    })
+    .finally(() => {
+      inFlightHealthCheck = null;
+    });
+
+  return inFlightHealthCheck;
+}
+
+function getTrustedCachedHealthCheck(): ProxyHealthResponse | null {
+  return latestTrustedHealthCheck;
+}
+
+function refreshHealthCheckInBackground(force = false): void {
+  const cacheFresh = latestHealthCheckAtMs > 0 && (Date.now() - latestHealthCheckAtMs) < HEALTH_CACHE_TTL_MS;
+  if (!force && (cacheFresh || inFlightHealthCheck)) {
+    return;
+  }
+
+  void runHealthCheck().catch(() => {
+    // Best-effort background refresh for request logging only.
+  });
+}
+
+function startHealthCheckRefreshLoop(intervalMs = HEALTH_CACHE_TTL_MS): void {
+  refreshHealthCheckInBackground(true);
+  const timer = setInterval(() => {
+    refreshHealthCheckInBackground(true);
+  }, intervalMs);
+  timer.unref?.();
+}
+
+async function performHealthCheck(): Promise<ProxyHealthResponse> {
   const errors: string[] = [];
   let warp = false;
   let colo: string | null = null;
+  let traceIp: string | null = null;
 
   try {
     const traceRes = await fetchWithTimeout('https://www.cloudflare.com/cdn-cgi/trace', {}, 5000);
     const trace = parseTrace(await traceRes.text());
     warp = trace.warp === 'on';
     colo = trace.colo ?? null;
+    traceIp = trace.ip ?? null;
     if (!warp) {
       errors.push('warp=off');
     }
   } catch {
     errors.push('warp_trace_failed');
+  }
+
+  let ipInfo: { ip?: string; org?: string; country?: string; city?: string } = {};
+  try {
+    const infoRes = await fetchWithTimeout('https://ipinfo.io/json', {}, 5000);
+    ipInfo = await infoRes.json() as typeof ipInfo;
+  } catch {
+    errors.push('ipinfo_failed');
   }
 
   const baseURL = await providerCatalogBaseURL();
@@ -265,11 +342,23 @@ async function runHealthCheck(): Promise<ProxyHealthResponse> {
     errors.push('vixcloud_unreachable');
   }
 
+  const ip = traceIp ?? ipInfo.ip ?? null;
+  const asnOrg = ipInfo.org ?? null;
+  const throughCloudflare = warp && (
+    (!!asnOrg && /cloudflare/i.test(asnOrg))
+    || (!!ip && isCloudflareIp(ip))
+  );
+
   return {
     checked_at: Date.now(),
     ok: warp && providerReachable && vixcloudReachable,
+    ip,
+    asn_org: asnOrg,
     warp,
     colo,
+    country: ipInfo.country ?? null,
+    city: ipInfo.city ?? null,
+    through_cloudflare: throughCloudflare,
     provider_catalog_base_url: baseURL,
     provider_reachable: providerReachable,
     vixcloud_reachable: vixcloudReachable,
@@ -933,6 +1022,35 @@ function parseTrace(text: string): Record<string, string> {
     }, {});
 }
 
+const CLOUDFLARE_IPV4_PREFIXES = [
+  '173.245.48.', '103.21.244.', '103.22.200.', '103.31.4.',
+  '141.101.64.', '108.162.192.', '190.93.240.', '188.114.96.',
+  '197.234.240.', '198.41.128.', '162.158.', '172.64.', '172.65.',
+  '172.66.', '172.67.', '172.68.', '172.69.', '172.70.', '172.71.',
+  '131.0.72.', '104.16.', '104.17.', '104.18.', '104.19.', '104.20.',
+  '104.21.', '104.22.', '104.23.', '104.24.', '104.25.', '104.26.',
+  '104.27.', '104.28.'
+];
+
+const CLOUDFLARE_IPV6_PREFIXES = [
+  '2400:cb00:', '2606:4700:', '2803:f800:', '2405:b500:',
+  '2405:8100:', '2c0f:f248:', '2a06:98c0:',
+  '2a09:bac0:', '2a09:bac1:', '2a09:bac2:', '2a09:bac3:',
+  '2a09:bac4:', '2a09:bac5:', '2a09:bac6:', '2a09:bac7:'
+];
+
+function isCloudflareIp(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (lower.includes(':')) {
+    return CLOUDFLARE_IPV6_PREFIXES.some((prefix) => lower.startsWith(prefix));
+  }
+  return CLOUDFLARE_IPV4_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+function isTrustedHealthCheck(result: ProxyHealthResponse): boolean {
+  return !result.errors.includes('warp_trace_failed') && !!result.ip;
+}
+
 function unavailableMessage(reason: ProviderResolveFailureReason): string {
   switch (reason) {
     case 'temporarily_unavailable':
@@ -958,6 +1076,51 @@ function headerValue(value: string | string[] | undefined, fallback: string): st
 
 function activeSortValue(value: boolean | undefined): number {
   return value ? 0 : 1;
+}
+
+function getOriginIp(req: Request): string {
+  return firstHeaderValue(req.headers['cf-connecting-ip'])
+    ?? firstForwardedIp(req.headers['x-forwarded-for'])
+    ?? firstHeaderValue(req.headers['x-real-ip'])
+    ?? normalizeIp(req.ip)
+    ?? normalizeIp(req.socket.remoteAddress)
+    ?? '-';
+}
+
+function firstForwardedIp(value: string | string[] | undefined): string | null {
+  const header = firstHeaderValue(value);
+  if (!header) {
+    return null;
+  }
+
+  const first = header.split(',')[0]?.trim();
+  return normalizeIp(first);
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return normalizeIp(value[0]);
+  }
+  return normalizeIp(value);
+}
+
+function normalizeIp(value: string | undefined | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sameIp(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function formatFlag(value: boolean | null | undefined): string {
+  if (value === true) return 'yes';
+  if (value === false) return 'no';
+  return 'unknown';
 }
 
 async function fetchText(
@@ -1034,5 +1197,6 @@ function ensureAuthToken(): string {
 }
 
 app.listen(PORT, '0.0.0.0', () => {
+  startHealthCheckRefreshLoop();
   console.log(`iOS proxy listening on ${PORT}`);
 });

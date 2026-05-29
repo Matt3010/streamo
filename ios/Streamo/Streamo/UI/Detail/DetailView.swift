@@ -351,6 +351,60 @@ struct DetailView: View {
         }
     }
 
+    private func selectedSeasonDownloadStats() -> (total: Int, actionable: Int) {
+        guard !model.loadingEpisodes, let item = model.item else { return (0, 0) }
+        let availableEpisodes = model.episodes
+            .map(\.episodeNumber)
+            .filter { $0 > 0 }
+        let actionable = availableEpisodes.filter {
+            guard let download = downloadFor(item.id, .tv, season: model.selectedSeason, episode: $0) else {
+                return true
+            }
+            return download.state == .failed
+        }.count
+        return (availableEpisodes.count, actionable)
+    }
+
+    private func enqueueSelectedSeason(_ item: TmdbItem) {
+        guard !model.loadingEpisodes else { return }
+        let season = model.selectedSeason
+        let sortedEpisodes = model.episodes
+            .filter { $0.episodeNumber > 0 }
+            .sorted { $0.episodeNumber < $1.episodeNumber }
+        guard !sortedEpisodes.isEmpty else { return }
+
+        for episode in sortedEpisodes {
+            locallyRemovedDownloadKeys.remove(downloadKey(item.id, .tv, season: season, episode: episode.episodeNumber))
+        }
+
+        let inserted = downloads.enqueueAll(sortedEpisodes.map { episode in
+            DownloadManager.EnqueueRequest(
+                tmdbId: item.id,
+                type: .tv,
+                season: season,
+                episode: episode.episodeNumber,
+                title: item.displayTitle,
+                poster: item.posterPath,
+                backdrop: item.backdropPath,
+                releaseDate: item.primaryDate,
+                episodeTitle: episode.name,
+                episodeOverview: episode.overview,
+                episodeStill: episode.stillPath,
+                episodeRuntime: episode.runtime,
+                item: item
+            )
+        })
+        invalidateDownloadUI()
+
+        if inserted <= 0 {
+            ToastCenter.shared.show("Tutta la stagione e gia in download")
+        } else if inserted == 1 {
+            ToastCenter.shared.show("Aggiunto 1 episodio alla coda")
+        } else {
+            ToastCenter.shared.show("Aggiunti \(inserted) episodi alla coda")
+        }
+    }
+
     /// Show the picker button when there are candidates to choose from and the
     /// current state isn't a single already-confirmed match.
     private var showVersionPicker: Bool {
@@ -416,22 +470,37 @@ struct DetailView: View {
     private func episodesSection(for item: TmdbItem) -> some View {
         let progressMap = episodeProgressMap(item)
         let highlight = nextUnwatchedInSeason(item)
+        let seasonStats = selectedSeasonDownloadStats()
+        let providerDisabled = model.providerAvailability == .unavailable && !model.isUpcoming
 
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Episodi", symbol: "play.square.stack.fill")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("STAGIONE")
-                    .font(.caption2.weight(.semibold)).tracking(0.6)
-                    .foregroundStyle(.secondary)
-                Picker("Stagione", selection: Binding(
-                    get: { model.selectedSeason },
-                    set: { newValue in Task { await model.changeSeason(newValue) } }
-                )) {
-                    ForEach(model.seasons, id: \.self) { Text("Stagione \($0)").tag($0) }
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("STAGIONE")
+                        .font(.caption2.weight(.semibold)).tracking(0.6)
+                        .foregroundStyle(.secondary)
+                    Picker("Stagione", selection: Binding(
+                        get: { model.selectedSeason },
+                        set: { newValue in Task { await model.changeSeason(newValue) } }
+                    )) {
+                        ForEach(model.seasons, id: \.self) { Text("Stagione \($0)").tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.white)
                 }
-                .pickerStyle(.menu)
-                .tint(.white)
+
+                if seasonStats.total > 0 {
+                    Button {
+                        enqueueSelectedSeason(item)
+                    } label: {
+                        Label(seasonStats.actionable == 0 ? "Stagione gia in download" : "Scarica tutta la stagione",
+                              systemImage: "square.stack.3d.down.forward")
+                    }
+                    .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
+                    .disabled(seasonStats.actionable == 0 || providerDisabled)
+                }
             }
             .padding(.horizontal)
 
@@ -447,7 +516,6 @@ struct DetailView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                     .padding(.horizontal)
             } else {
-                let providerDisabled = model.providerAvailability == .unavailable && !model.isUpcoming
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(model.episodes) { ep in
