@@ -21,6 +21,7 @@ final class DownloadManager {
     private(set) var playbackActive = false
 
     @ObservationIgnored private var library: Library?
+    @ObservationIgnored private let activity = DownloadActivityController()
     @ObservationIgnored private var activeTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount: [String: Int] = [:]
     @ObservationIgnored private var lastPersistedProgress: [String: Double] = [:]
@@ -270,6 +271,8 @@ final class DownloadManager {
         liveProgress[k] = persisted
         lastPersistedProgress[k] = persisted
         library?.setDownloadState(entry, .paused, progress: persisted)
+        // Manual pause halts the serial queue, so nothing else starts.
+        releaseBackgroundWorkIfIdle()
     }
 
     /// Resume a manually-paused download.
@@ -307,6 +310,7 @@ final class DownloadManager {
         library?.removeDownload(entry)
         refreshCatalog()
         startNextIfIdle()
+        releaseBackgroundWorkIfIdle()
     }
 
     /// Loopback URL of a completed download, or nil if its files are missing
@@ -365,6 +369,9 @@ final class DownloadManager {
             library.setDownloadState(entry, .queued, progress: persisted)
             activeKey = nil
         }
+        // Player drives its own audio session; drop the download keep-alive
+        // and clear the activity (it re-appears when the download resumes).
+        releaseBackgroundWorkIfIdle()
     }
 
     func resumeAfterPlayback() {
@@ -439,6 +446,11 @@ final class DownloadManager {
         lastPersistedProgress[k] = entry.progress
         debugLog("start key=\(k) run=\(runID) initial=\(String(format: "%.3f", initial)) entryProgress=\(String(format: "%.3f", entry.progress))")
         library?.setDownloadState(entry, .downloading, progress: initial)
+        // Keep the process alive in the background and start/retarget the
+        // download Live Activity for this item.
+        BackgroundKeepAlive.shared.setReason(.activeDownload, active: true)
+        let (title, subtitle) = activityLabels(for: entry)
+        activity.start(title: title, subtitle: subtitle, progress: initial, queuedCount: queuedRemaining())
         activeTask = Task { [weak self] in
             await self?.runDownload(key: k, runID: runID)
         }
@@ -501,6 +513,7 @@ final class DownloadManager {
                     let next = isFirstSample ? frac : max(frac, prev)
                     self.liveProgress[k] = next
                     self.persistLiveProgressIfNeeded(key: k, value: next, force: isFirstSample)
+                    self.activity.update(progress: next, queuedCount: self.queuedRemaining())
                 }
             })
         } catch is CancellationError {
@@ -550,6 +563,9 @@ final class DownloadManager {
         activeTask = nil
         refreshCatalog()
         startNextIfIdle()
+        // If startNextIfIdle picked up another item it re-armed both; only
+        // tear down when the whole queue is drained.
+        releaseBackgroundWorkIfIdle(finishedQueue: true)
     }
 
     private func fail(key k: String, runID: Int, error: String?) {
@@ -578,6 +594,7 @@ final class DownloadManager {
         activeKey = nil
         activeTask = nil
         startNextIfIdle()
+        releaseBackgroundWorkIfIdle()
     }
 
     private func isCurrentRun(key k: String, runID: Int) -> Bool {
@@ -643,6 +660,42 @@ final class DownloadManager {
         guard totalResources > 0 else { return fallback }
         let fraction = Double(completedResources) / Double(totalResources)
         return max(fallback, min(1, fraction))
+    }
+
+    // MARK: - Background keep-alive + Live Activity
+
+    /// If no download occupies the active slot anymore, drop the silent-audio
+    /// keep-alive and clear the Live Activity. No-op while a download is still
+    /// running — `start()` already armed both for the current item. Pass
+    /// `finishedQueue: true` when the queue drained on success so the activity
+    /// shows a brief "completed" frame instead of vanishing instantly.
+    private func releaseBackgroundWorkIfIdle(finishedQueue: Bool = false) {
+        guard activeKey == nil else { return }
+        BackgroundKeepAlive.shared.setReason(.activeDownload, active: false)
+        if finishedQueue {
+            activity.finish()
+        } else {
+            activity.endImmediately()
+        }
+    }
+
+    /// Number of items still waiting behind the active download.
+    private func queuedRemaining() -> Int {
+        library?.downloads().filter { $0.state == .queued }.count ?? 0
+    }
+
+    /// Title / subtitle shown in the Live Activity. Movies have no subtitle;
+    /// episodes get "S1 · E2 · Episode title".
+    private func activityLabels(for entry: DownloadEntry) -> (String, String?) {
+        let title = entry.title ?? "Download"
+        guard entry.mediaType != .movie else { return (title, nil) }
+        var parts: [String] = []
+        if entry.season > 0 { parts.append("S\(entry.season)") }
+        parts.append("E\(entry.episode)")
+        if let episodeTitle = entry.episodeTitle, !episodeTitle.isEmpty {
+            parts.append(episodeTitle)
+        }
+        return (title, parts.joined(separator: " · "))
     }
 
     // MARK: - Paths

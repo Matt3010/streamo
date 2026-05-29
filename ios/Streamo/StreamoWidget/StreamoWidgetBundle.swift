@@ -12,5 +12,6 @@ import SwiftUI
 struct StreamoWidgetBundle: WidgetBundle {
     var body: some Widget {
         StreamoWidget()
+        DownloadLiveActivity()
     }
 }

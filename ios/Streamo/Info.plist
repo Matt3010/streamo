@@ -9,6 +9,10 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- Enables the download Live Activity (lock-screen + Dynamic Island
+	     progress) driven by DownloadActivityController. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<!-- Local network access for the LAN-share HTTP server in
 	     LocalHLSServer.swift. The prompt fires the first time a non-loopback
 	     peer hits the listener (i.e. after the user enables LAN sharing in
