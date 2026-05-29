@@ -29,6 +29,10 @@ struct RootTabView: View {
                 }
                 .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Chiudi") { nav.presentedSheet = nil } } }
             }
+            // Sheets present above the root window, so the root's toast overlay
+            // is hidden behind them — give the sheet its own overlay so toasts
+            // from Settings / History / Downloads are visible.
+            .toastOverlay()
         }
         .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
         .toastOverlay()
