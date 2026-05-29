@@ -23,6 +23,8 @@ struct LibraryBackupPayload: Codable {
         var tmdbApiKey: String
         var autoplayNext: Bool
         var providerLocale: String
+        var providerProxyURL: String?
+        var providerProxyToken: String?
         var foldersEnabled: Bool
         var autoDeleteWatchedDownloads: Bool
         var accentR: Double
@@ -135,6 +137,7 @@ extension Library {
         let s = AppSettings.shared
         payload.settings = .init(
             tmdbApiKey: s.tmdbApiKey, autoplayNext: s.autoplayNext, providerLocale: s.providerLocale,
+            providerProxyURL: s.providerProxyURL, providerProxyToken: s.providerProxyToken,
             foldersEnabled: s.foldersEnabled, autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
             accentR: s.accentR, accentG: s.accentG, accentB: s.accentB
         )
@@ -221,6 +224,8 @@ extension Library {
             s.tmdbApiKey = snap.tmdbApiKey
             s.autoplayNext = snap.autoplayNext
             s.providerLocale = snap.providerLocale
+            s.providerProxyURL = snap.providerProxyURL ?? ""
+            s.providerProxyToken = snap.providerProxyToken ?? ""
             s.foldersEnabled = snap.foldersEnabled
             s.autoDeleteWatchedDownloads = snap.autoDeleteWatchedDownloads
             s.accentR = snap.accentR

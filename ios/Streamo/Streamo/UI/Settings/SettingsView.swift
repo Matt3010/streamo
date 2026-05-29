@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Bindable private var settings = AppSettings.shared
     @Environment(Library.self) private var library
-    @State private var confirmRecalc = false
     @State private var backupFile: BackupFile?
     @State private var showImporter = false
     @State private var pendingRestoreData: Data?
@@ -24,7 +23,8 @@ struct SettingsView: View {
                     .font(.system(.body, design: .monospaced))
                 if !settings.hasTmdbKey {
                     Text("Senza chiave il catalogo non si carica.")
-                        .font(.footnote).foregroundStyle(.red)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
                 }
                 Button("Ripristina chiave predefinita") {
                     settings.tmdbApiKey = AppSettings.defaultTmdbApiKey
@@ -36,22 +36,34 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     ForEach(Array(Theme.accentPresets.enumerated()), id: \.offset) { _, color in
                         Button { Theme.setAccent(color) } label: {
-                            Circle().fill(color).frame(width: 30, height: 30)
-                                .overlay(Circle().strokeBorder(.white.opacity(isCurrentAccent(color) ? 0.95 : 0.15),
-                                                               lineWidth: isCurrentAccent(color) ? 3 : 1))
+                            Circle()
+                                .fill(color)
+                                .frame(width: 30, height: 30)
+                                .overlay(
+                                    Circle().strokeBorder(
+                                        .white.opacity(isCurrentAccent(color) ? 0.95 : 0.15),
+                                        lineWidth: isCurrentAccent(color) ? 3 : 1
+                                    )
+                                )
                         }
                         .buttonStyle(.plain)
                     }
                     Spacer()
                 }
                 .padding(.vertical, 2)
-                ColorPicker("Colore personalizzato",
-                            selection: Binding(get: { Theme.red }, set: { Theme.setAccent($0) }),
-                            supportsOpacity: false)
+                ColorPicker(
+                    "Colore personalizzato",
+                    selection: Binding(get: { Theme.red }, set: { Theme.setAccent($0) }),
+                    supportsOpacity: false
+                )
                 Button("Ripristina rosso Streamo") {
-                    Theme.setAccent(Color(red: AppSettings.defaultAccent.r,
-                                          green: AppSettings.defaultAccent.g,
-                                          blue: AppSettings.defaultAccent.b))
+                    Theme.setAccent(
+                        Color(
+                            red: AppSettings.defaultAccent.r,
+                            green: AppSettings.defaultAccent.g,
+                            blue: AppSettings.defaultAccent.b
+                        )
+                    )
                 }
             } header: {
                 Text("Colore dell'app")
@@ -79,12 +91,10 @@ struct SettingsView: View {
                 Text("Raggruppa film e serie in cartelle nella tua lista. Le cartelle si assegnano dalla pagina \"La mia lista\".")
             }
 
-            Section {
-                Button("Ricalcola libreria") { confirmRecalc = true }
-            } header: {
-                Text("Manutenzione")
-            } footer: {
-                Text("Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla cronologia e dalla lista, e aggiorna le statistiche e \"Continua a guardare\".")
+            Section("Avanzate") {
+                NavigationLink("Apri impostazioni avanzate") {
+                    AdvancedSettingsView()
+                }
             }
 
             lanShareSection
@@ -107,48 +117,33 @@ struct SettingsView: View {
         }
         .navigationTitle("Impostazioni")
         .task { refreshLANInfo() }
-        .confirmationDialog("Ricalcolare la libreria?", isPresented: $confirmRecalc, titleVisibility: .visible) {
-            Button("Ricalcola", role: .destructive) {
-                let n = library.recalculate()
-                ToastCenter.shared.show(n == 0 ? "Libreria già pulita" :
-                    (n == 1 ? "Rimosso 1 titolo orfano" : "Rimossi \(n) titoli orfani"))
-            }
-            Button("Annulla", role: .cancel) {}
-        } message: {
-            Text("Elimina i progressi dei titoli non più in cronologia né in lista. La cronologia e la lista non vengono toccate.")
-        }
         .sheet(item: $backupFile) { file in
             ShareSheet(items: [file.url])
         }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
             handleImport(result)
         }
-        // First confirmation: explain consequences.
-        .confirmationDialog("Ripristinare dal backup?",
-                            isPresented: $confirmRestoreStep1, titleVisibility: .visible) {
+        .confirmationDialog("Ripristinare dal backup?", isPresented: $confirmRestoreStep1, titleVisibility: .visible) {
             Button("Continua", role: .destructive) { confirmRestoreStep2 = true }
             Button("Annulla", role: .cancel) { pendingRestoreData = nil }
         } message: {
             Text("Tutti i dati attuali (lista, cronologia, progressi, download) verranno sostituiti con quelli del backup. L'operazione non è reversibile.")
         }
-        // Second confirmation: final go/no-go.
-        .confirmationDialog("Confermi il ripristino?",
-                            isPresented: $confirmRestoreStep2, titleVisibility: .visible) {
+        .confirmationDialog("Confermi il ripristino?", isPresented: $confirmRestoreStep2, titleVisibility: .visible) {
             Button("Ripristina", role: .destructive) { performRestore() }
             Button("Annulla", role: .cancel) { pendingRestoreData = nil }
         } message: {
             Text("Sei sicuro? I dati attuali andranno persi definitivamente.")
         }
         .alert("Backup non valido", isPresented: Binding(
-            get: { restoreError != nil }, set: { if !$0 { restoreError = nil } }
+            get: { restoreError != nil },
+            set: { if !$0 { restoreError = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(restoreError ?? "")
         }
     }
-
-    // MARK: - LAN sharing
 
     @ViewBuilder
     private var lanShareSection: some View {
@@ -215,43 +210,37 @@ struct SettingsView: View {
                     }
                 } else {
                     Text("Collega il telefono a una rete locale o attiva l'Hotspot personale per ottenere un indirizzo LAN.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     Button("Riprova") { refreshLANInfo() }
                 }
             }
         } header: {
             Text("Condivisione LAN")
         } footer: {
-            Text("Quando attiva, i download sono accessibili dal PC sulla stessa Wi-Fi aprendo il link in VLC o nel browser. Il server resta raggiungibile anche con telefono bloccato grazie a un audio silenzioso in background — vedrai l'indicatore audio nel Centro di Controllo e ci sarà un piccolo consumo di batteria extra. Lo spegnimento automatico serve a evitare di lasciarla attiva tutta la notte. Lascia spento fuori casa per non esporre i file su reti sconosciute.")
+            Text("Quando attiva, i download sono accessibili dal PC sulla stessa Wi‑Fi aprendo il link in VLC o nel browser. Il server resta raggiungibile anche con telefono bloccato grazie a un audio silenzioso in background — vedrai l'indicatore audio nel Centro di Controllo e ci sarà un piccolo consumo di batteria extra. Lo spegnimento automatico serve a evitare di lasciarla attiva tutta la notte. Lascia spento fuori casa per non esporre i file su reti sconosciute.")
         }
     }
 
-    /// "Tra 1 ora e 59 minuti" / "tra 2 ore" / "tra 30 minuti". We avoid
-    /// `RelativeDateTimeFormatter` because it floors to a single unit (a 2h
-    /// deadline read a second later would show "tra 1 ora"), and pair the
-    /// localised `DateComponentsFormatter` with our own "tra " prefix.
     private static let lanShutoffFormatter: DateComponentsFormatter = {
-        let f = DateComponentsFormatter()
-        f.allowedUnits = [.hour, .minute]
-        f.unitsStyle = .full
-        f.zeroFormattingBehavior = .dropAll
-        return f
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute]
+        formatter.unitsStyle = .full
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter
     }()
 
     private static func relativeShutoff(_ date: Date) -> String {
         let interval = date.timeIntervalSinceNow
         guard interval > 0 else { return "Adesso" }
-        guard let s = lanShutoffFormatter.string(from: interval) else { return "—" }
-        return "tra \(s)"
+        guard let value = lanShutoffFormatter.string(from: interval) else { return "—" }
+        return "tra \(value)"
     }
 
     private func refreshLANInfo() {
         lanCandidates = LANAddress.shareableIPv4Candidates()
-        // Best-effort: the server warms up at launch, so wait briefly here.
         lanPort = LocalHLSServer.shared.waitForReady(timeout: 0.5)
     }
-
-    // MARK: - Backup / Restore
 
     private func createBackup() {
         guard let data = library.exportBackup() else {
@@ -272,7 +261,6 @@ struct SettingsView: View {
 
     private func handleImport(_ result: Result<URL, Error>) {
         guard case .success(let url) = result else { return }
-        // iOS hands back a security-scoped URL — we must claim access to read it.
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
@@ -293,33 +281,29 @@ struct SettingsView: View {
         }
     }
 
-    /// Whether a preset matches the current accent (within a small tolerance).
     private func isCurrentAccent(_ color: Color) -> Bool {
-        let c = color.resolve(in: EnvironmentValues())
-        return abs(Double(c.red) - settings.accentR) < 0.02
-            && abs(Double(c.green) - settings.accentG) < 0.02
-            && abs(Double(c.blue) - settings.accentB) < 0.02
+        let resolved = color.resolve(in: EnvironmentValues())
+        return abs(Double(resolved.red) - settings.accentR) < 0.02
+            && abs(Double(resolved.green) - settings.accentG) < 0.02
+            && abs(Double(resolved.blue) - settings.accentB) < 0.02
     }
 
     private var appVersion: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        return v
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
 }
 
-/// Wraps a temporary backup file URL so the share sheet can be triggered via
-/// `.sheet(item:)` (which needs an Identifiable payload).
 private struct BackupFile: Identifiable {
     let url: URL
     var id: String { url.lastPathComponent }
 }
 
-/// Thin UIActivityViewController bridge: SwiftUI's `ShareLink` doesn't expose
-/// `Data` cleanly as a named .json file, so we go through UIKit.
 private struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
+
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

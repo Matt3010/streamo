@@ -11,11 +11,15 @@ actor ProviderResolver {
 
     private let provider: ProviderClient
     private let vix: VixcloudClient
+    private let proxy: ProviderProxyClient
     private var titleCache: [String: ProviderResolveTitleOutcome] = [:]
 
-    init(provider: ProviderClient = .shared, vix: VixcloudClient = .shared) {
+    init(provider: ProviderClient = .shared,
+         vix: VixcloudClient = .shared,
+         proxy: ProviderProxyClient = .shared) {
         self.provider = provider
         self.vix = vix
+        self.proxy = proxy
     }
 
     struct PlaybackResolution: Sendable {
@@ -44,7 +48,12 @@ actor ProviderResolver {
     func resolveTitle(tmdbId: Int, mediaType: MediaType, title: String, releaseDate: String?, forceRefresh: Bool = false) async -> ProviderResolveTitleOutcome {
         let key = cacheKey(tmdbId, mediaType)
         if !forceRefresh, let cached = titleCache[key] { return cached }
-        let outcome = await provider.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
+        let outcome: ProviderResolveTitleOutcome
+        if AppSettings.shared.providerProxyEnabled {
+            outcome = await proxy.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
+        } else {
+            outcome = await provider.resolveTitle(tmdbId: tmdbId, mediaType: mediaType, title: title, releaseDate: releaseDate)
+        }
         titleCache[key] = outcome
         return outcome
     }
@@ -66,6 +75,16 @@ actor ProviderResolver {
         guard let resolved = outcome.resolved else {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates)
         }
+        if AppSettings.shared.providerProxyEnabled {
+            let proxied = await proxy.resolveMovieSources(providerTitleId: resolved.id)
+            return PlaybackResolution(
+                sources: proxied.sources,
+                reason: proxied.sources.isEmpty ? (proxied.reason ?? .temporarilyUnavailable) : nil,
+                message: proxied.message,
+                providerTitle: resolved,
+                candidates: outcome.candidates
+            )
+        }
         let embed = await provider.movieEmbed(providerTitleId: resolved.id)
         return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates)
     }
@@ -74,6 +93,21 @@ actor ProviderResolver {
         let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .tv, title: title, releaseDate: releaseDate)
         guard let resolved = outcome.resolved else {
             return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates)
+        }
+        if AppSettings.shared.providerProxyEnabled {
+            let proxied = await proxy.resolveEpisodeSources(
+                providerTitleId: resolved.id,
+                providerSlug: resolved.slug,
+                season: season,
+                episode: episode
+            )
+            return PlaybackResolution(
+                sources: proxied.sources,
+                reason: proxied.sources.isEmpty ? (proxied.reason ?? .temporarilyUnavailable) : nil,
+                message: proxied.message,
+                providerTitle: resolved,
+                candidates: outcome.candidates
+            )
         }
         let embed = await provider.episodeEmbed(providerTitleId: resolved.id, slug: resolved.slug, season: season, episode: episode)
         return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates)
