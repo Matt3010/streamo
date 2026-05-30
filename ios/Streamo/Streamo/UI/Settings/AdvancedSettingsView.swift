@@ -112,7 +112,7 @@ struct AdvancedSettingsView: View {
         } header: {
             Text("Proxy WARP")
         } footer: {
-            Text("Il proxy genera automaticamente un bearer token al primo avvio. Copialo dal file `ios/proxy-data/auth/auth-token.txt` sul server e incollalo qui. Se URL o token mancano, l'app continua a funzionare come prima.")
+            Text("Il proxy genera automaticamente un bearer token al primo avvio. Copialo dal file `ios/proxy-data/auth/auth-token.txt` sul server e incollalo qui. Se URL o token mancano, l'app continua a funzionare come prima.\n\nQuando il proxy è attivo, per sicurezza NON c'è alcun passaggio automatico al collegamento diretto: se il server non risponde, streaming e download falliscono (\"Proxy non raggiungibile\" / \"Download non riuscito\") invece di aggirare il WARP.")
         }
     }
 

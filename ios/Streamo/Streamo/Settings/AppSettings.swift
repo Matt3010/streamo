@@ -25,6 +25,7 @@ final class AppSettings {
         static let accentB = "accentB"
         static let lanShareEnabled = "lanShareEnabled"
         static let lanToken = "lanToken"
+        static let lanPassword = "lanPassword"
         static let lanShareAutoOffMinutes = "lanShareAutoOffMinutes"
         static let lanShareDeadline = "lanShareDeadline"
     }
@@ -105,6 +106,12 @@ final class AppSettings {
         didSet { defaults.set(lanToken, forKey: Keys.lanToken) }
     }
 
+    /// Required password for LAN access (HTTP Basic Auth). LAN sharing can't be
+    /// enabled until this is set.
+    var lanPassword: String {
+        didSet { defaults.set(lanPassword, forKey: Keys.lanPassword) }
+    }
+
     /// Auto-shutoff window for LAN sharing in minutes — `0` disables the
     /// timer ("Mai" in the UI). The active deadline is persisted separately
     /// so app relaunches mid-window still honour the original cutoff.
@@ -141,6 +148,7 @@ final class AppSettings {
         self.accentB = defaults.object(forKey: Keys.accentB) as? Double ?? Self.defaultAccent.b
         self.lanShareEnabled = defaults.object(forKey: Keys.lanShareEnabled) as? Bool ?? false
         self.lanToken = defaults.string(forKey: Keys.lanToken) ?? Self.makeLANToken()
+        self.lanPassword = defaults.string(forKey: Keys.lanPassword) ?? ""
         self.lanShareAutoOffMinutes = defaults.object(forKey: Keys.lanShareAutoOffMinutes) as? Int ?? 0
         self.lanShareDeadline = defaults.object(forKey: Keys.lanShareDeadline) as? Date
     }

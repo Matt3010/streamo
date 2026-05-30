@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var restoreError: String?
     @State private var lanCandidates: [LANAddress.Candidate] = []
     @State private var lanPort: UInt16 = 0
+    @State private var showLanPassword = false
+    @State private var lanPermissionDenied = false
 
     var body: some View {
         Form {
@@ -126,6 +128,10 @@ struct SettingsView: View {
         .navigationTitle("Impostazioni")
         .navigationBarTitleDisplayMode(.inline)
         .task { refreshLANInfo() }
+        .task(id: settings.lanShareEnabled) {
+            guard settings.lanShareEnabled else { lanPermissionDenied = false; return }
+            lanPermissionDenied = await LocalNetworkProbe.isDenied()
+        }
         .sheet(item: $backupFile) { file in
             ShareSheet(items: [file.url])
         }
@@ -157,6 +163,30 @@ struct SettingsView: View {
     @ViewBuilder
     private var lanShareSection: some View {
         Section {
+            HStack {
+                Group {
+                    if showLanPassword {
+                        TextField("Password di accesso", text: $settings.lanPassword)
+                    } else {
+                        SecureField("Password di accesso", text: $settings.lanPassword)
+                    }
+                }
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onChange(of: settings.lanPassword) { _, newValue in
+                    if newValue.isEmpty {
+                        LANShareCoordinator.setEnabled(false)   // can't share without a password
+                    } else if settings.lanShareEnabled {
+                        LocalHLSServer.shared.setLANConfig(enabled: true, token: settings.lanToken, password: newValue)
+                    }
+                }
+                Button { showLanPassword.toggle() } label: {
+                    Image(systemName: showLanPassword ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showLanPassword ? "Nascondi password" : "Mostra password")
+            }
             Toggle("Permetti accesso LAN", isOn: Binding(
                 get: { settings.lanShareEnabled },
                 set: { on in
@@ -164,7 +194,25 @@ struct SettingsView: View {
                     if on { refreshLANInfo() }
                 }
             ))
+            .disabled(settings.lanPassword.isEmpty)
             if settings.lanShareEnabled {
+                if lanPermissionDenied {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Permesso \"Rete locale\" negato", systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.orange)
+                        Text("Senza questo permesso i dispositivi sul Wi‑Fi non possono raggiungere i tuoi download (l'hotspot funziona comunque). Attivalo per Streamo nelle Impostazioni di sistema.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        Button("Apri Impostazioni") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .font(.footnote.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+                }
                 Picker("Spegnimento automatico", selection: $settings.lanShareAutoOffMinutes) {
                     Text("Mai").tag(0)
                     Text("15 minuti").tag(15)
@@ -200,7 +248,7 @@ struct SettingsView: View {
                     }
                     Button("Genera nuovo token") {
                         settings.rotateLANToken()
-                        LocalHLSServer.shared.setLANConfig(enabled: true, token: settings.lanToken)
+                        LocalHLSServer.shared.setLANConfig(enabled: true, token: settings.lanToken, password: settings.lanPassword)
                         ToastCenter.shared.show("Token aggiornato — i vecchi link non funzioneranno più")
                     }
                     .foregroundStyle(.red)
@@ -227,7 +275,7 @@ struct SettingsView: View {
         } header: {
             Text("Condivisione LAN")
         } footer: {
-            Text("Quando attiva, i download sono accessibili dal PC sulla stessa Wi‑Fi aprendo il link in VLC o nel browser. Il server resta raggiungibile anche con telefono bloccato grazie a un audio silenzioso in background — vedrai l'indicatore audio nel Centro di Controllo e ci sarà un piccolo consumo di batteria extra. Lo spegnimento automatico serve a evitare di lasciarla attiva tutta la notte. Lascia spento fuori casa per non esporre i file su reti sconosciute.")
+            Text("Imposta una password: ti verrà chiesta dal browser (o da VLC) per accedere ai file — l'accesso LAN non si attiva senza. La password non è inclusa nel backup. Quando attiva, i download sono accessibili dal PC sulla stessa Wi‑Fi aprendo il link in VLC o nel browser. Il server resta raggiungibile anche con telefono bloccato grazie a un audio silenzioso in background — vedrai l'indicatore audio nel Centro di Controllo e ci sarà un piccolo consumo di batteria extra. Lo spegnimento automatico serve a evitare di lasciarla attiva tutta la notte. Lascia spento fuori casa per non esporre i file su reti sconosciute.")
         }
     }
 

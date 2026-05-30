@@ -10,8 +10,10 @@ import Observation
 enum LANShareCoordinator {
     static func setEnabled(_ enabled: Bool) {
         let s = AppSettings.shared
+        // Safety: never enable LAN sharing without a password.
+        let enabled = enabled && !s.lanPassword.isEmpty
         s.lanShareEnabled = enabled
-        LocalHLSServer.shared.setLANConfig(enabled: enabled, token: s.lanToken)
+        LocalHLSServer.shared.setLANConfig(enabled: enabled, token: s.lanToken, password: s.lanPassword)
         if enabled {
             Task { _ = try? await LocalHLSServer.shared.ensureRunning() }
             BackgroundKeepAlive.shared.start()

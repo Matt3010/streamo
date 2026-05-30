@@ -20,11 +20,18 @@ final class LocalHLSServer: @unchecked Sendable {
     private var listener: NWListener?
     private var readyContinuations: [CheckedContinuation<UInt16, Error>] = []
     private var boundPort: UInt16 = 0
+    /// Preferred fixed port so the shared LAN URL / QR stay valid across app
+    /// launches (an ephemeral port changed every relaunch → stale links).
+    private let preferredPort: UInt16 = 50321
+    private var usingPreferredPort = false
 
     /// LAN config — mutated from the main actor via `setLANConfig`, read by
     /// every request handler running on `queue`.
     private var lanEnabled: Bool = false
     private var lanToken: String = ""
+    /// Required password for LAN peers (HTTP Basic Auth). Loopback (offline
+    /// playback on-device) is never asked for it.
+    private var lanPassword: String = ""
     /// Snapshot of completed downloads, kept up-to-date by `DownloadManager`,
     /// used to render the HTML index page served at `/<token>/`.
     private var catalog: [DownloadEntrySnapshot] = []
@@ -63,10 +70,27 @@ final class LocalHLSServer: @unchecked Sendable {
     }
 
     private func startListenerOnQueue() {
+        startListenerOnQueue(preferred: true)
+    }
+
+    /// Start the listener. `preferred` binds the fixed `preferredPort` (stable
+    /// URL); if that port is busy we retry once on an OS-assigned port.
+    private func startListenerOnQueue(preferred: Bool) {
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
-            let listener = try NWListener(using: params)
+            let listener: NWListener
+            if preferred, let port = NWEndpoint.Port(rawValue: preferredPort) {
+                listener = try NWListener(using: params, on: port)
+            } else {
+                listener = try NWListener(using: params)
+            }
+            usingPreferredPort = preferred
+            // Advertise over Bonjour: this is what makes iOS show the "Local
+            // Network" permission prompt. Without the permission, incoming LAN
+            // connections are silently dropped on a regular Wi-Fi (a personal
+            // hotspot bypasses this, which is why it works there).
+            listener.service = NWListener.Service(name: "Streamo", type: "_http._tcp")
             listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
             listener.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
@@ -76,10 +100,16 @@ final class LocalHLSServer: @unchecked Sendable {
                     for c in self.readyContinuations { c.resume(returning: self.boundPort) }
                     self.readyContinuations.removeAll()
                 case .failed(let err):
-                    for c in self.readyContinuations { c.resume(throwing: err) }
-                    self.readyContinuations.removeAll()
+                    self.listener?.cancel()
                     self.listener = nil
                     self.boundPort = 0
+                    if self.usingPreferredPort {
+                        // Fixed port unavailable — fall back to a random one.
+                        self.startListenerOnQueue(preferred: false)
+                    } else {
+                        for c in self.readyContinuations { c.resume(throwing: err) }
+                        self.readyContinuations.removeAll()
+                    }
                 default:
                     break
                 }
@@ -87,8 +117,12 @@ final class LocalHLSServer: @unchecked Sendable {
             listener.start(queue: queue)
             self.listener = listener
         } catch {
-            for c in readyContinuations { c.resume(throwing: error) }
-            readyContinuations.removeAll()
+            if preferred {
+                startListenerOnQueue(preferred: false)
+            } else {
+                for c in readyContinuations { c.resume(throwing: error) }
+                readyContinuations.removeAll()
+            }
         }
     }
 
@@ -147,10 +181,11 @@ final class LocalHLSServer: @unchecked Sendable {
 
     /// Update LAN sharing state. Pushed from `AppSettings` whenever the user
     /// toggles the switch or rotates the token.
-    func setLANConfig(enabled: Bool, token: String) {
+    func setLANConfig(enabled: Bool, token: String, password: String) {
         queue.async { [weak self] in
             self?.lanEnabled = enabled
             self?.lanToken = token
+            self?.lanPassword = password
         }
     }
 
@@ -233,6 +268,15 @@ final class LocalHLSServer: @unchecked Sendable {
             let segments = cleanPath.split(separator: "/", omittingEmptySubsequences: false)
             guard let first = segments.first, first == Substring(lanToken) else {
                 send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
+                return
+            }
+            // Require a password (HTTP Basic Auth). A missing/empty configured
+            // password locks LAN access entirely; a wrong/absent header makes
+            // the browser show its native password prompt.
+            guard !lanPassword.isEmpty, basicAuthMatches(lines: lines) else {
+                send(status: "401 Unauthorized", on: connection,
+                     extra: ["WWW-Authenticate": "Basic realm=\"Streamo\", charset=\"UTF-8\""],
+                     then: { connection.cancel() })
                 return
             }
             // Drop the token segment.
@@ -332,6 +376,24 @@ final class LocalHLSServer: @unchecked Sendable {
         sendHeaders(status: status, extra: extraHeaders, on: connection) { [weak self] in
             self?.streamFile(at: fileURL, start: rangeStart, length: length, on: connection)
         }
+    }
+
+    /// True when the request carries an `Authorization: Basic` header whose
+    /// password component equals the configured LAN password. The username is
+    /// ignored (the browser still asks for one — any value works).
+    private func basicAuthMatches(lines: [String]) -> Bool {
+        guard let header = lines.dropFirst().first(where: { $0.lowercased().hasPrefix("authorization:") }) else {
+            return false
+        }
+        let value = header.drop(while: { $0 != ":" }).dropFirst().trimmingCharacters(in: .whitespaces)
+        guard value.lowercased().hasPrefix("basic ") else { return false }
+        let b64 = value.dropFirst("basic ".count).trimmingCharacters(in: .whitespaces)
+        guard let data = Data(base64Encoded: b64),
+              let creds = String(data: data, encoding: .utf8) else { return false }
+        // creds is "username:password" — compare only the password part.
+        guard let colon = creds.firstIndex(of: ":") else { return false }
+        let password = String(creds[creds.index(after: colon)...])
+        return password == lanPassword
     }
 
     /// Determine if the remote endpoint is on the loopback interface

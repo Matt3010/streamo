@@ -44,14 +44,19 @@ final class WatchlistEnrichment {
         let doneAired: Int?
     }
 
-    func refresh(_ entries: [WatchlistEntry], library: Library) async {
+    /// Enrich the watchlist. By default only items not already enriched are
+    /// processed — so adding one title doesn't re-run the (SwiftData + TMDB)
+    /// work for the whole list on every re-appear. `force` re-does everything
+    /// (used by pull-to-refresh).
+    func refresh(_ entries: [WatchlistEntry], library: Library, force: Bool = false) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false; isLoaded = true }
 
-        let snapshots = entries.map {
-            Snapshot(tmdbId: $0.tmdbId, type: $0.mediaType, status: $0.status, doneAired: $0.doneAiredEpisodes)
-        }
+        let snapshots = entries
+            .filter { force || extrasByKey[Self.key($0.tmdbId, $0.mediaType)] == nil }
+            .map { Snapshot(tmdbId: $0.tmdbId, type: $0.mediaType, status: $0.status, doneAired: $0.doneAiredEpisodes) }
+        guard !snapshots.isEmpty else { return }
 
         // Fetch details concurrently (bounded) — one-at-a-time would make the
         // first (uncached) load painfully slow behind the skeletons. Results

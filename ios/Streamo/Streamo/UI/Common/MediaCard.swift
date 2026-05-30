@@ -160,6 +160,26 @@ struct MediaCard: View {
     }
 
     var body: some View {
+        // Sizing: a fixed-width card (horizontal rows) gets an explicit
+        // width × height. A grid card (width == nil) fills its column via a
+        // clear aspect-ratio slot, so every cell is exactly the same size —
+        // `.aspectRatio(.fit)` alone sized cells inconsistently in the grid.
+        Group {
+            if let width {
+                cardSurface.frame(width: width, height: width / aspectRatio)
+            } else {
+                Color.clear
+                    .aspectRatio(aspectRatio, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .overlay { cardSurface }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.08)))
+        .task { await enrich() }
+    }
+
+    private var cardSurface: some View {
         let showsProgressBar = showProgress && Format.percentValue(pct) > 0
         let hasBottomContent = showsInfo || watchStatus != nil || showsProgressBar
         return ZStack(alignment: .bottom) {
@@ -179,11 +199,6 @@ struct MediaCard: View {
                 actions.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(6)
             }
         }
-        .aspectRatio(aspectRatio, contentMode: .fit)
-        .frame(width: width)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.08)))
-        .task { await enrich() }
     }
 
     // MARK: Pieces

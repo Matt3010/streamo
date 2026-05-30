@@ -57,7 +57,7 @@ struct WatchlistView: View {
         // caused the lag). Skeletons cover this first pass; afterwards TMDB
         // details are cached so the grid scrolls smoothly.
         .task { await enrichment.refresh(all, library: library) }
-        .refreshable { await enrichment.refresh(library.watchlist(), library: library) }
+        .refreshable { await enrichment.refresh(library.watchlist(), library: library, force: true) }
         .alert("Segna come visto", isPresented: Binding(get: { pendingMarkDone != nil }, set: { if !$0 { pendingMarkDone = nil } })) {
             Button("Segna come visto") {
                 if let e = pendingMarkDone {

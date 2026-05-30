@@ -36,10 +36,10 @@ private struct Top10Cell: View {
     private var posterHeight: CGFloat { posterWidth * 1.5 }   // 2:3 poster
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: -posterWidth * 0.34) {
-            // Clamp the numeral to the poster's height so it doesn't stick up
-            // above the poster — otherwise the row looks like it has extra gap
-            // under the section title compared to the others.
+        // Small overlap: the poster covers only the numeral's right edge, so a
+        // thin "1" still shows most of itself while a wide "2"/"10" naturally
+        // extends further left and stays fully visible.
+        HStack(alignment: .bottom, spacing: -posterWidth * 0.2) {
             OutlinedNumber(text: "\(rank)", fontSize: posterWidth * 1.2, strokeWidth: 1.6)
                 .fixedSize()
                 .frame(height: posterHeight, alignment: .bottom)

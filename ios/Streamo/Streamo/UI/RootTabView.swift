@@ -44,7 +44,7 @@ struct RootTabView: View {
         .task {
             DownloadManager.shared.configure(library: library)
             let s = AppSettings.shared
-            LocalHLSServer.shared.setLANConfig(enabled: s.lanShareEnabled, token: s.lanToken)
+            LocalHLSServer.shared.setLANConfig(enabled: s.lanShareEnabled, token: s.lanToken, password: s.lanPassword)
             if s.lanShareEnabled { BackgroundKeepAlive.shared.start() }
             LANAutoShutoff.shared.reschedule()
         }

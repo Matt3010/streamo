@@ -166,7 +166,12 @@ final class PlaybackController {
     private func advanceToNextSource() {
         sourceIndex += 1
         guard sourceIndex < sources.count, let request = activeRequest else {
-            state = .failed("Riproduzione non disponibile")
+            // No mirror left. If we were streaming through the WARP proxy, the
+            // outage is the likely cause — surface the same message shown when
+            // the proxy is already down at open time, instead of a generic one.
+            state = .failed(viaProxy == true
+                            ? "Proxy non raggiungibile."
+                            : "Riproduzione non disponibile")
             return
         }
         teardownPlayer()

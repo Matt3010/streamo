@@ -15,6 +15,13 @@
 	     Settings); without this key iOS silently drops LAN traffic. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Permette di condividere i download su Wi-Fi (es. per riprodurli da un PC con VLC). Si attiva solo quando abiliti "Condivisione LAN" nelle Impostazioni.</string>
+	<!-- Advertised so iOS prompts for (and grants) Local Network access — a
+	     bare NWListener often never triggers the prompt, so incoming LAN
+	     connections get silently dropped on a real Wi-Fi. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 	<!-- Deep-link scheme used by the widget (streamo://open?type=&id=&s=&e=). -->
 	<key>CFBundleURLTypes</key>
 	<array>
