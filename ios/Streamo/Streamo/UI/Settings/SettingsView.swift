@@ -76,6 +76,14 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Mostra titolo, anno e voto", isOn: $settings.showCardInfo)
+            } header: {
+                Text("Copertine")
+            } footer: {
+                Text("Quando disattivato le card mostrano solo la copertina. \"Continua a guardare\" mantiene comunque titolo e avanzamento.")
+            }
+
+            Section {
                 Toggle("Elimina dopo la visione", isOn: $settings.autoDeleteWatchedDownloads)
             } header: {
                 Text("Download")

@@ -40,6 +40,8 @@ struct WatchlistView: View {
 
                 if all.isEmpty {
                     empty("Lista vuota", "Aggiungi film e serie con il segnalibro.")
+                } else if !enrichment.isLoaded {
+                    skeletonGrid
                 } else if filtered.isEmpty {
                     empty("Nessun titolo", "Cambia filtro per vedere altri titoli.")
                 } else {
@@ -50,7 +52,11 @@ struct WatchlistView: View {
         }
         .navigationTitle("La mia lista")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: library.version) { await enrichment.refresh(all, library: library) }
+        // Enrich once on appear (NOT keyed to library.version: the auto-flip
+        // writes bump version, and re-running on every bump was the churn that
+        // caused the lag). Skeletons cover this first pass; afterwards TMDB
+        // details are cached so the grid scrolls smoothly.
+        .task { await enrichment.refresh(all, library: library) }
         .refreshable { await enrichment.refresh(library.watchlist(), library: library) }
         .alert("Segna come visto", isPresented: Binding(get: { pendingMarkDone != nil }, set: { if !$0 { pendingMarkDone = nil } })) {
             Button("Segna come visto") {
@@ -166,6 +172,15 @@ struct WatchlistView: View {
         return slots
     }
 
+    /// Placeholder grid shown while the first enrichment pass runs, so the
+    /// heavy work happens behind skeletons instead of lagging the live grid.
+    private var skeletonGrid: some View {
+        LazyVGrid(columns: columns, spacing: 18) {
+            ForEach(0..<12, id: \.self) { _ in SkeletonCard() }
+        }
+        .padding(.horizontal)
+    }
+
     @ViewBuilder
     private func content(_ filtered: [WatchlistEntry]) -> some View {
         if !AppSettings.shared.foldersEnabled {
@@ -266,10 +281,23 @@ struct WatchlistView: View {
     @ViewBuilder
     private func cell(_ entry: WatchlistEntry) -> some View {
         NavigationLink(value: MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType)) {
-            MediaCard(card: CardItem(watchlist: entry), showWatchStatus: true, library: library)
+            MediaCard(card: enrichedCard(entry), showWatchStatus: true, library: library)
         }
         .buttonStyle(.plain)
         .contextMenu { menu(for: entry) }
+    }
+
+    /// Build the card with the values enrichment already derived, so MediaCard
+    /// has nothing left to fetch/compute and the grid scrolls smoothly.
+    private func enrichedCard(_ entry: WatchlistEntry) -> CardItem {
+        var card = CardItem(watchlist: entry)
+        if let x = enrichment.extras(for: entry) {
+            card.year = x.year
+            card.rating = x.rating
+            card.nextReleaseText = x.releaseText
+            card.isUpcoming = x.isUpcoming
+        }
+        return card
     }
 
     @ViewBuilder

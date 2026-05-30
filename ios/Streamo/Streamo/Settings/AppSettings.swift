@@ -19,6 +19,7 @@ final class AppSettings {
         static let providerProxyEnabled = "providerProxyEnabled"
         static let foldersEnabled = "foldersEnabled"
         static let autoDeleteWatchedDownloads = "autoDeleteWatchedDownloads"
+        static let showCardInfo = "showCardInfo"
         static let accentR = "accentR"
         static let accentG = "accentG"
         static let accentB = "accentB"
@@ -79,6 +80,13 @@ final class AppSettings {
         didSet { defaults.set(autoDeleteWatchedDownloads, forKey: Keys.autoDeleteWatchedDownloads) }
     }
 
+    /// Show title / year / rating text over the poster cards. When off the
+    /// cards are clean posters — except "Continua a guardare", which always
+    /// keeps its full info and progress.
+    var showCardInfo: Bool {
+        didSet { defaults.set(showCardInfo, forKey: Keys.showCardInfo) }
+    }
+
     /// User-chosen accent colour, stored as RGB components (0…1). `Theme.red`
     /// reads these, so changing them re-tints the whole app.
     var accentR: Double { didSet { defaults.set(accentR, forKey: Keys.accentR) } }
@@ -127,6 +135,7 @@ final class AppSettings {
         self.providerProxyEnabled = defaults.object(forKey: Keys.providerProxyEnabled) as? Bool ?? true
         self.foldersEnabled = defaults.object(forKey: Keys.foldersEnabled) as? Bool ?? true
         self.autoDeleteWatchedDownloads = defaults.object(forKey: Keys.autoDeleteWatchedDownloads) as? Bool ?? false
+        self.showCardInfo = defaults.object(forKey: Keys.showCardInfo) as? Bool ?? true
         self.accentR = defaults.object(forKey: Keys.accentR) as? Double ?? Self.defaultAccent.r
         self.accentG = defaults.object(forKey: Keys.accentG) as? Double ?? Self.defaultAccent.g
         self.accentB = defaults.object(forKey: Keys.accentB) as? Double ?? Self.defaultAccent.b

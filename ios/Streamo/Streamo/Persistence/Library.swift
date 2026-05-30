@@ -379,10 +379,19 @@ final class Library {
             $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.season == season && $0.episode == episode && $0.watchedAt >= startOfDay
         })
         d.fetchLimit = 1
+        // Snapshot the current cumulative position so the row can later show
+        // how much was watched on this day (this snapshot − the previous day's).
+        let prog = progress(tmdbId, type, season: season, episode: episode)
+        let pos = prog?.position ?? 0
+        let dur = prog?.duration ?? 0
         if let existing = try? context.fetch(d).first {
             existing.watchedAt = .now
+            existing.progressSeconds = pos
+            existing.durationSeconds = dur
         } else {
-            context.insert(HistoryEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode, title: title, poster: poster))
+            context.insert(HistoryEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
+                                        title: title, poster: poster,
+                                        progressSeconds: pos, durationSeconds: dur))
         }
         save()
     }

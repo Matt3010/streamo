@@ -29,6 +29,11 @@ struct RootTabView: View {
                 }
                 .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Chiudi") { nav.presentedSheet = nil } } }
             }
+            // The root's `.tint` is applied below this `.sheet`, so it doesn't
+            // reliably reach the sheet's own presentation context — re-apply it
+            // here so text buttons inside Settings / History / Downloads show
+            // the accent colour (and a clear tinted pressed state).
+            .tint(Theme.red)
             // Sheets present above the root window, so the root's toast overlay
             // is hidden behind them — give the sheet its own overlay so toasts
             // from Settings / History / Downloads are visible.
@@ -50,7 +55,12 @@ struct RootTabView: View {
     }
 
     private var onlineTabs: some View {
-        TabView(selection: Binding(get: { nav.selectedTab }, set: { nav.selectedTab = $0 })) {
+        TabView(selection: Binding(get: { nav.selectedTab }, set: { newTab in
+            // Tapping the Search tab (including a re-tap when already there)
+            // asks SearchView to re-open the keyboard.
+            if newTab == .search { nav.searchFocusRequest += 1 }
+            nav.selectedTab = newTab
+        })) {
             NavigationStack(path: Binding(get: { nav.homePath }, set: { nav.homePath = $0 })) {
                 HomeView()
                     .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }

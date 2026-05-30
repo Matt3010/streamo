@@ -20,6 +20,9 @@ final class AppNavigation {
     var homePath: [MediaRef] = []
     /// Currently presented utility sheet (History / Settings / Downloads).
     var presentedSheet: SheetRoute?
+    /// Bumped every time the Search tab is tapped, so `SearchView` can re-open
+    /// the keyboard (e.g. after a search dismissed it).
+    var searchFocusRequest = 0
 
     private init() {}
 

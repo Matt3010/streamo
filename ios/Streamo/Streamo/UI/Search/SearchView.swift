@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(Library.self) private var library
+    @Environment(AppNavigation.self) private var nav
     @State private var query = ""
     @State private var results: [TmdbItem] = []
     @State private var isSearching = false
@@ -61,6 +62,11 @@ struct SearchView: View {
         .navigationTitle("Cerca")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, isPresented: $isSearchPresented, prompt: "Titolo, film o serie TV")
+        // Re-open the keyboard whenever the Search tab is tapped (the search may
+        // have dismissed it).
+        .onChange(of: nav.searchFocusRequest) { _, _ in
+            isSearchPresented = true
+        }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 isSearchPresented = true

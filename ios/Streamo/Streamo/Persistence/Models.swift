@@ -93,11 +93,20 @@ final class HistoryEntry {
     var watchedAt: Date = Date.now
     var title: String?
     var poster: String?
+    /// Snapshot of the cumulative playback position (seconds) at the moment
+    /// this row was recorded. Lets the history show how much was watched on a
+    /// given day (this snapshot minus the previous day's), not just the live
+    /// total. 0 = legacy row saved before snapshots existed.
+    var progressSeconds: Double = 0
+    /// Snapshot of the item's duration (seconds) at record time — used to draw
+    /// the per-row progress bar frozen to that day and detect "Completato".
+    var durationSeconds: Double = 0
 
     var mediaType: MediaType { MediaType(rawValue: mediaTypeRaw) ?? .movie }
 
     init(tmdbId: Int, mediaType: MediaType, season: Int, episode: Int,
-         watchedAt: Date = .now, title: String?, poster: String?) {
+         watchedAt: Date = .now, title: String?, poster: String?,
+         progressSeconds: Double = 0, durationSeconds: Double = 0) {
         self.tmdbId = tmdbId
         self.mediaTypeRaw = mediaType.rawValue
         self.season = season
@@ -105,6 +114,8 @@ final class HistoryEntry {
         self.watchedAt = watchedAt
         self.title = title
         self.poster = poster
+        self.progressSeconds = progressSeconds
+        self.durationSeconds = durationSeconds
     }
 }
 

@@ -3,34 +3,6 @@ import Foundation
 /// "What's my status with this title" copy — port of the web `watch-status.ts`
 /// (formatTvStatusText / formatTvCaughtUpText / formatMovieRemaining).
 enum WatchStatus {
-    /// "Serie conclusa" for ended/canceled shows, otherwise "Sei al passo".
-    static func caughtUpText(_ item: TmdbItem) -> String {
-        (item.status == "Ended" || item.status == "Canceled") ? "Serie conclusa" : "Sei al passo"
-    }
-
-    /// TV backlog badge. `resume` is the next-to-watch coordinate; every
-    /// episode strictly before it is treated as watched. Returns nil when the
-    /// user hasn't started or there's nothing aired.
-    static func tvStatusText(
-        item: TmdbItem,
-        watchedCount: Int,
-        doneAiredEpisodes: Int,
-        caughtUp: Bool,
-        resume: (season: Int, episode: Int)?
-    ) -> String? {
-        let aired = TVLogic.airedEpisodesCount(item)
-        if aired <= 0 { return nil }
-
-        let implied = resume.map { TVLogic.episodesBefore(item, season: $0.season, episode: $0.episode) } ?? 0
-        let baseline = max(watchedCount, doneAiredEpisodes, implied)
-        let remaining = max(0, aired - baseline)
-
-        if caughtUp { return caughtUpText(item) }
-        if baseline <= 0 { return nil }
-        if remaining == 0 { return caughtUpText(item) }
-        return remaining == 1 ? "Manca 1 episodio" : "Mancano \(remaining) episodi"
-    }
-
     // MARK: - Status cycling (port of watchlist-status.util.ts)
 
     /// Next status when the toggle button is tapped, and whether it needs a

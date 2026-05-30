@@ -111,15 +111,14 @@ struct MediaCard: View {
     /// Visual ratio for the card surface. Default is a poster; continue cards
     /// pass a landscape ratio and prefer the backdrop artwork.
     var aspectRatio: CGFloat = 2.0 / 3.0
-    /// When true (history completed TV), the grey line shows "Riprendi da S/E"
-    /// instead of a release note — port of the history `resume_text`.
-    var wantsResumeHint: Bool = false
+    /// Force the title/year/rating overlay even when the user turned card info
+    /// off in Settings — used by "Continua a guardare", which always shows full
+    /// info and progress.
+    var alwaysShowInfo: Bool = false
     /// Top-right overlay action buttons (built by the container).
     var actions: AnyView? = nil
 
     @State private var detail: TmdbItem?
-    @State private var computedStatus: String?
-    @State private var computedReleaseText: String?
 
     // MARK: Display values (stored value, falling back to fetched detail)
 
@@ -139,12 +138,16 @@ struct MediaCard: View {
         guard let detail else { return false }
         return Release.isUpcoming(detail, card.mediaType)
     }
-    private var watchStatus: String? { card.watchStatus ?? computedStatus }
+    /// Red secondary line: the remaining-time of the current movie/episode
+    /// ("Mancano 39 min"), derived straight from position/duration — works for
+    /// both films and the current TV episode. (The old "Mancano N episodi"
+    /// series status was removed.)
+    private var watchStatus: String? {
+        card.watchStatus ?? WatchStatus.movieRemainingText(position: card.position, duration: card.duration)
+    }
     private var releaseText: String? {
         if let nr = card.nextReleaseText { return nr }
-        // History resume hint: never fall back to the catalog release note.
-        if wantsResumeHint { return computedReleaseText }
-        return computedReleaseText ?? detail.flatMap { Release.compactStatus($0, card.mediaType) }
+        return detail.flatMap { Release.compactStatus($0, card.mediaType) }
     }
 
     private var episodeBadge: String? {
@@ -157,11 +160,13 @@ struct MediaCard: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        let showsProgressBar = showProgress && Format.percentValue(pct) > 0
+        let hasBottomContent = showsInfo || watchStatus != nil || showsProgressBar
+        return ZStack(alignment: .bottom) {
             poster_view
-            bottomGradient
-            overlayText
-            if showProgress, Format.percentValue(pct) > 0 {
+            if hasBottomContent { bottomGradient }
+            if hasBottomContent { overlayText }
+            if showsProgressBar {
                 HStack(spacing: 6) {
                     ProgressBar(percent: pct)
                     Text("\(Format.percentValue(pct))%")
@@ -213,25 +218,33 @@ struct MediaCard: View {
                        startPoint: .center, endPoint: .bottom)
     }
 
+    /// Whether the title/year/rating text is shown. Off when the user disabled
+    /// card info in Settings — unless this card forces it (Continua a guardare).
+    private var showsInfo: Bool { alwaysShowInfo || AppSettings.shared.showCardInfo }
+
     private var overlayText: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(card.title)
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                .lineLimit(1).shadow(color: .black.opacity(0.8), radius: 2)
-            if episodeBadge != nil || year != nil || rating != nil {
-                HStack(spacing: 6) {
-                    if let b = episodeBadge { Text(b) }
-                    if let y = year { Text(y) }
-                    if let r = rating { Text("★ \(r)").foregroundStyle(Color(red: 1, green: 0.76, blue: 0.03)).fontWeight(.semibold) }
+            if showsInfo {
+                Text(card.title)
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    .lineLimit(1).shadow(color: .black.opacity(0.8), radius: 2)
+                if episodeBadge != nil || year != nil || rating != nil {
+                    HStack(spacing: 6) {
+                        if let b = episodeBadge { Text(b) }
+                        if let y = year { Text(y) }
+                        if let r = rating { Text("★ \(r)").foregroundStyle(Color(red: 1, green: 0.76, blue: 0.03)).fontWeight(.semibold) }
+                    }
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.85))
+                    .shadow(color: .black.opacity(0.8), radius: 1)
                 }
-                .font(.system(size: 11)).foregroundStyle(.white.opacity(0.85))
-                .shadow(color: .black.opacity(0.8), radius: 1)
             }
+            // The watch-status ("Mancano N min") is part of the in-progress
+            // infographic — kept regardless of the card-info setting.
             if let ws = watchStatus {
                 Text(ws).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.red).lineLimit(1)
                     .shadow(color: .black.opacity(0.8), radius: 1)
             }
-            if let nr = releaseText {
+            if showsInfo, let nr = releaseText {
                 Text(nr).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(white: 0.85)).lineLimit(1)
                     .shadow(color: .black.opacity(0.8), radius: 1)
             }
@@ -249,31 +262,17 @@ struct MediaCard: View {
         let needYearRating = card.year == nil || card.rating == nil
         let needPoster = card.poster == nil || card.poster?.isEmpty == true
         let needBackdrop = aspectRatio > 1 && (card.backdrop == nil || card.backdrop?.isEmpty == true)
-        let needStatus = showWatchStatus && card.watchStatus == nil
-        let needResumeHint = wantsResumeHint && card.mediaType == .tv
-        guard needYearRating || needPoster || needBackdrop || needStatus || needResumeHint else { return }
+        guard needYearRating || needPoster || needBackdrop else { return }
+
+        // Debounce: while flinging through a long grid (Cronologia / La mia
+        // lista) a card may appear and disappear in well under this window. Its
+        // `.task` is cancelled on disappear, so we never hit the network for
+        // cards scrolled past — only ones that actually settle in view enrich.
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled else { return }
 
         guard let item = try? await TMDBClient.shared.details(id: card.tmdbId, type: card.mediaType) else { return }
         detail = item
-
-        if needStatus {
-            if card.mediaType == .movie {
-                computedStatus = WatchStatus.movieRemainingText(position: card.position, duration: card.duration)
-            } else if let lib = library {
-                computedStatus = WatchStatus.tvStatusText(
-                    item: item, watchedCount: lib.watchedEpisodeCount(card.tmdbId),
-                    doneAiredEpisodes: lib.doneAiredEpisodes(card.tmdbId, card.mediaType),
-                    caughtUp: card.status == .done,
-                    resume: lib.nextUnwatched(item: item)
-                )
-            }
-        }
-
-        // "Riprendi da S/E": the next episode after the watched one (web resume_text).
-        if needResumeHint, let lib = library, let s = card.season, let e = card.episode,
-           let next = lib.nextUnwatched(item: item), next.season != s || next.episode != e {
-            computedReleaseText = "Riprendi da S\(next.season) E\(next.episode)"
-        }
     }
 }
 

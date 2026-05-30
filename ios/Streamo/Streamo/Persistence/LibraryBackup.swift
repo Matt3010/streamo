@@ -25,8 +25,13 @@ struct LibraryBackupPayload: Codable {
         var providerLocale: String
         var providerProxyURL: String?
         var providerProxyToken: String?
+        /// Optional for backward compatibility: backups made before this field
+        /// existed simply leave the proxy master switch at its current value.
+        var providerProxyEnabled: Bool?
         var foldersEnabled: Bool
         var autoDeleteWatchedDownloads: Bool
+        /// Optional for backward compatibility (added later).
+        var showCardInfo: Bool?
         var accentR: Double
         var accentG: Double
         var accentB: Double
@@ -138,7 +143,9 @@ extension Library {
         payload.settings = .init(
             tmdbApiKey: s.tmdbApiKey, autoplayNext: s.autoplayNext, providerLocale: s.providerLocale,
             providerProxyURL: s.providerProxyURL, providerProxyToken: s.providerProxyToken,
+            providerProxyEnabled: s.providerProxyEnabled,
             foldersEnabled: s.foldersEnabled, autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
+            showCardInfo: s.showCardInfo,
             accentR: s.accentR, accentG: s.accentG, accentB: s.accentB
         )
         let encoder = JSONEncoder()
@@ -226,8 +233,11 @@ extension Library {
             s.providerLocale = snap.providerLocale
             s.providerProxyURL = snap.providerProxyURL ?? ""
             s.providerProxyToken = snap.providerProxyToken ?? ""
+            // Absent in older backups → keep the device's current switch.
+            if let proxyEnabled = snap.providerProxyEnabled { s.providerProxyEnabled = proxyEnabled }
             s.foldersEnabled = snap.foldersEnabled
             s.autoDeleteWatchedDownloads = snap.autoDeleteWatchedDownloads
+            if let showCardInfo = snap.showCardInfo { s.showCardInfo = showCardInfo }
             s.accentR = snap.accentR
             s.accentG = snap.accentG
             s.accentB = snap.accentB

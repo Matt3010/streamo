@@ -69,7 +69,10 @@ struct DetailView: View {
             .padding(.bottom, 24)
         }
         .background(backdropBackground)
-        .navigationTitle(model.item?.displayTitle ?? "")
+        // No inline nav-bar title: the title is already shown large in the
+        // content, and a long one would squeeze the trailing toolbar items
+        // (rank pill / menu) until they clip.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if model.item != nil {

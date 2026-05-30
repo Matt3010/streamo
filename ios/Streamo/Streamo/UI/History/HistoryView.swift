@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct HistoryView: View {
     @Environment(Library.self) private var library
@@ -15,8 +16,9 @@ struct HistoryView: View {
         let _ = library.version
         let all = library.history()
         let items = typeFilter == .all ? all : all.filter { $0.mediaTypeRaw == typeFilter.rawValue }
-        // The newest history row per title — only it shows a "Riprendi da S/E" hint.
-        let latestKeys = latestEntryKeys(items)
+        // For each row, the cumulative position reached *before* it — so a row
+        // can show how much was watched that day (its snapshot − this baseline).
+        let priorSnapshot = priorSnapshots(all)
 
         ScrollView {
             if all.isEmpty {
@@ -40,7 +42,7 @@ struct HistoryView: View {
                             .padding(.top, 40)
                     } else {
                         ForEach(sections(items)) { section in
-                            sectionView(section, latestKeys: latestKeys)
+                            sectionView(section, priorSnapshot: priorSnapshot)
                         }
                     }
                 }
@@ -49,7 +51,6 @@ struct HistoryView: View {
         }
         .navigationTitle("Cronologia")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { try? await Task.sleep(for: .milliseconds(250)) }
     }
 
     // MARK: - Watch time counter (port of formatWatchTimeCounter)
@@ -79,25 +80,20 @@ struct HistoryView: View {
         FilterChip(label: label, selected: typeFilter == value) { typeFilterRaw = value.rawValue }
     }
 
-    /// Coordinate key of the newest history row for each title (web's
-    /// `latestEntryByTitle`). Items are already newest-first.
-    private func latestEntryKeys(_ items: [HistoryEntry]) -> Set<String> {
-        var seenTitles = Set<String>()
-        var latest = Set<String>()
-        for e in items {
-            let title = "\(e.mediaTypeRaw)-\(e.tmdbId)"
-            if seenTitles.insert(title).inserted {
-                latest.insert("\(title)-\(e.season)-\(e.episode)")
-            }
-        }
-        return latest
-    }
-
     /// History card enriched with the saved progress (bar + %) plus the red
     /// status line — "Completato" / "Visti N min" (port of the web history row).
-    private func historyCard(_ entry: HistoryEntry) -> CardItem {
+    private func historyCard(_ entry: HistoryEntry, priorSnapshot: [PersistentIdentifier: Double]) -> CardItem {
         var card = CardItem(history: entry)
-        if let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode) {
+        if entry.durationSeconds > 0 {
+            // Snapshot row: bar frozen to that day, red line = minutes watched
+            // THAT day (this snapshot − the cumulative reached on earlier days).
+            card.position = entry.progressSeconds
+            card.duration = entry.durationSeconds
+            let completed = entry.progressSeconds >= entry.durationSeconds * TVLogic.watchedThreshold
+            let watchedToday = max(0, entry.progressSeconds - (priorSnapshot[entry.persistentModelID] ?? 0))
+            card.watchStatus = completed ? "Completato" : Format.viewedMinutes(watchedToday)
+        } else if let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode) {
+            // Legacy row (saved before snapshots): fall back to live cumulative.
             card.position = p.position
             card.duration = p.duration
             let completed = p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold
@@ -106,18 +102,27 @@ struct HistoryView: View {
         return card
     }
 
-    /// True for a completed TV episode that is the latest history row for its
-    /// title — it gets the "Riprendi da S/E" grey line.
-    private func showsResumeHint(_ entry: HistoryEntry, _ latestKeys: Set<String>) -> Bool {
-        guard entry.mediaType == .tv,
-              latestKeys.contains("\(entry.mediaTypeRaw)-\(entry.tmdbId)-\(entry.season)-\(entry.episode)"),
-              let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode)
-        else { return false }
-        return p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold
+    /// For each history row, the highest cumulative position reached by any
+    /// earlier row of the same title/episode — the baseline for "watched today".
+    private func priorSnapshots(_ entries: [HistoryEntry]) -> [PersistentIdentifier: Double] {
+        var byCoordinate: [String: [HistoryEntry]] = [:]
+        for e in entries {
+            byCoordinate["\(e.mediaTypeRaw)-\(e.tmdbId)-\(e.season)-\(e.episode)", default: []].append(e)
+        }
+        var result: [PersistentIdentifier: Double] = [:]
+        for (_, group) in byCoordinate {
+            var baseline = 0.0
+            for e in group.sorted(by: { $0.watchedAt < $1.watchedAt }) {
+                result[e.persistentModelID] = baseline
+                baseline = max(baseline, e.progressSeconds)   // guards rewatch/scrub-back
+            }
+        }
+        return result
     }
 
     @ViewBuilder
-    private func sectionView(_ section: Section, latestKeys: Set<String>) -> some View {
+    private func sectionView(_ section: Section,
+                             priorSnapshot: [PersistentIdentifier: Double]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(section.title).font(.title3.bold())
@@ -129,8 +134,8 @@ struct HistoryView: View {
                 ForEach(section.items, id: \.persistentModelID) { entry in
                     NavigationLink(value: MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType,
                                                    resumeSeason: entry.season, resumeEpisode: entry.episode)) {
-                        MediaCard(card: historyCard(entry), showProgress: true, showWatchStatus: false,
-                                  library: library, wantsResumeHint: showsResumeHint(entry, latestKeys))
+                        MediaCard(card: historyCard(entry, priorSnapshot: priorSnapshot),
+                                  showProgress: true, showWatchStatus: false, library: library)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {

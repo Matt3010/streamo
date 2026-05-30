@@ -39,27 +39,42 @@ struct HomeView: View {
                     }
                     .padding(.top, 60)
                 } else {
+                    heroSection
+                    Top10Row(items: model.top10)
                     continueWatchingRow
-                    myListRow
-                    ForEach(HomeSections.all) { section in
+                    ForEach(HomeSections.rows) { section in
                         SectionRow(section: section, items: model.items(for: section), loading: model.isLoading)
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.bottom, 12)
         }
-        .navigationTitle("Streamo")
+        // Let the hero bleed up behind the status bar / nav bar; the toolbar
+        // buttons float over it.
+        .ignoresSafeArea(edges: .top)
+        // No page title on the home screen — the hero leads instead.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         // No full-page spinner: the section rows render skeleton cards while
         // loading (web is skeleton-first, never a centered spinner).
         .task { await model.loadIfNeeded() }
         .task(id: library.version) { continueItems = await library.continueRows(); continueLoaded = true }
-        .refreshable { await model.reload() }
         .confirmationDialog(confirmMessage,
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
                             titleVisibility: .visible) {
             Button(confirmActionLabel, role: .destructive) { pendingAction?(); pendingAction = nil }
             Button("Annulla", role: .cancel) { pendingAction = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var heroSection: some View {
+        let heroes = model.heroItems
+        if !heroes.isEmpty {
+            HomeHero(items: heroes)
+        } else if model.isLoading {
+            HomeHeroSkeleton()
         }
     }
 
@@ -75,7 +90,7 @@ struct HomeView: View {
                                                            resumeSeason: entry.season, resumeEpisode: entry.episode)) {
                                 MediaCard(card: CardItem(continue: entry), showProgress: true, showWatchStatus: true,
                                           library: library, width: MediaCard.continueWidth(hSizeClass),
-                                          aspectRatio: 16.0 / 9.0)
+                                          aspectRatio: 16.0 / 9.0, alwaysShowInfo: true)
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
@@ -95,41 +110,6 @@ struct HomeView: View {
             emptyRow(title: "Continua a guardare", symbol: "play.fill",
                      message: "Niente da riprendere",
                      hint: "I titoli che inizi a guardare compariranno qui.", action: nil)
-        }
-    }
-
-    @ViewBuilder
-    private var myListRow: some View {
-        let items = library.watchlist()
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeader(title: "La mia lista", symbol: "bookmark.fill")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 14) {
-                        ForEach(items, id: \.persistentModelID) { entry in
-                            NavigationLink(value: MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType)) {
-                                MediaCard(card: CardItem(watchlist: entry), showWatchStatus: true,
-                                          library: library, width: MediaCard.rowWidth(hSizeClass))
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    askConfirm("Rimuovere \(entry.title ?? "questo titolo") dalla lista?", "Rimuovi") {
-                                        library.removeFromWatchlist(entry.tmdbId, entry.mediaType)
-                                        ToastCenter.shared.show("Rimosso dalla lista")
-                                    }
-                                } label: { Label("Rimuovi dalla lista", systemImage: "trash") }
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
-        } else {
-            emptyRow(title: "La mia lista", symbol: "bookmark.fill",
-                     message: "La tua lista è vuota",
-                     hint: "Aggiungi un film o una serie con il segnalibro per ritrovarli qui.",
-                     action: ("Vai a cercare", { nav.selectedTab = .search }))
         }
     }
 
