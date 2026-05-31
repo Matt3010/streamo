@@ -175,9 +175,14 @@ actor ProviderProxyClient {
         // sub-playlists, segments, key files). `AVURLAssetHTTPHeaderFieldsKey`
         // propagates these to all sub-resource loads.
         let headers = proxyAuthHeaders()
+        let token = AppSettings.shared.providerProxyToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let sources = dto.sources.compactMap { source -> VixcloudClient.PlaybackSource? in
             guard let url = URL(string: source.url) else { return nil }
-            return VixcloudClient.PlaybackSource(playlistURL: url, headers: headers)
+            // Also embed the token as `?key=` in the URL: AirPlay receivers
+            // fetch the stream WITHOUT our headers, so the query param is the
+            // only auth they carry. The proxy rewrites sub-resource URLs with
+            // the same key, so segments/keys stay authenticated on the TV too.
+            return VixcloudClient.PlaybackSource(playlistURL: Self.appendingKey(token, to: url), headers: headers)
         }
 
         return PlaybackSourcesResult(
@@ -191,6 +196,18 @@ actor ProviderProxyClient {
         let token = AppSettings.shared.providerProxyToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return [:] }
         return ["Authorization": "Bearer \(token)"]
+    }
+
+    /// Append `?key=<token>` to the playlist URL (preserving existing query
+    /// items) so AirPlay receivers can authenticate via the URL alone.
+    private static func appendingKey(_ token: String, to url: URL) -> URL {
+        guard !token.isEmpty,
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var items = components.queryItems ?? []
+        guard !items.contains(where: { $0.name == "key" }) else { return url }
+        items.append(URLQueryItem(name: "key", value: token))
+        components.queryItems = items
+        return components.url ?? url
     }
 
     private func get<T: Decodable>(_ path: String) async -> ProxyResponse<T> {

@@ -177,8 +177,7 @@ app.post('/provider/resolve-movie', requireAuth, async (req, res) => {
 
 app.get(/^\/playlist\/(.*)$/i, requireAuth, async (req, res) => {
   const tail = String(req.params[0] ?? '');
-  const queryStart = req.url.indexOf('?');
-  const search = queryStart >= 0 ? req.url.slice(queryStart) : '';
+  const search = querySuffix(req.url);   // strips our `key` before hitting vixcloud
   const upstreamURL = `https://vixcloud.co/playlist/${tail}${search}`;
   res.locals.upstream = upstreamURL;
 
@@ -208,7 +207,7 @@ app.get(/^\/playlist\/(.*)$/i, requireAuth, async (req, res) => {
 
   const body = await upstream.text();
   copyProxyHeaders(upstream, res, true);
-  res.status(upstream.status).send(rewritePlaylist(body));
+  res.status(upstream.status).send(rewritePlaylist(body, authToken));
 });
 
 app.get(/^\/cdn\/([a-z0-9-]+)\/(.*)$/i, requireAuth, async (req, res) => {
@@ -681,7 +680,7 @@ async function proxyPassthrough(
   if (isPlaylist) {
     const body = await upstream.text();
     copyProxyHeaders(upstream, res, true);
-    res.status(upstream.status).send(rewritePlaylist(body));
+    res.status(upstream.status).send(rewritePlaylist(body, authToken));
     return;
   }
 
@@ -724,31 +723,37 @@ function copyProxyHeaders(upstream: globalThis.Response, res: ExpressResponse, i
   }
 }
 
-function rewritePlaylist(body: string): string {
+function rewritePlaylist(body: string, token: string): string {
+  // Append our `?key=` to every rewritten URL so the AirPlay receiver (which
+  // can't send headers) stays authenticated for sub-playlists, segments and
+  // keys. Relative URLs don't inherit the master's query, so each must carry
+  // it explicitly.
+  const key = encodeURIComponent(token)
+  const withKey = (path: string): string => (path.includes('?') ? `${path}&key=${key}` : `${path}?key=${key}`)
   return body
     .replace(
       /https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
-      '/cdn/$1$2'
+      (_m, host: string, path: string) => withKey(`/cdn/${host}${path}`)
     )
     .replace(
       /\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
-      '/cdn/$1$2'
+      (_m, host: string, path: string) => withKey(`/cdn/${host}${path}`)
     )
     .replace(
       /https?:\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
-      '$1'
+      (_m, path: string) => withKey(path)
     )
     .replace(
       /\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
-      '$1'
+      (_m, path: string) => withKey(path)
     )
     .replace(
       /https?:\/\/vixcloud\.co(\/[^\s"']*)/gi,
-      '/vixcloud$1'
+      (_m, path: string) => withKey(`/vixcloud${path}`)
     )
     .replace(
       /\/\/vixcloud\.co(\/[^\s"']*)/gi,
-      '/vixcloud$1'
+      (_m, path: string) => withKey(`/vixcloud${path}`)
     );
 }
 
@@ -1013,7 +1018,11 @@ function requestBaseURL(req: Request): string {
 
 function querySuffix(url: string): string {
   const start = url.indexOf('?');
-  return start >= 0 ? url.slice(start) : '';
+  if (start < 0) return '';
+  const params = new URLSearchParams(url.slice(start + 1));
+  params.delete('key');   // our auth param — never forward it to the upstream CDN
+  const s = params.toString();
+  return s ? `?${s}` : '';
 }
 
 function firstMatch(value: string, regex: RegExp): string | null {
@@ -1175,7 +1184,13 @@ async function fetchWithTimeout(
 }
 
 function requireAuth(req: Request, res: ExpressResponse, next: NextFunction): void {
-  const candidate = bearerToken(req.headers.authorization) || headerValue(req.headers['x-proxy-token'], '').trim();
+  // `?key=` query fallback so AirPlay receivers — which fetch the stream URL
+  // with NO custom headers — can still authenticate. (We use `key`, not
+  // `token`, because `token` is vixcloud's own CDN parameter.)
+  const queryKey = typeof req.query.key === 'string' ? req.query.key.trim() : '';
+  const candidate = bearerToken(req.headers.authorization)
+    || headerValue(req.headers['x-proxy-token'], '').trim()
+    || queryKey;
   if (candidate && timingSafeEqual(candidate, authToken)) {
     next();
     return;
