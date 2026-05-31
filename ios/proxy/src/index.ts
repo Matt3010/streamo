@@ -1055,12 +1055,14 @@ function requestBaseURL(req: Request): string {
 function querySuffix(url: string): string {
   const start = url.indexOf('?');
   if (start < 0) return '';
-  const params = new URLSearchParams(url.slice(start + 1));
-  params.delete('key');   // our auth param — never forward it to the upstream CDN
-  params.delete('c');     // our client-tag param (for logging) — also internal
-  params.delete('q');     // our forced-quality param — also internal
-  const s = params.toString();
-  return s ? `?${s}` : '';
+  // Strip only OUR params (key/c/q) while keeping every other param byte-for-
+  // byte: vixcloud signs `token`/`expires`, so re-encoding via URLSearchParams
+  // (which canonicalizes +, /, =, %xx) could invalidate the CDN signature.
+  const internal = new Set(['key', 'c', 'q']);
+  const kept = url.slice(start + 1)
+    .split('&')
+    .filter((pair) => pair !== '' && !internal.has(pair.split('=')[0]));
+  return kept.length ? `?${kept.join('&')}` : '';
 }
 
 function firstMatch(value: string, regex: RegExp): string | null {
