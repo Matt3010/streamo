@@ -78,6 +78,26 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Streaming", selection: $settings.streamingMaxHeight) {
+                    Text("Auto").tag(0)
+                    Text("1080p").tag(1080)
+                    Text("720p").tag(720)
+                    Text("480p").tag(480)
+                    Text("360p").tag(360)
+                }
+                Picker("Download", selection: $settings.downloadMaxHeight) {
+                    Text("1080p").tag(1080)
+                    Text("720p").tag(720)
+                    Text("480p").tag(480)
+                    Text("360p").tag(360)
+                }
+            } header: {
+                Text("Qualità")
+            } footer: {
+                Text("Streaming: \"Auto\" adatta la qualità alla connessione; una risoluzione fissa la limita a quel valore. Download: ogni titolo viene salvato alla risoluzione scelta (la più alta disponibile fino a quel valore).")
+            }
+
+            Section {
                 Toggle("Mostra titolo, anno e voto", isOn: $settings.showCardInfo)
             } header: {
                 Text("Copertine")

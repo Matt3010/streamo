@@ -48,6 +48,7 @@ enum HLSDownloader {
     static func download(masterURL: URL,
                          headers: [String: String],
                          outputDirectory: URL,
+                         maxHeight: Int = 0,
                          session: URLSession = downloadSession,
                          progress: @escaping ProgressHandler) async throws {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
@@ -57,21 +58,24 @@ enum HLSDownloader {
         var masterLines = masterText.components(separatedBy: "\n")
 
         // Pre-pass: identify every video variant (`#EXT-X-STREAM-INF` + URI
-        // line) and keep only the one with the highest BANDWIDTH. Downloading
-        // every quality would multiply data + time by 3-4x; AVPlayer only
-        // needs one variant for offline. Other variant blocks are blanked.
-        var variantBlocks: [(infIndex: Int, uriIndex: Int, bandwidth: Int)] = []
+        // line) and keep only ONE. Downloading every quality would multiply
+        // data + time by 3-4x; AVPlayer only needs one variant for offline.
+        // The kept variant honours the user's quality setting (`maxHeight`):
+        // the highest resolution ≤ maxHeight, else the lowest available; with
+        // maxHeight 0 (or no RESOLUTION info) we keep the highest BANDWIDTH.
+        var variantBlocks: [(infIndex: Int, uriIndex: Int, bandwidth: Int, height: Int)] = []
         do {
             var i = 0
             while i < masterLines.count {
                 let line = masterLines[i].trimmingCharacters(in: .whitespaces)
                 if line.hasPrefix("#EXT-X-STREAM-INF") {
                     let bw = HLSPlaylistParser.bandwidthAttribute(line) ?? 0
+                    let h = HLSPlaylistParser.resolutionHeightAttribute(line) ?? 0
                     var k = i + 1
                     while k < masterLines.count {
                         let next = masterLines[k].trimmingCharacters(in: .whitespaces)
                         if next.isEmpty || next.hasPrefix("#") { k += 1; continue }
-                        variantBlocks.append((i, k, bw))
+                        variantBlocks.append((i, k, bw, h))
                         i = k + 1
                         break
                     }
@@ -81,7 +85,7 @@ enum HLSDownloader {
                 }
             }
         }
-        if variantBlocks.count > 1, let best = variantBlocks.max(by: { $0.bandwidth < $1.bandwidth }) {
+        if variantBlocks.count > 1, let best = chooseVariant(variantBlocks, maxHeight: maxHeight) {
             for block in variantBlocks where block.uriIndex != best.uriIndex {
                 masterLines[block.infIndex] = ""
                 masterLines[block.uriIndex] = ""
@@ -175,6 +179,23 @@ enum HLSDownloader {
         let masterOut = outputDirectory.appendingPathComponent("master.m3u8")
         try masterLines.joined(separator: "\n").write(to: masterOut, atomically: true, encoding: .utf8)
         progress(1)
+    }
+
+    // MARK: - Variant selection
+
+    private typealias VariantBlock = (infIndex: Int, uriIndex: Int, bandwidth: Int, height: Int)
+
+    /// Pick which single video variant to keep for offline. Prefers the highest
+    /// resolution ≤ `maxHeight`; if every variant is taller, keeps the lowest;
+    /// with `maxHeight == 0` or no RESOLUTION info, keeps the highest bitrate.
+    private static func chooseVariant(_ blocks: [VariantBlock], maxHeight: Int) -> VariantBlock? {
+        let withHeight = blocks.filter { $0.height > 0 }
+        guard maxHeight > 0, !withHeight.isEmpty else {
+            return blocks.max(by: { $0.bandwidth < $1.bandwidth })
+        }
+        let eligible = withHeight.filter { $0.height <= maxHeight }
+        if let best = eligible.max(by: { $0.height < $1.height }) { return best }
+        return withHeight.min(by: { $0.height < $1.height })   // all taller → smallest
     }
 
     // MARK: - Variant

@@ -32,6 +32,8 @@ struct LibraryBackupPayload: Codable {
         var autoDeleteWatchedDownloads: Bool
         /// Optional for backward compatibility (added later).
         var showCardInfo: Bool?
+        var streamingMaxHeight: Int?
+        var downloadMaxHeight: Int?
         var accentR: Double
         var accentG: Double
         var accentB: Double
@@ -146,6 +148,7 @@ extension Library {
             providerProxyEnabled: s.providerProxyEnabled,
             foldersEnabled: s.foldersEnabled, autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
             showCardInfo: s.showCardInfo,
+            streamingMaxHeight: s.streamingMaxHeight, downloadMaxHeight: s.downloadMaxHeight,
             accentR: s.accentR, accentG: s.accentG, accentB: s.accentB
         )
         let encoder = JSONEncoder()
@@ -238,6 +241,8 @@ extension Library {
             s.foldersEnabled = snap.foldersEnabled
             s.autoDeleteWatchedDownloads = snap.autoDeleteWatchedDownloads
             if let showCardInfo = snap.showCardInfo { s.showCardInfo = showCardInfo }
+            if let h = snap.streamingMaxHeight { s.streamingMaxHeight = h }
+            if let h = snap.downloadMaxHeight { s.downloadMaxHeight = h }
             s.accentR = snap.accentR
             s.accentG = snap.accentG
             s.accentB = snap.accentB

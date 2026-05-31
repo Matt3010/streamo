@@ -145,6 +145,12 @@ final class PlaybackController {
         let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": streamHeaders]
         let asset = AVURLAsset(url: source.playlistURL, options: options)
         let item = AVPlayerItem(asset: asset)
+        // Streaming quality cap (Auto = 0 → no cap). Offline already baked one
+        // resolution in, so we only cap online playback.
+        let maxHeight = AppSettings.shared.streamingMaxHeight
+        if !isOffline, maxHeight > 0 {
+            item.preferredMaximumResolution = CGSize(width: maxHeight * 16 / 9, height: maxHeight)
+        }
         let player = AVPlayer(playerItem: item)
         // AirPlay routes a loopback URL nowhere useful, so leave it off for
         // offline playback. Keep the default `automaticallyWaitsToMinimizeStalling`

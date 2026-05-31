@@ -30,6 +30,17 @@ enum HLSPlaylistParser {
         return Int(digits)
     }
 
+    /// Vertical resolution from `RESOLUTION=WxH` on `#EXT-X-STREAM-INF` (e.g.
+    /// 720 for 1280x720), or nil when absent.
+    static func resolutionHeightAttribute(_ line: String) -> Int? {
+        guard let range = line.range(of: "RESOLUTION=") else { return nil }
+        let after = line[range.upperBound...]
+        // "1280x720,..." → split on 'x', take the height up to a non-digit.
+        guard let xIndex = after.firstIndex(where: { $0 == "x" || $0 == "X" }) else { return nil }
+        let heightPart = after[after.index(after: xIndex)...].prefix(while: { $0.isNumber })
+        return Int(heightPart)
+    }
+
     /// Local child playlist names a rewritten master refers to.
     static func childPlaylistNames(in text: String) -> [String] {
         var names: [String] = []

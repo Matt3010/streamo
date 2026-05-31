@@ -501,6 +501,7 @@ final class DownloadManager {
             try await HLSDownloader.download(masterURL: source.playlistURL,
                                              headers: headers,
                                              outputDirectory: outputDir,
+                                             maxHeight: AppSettings.shared.downloadMaxHeight,
                                              progress: { [weak self] frac in
                 Task { @MainActor in
                     guard let self else { return }
