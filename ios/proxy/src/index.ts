@@ -724,37 +724,25 @@ function copyProxyHeaders(upstream: globalThis.Response, res: ExpressResponse, i
 }
 
 function rewritePlaylist(body: string, token: string): string {
-  // Append our `?key=` to every rewritten URL so the AirPlay receiver (which
-  // can't send headers) stays authenticated for sub-playlists, segments and
-  // keys. Relative URLs don't inherit the master's query, so each must carry
-  // it explicitly.
-  const key = encodeURIComponent(token)
-  const withKey = (path: string): string => (path.includes('?') ? `${path}&key=${key}` : `${path}?key=${key}`)
-  return body
-    .replace(
-      /https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
-      (_m, host: string, path: string) => withKey(`/cdn/${host}${path}`)
-    )
-    .replace(
-      /\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi,
-      (_m, host: string, path: string) => withKey(`/cdn/${host}${path}`)
-    )
-    .replace(
-      /https?:\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
-      (_m, path: string) => withKey(path)
-    )
-    .replace(
-      /\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi,
-      (_m, path: string) => withKey(path)
-    )
-    .replace(
-      /https?:\/\/vixcloud\.co(\/[^\s"']*)/gi,
-      (_m, path: string) => withKey(`/vixcloud${path}`)
-    )
-    .replace(
-      /\/\/vixcloud\.co(\/[^\s"']*)/gi,
-      (_m, path: string) => withKey(`/vixcloud${path}`)
-    );
+  // Step 1: rewrite absolute upstream URLs to proxy-relative paths.
+  const rewritten = body
+    .replace(/https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi, '/cdn/$1$2')
+    .replace(/\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi, '/cdn/$1$2')
+    .replace(/https?:\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi, '$1')
+    .replace(/\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi, '$1')
+    .replace(/https?:\/\/vixcloud\.co(\/[^\s"']*)/gi, '/vixcloud$1')
+    .replace(/\/\/vixcloud\.co(\/[^\s"']*)/gi, '/vixcloud$1');
+
+  // Step 2: append our `?key=` to EVERY proxy-relative URL (sub-playlists,
+  // segments, and the EXT-X-KEY/enc.key, which vixcloud often references with
+  // a root-relative URL we didn't touch above). AirPlay receivers send no
+  // headers, so the key must travel in each sub-resource URL. Skip any that
+  // already carry it.
+  const key = encodeURIComponent(token);
+  return rewritten.replace(
+    /\/(?:cdn|vixcloud|storage|playlist)\/[^\s"']*/gi,
+    (m: string) => (/[?&]key=/.test(m) ? m : (m.includes('?') ? `${m}&key=${key}` : `${m}?key=${key}`))
+  );
 }
 
 function buildPlaylistURLs(html: string): URL[] {
