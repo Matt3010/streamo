@@ -143,11 +143,22 @@ final class PlaybackController {
         var streamHeaders = source.headers
         streamHeaders["X-Streamo-Client"] = "player"
         let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": streamHeaders]
-        let asset = AVURLAsset(url: source.playlistURL, options: options)
-        let item = AVPlayerItem(asset: asset)
-        // Streaming quality cap (Auto = 0 → no cap). Offline already baked one
-        // resolution in, so we only cap online playback.
         let maxHeight = AppSettings.shared.streamingMaxHeight
+        // Through the proxy add query params:
+        //  • c=player  → tag sub-resources/AirPlay in the proxy log.
+        //  • q=<h>     → make the proxy filter the master to ONLY that variant,
+        //                truly forcing the quality (a bitrate/resolution cap
+        //                alone lets ABR still pick lower).
+        let streamURL: URL = {
+            guard viaProxy == true, !isOffline else { return source.playlistURL }
+            var extra = ["c": "player"]
+            if maxHeight > 0 { extra["q"] = String(maxHeight) }
+            return Self.appendingQuery(extra, on: source.playlistURL)
+        }()
+        let asset = AVURLAsset(url: streamURL, options: options)
+        let item = AVPlayerItem(asset: asset)
+        // Resolution cap as well — the only lever for DIRECT (non-proxy)
+        // streaming, where we can't filter the master. Auto = 0 → no cap.
         if !isOffline, maxHeight > 0 {
             item.preferredMaximumResolution = CGSize(width: maxHeight * 16 / 9, height: maxHeight)
         }
@@ -167,6 +178,18 @@ final class PlaybackController {
         configureNowPlaying(request, player: player)
         player.play()
         state = .ready
+    }
+
+    /// Append the given query items to a proxied stream URL (skipping any name
+    /// already present), preserving the existing query.
+    private static func appendingQuery(_ extra: [String: String], on url: URL) -> URL {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var items = comps.queryItems ?? []
+        for (name, value) in extra where !items.contains(where: { $0.name == name }) {
+            items.append(URLQueryItem(name: name, value: value))
+        }
+        comps.queryItems = items
+        return comps.url ?? url
     }
 
     private func advanceToNextSource() {

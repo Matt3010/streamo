@@ -35,7 +35,9 @@ app.use((req, res, next) => {
     const masked = health ? health.through_cloudflare && !sameIp(originIp, egressIp) : null;
     // The app tags media requests as 'download' or 'player' (resolve/health
     // calls carry no tag → '-'), so the log shows what each request is for.
-    const client = headerValue(req.headers['x-streamo-client'], '-');
+    // Sub-resources (segments/keys) and AirPlay requests can't send the header,
+    // so we also read the `c` query param the playlist rewriter embeds.
+    const client = clientTag(req);
     console.log(
       `[ios-proxy][${client}] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`
       + ` origin_ip=${originIp} egress_ip=${egressIp} through_cf=${formatFlag(health?.through_cloudflare)}`
@@ -207,7 +209,11 @@ app.get(/^\/playlist\/(.*)$/i, requireAuth, async (req, res) => {
 
   const body = await upstream.text();
   copyProxyHeaders(upstream, res, true);
-  res.status(upstream.status).send(rewritePlaylist(body, authToken));
+  // `?q=<height>` (set by the app for forced streaming quality) keeps only the
+  // matching video variant in the master, so the player can't ABR to another.
+  const q = typeof req.query.q === 'string' ? parseInt(req.query.q, 10) : 0;
+  const filtered = q > 0 ? filterMasterToHeight(body, q) : body;
+  res.status(upstream.status).send(rewritePlaylist(filtered, authToken, clientTag(req)));
 });
 
 app.get(/^\/cdn\/([a-z0-9-]+)\/(.*)$/i, requireAuth, async (req, res) => {
@@ -680,7 +686,7 @@ async function proxyPassthrough(
   if (isPlaylist) {
     const body = await upstream.text();
     copyProxyHeaders(upstream, res, true);
-    res.status(upstream.status).send(rewritePlaylist(body, authToken));
+    res.status(upstream.status).send(rewritePlaylist(body, authToken, clientTag(req)));
     return;
   }
 
@@ -723,7 +729,48 @@ function copyProxyHeaders(upstream: globalThis.Response, res: ExpressResponse, i
   }
 }
 
-function rewritePlaylist(body: string, token: string): string {
+/// Keep only ONE video `#EXT-X-STREAM-INF` variant in a master playlist: the
+/// highest RESOLUTION height ≤ `maxHeight`, else the lowest (all taller), else
+/// (no RESOLUTION info) the highest BANDWIDTH. Non-master playlists (no
+/// STREAM-INF) pass through unchanged. This truly forces streaming quality —
+/// the player has no other variant to adapt to.
+function filterMasterToHeight(body: string, maxHeight: number): string {
+  const lines = body.split('\n');
+  type Block = { infIndex: number; uriIndex: number; bandwidth: number; height: number };
+  const blocks: Block[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim().startsWith('#EXT-X-STREAM-INF')) continue;
+    const inf = lines[i];
+    const bw = parseInt(inf.match(/BANDWIDTH=(\d+)/i)?.[1] ?? '0', 10);
+    const height = parseInt(inf.match(/RESOLUTION=\d+x(\d+)/i)?.[1] ?? '0', 10);
+    // The URI is the next non-empty, non-comment line.
+    let k = i + 1;
+    while (k < lines.length && (lines[k].trim() === '' || lines[k].trim().startsWith('#'))) k++;
+    if (k < lines.length) blocks.push({ infIndex: i, uriIndex: k, bandwidth: bw, height });
+  }
+  if (blocks.length <= 1) return body;
+
+  const withHeight = blocks.filter((b) => b.height > 0);
+  let chosen: Block | undefined;
+  if (withHeight.length > 0) {
+    const eligible = withHeight.filter((b) => b.height <= maxHeight);
+    chosen = (eligible.length ? eligible : withHeight)
+      .sort((a, b) => (eligible.length ? b.height - a.height : a.height - b.height))[0];
+  } else {
+    chosen = blocks.slice().sort((a, b) => b.bandwidth - a.bandwidth)[0];
+  }
+  if (!chosen) return body;
+
+  const drop = new Set<number>();
+  for (const b of blocks) {
+    if (b.uriIndex === chosen.uriIndex) continue;
+    drop.add(b.infIndex);
+    drop.add(b.uriIndex);
+  }
+  return lines.filter((_, idx) => !drop.has(idx)).join('\n');
+}
+
+function rewritePlaylist(body: string, token: string, client: string = '-'): string {
   // Step 1: rewrite absolute upstream URLs to proxy-relative paths.
   const rewritten = body
     .replace(/https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi, '/cdn/$1$2')
@@ -733,15 +780,16 @@ function rewritePlaylist(body: string, token: string): string {
     .replace(/https?:\/\/vixcloud\.co(\/[^\s"']*)/gi, '/vixcloud$1')
     .replace(/\/\/vixcloud\.co(\/[^\s"']*)/gi, '/vixcloud$1');
 
-  // Step 2: append our `?key=` to EVERY proxy-relative URL (sub-playlists,
-  // segments, and the EXT-X-KEY/enc.key, which vixcloud often references with
-  // a root-relative URL we didn't touch above). AirPlay receivers send no
-  // headers, so the key must travel in each sub-resource URL. Skip any that
-  // already carry it.
+  // Step 2: append our `?key=` (auth) and `&c=` (client tag for logging) to
+  // EVERY proxy-relative URL (sub-playlists, segments, and the EXT-X-KEY/
+  // enc.key, which vixcloud often references with a root-relative URL we
+  // didn't touch above). AirPlay receivers send no headers, so both must
+  // travel in each sub-resource URL. Skip any that already carry the key.
   const key = encodeURIComponent(token);
+  const suffix = client !== '-' ? `key=${key}&c=${encodeURIComponent(client)}` : `key=${key}`;
   return rewritten.replace(
     /\/(?:cdn|vixcloud|storage|playlist)\/[^\s"']*/gi,
-    (m: string) => (/[?&]key=/.test(m) ? m : (m.includes('?') ? `${m}&key=${key}` : `${m}?key=${key}`))
+    (m: string) => (/[?&]key=/.test(m) ? m : (m.includes('?') ? `${m}&${suffix}` : `${m}?${suffix}`))
   );
 }
 
@@ -1009,6 +1057,8 @@ function querySuffix(url: string): string {
   if (start < 0) return '';
   const params = new URLSearchParams(url.slice(start + 1));
   params.delete('key');   // our auth param — never forward it to the upstream CDN
+  params.delete('c');     // our client-tag param (for logging) — also internal
+  params.delete('q');     // our forced-quality param — also internal
   const s = params.toString();
   return s ? `?${s}` : '';
 }
@@ -1089,6 +1139,16 @@ function headerValue(value: string | string[] | undefined, fallback: string): st
     return value[0] ?? fallback;
   }
   return value ?? fallback;
+}
+
+/// The request's client tag for logging: the `X-Streamo-Client` header, or the
+/// `c` query param the playlist rewriter embeds (so segments/keys and AirPlay
+/// — which can't send the header — are still attributed), else '-'.
+function clientTag(req: Request): string {
+  const header = headerValue(req.headers['x-streamo-client'], '').trim();
+  if (header) return header;
+  const q = typeof req.query.c === 'string' ? req.query.c.trim() : '';
+  return q || '-';
 }
 
 function activeSortValue(value: boolean | undefined): number {
