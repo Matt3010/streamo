@@ -83,13 +83,11 @@ struct SettingsView: View {
                     Text("1080p").tag(1080)
                     Text("720p").tag(720)
                     Text("480p").tag(480)
-                    Text("360p").tag(360)
                 }
                 Picker("Download", selection: $settings.downloadMaxHeight) {
                     Text("1080p").tag(1080)
                     Text("720p").tag(720)
                     Text("480p").tag(480)
-                    Text("360p").tag(360)
                 }
             } header: {
                 Text("Qualità")
