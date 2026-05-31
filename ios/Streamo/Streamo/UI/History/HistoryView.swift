@@ -135,7 +135,8 @@ struct HistoryView: View {
                     NavigationLink(value: MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType,
                                                    resumeSeason: entry.season, resumeEpisode: entry.episode)) {
                         MediaCard(card: historyCard(entry, priorSnapshot: priorSnapshot),
-                                  showProgress: true, showWatchStatus: false, library: library)
+                                  showProgress: true, showWatchStatus: false, library: library,
+                                  alwaysShowInfo: true)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
