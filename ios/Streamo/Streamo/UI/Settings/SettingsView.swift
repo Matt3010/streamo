@@ -92,7 +92,7 @@ struct SettingsView: View {
             } header: {
                 Text("Qualità")
             } footer: {
-                Text("Streaming: \"Auto\" adatta la qualità alla connessione; una risoluzione fissa la limita a quel valore. Download: ogni titolo viene salvato alla risoluzione scelta (la più alta disponibile fino a quel valore).")
+                Text("Streaming: \"Auto\" adatta la qualità alla connessione. Con il proxy WARP attivo la risoluzione scelta viene forzata (anche in AirPlay); senza WARP fa solo da limite massimo (la qualità può scendere). Download: ogni titolo viene salvato alla risoluzione scelta (la più alta disponibile fino a quel valore).")
             }
 
             Section {

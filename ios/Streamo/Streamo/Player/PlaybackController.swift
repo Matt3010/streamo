@@ -149,6 +149,10 @@ final class PlaybackController {
         //  • q=<h>     → make the proxy filter the master to ONLY that variant,
         //                truly forcing the quality (a bitrate/resolution cap
         //                alone lets ABR still pick lower).
+        // Forced quality is only applied through the WARP proxy (server-side
+        // `q=` master filter), which works for both in-app and AirPlay. Without
+        // the proxy we only CAP the resolution (below) — never via a custom
+        // URL scheme, which would break AirPlay on a direct stream.
         let streamURL: URL = {
             guard viaProxy == true, !isOffline else { return source.playlistURL }
             var extra = ["c": "player"]
@@ -157,8 +161,8 @@ final class PlaybackController {
         }()
         let asset = AVURLAsset(url: streamURL, options: options)
         let item = AVPlayerItem(asset: asset)
-        // Resolution cap as well — the only lever for DIRECT (non-proxy)
-        // streaming, where we can't filter the master. Auto = 0 → no cap.
+        // Resolution cap for direct streaming (and a harmless extra ceiling
+        // alongside the proxy filter). Auto = 0 → no cap.
         if !isOffline, maxHeight > 0 {
             item.preferredMaximumResolution = CGSize(width: maxHeight * 16 / 9, height: maxHeight)
         }
