@@ -17,7 +17,6 @@ final class AppSettings {
         static let providerProxyURL = "providerProxyURL"
         static let providerProxyToken = "providerProxyToken"
         static let providerProxyEnabled = "providerProxyEnabled"
-        static let foldersEnabled = "foldersEnabled"
         static let autoDeleteWatchedDownloads = "autoDeleteWatchedDownloads"
         static let showCardInfo = "showCardInfo"
         static let streamingMaxHeight = "streamingMaxHeight"
@@ -71,11 +70,6 @@ final class AppSettings {
     /// to streamingcommunity/vixcloud even if URL+token are still saved.
     var providerProxyEnabled: Bool {
         didSet { defaults.set(providerProxyEnabled, forKey: Keys.providerProxyEnabled) }
-    }
-
-    /// Whether the watchlist groups titles into folders.
-    var foldersEnabled: Bool {
-        didSet { defaults.set(foldersEnabled, forKey: Keys.foldersEnabled) }
     }
 
     /// Auto-delete a downloaded title once it's been watched (≥90%).
@@ -154,7 +148,6 @@ final class AppSettings {
         self.providerProxyURL = defaults.string(forKey: Keys.providerProxyURL) ?? ""
         self.providerProxyToken = defaults.string(forKey: Keys.providerProxyToken) ?? ""
         self.providerProxyEnabled = defaults.object(forKey: Keys.providerProxyEnabled) as? Bool ?? true
-        self.foldersEnabled = defaults.object(forKey: Keys.foldersEnabled) as? Bool ?? true
         self.autoDeleteWatchedDownloads = defaults.object(forKey: Keys.autoDeleteWatchedDownloads) as? Bool ?? false
         self.showCardInfo = defaults.object(forKey: Keys.showCardInfo) as? Bool ?? true
         self.streamingMaxHeight = defaults.object(forKey: Keys.streamingMaxHeight) as? Int ?? 0       // Auto

@@ -28,7 +28,6 @@ struct LibraryBackupPayload: Codable {
         /// Optional for backward compatibility: backups made before this field
         /// existed simply leave the proxy master switch at its current value.
         var providerProxyEnabled: Bool?
-        var foldersEnabled: Bool
         var autoDeleteWatchedDownloads: Bool
         /// Optional for backward compatibility (added later).
         var showCardInfo: Bool?
@@ -47,7 +46,6 @@ struct LibraryBackupPayload: Codable {
         var status: String
         var addedAt: Date
         var doneAiredEpisodes: Int?
-        var folderName: String?
         var lastKnownAiredEpisodes: Int?
         var lastKnownAiredSeason: Int?
     }
@@ -115,7 +113,7 @@ extension Library {
         payload.watchlist = watchlist().map {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, title: $0.title, poster: $0.poster,
                   status: $0.statusRaw, addedAt: $0.addedAt, doneAiredEpisodes: $0.doneAiredEpisodes,
-                  folderName: $0.folderName, lastKnownAiredEpisodes: $0.lastKnownAiredEpisodes,
+                  lastKnownAiredEpisodes: $0.lastKnownAiredEpisodes,
                   lastKnownAiredSeason: $0.lastKnownAiredSeason)
         }
         payload.progress = (try? context.fetch(FetchDescriptor<ProgressEntry>()))?.map {
@@ -146,7 +144,7 @@ extension Library {
             tmdbApiKey: s.tmdbApiKey, autoplayNext: s.autoplayNext, providerLocale: s.providerLocale,
             providerProxyURL: s.providerProxyURL, providerProxyToken: s.providerProxyToken,
             providerProxyEnabled: s.providerProxyEnabled,
-            foldersEnabled: s.foldersEnabled, autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
+            autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
             showCardInfo: s.showCardInfo,
             streamingMaxHeight: s.streamingMaxHeight, downloadMaxHeight: s.downloadMaxHeight,
             accentR: s.accentR, accentG: s.accentG, accentB: s.accentB
@@ -187,7 +185,7 @@ extension Library {
                 title: d.title, poster: d.poster,
                 status: WatchlistStatus(rawValue: d.status) ?? .todo,
                 addedAt: d.addedAt, doneAiredEpisodes: d.doneAiredEpisodes,
-                folderName: d.folderName, lastKnownAiredEpisodes: d.lastKnownAiredEpisodes,
+                lastKnownAiredEpisodes: d.lastKnownAiredEpisodes,
                 lastKnownAiredSeason: d.lastKnownAiredSeason
             ))
         }
@@ -238,7 +236,6 @@ extension Library {
             s.providerProxyToken = snap.providerProxyToken ?? ""
             // Absent in older backups → keep the device's current switch.
             if let proxyEnabled = snap.providerProxyEnabled { s.providerProxyEnabled = proxyEnabled }
-            s.foldersEnabled = snap.foldersEnabled
             s.autoDeleteWatchedDownloads = snap.autoDeleteWatchedDownloads
             if let showCardInfo = snap.showCardInfo { s.showCardInfo = showCardInfo }
             if let h = snap.streamingMaxHeight { s.streamingMaxHeight = h }

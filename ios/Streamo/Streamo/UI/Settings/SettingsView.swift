@@ -111,14 +111,6 @@ struct SettingsView: View {
                 Text("Cancella automaticamente un download quando lo hai finito di guardare (≥90%), per liberare spazio.")
             }
 
-            Section {
-                Toggle("Folder nella mia lista", isOn: $settings.foldersEnabled)
-            } header: {
-                Text("Organizzazione")
-            } footer: {
-                Text("Raggruppa film e serie in cartelle nella tua lista. Le cartelle si assegnano dalla pagina \"La mia lista\".")
-            }
-
             Section("Avanzate") {
                 NavigationLink("Apri impostazioni avanzate") {
                     AdvancedSettingsView()

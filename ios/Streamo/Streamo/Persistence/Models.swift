@@ -20,8 +20,6 @@ final class WatchlistEntry {
     /// For TV rows manually marked done: aired-episode count at mark time, so
     /// new releases can flip the row back to todo without faking progress.
     var doneAiredEpisodes: Int?
-    /// Optional folder this entry belongs to (nil = ungrouped).
-    var folderName: String?
     /// Last aired-episode count we notified about — drives new-episode alerts.
     var lastKnownAiredEpisodes: Int?
     /// Last aired *season* number we notified about — distinguishes a new
@@ -36,7 +34,7 @@ final class WatchlistEntry {
 
     init(tmdbId: Int, mediaType: MediaType, title: String?, poster: String?,
          status: WatchlistStatus = .todo, addedAt: Date = .now, doneAiredEpisodes: Int? = nil,
-         folderName: String? = nil, lastKnownAiredEpisodes: Int? = nil, lastKnownAiredSeason: Int? = nil) {
+         lastKnownAiredEpisodes: Int? = nil, lastKnownAiredSeason: Int? = nil) {
         self.tmdbId = tmdbId
         self.mediaTypeRaw = mediaType.rawValue
         self.title = title
@@ -44,7 +42,6 @@ final class WatchlistEntry {
         self.statusRaw = status.rawValue
         self.addedAt = addedAt
         self.doneAiredEpisodes = doneAiredEpisodes
-        self.folderName = folderName
         self.lastKnownAiredEpisodes = lastKnownAiredEpisodes
         self.lastKnownAiredSeason = lastKnownAiredSeason
     }

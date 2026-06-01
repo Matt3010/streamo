@@ -3,24 +3,10 @@ import SwiftUI
 struct WatchlistView: View {
     @Environment(Library.self) private var library
     @State private var enrichment = WatchlistEnrichment()
-    @State private var showNewFolder = false
-    @State private var newFolderName = ""
-    @State private var pendingMove: MediaRef?
     @State private var pendingMarkDone: WatchlistEntry?
     @State private var pendingRemove: WatchlistEntry?
-    @AppStorage("watchlistExpandedFolders") private var expandedFoldersRaw = "[]"
     @AppStorage("watchlistStatusFilter") private var statusFilterRaw = "todo"
     @AppStorage("watchlistTypeFilter") private var typeFilterRaw = "all"
-
-    /// Expanded folders, persisted across launches (web keeps these in
-    /// localStorage). Backed by a JSON array string in @AppStorage.
-    private var expandedFolders: Set<String> {
-        get { Set((try? JSONDecoder().decode([String].self, from: Data(expandedFoldersRaw.utf8))) ?? []) }
-        nonmutating set {
-            let data = (try? JSONEncoder().encode(Array(newValue).sorted())) ?? Data("[]".utf8)
-            expandedFoldersRaw = String(decoding: data, as: UTF8.self)
-        }
-    }
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
 
@@ -90,18 +76,6 @@ struct WatchlistView: View {
             }
             Button("Annulla", role: .cancel) { pendingRemove = nil }
         }
-        .alert("Nuova cartella", isPresented: $showNewFolder) {
-            TextField("Nome cartella", text: $newFolderName)
-            Button("Crea") {
-                let name = newFolderName.trimmingCharacters(in: .whitespaces)
-                if let m = pendingMove, !name.isEmpty {
-                    library.setFolder(m.tmdbId, m.mediaType, name)
-                    expandedFolders.insert(name)   // show the folder right away
-                }
-                newFolderName = ""; pendingMove = nil
-            }
-            Button("Annulla", role: .cancel) { newFolderName = ""; pendingMove = nil }
-        }
     }
 
     // MARK: - Filters
@@ -143,35 +117,6 @@ struct WatchlistView: View {
         }
     }
 
-    // MARK: - Layout (folder cards in the grid + expandable panel)
-
-    /// A grid slot: either a folder tile (with its members) or a loose title.
-    private struct FolderSlot: Identifiable {
-        enum Kind { case folder(String, [WatchlistEntry]); case item(WatchlistEntry) }
-        let id: String
-        let kind: Kind
-        var folderName: String? { if case .folder(let n, _) = kind { return n }; return nil }
-    }
-
-    /// Folders appear inline at the position of their first member (web parity),
-    /// interleaved with loose titles, preserving the addedAt-desc order.
-    private func buildSlots(_ filtered: [WatchlistEntry]) -> [FolderSlot] {
-        var byFolder: [String: [WatchlistEntry]] = [:]
-        for e in filtered { if let f = e.folderName { byFolder[f, default: []].append(e) } }
-        var emitted = Set<String>()
-        var slots: [FolderSlot] = []
-        for e in filtered {
-            if let f = e.folderName {
-                if emitted.insert(f).inserted {
-                    slots.append(FolderSlot(id: "folder:\(f)", kind: .folder(f, byFolder[f] ?? [])))
-                }
-            } else {
-                slots.append(FolderSlot(id: "item:\(e.persistentModelID)", kind: .item(e)))
-            }
-        }
-        return slots
-    }
-
     /// Placeholder grid shown while the first enrichment pass runs, so the
     /// heavy work happens behind skeletons instead of lagging the live grid.
     private var skeletonGrid: some View {
@@ -183,97 +128,10 @@ struct WatchlistView: View {
 
     @ViewBuilder
     private func content(_ filtered: [WatchlistEntry]) -> some View {
-        if !AppSettings.shared.foldersEnabled {
-            LazyVGrid(columns: columns, spacing: 18) {
-                ForEach(filtered, id: \.persistentModelID) { cell($0) }
-            }
-            .padding(.horizontal)
-        } else {
-            let slots = buildSlots(filtered)
-            LazyVGrid(columns: columns, spacing: 18) {
-                ForEach(slots) { slot in
-                    switch slot.kind {
-                    case .folder(let name, let items): folderTile(name, items: items)
-                    case .item(let entry): cell(entry)
-                    }
-                }
-            }
-            .padding(.horizontal)
-
-            // Expanded folders' panels, in their first-appearance order.
-            ForEach(slots.compactMap(\.folderName).filter { expandedFolders.contains($0) }, id: \.self) { name in
-                folderPanel(name, items: filtered.filter { $0.folderName == name })
-            }
+        LazyVGrid(columns: columns, spacing: 18) {
+            ForEach(filtered, id: \.persistentModelID) { cell($0) }
         }
-    }
-
-    /// Folder tile — a 2:3 card with a red glow, icon, title, meta and chevron
-    /// (port of the web folder-card). Tapping toggles its panel.
-    private func folderTile(_ name: String, items: [WatchlistEntry]) -> some View {
-        let expanded = expandedFolders.contains(name)
-        return Button {
-            if expanded { expandedFolders.remove(name) } else { expandedFolders.insert(name) }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Theme.red.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
-                Spacer(minLength: 0)
-                Text(name).font(.headline).foregroundStyle(.white).lineLimit(1)
-                Text(folderMeta(items)).font(.caption).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .aspectRatio(2.0/3.0, contentMode: .fit)
-            .background(
-                ZStack {
-                    Color(.secondarySystemBackground)
-                    RadialGradient(colors: [Theme.red.opacity(0.16), .clear], center: .topLeading, startRadius: 0, endRadius: 150)
-                }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(alignment: .topTrailing) {
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.8))
-                    .rotationEffect(.degrees(expanded ? 180 : 0)).padding(10)
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(expanded ? Color.white.opacity(0.14) : Theme.red.opacity(0.42), lineWidth: 2)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Full-width panel listing a folder's items when expanded.
-    private func folderPanel(_ name: String, items: [WatchlistEntry]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "folder.fill").foregroundStyle(Theme.red)
-                Text(name).font(.headline)
-                Spacer()
-            }
-            LazyVGrid(columns: columns, spacing: 18) {
-                ForEach(items, id: \.persistentModelID) { cell($0) }
-            }
-        }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.10)))
         .padding(.horizontal)
-    }
-
-    private func folderMeta(_ items: [WatchlistEntry]) -> String {
-        let count = items.count
-        let tv = items.filter { $0.mediaType == .tv }.count
-        let movie = items.filter { $0.mediaType == .movie }.count
-        let countLabel = count == 1 ? "1 titolo" : "\(count) titoli"
-        let mediaLabel: String
-        if tv > 0 && movie > 0 { mediaLabel = "film e serie" }
-        else if tv > 0 { mediaLabel = tv == 1 ? "1 serie" : "\(tv) serie" }
-        else { mediaLabel = movie == 1 ? "1 film" : "\(movie) film" }
-        return "\(countLabel) • \(mediaLabel)"
     }
 
     // MARK: - Grid cell
@@ -304,21 +162,6 @@ struct WatchlistView: View {
     private func menu(for entry: WatchlistEntry) -> some View {
         Button { toggleStatus(entry) } label: {
             Label(statusMenuLabel(entry.status), systemImage: WatchStatus.statusIcon(entry.status))
-        }
-        if AppSettings.shared.foldersEnabled {
-            Menu("Sposta in cartella") {
-                ForEach(library.folders().filter { $0 != entry.folderName }, id: \.self) { folder in
-                    Button(folder) { library.setFolder(entry.tmdbId, entry.mediaType, folder); expandedFolders.insert(folder) }
-                }
-                Button { pendingMove = MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType); showNewFolder = true } label: {
-                    Label("Nuova cartella…", systemImage: "folder.badge.plus")
-                }
-            }
-            if entry.folderName != nil {
-                Button { library.setFolder(entry.tmdbId, entry.mediaType, nil) } label: {
-                    Label("Togli dalla cartella", systemImage: "folder.badge.minus")
-                }
-            }
         }
         Button(role: .destructive) {
             pendingRemove = entry

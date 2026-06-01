@@ -108,27 +108,6 @@ final class Library {
         save()
     }
 
-    /// Assign (or clear with nil) the folder of a watchlist entry. Reuses an
-    /// existing folder's spelling when the new name differs only by case or
-    /// whitespace, so "Action"/"action" don't split into two folders (web
-    /// groups case-insensitively via `folderIdFromName`).
-    func setFolder(_ tmdbId: Int, _ type: MediaType, _ folder: String?) {
-        guard let e = watchlistEntry(tmdbId, type) else { return }
-        guard let trimmed = folder?.trimmingCharacters(in: .whitespaces), !trimmed.isEmpty else {
-            e.folderName = nil
-            save()
-            return
-        }
-        let key = trimmed.lowercased()
-        e.folderName = folders().first { $0.lowercased() == key } ?? trimmed
-        save()
-    }
-
-    /// Distinct folder names currently in use, alphabetically.
-    func folders() -> [String] {
-        Set(watchlist().compactMap { $0.folderName }).sorted()
-    }
-
     // MARK: - Progress
 
     func progress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) -> ProgressEntry? {

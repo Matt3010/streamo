@@ -15,7 +15,6 @@ struct CardItem: Identifiable, Equatable {
     var position: Double?
     var duration: Double?
     var status: WatchlistStatus?
-    var folderName: String?
     var isUpcoming: Bool = false
     /// Red secondary line ("Mancano 3 episodi").
     var watchStatus: String?
@@ -71,7 +70,6 @@ struct CardItem: Identifiable, Equatable {
         self.title = e.title ?? "Senza titolo"
         self.poster = e.poster
         self.status = e.status
-        self.folderName = e.folderName
     }
 
     /// From a history entry.
