@@ -251,8 +251,8 @@ final class Library {
         var id: String { "\(mediaType.rawValue)-\(tmdbId)" }
     }
 
-    /// Latest progress row per title, after the web's continue filters: actually
-    /// started (`position > 5`), not hidden, and not a watchlist item already
+    /// Latest progress row per title, after the continue filters: actually
+    /// started (`position > 15`), not hidden, and not a watchlist item already
     /// marked `done`. Mirrors the WHERE + ROW_NUMBER in GET /user/progress.
     private func continueCandidates(limit: Int) -> [ProgressEntry] {
         let d = FetchDescriptor<ProgressEntry>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
@@ -262,7 +262,7 @@ final class Library {
         var result: [ProgressEntry] = []
         for r in rows {
             let key = "\(r.mediaTypeRaw)-\(r.tmdbId)"
-            guard r.position > 5, !r.hiddenFromContinue, !doneKeys.contains(key) else { continue }
+            guard r.position > 15, !r.hiddenFromContinue, !doneKeys.contains(key) else { continue }
             if seen.insert(key).inserted {
                 result.append(r)
                 if result.count >= limit { break }

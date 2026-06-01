@@ -240,7 +240,8 @@ struct MediaCard: View {
             if showsInfo {
                 Text(card.title)
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                    .lineLimit(1).shadow(color: .black.opacity(0.8), radius: 2)
+                    .lineLimit(aspectRatio > 1 ? 2 : 1)
+                    .shadow(color: .black.opacity(0.8), radius: 2)
                 if episodeBadge != nil || year != nil || rating != nil {
                     HStack(spacing: 6) {
                         if let b = episodeBadge { Text(b) }

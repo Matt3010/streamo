@@ -13,6 +13,8 @@ struct FilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(compact ? .footnote.weight(.medium) : .subheadline.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
                 .padding(.horizontal, compact ? 14 : 18)
                 .padding(.vertical, compact ? 6 : 9)
                 .background(
@@ -26,6 +28,7 @@ struct FilterChip: View {
                 .foregroundStyle(selected ? .white : .secondary)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

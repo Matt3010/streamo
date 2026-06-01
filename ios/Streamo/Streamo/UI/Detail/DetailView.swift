@@ -9,6 +9,7 @@ struct DetailView: View {
     @State private var pendingRequest: PlaybackRequest?
     @State private var showPicker = false
     @State private var confirmRemoveFromList = false
+    @State private var pendingDeleteDownload: DownloadEntry?
     @Environment(Library.self) private var library
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var hSizeClass
@@ -104,6 +105,17 @@ struct DetailView: View {
                 }
             }
             Button("Annulla", role: .cancel) {}
+        }
+        .confirmationDialog("Eliminare questo download?",
+                            isPresented: Binding(get: { pendingDeleteDownload != nil }, set: { if !$0 { pendingDeleteDownload = nil } }),
+                            titleVisibility: .visible) {
+            Button("Elimina", role: .destructive) {
+                if let dl = pendingDeleteDownload {
+                    deleteDownload(dl)
+                }
+                pendingDeleteDownload = nil
+            }
+            Button("Annulla", role: .cancel) { pendingDeleteDownload = nil }
         }
         .sheet(isPresented: $showPicker) {
             ProviderPickerSheet(
@@ -251,7 +263,8 @@ struct DetailView: View {
                 ToastCenter.shared.show("Aggiunto alla lista")
             }
         } label: {
-            Image(systemName: inList ? "bookmark.fill" : "bookmark")
+            Label(inList ? "Nella lista" : "Aggiungi alla lista",
+                  systemImage: inList ? "bookmark.fill" : "bookmark")
         }
         .buttonStyle(BrandButtonStyle(kind: inList ? .primary : .secondary))
         .accessibilityLabel(inList ? "Rimuovi dalla lista" : "Aggiungi alla lista")
@@ -305,15 +318,19 @@ struct DetailView: View {
         }
     }
 
+    private func deleteDownload(_ entry: DownloadEntry) {
+        locallyRemovedDownloadKeys.insert(downloadKey(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode))
+        downloads.delete(entry)
+        invalidateDownloadUI()
+        ToastCenter.shared.show("Download rimosso")
+    }
+
     @ViewBuilder
     private func movieDownloadButton(_ item: TmdbItem) -> some View {
         if let dl = downloadFor(item.id, .movie, season: 0, episode: 0) {
             let state = downloads.displayState(for: dl)
             Button(role: .destructive) {
-                locallyRemovedDownloadKeys.insert(downloadKey(item.id, .movie, season: 0, episode: 0))
-                downloads.delete(dl)
-                invalidateDownloadUI()
-                ToastCenter.shared.show("Download rimosso")
+                pendingDeleteDownload = dl
             } label: { Label(state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
         } else {
             Button {
@@ -333,10 +350,7 @@ struct DetailView: View {
         if let dl = downloadFor(item.id, .tv, season: model.selectedSeason, episode: episode) {
             let state = downloads.displayState(for: dl)
             Button(role: .destructive) {
-                locallyRemovedDownloadKeys.insert(downloadKey(item.id, .tv, season: model.selectedSeason, episode: episode))
-                downloads.delete(dl)
-                invalidateDownloadUI()
-                ToastCenter.shared.show("Download rimosso")
+                pendingDeleteDownload = dl
             } label: { Label(state == .completed ? "Elimina scaricato" : "Annulla download", systemImage: "trash") }
         } else {
             Button {
@@ -400,7 +414,7 @@ struct DetailView: View {
         invalidateDownloadUI()
 
         if inserted <= 0 {
-            ToastCenter.shared.show("Tutta la stagione e gia in download")
+            ToastCenter.shared.show("Tutta la stagione è già in download")
         } else if inserted == 1 {
             ToastCenter.shared.show("Aggiunto 1 episodio alla coda")
         } else {
@@ -498,7 +512,7 @@ struct DetailView: View {
                     Button {
                         enqueueSelectedSeason(item)
                     } label: {
-                        Label(seasonStats.actionable == 0 ? "Stagione gia in download" : "Scarica tutta la stagione",
+                        Label(seasonStats.actionable == 0 ? "Stagione già in download" : "Scarica tutta la stagione",
                               systemImage: "square.stack.3d.down.forward")
                     }
                     .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
@@ -538,26 +552,30 @@ struct DetailView: View {
                                 pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
                             }
                             .contextMenu {
-                            Button {
-                                pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
-                            } label: { Label("Riproduci", systemImage: "play.fill") }
-                            Button {
-                                library.markWatchedUpTo(tmdbId: item.id, season: model.selectedSeason,
-                                                        episode: ep.episodeNumber, title: item.displayTitle, poster: item.posterPath)
-                                ToastCenter.shared.show("Visto fino a S\(model.selectedSeason) E\(ep.episodeNumber)")
-                            } label: { Label("Segna visto fino a qui", systemImage: "checkmark.circle") }
-                            episodeDownloadButton(item, episode: ep.episodeNumber)
-                            if progressMap[ep.episodeNumber] != nil {
-                                Button(role: .destructive) {
-                                    library.removeProgress(item.id, .tv, season: model.selectedSeason, episode: ep.episodeNumber)
-                                    ToastCenter.shared.show("Progresso azzerato")
-                                } label: { Label("Azzera progresso", systemImage: "trash") }
+                                if !disabled {
+                                    Button {
+                                        pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
+                                    } label: { Label("Riproduci", systemImage: "play.fill") }
+                                }
+                                Button {
+                                    library.markWatchedUpTo(tmdbId: item.id, season: model.selectedSeason,
+                                                            episode: ep.episodeNumber, title: item.displayTitle, poster: item.posterPath)
+                                    ToastCenter.shared.show("Visto fino a S\(model.selectedSeason) E\(ep.episodeNumber)")
+                                } label: { Label("Segna visto fino a qui", systemImage: "checkmark.circle") }
+                                if !providerDisabled {
+                                    episodeDownloadButton(item, episode: ep.episodeNumber)
+                                }
+                                if progressMap[ep.episodeNumber] != nil {
+                                    Button(role: .destructive) {
+                                        library.removeProgress(item.id, .tv, season: model.selectedSeason, episode: ep.episodeNumber)
+                                        ToastCenter.shared.show("Progresso azzerato")
+                                    } label: { Label("Azzera progresso", systemImage: "trash") }
+                                }
                             }
                         }
                     }
                 }
                 .padding(.horizontal)
-            }
             }
         }
     }
@@ -571,7 +589,7 @@ struct DetailView: View {
         if ref.mediaType == .tv {
             let target = primaryPlaybackTarget(for: item)
             if let p = library.progress(item.id, .tv, season: target.season, episode: target.episode),
-               p.position > 10, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
+               p.position > 15, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
                 return "Riprendi da S\(target.season) E\(target.episode)"
             }
             return "Guarda S\(target.season) E\(target.episode)"
@@ -597,7 +615,7 @@ struct DetailView: View {
         let e = ref.mediaType == .tv ? episode : 0
         let p = library.progress(item.id, ref.mediaType, season: s, episode: e)
         var startAt = 0.0
-        if let p, p.position > 10, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
+        if let p, p.position > 15, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
             startAt = p.position
         }
         let offlineURL = offlineURL(for: item, season: s, episode: e)
@@ -654,14 +672,14 @@ struct DetailView: View {
     }
 
     private func movieResume(_ item: TmdbItem) -> ProgressEntry? {
-        guard let p = library.progress(item.id, .movie, season: 0, episode: 0), p.position > 10 else { return nil }
+        guard let p = library.progress(item.id, .movie, season: 0, episode: 0), p.position > 15 else { return nil }
         if p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold { return nil }
         return p
     }
 
     private func episodeProgressMap(_ item: TmdbItem) -> [Int: ProgressEntry] {
         var map: [Int: ProgressEntry] = [:]
-        for p in library.seriesProgress(item.id) where p.season == model.selectedSeason && p.position > 5 {
+        for p in library.seriesProgress(item.id) where p.season == model.selectedSeason && p.position > 15 {
             map[p.episode] = p
         }
         return map

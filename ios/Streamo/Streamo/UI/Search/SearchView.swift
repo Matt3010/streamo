@@ -106,23 +106,32 @@ struct SearchView: View {
             .padding(.horizontal).padding(.top, 12).padding(.bottom, 6)
 
             ForEach(Array(recents.enumerated()), id: \.element) { index, term in
-                Button {
-                    addRecent(term)   // move to front
-                    query = term      // re-runs via the debounce task
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
-                        Text(term).foregroundStyle(.primary).lineLimit(1)
-                        Spacer()
-                        Button { removeRecent(term) } label: {
-                            Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Button {
+                        addRecent(term)   // move to front
+                        query = term      // re-runs via the debounce task
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                            Text(term).foregroundStyle(.primary).lineLimit(1)
+                            Spacer()
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .contentShape(Rectangle())
-                    .padding(.horizontal).padding(.vertical, 12)
+                    .buttonStyle(.plain)
+
+                    Button { removeRecent(term) } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
                 if index < recents.count - 1 {
                     Divider().padding(.leading, 44)
                 }

@@ -22,6 +22,9 @@ struct BrandButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
                 .frame(maxWidth: fullWidth ? .infinity : nil)
                 .padding(.vertical, 13)
                 .padding(.horizontal, 18)

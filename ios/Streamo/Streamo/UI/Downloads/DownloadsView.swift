@@ -40,6 +40,7 @@ struct DownloadsView: View {
     @State private var downloads = DownloadManager.shared
     @State private var pendingRequest: PlaybackRequest?
     @State private var pendingDelete: DownloadEntry?
+    @State private var pendingDeleteSeries: SeriesDelete?
     @State private var pendingShare: LANShareItem?
     // Quick LAN-share toggle (toolbar). `lanIP`/`lanPort` are refreshed lazily
     // so the menu and toast can show the reachable address without an async hop.
@@ -59,6 +60,13 @@ struct DownloadsView: View {
             case .series(let id, _, _, _): return "s-\(id)"
             }
         }
+    }
+
+    private struct SeriesDelete: Identifiable {
+        let tmdbId: Int
+        let title: String
+        let episodes: [DownloadEntry]
+        var id: Int { tmdbId }
     }
 
     /// Movies and series interleaved by first appearance (addedAt order).
@@ -101,7 +109,7 @@ struct DownloadsView: View {
                             }
                             .contextMenu {
                                 Button(role: .destructive) {
-                                    for e in eps { downloads.delete(e) }
+                                    pendingDeleteSeries = SeriesDelete(tmdbId: id, title: title, episodes: eps)
                                 } label: { Label("Elimina tutti i download", systemImage: "trash") }
                             }
                         }
@@ -142,6 +150,18 @@ struct DownloadsView: View {
                 pendingDelete = nil
             }
             Button("Annulla", role: .cancel) { pendingDelete = nil }
+        }
+        .confirmationDialog("Eliminare tutti i download di \(pendingDeleteSeries?.title ?? "questa serie")?",
+                            isPresented: Binding(get: { pendingDeleteSeries != nil }, set: { if !$0 { pendingDeleteSeries = nil } }),
+                            titleVisibility: .visible) {
+            Button("Elimina tutti", role: .destructive) {
+                if let series = pendingDeleteSeries {
+                    for e in series.episodes { downloads.delete(e) }
+                    ToastCenter.shared.show("Download eliminati")
+                }
+                pendingDeleteSeries = nil
+            }
+            Button("Annulla", role: .cancel) { pendingDeleteSeries = nil }
         }
     }
 
@@ -518,6 +538,7 @@ struct LANShareItem: Identifiable {
 /// dismiss is via the drag indicator / swipe-down.
 struct LANShareSheet: View {
     let item: LANShareItem
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -535,7 +556,8 @@ struct LANShareSheet: View {
                             .font(.system(.footnote, design: .monospaced))
                             .textSelection(.enabled)
                             .multilineTextAlignment(.center)
-                            .lineLimit(nil)
+                            .lineLimit(3)
+                            .truncationMode(.middle)
                             .padding(.horizontal)
                     }
 
@@ -558,7 +580,8 @@ struct LANShareSheet: View {
                             .font(.system(.caption2, design: .monospaced))
                             .textSelection(.enabled)
                             .multilineTextAlignment(.center)
-                            .lineLimit(nil)
+                            .lineLimit(3)
+                            .truncationMode(.middle)
                             .padding(.horizontal)
                         Button("Copia link VLC") {
                             UIPasteboard.general.string = item.manifestURL
@@ -578,6 +601,11 @@ struct LANShareSheet: View {
             }
             .navigationTitle(item.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Chiudi") { dismiss() }
+                }
+            }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -589,6 +617,7 @@ struct LANShareSheet: View {
 /// here a peer browses to a specific title.
 struct LANIndexQRSheet: View {
     let url: String
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -599,6 +628,8 @@ struct LANIndexQRSheet: View {
                         .font(.system(.footnote, design: .monospaced))
                         .textSelection(.enabled)
                         .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .truncationMode(.middle)
                         .padding(.horizontal)
                     Button {
                         UIPasteboard.general.string = url
@@ -619,6 +650,11 @@ struct LANIndexQRSheet: View {
             }
             .navigationTitle("Condivisione LAN")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Chiudi") { dismiss() }
+                }
+            }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

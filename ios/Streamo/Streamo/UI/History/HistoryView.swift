@@ -4,6 +4,7 @@ import SwiftData
 struct HistoryView: View {
     @Environment(Library.self) private var library
     @AppStorage("historyTypeFilter") private var typeFilterRaw = "all"
+    @State private var pendingRemove: HistoryEntry?
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
 
@@ -51,6 +52,18 @@ struct HistoryView: View {
         }
         .navigationTitle("Cronologia")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Rimuovere \(pendingRemove?.title ?? "questo titolo") dalla cronologia?",
+                            isPresented: Binding(get: { pendingRemove != nil }, set: { if !$0 { pendingRemove = nil } }),
+                            titleVisibility: .visible) {
+            Button("Rimuovi", role: .destructive) {
+                if let entry = pendingRemove {
+                    library.removeHistory(entry)
+                    ToastCenter.shared.show("Rimosso dalla cronologia")
+                }
+                pendingRemove = nil
+            }
+            Button("Annulla", role: .cancel) { pendingRemove = nil }
+        }
     }
 
     // MARK: - Watch time counter (port of formatWatchTimeCounter)
@@ -141,8 +154,7 @@ struct HistoryView: View {
                     .buttonStyle(.plain)
                     .contextMenu {
                         Button(role: .destructive) {
-                            library.removeHistory(entry)
-                            ToastCenter.shared.show("Rimosso dalla cronologia")
+                            pendingRemove = entry
                         } label: { Label("Rimuovi dalla cronologia", systemImage: "trash") }
                     }
                 }
@@ -190,7 +202,7 @@ struct HistoryView: View {
     }
 
     private func summary(_ items: [HistoryEntry]) -> String {
-        // Count only meaningful rows: episodes started >10s or completed; films
+        // Count only meaningful rows: episodes started >15s or completed; films
         // only when completed (port of the web historySectionSummary).
         var episodes = 0, movies = 0
         for e in items {
@@ -198,7 +210,7 @@ struct HistoryView: View {
             let pos = p?.position ?? 0, dur = p?.duration ?? 0
             let completed = dur > 0 && pos >= dur * TVLogic.watchedThreshold
             if e.mediaType == .tv {
-                if completed || pos > 10 { episodes += 1 }
+                if completed || pos > 15 { episodes += 1 }
             } else if completed {
                 movies += 1
             }
