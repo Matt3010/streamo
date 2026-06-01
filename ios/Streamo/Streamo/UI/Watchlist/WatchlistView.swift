@@ -54,8 +54,8 @@ struct WatchlistView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Enrich once on appear (NOT keyed to library.version: the auto-flip
         // writes bump version, and re-running on every bump was the churn that
-        // caused the lag). Skeletons cover this first pass; afterwards TMDB
-        // details are cached so the grid scrolls smoothly.
+        // caused the lag). Skeletons cover this first pass; afterwards derived
+        // display values are kept so the grid scrolls smoothly.
         .task { await enrichment.refresh(all, library: library) }
         .refreshable { await enrichment.refresh(library.watchlist(), library: library, force: true) }
         .alert("Segna come visto", isPresented: Binding(get: { pendingMarkDone != nil }, set: { if !$0 { pendingMarkDone = nil } })) {

@@ -2,17 +2,13 @@ import Foundation
 
 /// Talks to TMDB directly (the web app proxied this through nginx). Port of
 /// `tmdb.service.ts`. Mirrors its language/region defaults (it-IT, region IT)
-/// and the multi-URL reviews fallback. Detail responses are memo-cached.
+/// and the multi-URL reviews fallback.
 actor TMDBClient {
     static let shared = TMDBClient()
 
     private let base = URL(string: "https://api.themoviedb.org/3")!
     private let session: URLSession
     private let decoder = JSONDecoder()
-
-    private var detailCache: [String: TmdbItem] = [:]
-    private var detailOrder: [String] = []
-    private let detailCacheMax = 100
 
     enum TMDBError: Error, LocalizedError {
         case missingApiKey
@@ -37,14 +33,10 @@ actor TMDBClient {
 
     /// Movie/TV detail with credits + videos appended.
     func details(id: Int, type: MediaType) async throws -> TmdbItem {
-        let key = "\(type.rawValue)-\(id)"
-        if let cached = detailCache[key] { return cached }
-        let item: TmdbItem = try await get(
+        try await get(
             path: "/\(type.rawValue)/\(id)",
             query: ["append_to_response": "credits,videos"]
         )
-        cacheDetail(item, key: key)
-        return item
     }
 
     func seasonDetails(tvId: Int, season: Int) async throws -> TmdbSeasonDetails {
@@ -115,17 +107,6 @@ actor TMDBClient {
     }
 
     // MARK: - Helpers
-
-    private func cacheDetail(_ item: TmdbItem, key: String) {
-        if detailCache[key] == nil {
-            detailOrder.append(key)
-            if detailOrder.count > detailCacheMax {
-                let evict = detailOrder.removeFirst()
-                detailCache[evict] = nil
-            }
-        }
-        detailCache[key] = item
-    }
 
     static func sortByNewest(_ items: [TmdbItem]) -> [TmdbItem] {
         items.sorted { newestTimestamp($0) > newestTimestamp($1) }

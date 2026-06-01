@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Loads TMDB details for every watchlist entry (memo-cached by TMDBClient) to
+/// Loads fresh TMDB details for every watchlist entry to
 /// derive whether a title is still unreleased (for the "Non usciti" filter) and
 /// to run the on-read status auto-flip. The per-card badge/status text is
 /// computed by `MediaCard` itself, so it's not done here.

@@ -74,43 +74,72 @@ struct DiskImageCache: Sendable {
 /// sometimes went missing when opening pages).
 struct PosterImage: View {
     let url: URL?
+    var fallbackURL: URL?
+    var placeholderSystemImage: String?
     var contentMode: ContentMode = .fill
 
     @State private var image: UIImage?
+    @State private var didFail = false
 
     var body: some View {
         ZStack {
             Color(.secondarySystemBackground)
             if let image {
                 Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
+            } else if didFail, let placeholderSystemImage {
+                Image(systemName: placeholderSystemImage).foregroundStyle(.secondary)
             }
         }
-        .task(id: url) { await load() }
+        .task(id: taskID) { await load() }
+    }
+
+    private var taskID: String {
+        "\(url?.absoluteString ?? "")|\(fallbackURL?.absoluteString ?? "")"
     }
 
     private func load() async {
         image = nil
-        guard let url else { return }
+        didFail = false
+        guard let url else {
+            await loadFallbackOrFail()
+            return
+        }
+        if await loadImage(url) { return }
+        await loadFallbackOrFail(excluding: url)
+    }
+
+    private func loadFallbackOrFail(excluding excluded: URL? = nil) async {
+        let canUseFallback = fallbackURL.map { fallback in
+            excluded.map { $0 != fallback } ?? true
+        } ?? false
+        if let fallbackURL, canUseFallback, await loadImage(fallbackURL) {
+            return
+        }
+        if !Task.isCancelled { didFail = true }
+    }
+
+    private func loadImage(_ url: URL) async -> Bool {
         if let cached = ImageCache.shared.object(forKey: url as NSURL) {
             image = cached
-            return
+            return true
         }
         if let cached = ImageCache.disk.image(for: url) {
             ImageCache.shared.setObject(cached, forKey: url as NSURL)
             image = cached
-            return
+            return true
         }
         for attempt in 0..<3 {
-            if Task.isCancelled { return }
+            if Task.isCancelled { return false }
             if let (data, response) = try? await URLSession.shared.data(from: url) {
                 let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? true
                 if ok, let img = UIImage(data: data) {
                     ImageCache.store(img, data: data, for: url)
                     if !Task.isCancelled { image = img }
-                    return
+                    return true
                 }
             }
             try? await Task.sleep(for: .milliseconds(300 * (attempt + 1)))
         }
+        return false
     }
 }

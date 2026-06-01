@@ -526,6 +526,7 @@ struct DetailView: View {
                             let disabled = providerDisabled && !offlineReady
                             EpisodeCard(
                                 episode: ep,
+                                fallbackImageURL: TmdbImage.url(item.backdropPath ?? item.posterPath, .w300),
                                 progress: progressMap[ep.episodeNumber],
                                 isHighlighted: ep.episodeNumber == highlight,
                                 download: downloadFor(item.id, .tv, season: model.selectedSeason, episode: ep.episodeNumber),
@@ -765,6 +766,7 @@ struct DetailView: View {
 /// bar overlaid, red border when it's the next-to-watch, red title when seen.
 private struct EpisodeCard: View {
     let episode: TmdbEpisodeDetail
+    let fallbackImageURL: URL?
     let progress: ProgressEntry?
     let isHighlighted: Bool
     var download: DownloadEntry? = nil
@@ -835,9 +837,10 @@ private struct EpisodeCard: View {
             Text(episode.name?.nilIfEmpty ?? "Episodio \(episode.episodeNumber)")
                 .font(.caption.bold()).lineLimit(1)
                 .foregroundStyle(isWatched ? Theme.red : .white)
-            if let overview = episode.overview?.nilIfEmpty {
-                Text(overview).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-            }
+            Text(episode.overview?.nilIfEmpty ?? "Descrizione non disponibile.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
         .frame(width: w)
     }
@@ -895,7 +898,9 @@ private struct EpisodeCard: View {
     @ViewBuilder
     private var still: some View {
         if let url = TmdbImage.url(episode.stillPath, .w300) {
-            PosterImage(url: url, contentMode: .fill)
+            PosterImage(url: url, fallbackURL: fallbackImageURL, placeholderSystemImage: "tv", contentMode: .fill)
+        } else if let fallbackImageURL {
+            PosterImage(url: fallbackImageURL, placeholderSystemImage: "tv", contentMode: .fill)
         } else {
             ZStack {
                 Color(.secondarySystemBackground)
