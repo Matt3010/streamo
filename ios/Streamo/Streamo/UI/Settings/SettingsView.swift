@@ -85,7 +85,7 @@ struct SettingsView: View {
                 supportsOpacity: false
             )
             Toggle("Mostra titolo, anno e voto", isOn: $settings.showCardInfo)
-            Button("Ripristina rosso Streamo") {
+            Button("Ripristina accent predefinito") {
                 Theme.setAccent(
                     Color(
                         red: AppSettings.defaultAccent.r,
@@ -142,7 +142,7 @@ struct SettingsView: View {
         Section {
             LabeledContent("Versione", value: appVersion)
         } footer: {
-            Text("Streamo — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.")
+            Text("Project Obsidian — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.")
         }
     }
 
@@ -187,7 +187,7 @@ struct SettingsView: View {
                         Label("Permesso \"Rete locale\" negato", systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.orange)
-                        Text("Senza questo permesso i dispositivi sul Wi‑Fi non possono raggiungere i tuoi download (l'hotspot funziona comunque). Attivalo per Streamo nelle Impostazioni di sistema.")
+                        Text("Senza questo permesso i dispositivi sul Wi‑Fi non possono raggiungere i tuoi download (l'hotspot funziona comunque). Attivalo per Project Obsidian nelle Impostazioni di sistema.")
                             .font(.footnote).foregroundStyle(.secondary)
                         Button("Apri Impostazioni") {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -293,7 +293,7 @@ struct SettingsView: View {
         let stamp = ISO8601DateFormatter().string(from: .now)
             .replacingOccurrences(of: ":", with: "-")
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("streamo-backup-\(stamp).json")
+            .appendingPathComponent("project-obsidian-backup-\(stamp).json")
         do {
             try data.write(to: url, options: .atomic)
             backupFile = BackupFile(url: url)
@@ -320,7 +320,7 @@ struct SettingsView: View {
         if library.restoreBackup(from: data) {
             ToastCenter.shared.show("Libreria ripristinata")
         } else {
-            restoreError = "Il file non sembra un backup di Streamo valido."
+            restoreError = "Il file non sembra un backup di Project Obsidian valido."
         }
     }
 

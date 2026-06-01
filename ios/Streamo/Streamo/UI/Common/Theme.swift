@@ -24,7 +24,7 @@ enum Theme {
 
     /// Preset swatches offered in Settings.
     static let accentPresets: [Color] = [
-        Color(red: 0.898, green: 0.035, blue: 0.078),  // Streamo red (default)
+        Color(red: 0.898, green: 0.035, blue: 0.078),  // default red
         Color(red: 1.0, green: 0.42, blue: 0.21),      // orange
         Color(red: 0.96, green: 0.76, blue: 0.06),     // amber
         Color(red: 0.20, green: 0.78, blue: 0.35),     // green

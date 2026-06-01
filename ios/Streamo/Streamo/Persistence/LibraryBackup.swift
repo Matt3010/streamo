@@ -156,7 +156,7 @@ extension Library {
     }
 
     /// Wipe the local library and reinsert everything from `data`. Returns
-    /// `false` if the file isn't a valid Streamo backup (nothing is touched
+    /// `false` if the file isn't a valid Project Obsidian backup (nothing is touched
     /// in that case). On-disk download bundles (`.movpkg`) are deleted because
     /// the restored download rows lose their `localPath` references.
     @discardableResult

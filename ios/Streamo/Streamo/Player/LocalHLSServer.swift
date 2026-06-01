@@ -90,7 +90,7 @@ final class LocalHLSServer: @unchecked Sendable {
             // Network" permission prompt. Without the permission, incoming LAN
             // connections are silently dropped on a regular Wi-Fi (a personal
             // hotspot bypasses this, which is why it works there).
-            listener.service = NWListener.Service(name: "Streamo", type: "_http._tcp")
+            listener.service = NWListener.Service(name: "Project Obsidian", type: "_http._tcp")
             listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
             listener.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
@@ -275,7 +275,7 @@ final class LocalHLSServer: @unchecked Sendable {
             // the browser show its native password prompt.
             guard !lanPassword.isEmpty, basicAuthMatches(lines: lines) else {
                 send(status: "401 Unauthorized", on: connection,
-                     extra: ["WWW-Authenticate": "Basic realm=\"Streamo\", charset=\"UTF-8\""],
+                     extra: ["WWW-Authenticate": "Basic realm=\"Project Obsidian\", charset=\"UTF-8\""],
                      then: { connection.cancel() })
                 return
             }
@@ -679,7 +679,7 @@ final class LocalHLSServer: @unchecked Sendable {
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>Streamo — Download condivisi</title>
+        <title>Project Obsidian — Download condivisi</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
                  background: #111; color: #eee; max-width: 760px; margin: 0 auto; padding: 24px 18px; }
@@ -702,7 +702,7 @@ final class LocalHLSServer: @unchecked Sendable {
         </style>
         </head>
         <body>
-        <h1>Streamo — Download</h1>
+        <h1>Project Obsidian — Download</h1>
         <p class="hint">"Guarda" apre direttamente nel browser. Il link ".m3u8" è per VLC (Media → Apri flusso di rete).</p>
         \(rows)
         </body>
@@ -727,7 +727,7 @@ final class LocalHLSServer: @unchecked Sendable {
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>\(safe) — Streamo</title>
+        <title>\(safe) — Project Obsidian</title>
         <style>
           html, body { margin: 0; padding: 0; background: #000; height: 100%; }
           body { display: flex; flex-direction: column; }
