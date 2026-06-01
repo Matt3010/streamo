@@ -12,5 +12,8 @@ import SwiftUI
 struct StreamoWidgetBundle: WidgetBundle {
     var body: some Widget {
         StreamoWidget()
+        if #available(iOS 18.0, *) {
+            LANShareControl()
+        }
     }
 }

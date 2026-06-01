@@ -41,6 +41,13 @@ struct DownloadsView: View {
     @State private var pendingRequest: PlaybackRequest?
     @State private var pendingDelete: DownloadEntry?
     @State private var pendingShare: LANShareItem?
+    // Quick LAN-share toggle (toolbar). `lanIP`/`lanPort` are refreshed lazily
+    // so the menu and toast can show the reachable address without an async hop.
+    @State private var lanIP: String?
+    @State private var lanPort: UInt16 = 0
+    @State private var showLANQR = false
+    @State private var showLANPasswordPrompt = false
+    @State private var lanPasswordDraft = ""
 
     /// One row in the list: a movie, or a whole TV series (its episodes).
     private enum Item: Identifiable {
@@ -105,8 +112,28 @@ struct DownloadsView: View {
         }
         .navigationTitle("Download")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { lanToolbarToggle } }
+        .task { if settings.lanShareEnabled { refreshLANInfo() } }
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
         .sheet(item: $pendingShare) { LANShareSheet(item: $0) }
+        .sheet(isPresented: $showLANQR) {
+            if let ip = lanIP, lanPort != 0 {
+                LANIndexQRSheet(url: "http://\(ip):\(lanPort)/\(settings.lanToken)/")
+            }
+        }
+        .alert("Password Condivisione LAN", isPresented: $showLANPasswordPrompt) {
+            SecureField("Password", text: $lanPasswordDraft)
+                .textInputAutocapitalization(.never)
+            Button("Attiva") {
+                let pw = lanPasswordDraft.trimmingCharacters(in: .whitespaces)
+                guard !pw.isEmpty else { return }
+                settings.lanPassword = pw
+                enableLAN()
+            }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("Imposta una password che verrà richiesta ai dispositivi sulla rete per accedere ai download.")
+        }
         .confirmationDialog("Eliminare questo download?",
                             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible) {
@@ -116,6 +143,82 @@ struct DownloadsView: View {
             }
             Button("Annulla", role: .cancel) { pendingDelete = nil }
         }
+    }
+
+    // MARK: - Quick LAN-share toggle
+
+    /// Antenna button in the toolbar. A single tap flips LAN sharing on/off; a
+    /// long-press opens a menu with the reachable address, QR, auto-off and an
+    /// explicit "off". Saves the trip into Settings just to flip the switch.
+    @ViewBuilder
+    private var lanToolbarToggle: some View {
+        Menu {
+            if settings.lanShareEnabled {
+                Section(lanStatusLine) {
+                    if let ip = lanIP, lanPort != 0 {
+                        Button {
+                            UIPasteboard.general.string = "http://\(ip):\(lanPort)/\(settings.lanToken)/"
+                            ToastCenter.shared.show("URL copiato")
+                        } label: { Label("Copia URL (\(ip):\(lanPort))", systemImage: "doc.on.doc") }
+                        Button { showLANQR = true } label: { Label("Mostra QR", systemImage: "qrcode") }
+                    }
+                    Button(role: .destructive) { disableLAN() } label: {
+                        Label("Disattiva", systemImage: "antenna.radiowaves.left.and.right.slash")
+                    }
+                }
+            } else {
+                Button { toggleLAN() } label: {
+                    Label("Attiva condivisione LAN", systemImage: "antenna.radiowaves.left.and.right")
+                }
+            }
+        } label: {
+            Image(systemName: settings.lanShareEnabled
+                  ? "antenna.radiowaves.left.and.right"
+                  : "antenna.radiowaves.left.and.right.slash")
+            .foregroundStyle(settings.lanShareEnabled ? Theme.red : .secondary)
+        } primaryAction: {
+            toggleLAN()
+        }
+        .accessibilityLabel(settings.lanShareEnabled ? "Condivisione LAN attiva" : "Attiva condivisione LAN")
+    }
+
+    private func toggleLAN() {
+        if settings.lanShareEnabled {
+            disableLAN()
+        } else if settings.lanPassword.isEmpty {
+            lanPasswordDraft = ""
+            showLANPasswordPrompt = true
+        } else {
+            enableLAN()
+        }
+    }
+
+    private func enableLAN() {
+        LANShareCoordinator.setEnabled(true)
+        refreshLANInfo()
+        if let ip = lanIP, lanPort != 0 {
+            ToastCenter.shared.show("Condivisione LAN attiva — \(ip):\(lanPort)")
+        } else {
+            ToastCenter.shared.show("Condivisione LAN attiva")
+        }
+    }
+
+    private func disableLAN() {
+        LANShareCoordinator.setEnabled(false)
+        ToastCenter.shared.show("Condivisione LAN disattivata")
+    }
+
+    private func refreshLANInfo() {
+        lanIP = LANAddress.currentShareableIPv4()
+        lanPort = LocalHLSServer.shared.waitForReady(timeout: 0.5)
+    }
+
+    /// Section header for the active-share menu — adds the auto-off time when set.
+    private var lanStatusLine: String {
+        if let deadline = settings.lanShareDeadline, settings.lanShareAutoOffMinutes > 0 {
+            return "Attiva · si spegne \(deadline.formatted(date: .omitted, time: .shortened))"
+        }
+        return "Condivisione LAN attiva"
     }
 
     /// Returns the closure used by the row's "Condividi su LAN" menu item, or
@@ -474,6 +577,47 @@ struct LANShareSheet: View {
                 .frame(maxWidth: .infinity)
             }
             .navigationTitle(item.title)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// QR + link for the LAN index page (`http://<ip>:<port>/<token>/`), shown from
+/// the Downloads toolbar's quick-share menu. Lists every shared download; from
+/// here a peer browses to a specific title.
+struct LANIndexQRSheet: View {
+    let url: String
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    QRCodeView(payload: url, size: 220)
+                    Text(url)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Button {
+                        UIPasteboard.general.string = url
+                        ToastCenter.shared.show("URL copiato")
+                    } label: {
+                        Label("Copia URL", systemImage: "doc.on.doc")
+                            .frame(maxWidth: 240)
+                    }
+                    .buttonStyle(BrandButtonStyle(kind: .primary, fullWidth: false))
+                    Text("Inquadra il QR o apri il link su un dispositivo sulla stessa rete per vedere tutti i download condivisi.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity)
+            }
+            .navigationTitle("Condivisione LAN")
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])

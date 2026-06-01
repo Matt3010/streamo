@@ -164,7 +164,7 @@ final class Library {
             if type == .movie, duration > 0, position >= duration * TVLogic.watchedThreshold {
                 w.status = .done
                 w.doneAiredEpisodes = 0
-            } else if w.status == .todo, position > 10 {
+            } else if w.status == .todo, position > 15 {
                 w.status = .inProgress
             }
         }

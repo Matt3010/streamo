@@ -13,6 +13,36 @@ enum WidgetShared {
 
     private static var defaults: UserDefaults? { UserDefaults(suiteName: appGroup) }
 
+    // MARK: - LAN sharing ↔ Control Center coordination
+    //
+    // The Control Center toggle lives in the widget extension and can't reach
+    // the app's HLS server directly (different process, and the server only
+    // runs in-app). So they coordinate through this App Group: the control
+    // records a one-shot *request* and opens the app; the app applies it and
+    // writes back the *active* state the control reads to draw its on/off.
+
+    /// Control Center control identifier — shared so the app can target it in
+    /// `ControlCenter.reloadControls(ofKind:)`.
+    static let lanControlKind = "com.streamo.lanshare.control"
+    private static let lanRequestKey = "lanShareControlRequest"
+    private static let lanActiveKey = "lanShareActive"
+
+    /// Record the on/off the user picked in Control Center. Consumed once by
+    /// the app on its next foreground.
+    static func setLANControlRequest(_ on: Bool) { defaults?.set(on, forKey: lanRequestKey) }
+
+    /// Return and clear a pending Control Center request, or nil if none.
+    static func takeLANControlRequest() -> Bool? {
+        guard let defaults, defaults.object(forKey: lanRequestKey) != nil else { return nil }
+        let value = defaults.bool(forKey: lanRequestKey)
+        defaults.removeObject(forKey: lanRequestKey)
+        return value
+    }
+
+    /// Current LAN-sharing state, mirrored by the app for the control to show.
+    static func setLANActive(_ on: Bool) { defaults?.set(on, forKey: lanActiveKey) }
+    static func lanActive() -> Bool { defaults?.bool(forKey: lanActiveKey) ?? false }
+
     struct ContinueItem: Codable, Identifiable {
         let tmdbId: Int
         let mediaTypeRaw: String      // "movie" | "tv"

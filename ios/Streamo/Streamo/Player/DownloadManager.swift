@@ -87,6 +87,7 @@ final class DownloadManager {
         LocalHLSServer.shared.setProgressHandler { [weak self] report in
             Task { @MainActor in
                 guard let self, let library = self.library else { return }
+                guard report.position > 15 else { return }
                 let type = MediaType(rawValue: report.mediaType) ?? .movie
                 library.saveProgress(
                     tmdbId: report.tmdbId,
@@ -98,6 +99,14 @@ final class DownloadManager {
                     title: report.title,
                     poster: report.poster,
                     backdrop: report.backdrop
+                )
+                library.saveHistory(
+                    tmdbId: report.tmdbId,
+                    type: type,
+                    season: report.season,
+                    episode: report.episode,
+                    title: report.title,
+                    poster: report.poster
                 )
                 // saveProgress bumps library.version → the observer rearm
                 // below picks it up and refreshes the LAN catalog.

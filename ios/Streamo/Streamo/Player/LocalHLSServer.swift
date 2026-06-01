@@ -447,10 +447,10 @@ final class LocalHLSServer: @unchecked Sendable {
             return snap.title
         } ?? key
         // Resume rule mirrors the iOS app's PlaybackController:
-        //   only seed startAt if we have at least 10s of progress AND we
+        //   only seed startAt if we have at least 15s of progress AND we
         //   haven't crossed the "watched" threshold (90% by default).
         var startAt = 0.0
-        if let snap = snapshot, snap.position > 10,
+        if let snap = snapshot, snap.position > 15,
            snap.duration <= 0 || snap.position < snap.duration * 0.9 {
             startAt = snap.position
         }

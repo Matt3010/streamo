@@ -134,14 +134,14 @@ struct PlayerScreen: View {
         .blur(radius: 6)
     }
 
-    /// Persist progress (and a history row once past the 10s "actually started"
+    /// Persist progress (and a history row once past the 15s "actually started"
     /// gate) under the *currently playing* episode — mirrors the web
     /// PlayerService.persistProgress. Uses controller.activeRequest so it stays
     /// correct after autoplay advances to the next episode.
     private func persist(position: Double, duration: Double) {
-        // Web persists progress only past 10s ("actually started"); below that
+        // Web persists progress only past 15s ("actually started"); below that
         // a brief blip shouldn't write a resume row or a history entry.
-        guard position > 10, let r = controller.activeRequest else { return }
+        guard position > 15, let r = controller.activeRequest else { return }
         library.saveProgress(
             tmdbId: r.tmdbId, type: r.mediaType,
             season: r.season, episode: r.episode,

@@ -47,9 +47,13 @@ struct RootTabView: View {
             LocalHLSServer.shared.setLANConfig(enabled: s.lanShareEnabled, token: s.lanToken, password: s.lanPassword)
             if s.lanShareEnabled { BackgroundKeepAlive.shared.start() }
             LANAutoShutoff.shared.reschedule()
+            // Honour a LAN toggle made from the Control Center control that
+            // launched (or returned to) the app, and seed the control's state.
+            LANShareCoordinator.applyPendingControlRequest()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
+            if phase == .active { LANShareCoordinator.applyPendingControlRequest() }
         }
         .onOpenURL { url in handleDeepLink(url) }
     }

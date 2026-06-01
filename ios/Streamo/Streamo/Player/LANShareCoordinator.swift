@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WidgetKit
 
 /// Single point of truth for turning LAN sharing on and off. Mutates
 /// `AppSettings.lanShareEnabled`, pushes config to `LocalHLSServer`, drives
@@ -23,6 +24,34 @@ enum LANShareCoordinator {
             s.lanShareDeadline = nil
         }
         LANAutoShutoff.shared.reschedule()
+        syncControlState()
+    }
+
+    /// Apply a pending Control Center toggle (if any) and refresh the control's
+    /// displayed state. Called at launch and whenever the app becomes active —
+    /// this is how the out-of-process Control Center toggle actually starts or
+    /// stops the in-app server.
+    static func applyPendingControlRequest() {
+        let s = AppSettings.shared
+        if let requested = WidgetShared.takeLANControlRequest() {
+            if requested && s.lanPassword.isEmpty {
+                // Control Center can't prompt for a password, so we can only
+                // enable once one exists. Point the user at Settings.
+                ToastCenter.shared.show("Imposta una password per la Condivisione LAN nelle Impostazioni")
+            } else if requested != s.lanShareEnabled {
+                setEnabled(requested)   // mirrors the control state itself
+            }
+        }
+        syncControlState()
+    }
+
+    /// Mirror the live LAN state into the App Group and ask Control Center to
+    /// redraw the toggle so it matches what the app is actually doing.
+    static func syncControlState() {
+        WidgetShared.setLANActive(AppSettings.shared.lanShareEnabled)
+        if #available(iOS 18.0, *) {
+            ControlCenter.shared.reloadControls(ofKind: WidgetShared.lanControlKind)
+        }
     }
 
     /// Called after the user changes `lanShareAutoOffMinutes` (Picker in
