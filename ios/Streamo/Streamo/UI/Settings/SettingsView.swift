@@ -18,122 +18,11 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Catalogo (TMDB)") {
-                TextField("Chiave API TMDB", text: $settings.tmdbApiKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.system(.body, design: .monospaced))
-                if !settings.hasTmdbKey {
-                    Text("Senza chiave il catalogo non si carica.")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-                Button("Ripristina chiave predefinita") {
-                    settings.tmdbApiKey = AppSettings.defaultTmdbApiKey
-                }
-                .disabled(settings.tmdbApiKey == AppSettings.defaultTmdbApiKey)
-            }
-
-            Section {
-                HStack(spacing: 12) {
-                    ForEach(Array(Theme.accentPresets.enumerated()), id: \.offset) { _, color in
-                        Button { Theme.setAccent(color) } label: {
-                            Circle()
-                                .fill(color)
-                                .frame(width: 30, height: 30)
-                                .overlay(
-                                    Circle().strokeBorder(
-                                        .white.opacity(isCurrentAccent(color) ? 0.95 : 0.15),
-                                        lineWidth: isCurrentAccent(color) ? 3 : 1
-                                    )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 2)
-                ColorPicker(
-                    "Colore personalizzato",
-                    selection: Binding(get: { Theme.red }, set: { Theme.setAccent($0) }),
-                    supportsOpacity: false
-                )
-                Button("Ripristina rosso Streamo") {
-                    Theme.setAccent(
-                        Color(
-                            red: AppSettings.defaultAccent.r,
-                            green: AppSettings.defaultAccent.g,
-                            blue: AppSettings.defaultAccent.b
-                        )
-                    )
-                }
-            } header: {
-                Text("Colore dell'app")
-            } footer: {
-                Text("L'accent tinge pulsanti, barre di avanzamento, badge e lo sfondo. Si applica subito.")
-            }
-
-            Section("Riproduzione") {
-                Toggle("Riproduci episodio successivo", isOn: $settings.autoplayNext)
-            }
-
-            Section {
-                Picker("Streaming", selection: $settings.streamingMaxHeight) {
-                    Text("Auto").tag(0)
-                    Text("1080p").tag(1080)
-                    Text("720p").tag(720)
-                    Text("480p").tag(480)
-                }
-                Picker("Download", selection: $settings.downloadMaxHeight) {
-                    Text("1080p").tag(1080)
-                    Text("720p").tag(720)
-                    Text("480p").tag(480)
-                }
-            } header: {
-                Text("Qualità")
-            } footer: {
-                Text("Streaming: \"Auto\" adatta la qualità alla connessione. Con il proxy WARP attivo la risoluzione scelta viene forzata (anche in AirPlay); senza WARP fa solo da limite massimo (la qualità può scendere). Download: ogni titolo viene salvato alla risoluzione scelta (la più alta disponibile fino a quel valore).")
-            }
-
-            Section {
-                Toggle("Mostra titolo, anno e voto", isOn: $settings.showCardInfo)
-            } header: {
-                Text("Copertine")
-            } footer: {
-                Text("Quando disattivato le card mostrano solo la copertina. \"Continua a guardare\" mantiene comunque titolo e avanzamento.")
-            }
-
-            Section {
-                Toggle("Elimina dopo la visione", isOn: $settings.autoDeleteWatchedDownloads)
-            } header: {
-                Text("Download")
-            } footer: {
-                Text("Cancella automaticamente un download quando lo hai finito di guardare (≥90%), per liberare spazio.")
-            }
-
-            Section("Avanzate") {
-                NavigationLink("Apri impostazioni avanzate") {
-                    AdvancedSettingsView()
-                }
-            }
-
+            appearanceSection
+            playbackSection
             lanShareSection
-
-            Section {
-                Button("Crea backup") { createBackup() }
-                Button("Ripristina da backup") { showImporter = true }
-                    .foregroundStyle(.red)
-            } header: {
-                Text("Backup")
-            } footer: {
-                Text("Il backup esporta lista, cronologia, progressi, segnalibri e impostazioni in un file .json che puoi salvare dove vuoi. Il ripristino sostituisce TUTTI i dati attuali. I file dei download non sono inclusi: andranno riscaricati.")
-            }
-
-            Section {
-                LabeledContent("Versione", value: appVersion)
-            } footer: {
-                Text("Streamo — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.")
-            }
+            dataSection
+            aboutSection
         }
         .navigationTitle("Impostazioni")
         .navigationBarTitleDisplayMode(.inline)
@@ -167,6 +56,93 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(restoreError ?? "")
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                ForEach(Array(Theme.accentPresets.enumerated()), id: \.offset) { _, color in
+                    Button { Theme.setAccent(color) } label: {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle().strokeBorder(
+                                    .white.opacity(isCurrentAccent(color) ? 0.95 : 0.15),
+                                    lineWidth: isCurrentAccent(color) ? 3 : 1
+                                )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 2)
+            ColorPicker(
+                "Colore personalizzato",
+                selection: Binding(get: { Theme.red }, set: { Theme.setAccent($0) }),
+                supportsOpacity: false
+            )
+            Toggle("Mostra titolo, anno e voto", isOn: $settings.showCardInfo)
+            Button("Ripristina rosso Streamo") {
+                Theme.setAccent(
+                    Color(
+                        red: AppSettings.defaultAccent.r,
+                        green: AppSettings.defaultAccent.g,
+                        blue: AppSettings.defaultAccent.b
+                    )
+                )
+            }
+        } header: {
+            Text("Aspetto")
+        } footer: {
+            Text("Il colore si applica subito. Le copertine in \"Continua a guardare\" mantengono sempre titolo e avanzamento.")
+        }
+    }
+
+    private var playbackSection: some View {
+        Section {
+            Toggle("Riproduci episodio successivo", isOn: $settings.autoplayNext)
+            Picker("Qualità streaming", selection: $settings.streamingMaxHeight) {
+                Text("Auto").tag(0)
+                Text("1080p").tag(1080)
+                Text("720p").tag(720)
+                Text("480p").tag(480)
+            }
+            Picker("Qualità download", selection: $settings.downloadMaxHeight) {
+                Text("1080p").tag(1080)
+                Text("720p").tag(720)
+                Text("480p").tag(480)
+            }
+            Toggle("Elimina download dopo la visione", isOn: $settings.autoDeleteWatchedDownloads)
+        } header: {
+            Text("Riproduzione e download")
+        } footer: {
+            Text("Streaming su Auto adatta la qualità alla connessione. I download salvano la qualità massima disponibile fino al valore scelto.")
+        }
+    }
+
+    private var dataSection: some View {
+        Section {
+            Button("Crea backup") { createBackup() }
+            Button("Ripristina da backup") { showImporter = true }
+                .foregroundStyle(.red)
+            NavigationLink("Avanzate") {
+                AdvancedSettingsView()
+            }
+        } header: {
+            Text("Dati e sistema")
+        } footer: {
+            Text("Il backup include lista, cronologia, progressi e impostazioni. Il ripristino sostituisce i dati attuali; i file video scaricati non sono inclusi.")
+        }
+    }
+
+    private var aboutSection: some View {
+        Section {
+            LabeledContent("Versione", value: appVersion)
+        } footer: {
+            Text("Streamo — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.")
         }
     }
 
@@ -285,7 +261,7 @@ struct SettingsView: View {
         } header: {
             Text("Condivisione LAN")
         } footer: {
-            Text("Imposta una password: ti verrà chiesta dal browser (o da VLC) per accedere ai file — l'accesso LAN non si attiva senza. La password non è inclusa nel backup. Quando attiva, i download sono accessibili dal PC sulla stessa Wi‑Fi aprendo il link in VLC o nel browser. Il server resta raggiungibile anche con telefono bloccato grazie a un audio silenzioso in background — vedrai l'indicatore audio nel Centro di Controllo e ci sarà un piccolo consumo di batteria extra. Lo spegnimento automatico serve a evitare di lasciarla attiva tutta la notte. Lascia spento fuori casa per non esporre i file su reti sconosciute.")
+            Text("Richiede una password e resta accessibile ai dispositivi sulla stessa rete. Quando attiva mantiene il server sveglio in background, con un piccolo consumo extra di batteria.")
         }
     }
 

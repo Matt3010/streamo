@@ -9,6 +9,7 @@ struct AdvancedSettingsView: View {
 
     var body: some View {
         Form {
+            catalogSection
             proxySection
 
             Section {
@@ -44,6 +45,28 @@ struct AdvancedSettingsView: View {
             Button("Annulla", role: .cancel) {}
         } message: {
             Text("Elimina i progressi dei titoli non più in cronologia né in lista. La cronologia e la lista non vengono toccate.")
+        }
+    }
+
+    private var catalogSection: some View {
+        Section {
+            TextField("Chiave API TMDB", text: $settings.tmdbApiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(.body, design: .monospaced))
+            if !settings.hasTmdbKey {
+                Text("Senza chiave il catalogo non si carica.")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            Button("Ripristina chiave predefinita") {
+                settings.tmdbApiKey = AppSettings.defaultTmdbApiKey
+            }
+            .disabled(settings.tmdbApiKey == AppSettings.defaultTmdbApiKey)
+        } header: {
+            Text("Catalogo TMDB")
+        } footer: {
+            Text("Usata per cercare titoli, dettagli e immagini.")
         }
     }
 
