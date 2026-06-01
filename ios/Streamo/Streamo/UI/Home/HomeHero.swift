@@ -174,7 +174,7 @@ private struct HeroImage: View {
     }
 
     var body: some View {
-        PosterImage(url: imageURL, contentMode: .fill)
+        PosterImage(url: imageURL, placeholderSystemImage: "film", contentMode: .fill)
     }
 }
 

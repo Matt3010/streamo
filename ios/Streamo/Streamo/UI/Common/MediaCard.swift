@@ -207,7 +207,7 @@ struct MediaCard: View {
     private var poster_view: some View {
         Group {
             if let url = imageURL {
-                PosterImage(url: url, contentMode: .fill)
+                PosterImage(url: url, placeholderSystemImage: card.mediaType == .tv ? "tv" : "film", contentMode: .fill)
             } else {
                 ZStack {
                     Color(.secondarySystemBackground)

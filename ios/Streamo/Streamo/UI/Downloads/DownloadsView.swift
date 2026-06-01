@@ -382,7 +382,7 @@ private struct DownloadThumb: View {
     var body: some View {
         Group {
             if let url = TmdbImage.url(poster, .w92) {
-                PosterImage(url: url, contentMode: .fill)
+                PosterImage(url: url, placeholderSystemImage: "film", contentMode: .fill)
             } else {
                 ZStack { Color(.secondarySystemBackground); Image(systemName: "film").foregroundStyle(.secondary) }
             }

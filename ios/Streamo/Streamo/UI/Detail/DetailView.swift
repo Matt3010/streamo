@@ -701,11 +701,7 @@ struct DetailView: View {
         ZStack(alignment: .top) {
             Color.black
             if let url = TmdbImage.url(model.item?.backdropPath ?? model.item?.posterPath, .w1280) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.clear
-                }
+                PosterImage(url: url, contentMode: .fill)
                 .frame(maxWidth: .infinity)
                 .frame(height: 430)
                 .clipped()

@@ -124,7 +124,7 @@ struct PlayerScreen: View {
     private var artworkBackground: some View {
         Group {
             if let url = TmdbImage.url(request.backdrop ?? request.poster, .w1280) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.black }
+                PosterImage(url: url, contentMode: .fill)
             } else {
                 Color.black
             }
