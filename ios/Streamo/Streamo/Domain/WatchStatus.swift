@@ -3,6 +3,32 @@ import Foundation
 /// "What's my status with this title" copy — port of the web `watch-status.ts`
 /// (formatTvStatusText / formatTvCaughtUpText / formatMovieRemaining).
 enum WatchStatus {
+    // MARK: - On-read auto-flip decision
+
+    /// The status change a TV title should undergo on read, given the show's
+    /// aired-episode count and the user's progress. Pure so both the watchlist
+    /// enrichment pass and the Home launch sweep apply identical rules:
+    /// - `done` with no baseline → stamp the current aired count.
+    /// - `done` → `in_progress` once new episodes air beyond that baseline
+    ///   (this is what brings a finished series back into "Continua a guardare"
+    ///   when a new season drops).
+    /// - `todo`/`in_progress` → `done` once caught up with every aired episode.
+    enum FlipAction: Equatable {
+        case none
+        case backfillDoneBaseline(Int)   // stay done, stamp aired baseline
+        case toInProgress                // done → in_progress (new episodes aired)
+        case toDone(Int)                 // caught up → done, with aired baseline
+    }
+
+    static func flipDecision(status: WatchlistStatus, aired: Int, baseline: Int, doneAired: Int) -> FlipAction {
+        guard aired > 0 else { return .none }
+        if status == .done {
+            if doneAired == 0 { return .backfillDoneBaseline(aired) }
+            return aired > doneAired ? .toInProgress : .none
+        }
+        return baseline >= aired ? .toDone(aired) : .none
+    }
+
     // MARK: - Status cycling (port of watchlist-status.util.ts)
 
     /// Next status when the toggle button is tapped, and whether it needs a

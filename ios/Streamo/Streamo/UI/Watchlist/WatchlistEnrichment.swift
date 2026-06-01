@@ -104,21 +104,17 @@ final class WatchlistEnrichment {
     }
 
     /// On-read auto-flip (no background worker on device) — port of the web
-    /// watchlist read-path + maybeAutoCompleteWatchlist:
-    /// - done with no baseline → back-fill the mark to the current aired count.
-    /// - done → in_progress when new episodes aired beyond the mark.
-    /// - todo/in_progress → done once caught up with every aired episode.
+    /// watchlist read-path + maybeAutoCompleteWatchlist. The rule itself lives
+    /// in `WatchStatus.flipDecision` so the Home launch sweep
+    /// (`Library.autoFlipTvStatuses`) stays in lockstep with this pass.
     private func autoFlipStatus(tmdbId: Int, type: MediaType, status: WatchlistStatus,
                                 aired: Int, baseline: Int, doneAired: Int, library: Library) {
-        guard aired > 0 else { return }
-        if status == .done {
-            if doneAired == 0 {
-                library.setWatchlistStatus(tmdbId, type, .done, doneAiredEpisodes: aired)
-            } else if aired > doneAired {
-                library.setWatchlistStatus(tmdbId, type, .inProgress)
-            }
-        } else if baseline >= aired {           // todo/in_progress and caught up
-            library.setWatchlistStatus(tmdbId, type, .done, doneAiredEpisodes: aired)
+        switch WatchStatus.flipDecision(status: status, aired: aired, baseline: baseline, doneAired: doneAired) {
+        case .none: break
+        case .backfillDoneBaseline(let n), .toDone(let n):
+            library.setWatchlistStatus(tmdbId, type, .done, doneAiredEpisodes: n)
+        case .toInProgress:
+            library.setWatchlistStatus(tmdbId, type, .inProgress)
         }
     }
 }

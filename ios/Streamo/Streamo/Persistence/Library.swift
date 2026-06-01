@@ -108,6 +108,68 @@ final class Library {
         save()
     }
 
+    /// Guards against overlapping auto-flip sweeps (each does TMDB fetches).
+    private var isFlippingStatuses = false
+
+    /// Apply the on-read TV status auto-flip across the whole watchlist, without
+    /// needing "La mia lista" open. The watchlist read-path flip
+    /// (`WatchlistEnrichment`) only runs when that tab is shown, so a series
+    /// whose new season aired would otherwise stay `done` — excluded from
+    /// "Continua a guardare" — until the user happened to open the list. Running
+    /// this from the Home at launch flips it back to `in_progress` so it
+    /// re-enters the row on its own. Writes are batched into a single `save()`
+    /// (one `version` bump) to avoid churning the Home's continue task.
+    func autoFlipTvStatuses() async {
+        guard !isFlippingStatuses else { return }
+        isFlippingStatuses = true
+        defer { isFlippingStatuses = false }
+
+        let ids = watchlist().filter { $0.mediaType == .tv }.map(\.tmdbId)
+        guard !ids.isEmpty else { return }
+
+        // Same bounded-concurrency shape as WatchlistEnrichment: the only work
+        // in the task group is the TMDB fetch; the flip (which touches
+        // SwiftData) is applied back on the main actor as results arrive.
+        var changed = false
+        await withTaskGroup(of: (Int, TmdbItem?).self) { group in
+            let maxConcurrent = 6
+            var next = 0
+            func schedule() {
+                guard next < ids.count else { return }
+                let id = ids[next]; next += 1
+                group.addTask { (id, try? await TMDBClient.shared.details(id: id, type: .tv)) }
+            }
+            for _ in 0..<maxConcurrent { schedule() }
+            for await (id, item) in group {
+                if let item, applyFlip(tmdbId: id, item: item) { changed = true }
+                schedule()
+            }
+        }
+        if changed { save() }
+    }
+
+    /// Compute + apply the flip for one TV entry; returns whether it mutated.
+    /// Mutates the model directly so the caller can batch the single `save()`.
+    private func applyFlip(tmdbId: Int, item: TmdbItem) -> Bool {
+        guard let e = watchlistEntry(tmdbId, .tv) else { return false }
+        let aired = TVLogic.airedEpisodesCount(item)
+        let doneAired = e.doneAiredEpisodes ?? 0
+        let watched = watchedEpisodeCount(tmdbId)
+        let resume = nextUnwatched(item: item)
+        let implied = resume.map { TVLogic.episodesBefore(item, season: $0.season, episode: $0.episode) } ?? 0
+        let baseline = max(watched, doneAired, implied)
+        switch WatchStatus.flipDecision(status: e.status, aired: aired, baseline: baseline, doneAired: doneAired) {
+        case .none:
+            return false
+        case .backfillDoneBaseline(let n), .toDone(let n):
+            e.status = .done; e.doneAiredEpisodes = n
+            return true
+        case .toInProgress:
+            e.status = .inProgress; e.doneAiredEpisodes = 0
+            return true
+        }
+    }
+
     // MARK: - Progress
 
     func progress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) -> ProgressEntry? {
