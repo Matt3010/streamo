@@ -169,7 +169,9 @@ struct DetailView: View {
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 14).padding(.horizontal, 16)
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                .background {
+                    LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 14, style: .continuous), tint: Theme.red.opacity(0.06))
+                }
             bookmarkButton(item, inList: inList)
         } else {
             releasedActions(for: item, inList: inList)
@@ -849,7 +851,8 @@ private struct EpisodeCard: View {
             }
 
             Text(episode.name?.nilIfEmpty ?? "Episodio \(episode.episodeNumber)")
-                .font(.caption.bold()).lineLimit(1)
+                .font(.caption.bold()).lineLimit(2)
+                .minimumScaleFactor(0.86)
                 .foregroundStyle(isWatched ? Theme.red : .white)
             Text(episode.overview?.nilIfEmpty ?? "Descrizione non disponibile.")
                 .font(.caption2)
@@ -881,12 +884,27 @@ private struct EpisodeCard: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background { downloadBadgeBackground }
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(state == .failed ? Color.red.opacity(0.85) : Theme.red.opacity(0.48), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
+    }
+
+    @ViewBuilder
+    private var downloadBadgeBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        if #available(iOS 26.0, *) {
+            shape
+                .fill(.clear)
+                .glassEffect(.regular.tint(Theme.red.opacity(0.10)), in: shape)
+                .overlay(shape.fill(.black.opacity(0.34)))
+        } else {
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(.black.opacity(0.48)))
+        }
     }
 
     private func downloadIcon(_ state: DownloadState) -> String {
@@ -956,7 +974,10 @@ private struct ReviewCard: View {
         }
         .padding()
         .frame(width: width, height: height, alignment: .topLeading)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .background {
+            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 12, style: .continuous), tint: Theme.red.opacity(0.06))
+        }
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.10)))
     }
 
     private var author: String {

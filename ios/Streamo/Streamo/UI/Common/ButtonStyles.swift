@@ -47,7 +47,7 @@ struct BrandButtonStyle: ButtonStyle {
             case .primary:
                 LinearGradient(colors: [Theme.red, Theme.redBright], startPoint: .topLeading, endPoint: .bottomTrailing)
             case .secondary:
-                Rectangle().fill(.ultraThinMaterial)
+                LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 14, style: .continuous), tint: Theme.red.opacity(0.08))
                     .overlay(Color.white.opacity(configuration.isPressed ? 0.10 : 0))
             }
         }

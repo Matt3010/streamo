@@ -137,7 +137,9 @@ struct SearchView: View {
                 }
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background {
+            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), tint: Theme.red.opacity(0.06))
+        }
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.10)))
         .padding(.horizontal)
         .padding(.top, 8)

@@ -17,10 +17,7 @@ struct FilterChip: View {
                 .minimumScaleFactor(0.82)
                 .padding(.horizontal, compact ? 14 : 18)
                 .padding(.vertical, compact ? 6 : 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(selected ? AnyShapeStyle(Theme.red) : AnyShapeStyle(.ultraThinMaterial))
-                )
+                .background { background }
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(selected ? Theme.red : Color.white.opacity(0.14), lineWidth: 2)
@@ -29,6 +26,16 @@ struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        if selected {
+            shape.fill(Theme.red)
+        } else {
+            LiquidGlassBackground(shape: shape, tint: Theme.red.opacity(0.05))
+        }
     }
 }
 

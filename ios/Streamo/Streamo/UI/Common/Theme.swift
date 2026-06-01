@@ -67,6 +67,21 @@ struct AmbientBackground: View {
     }
 }
 
+struct LiquidGlassBackground<S: Shape>: View {
+    let shape: S
+    var tint: Color? = nil
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            shape
+                .fill(.clear)
+                .glassEffect(.regular.tint(tint), in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
+    }
+}
+
 /// Popularity badge ("🔥 1.234") shown on the detail page — port of the web
 /// MediaRankBadge. `value` is the pre-formatted popularity string.
 struct MediaRankBadge: View {
@@ -78,7 +93,8 @@ struct MediaRankBadge: View {
             Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(.black.opacity(0.55), in: Capsule())
+        .background { LiquidGlassBackground(shape: Capsule(), tint: Theme.red.opacity(0.10)) }
+        .background(.black.opacity(0.28), in: Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
         // Keep its intrinsic size so a long nav-bar title truncates instead of
         // squashing / wrapping the pill.
@@ -102,6 +118,9 @@ struct SectionHeader: View {
             Text(title)
                 .font(.title3.bold())
                 .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal)
     }

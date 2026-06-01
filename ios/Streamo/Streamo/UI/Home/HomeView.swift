@@ -128,7 +128,9 @@ struct HomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .background {
+                LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 14, style: .continuous), tint: Theme.red.opacity(0.06))
+            }
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.10)))
             .padding(.horizontal)
         }

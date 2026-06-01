@@ -81,7 +81,9 @@ struct HistoryView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
         .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background {
+            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), tint: Theme.red.opacity(0.08))
+        }
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.14)))
         .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
     }
