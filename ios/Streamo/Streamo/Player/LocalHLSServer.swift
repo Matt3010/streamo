@@ -446,13 +446,13 @@ final class LocalHLSServer: @unchecked Sendable {
             if snap.mediaType == "tv" { return "\(snap.title) — S\(snap.season) E\(snap.episode)" }
             return snap.title
         } ?? key
-        // Resume rule mirrors the iOS app's PlaybackController:
-        //   only seed startAt if we have at least 15s of progress AND we
-        //   haven't crossed the "watched" threshold (90% by default).
+        // Resume rule mirrors the iOS app: seed startAt from saved progress
+        // (past 15s) until the title is *actually* finished (100%) — being past
+        // the "watched" threshold still resumes.
         var startAt = 0.0
-        if let snap = snapshot, snap.position > 15,
-           snap.duration <= 0 || snap.position < snap.duration * 0.9 {
-            startAt = snap.position
+        if let snap = snapshot,
+           let resume = TVLogic.resumeStart(position: snap.position, duration: snap.duration) {
+            startAt = resume
         }
         let html = Self.renderPlayerHTML(title: title, startAt: startAt)
         let bodyData = Data(html.utf8)

@@ -9,6 +9,18 @@ enum TVLogic {
     /// drops out of "continua a guardare", and pivots the CTA to the next one.
     static let watchedThreshold = 0.9
 
+    /// Where to resume a coordinate from, independent of `watchedThreshold`:
+    /// keep offering the saved position right up until the title is *actually*
+    /// finished. The end observer writes `position == duration` only on a real
+    /// play-to-end, so closing at 95% still resumes, while a 100% title restarts
+    /// from the beginning. Returns the seconds to seed, or nil to start at 0.
+    /// `position` must clear the 15s "actually started" gate.
+    static func resumeStart(position: Double, duration: Double) -> Double? {
+        guard position > 15 else { return nil }
+        if duration > 0, position >= duration { return nil }
+        return position
+    }
+
     /// True when a YYYY-MM-DD string is strictly after today (local).
     static func isFutureDate(_ dateStr: String?) -> Bool {
         guard let parts = ymd(dateStr) else { return false }

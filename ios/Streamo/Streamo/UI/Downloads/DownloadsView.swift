@@ -279,7 +279,8 @@ struct DownloadsView: View {
         return PlaybackRequest(tmdbId: e.tmdbId, mediaType: e.mediaType, title: e.title ?? "—",
                                releaseDate: e.releaseDate, poster: e.poster, backdrop: nil,
                                season: e.season, episode: e.episode,
-                               startAt: watched?.position ?? 0, offlineURL: url)
+                               startAt: watched.flatMap { TVLogic.resumeStart(position: $0.position, duration: $0.duration) } ?? 0,
+                               offlineURL: url)
     }
 }
 
@@ -363,7 +364,8 @@ struct SeriesDownloadsView: View {
         return PlaybackRequest(tmdbId: e.tmdbId, mediaType: e.mediaType, title: e.title ?? "—",
                                releaseDate: e.releaseDate, poster: e.poster, backdrop: nil,
                                season: e.season, episode: e.episode,
-                               startAt: watched?.position ?? 0, offlineURL: url)
+                               startAt: watched.flatMap { TVLogic.resumeStart(position: $0.position, duration: $0.duration) } ?? 0,
+                               offlineURL: url)
     }
 }
 

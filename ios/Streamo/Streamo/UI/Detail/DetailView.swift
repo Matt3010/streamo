@@ -591,7 +591,7 @@ struct DetailView: View {
         if ref.mediaType == .tv {
             let target = primaryPlaybackTarget(for: item)
             if let p = library.progress(item.id, .tv, season: target.season, episode: target.episode),
-               p.position > 15, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
+               TVLogic.resumeStart(position: p.position, duration: p.duration) != nil {
                 return "Riprendi da S\(target.season) E\(target.episode)"
             }
             return "Guarda S\(target.season) E\(target.episode)"
@@ -608,17 +608,18 @@ struct DetailView: View {
         return request(for: item, season: 0, episode: 0)
     }
 
-    /// Build a playback request, seeding `startAt` from saved progress when the
-    /// title isn't already finished (≥90%). If a completed download exists for
-    /// this coordinate, route it through the local `.movpkg` so the title plays
-    /// in airplane mode too — otherwise we'd hit the provider needlessly.
+    /// Build a playback request, seeding `startAt` from saved progress until the
+    /// title is *actually* finished (100%) — past the "watched" threshold still
+    /// resumes. If a completed download exists for this coordinate, route it
+    /// through the local `.movpkg` so the title plays in airplane mode too —
+    /// otherwise we'd hit the provider needlessly.
     private func request(for item: TmdbItem, season: Int, episode: Int) -> PlaybackRequest {
         let s = ref.mediaType == .tv ? season : 0
         let e = ref.mediaType == .tv ? episode : 0
         let p = library.progress(item.id, ref.mediaType, season: s, episode: e)
         var startAt = 0.0
-        if let p, p.position > 15, p.duration <= 0 || p.position < p.duration * TVLogic.watchedThreshold {
-            startAt = p.position
+        if let p, let resume = TVLogic.resumeStart(position: p.position, duration: p.duration) {
+            startAt = resume
         }
         let offlineURL = offlineURL(for: item, season: s, episode: e)
         return PlaybackRequest(
@@ -674,8 +675,8 @@ struct DetailView: View {
     }
 
     private func movieResume(_ item: TmdbItem) -> ProgressEntry? {
-        guard let p = library.progress(item.id, .movie, season: 0, episode: 0), p.position > 15 else { return nil }
-        if p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold { return nil }
+        guard let p = library.progress(item.id, .movie, season: 0, episode: 0),
+              TVLogic.resumeStart(position: p.position, duration: p.duration) != nil else { return nil }
         return p
     }
 

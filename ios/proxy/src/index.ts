@@ -38,8 +38,12 @@ app.use((req, res, next) => {
     // Sub-resources (segments/keys) and AirPlay requests can't send the header,
     // so we also read the `c` query param the playlist rewriter embeds.
     const client = clientTag(req);
+    // Redact the `key=` auth token before logging — it travels in every
+    // sub-resource URL (segments/keys/AirPlay), so the raw originalUrl would
+    // leak the long-lived proxy token into stdout on every request.
+    const safeUrl = redactAuthKey(req.originalUrl);
     console.log(
-      `[ios-proxy][${client}] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`
+      `[ios-proxy][${client}] ${res.statusCode} ${req.method} ${safeUrl} ${duration}ms${size}${upstream}`
       + ` origin_ip=${originIp} egress_ip=${egressIp} through_cf=${formatFlag(health?.through_cloudflare)}`
       + ` masked=${formatFlag(masked)} checked_at=${health?.checked_at ?? '-'}`
     );
@@ -1050,6 +1054,10 @@ function firstHref(nodes: unknown[] | undefined): string | null {
 function requestBaseURL(req: Request): string {
   const proto = headerValue(req.headers['x-forwarded-proto'], req.protocol).split(',')[0].trim();
   return `${proto}://${req.get('host')}`;
+}
+
+function redactAuthKey(url: string): string {
+  return url.replace(/([?&]key=)[^&]*/gi, '$1***');
 }
 
 function querySuffix(url: string): string {
