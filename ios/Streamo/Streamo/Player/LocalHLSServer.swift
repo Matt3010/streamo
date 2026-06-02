@@ -39,6 +39,15 @@ final class LocalHLSServer: @unchecked Sendable {
     /// Wired by `DownloadManager.configure` to call `Library.saveProgress`.
     private var progressHandler: (@Sendable (LANProgressReport) -> Void)?
 
+    /// Password-less, per-playback token that lets an AirPlay receiver (or the
+    /// device itself, dialing its own LAN IP) fetch download *files* — never the
+    /// browser index / player UI. Set by `beginAirplaySession` when offline
+    /// playback starts and cleared by `endAirplaySession` on teardown, so the
+    /// asset is only reachable while it's actually playing. `airplayPathPrefix`
+    /// scopes the token to the playing item's folder. Both read on `queue`.
+    private var airplayToken: String = ""
+    private var airplayPathPrefix: String = ""
+
     /// On-disk root the server reads from. Every download goes under a
     /// per-entry subfolder here.
     let documentsRoot: URL = {
@@ -177,6 +186,43 @@ final class LocalHLSServer: @unchecked Sendable {
             .joined(separator: "/")
     }
 
+    // MARK: - AirPlay session
+
+    /// Begin an AirPlay-capable session for a download: rotate to a fresh
+    /// password-less token (scoped to `relativePath`'s folder) and return a LAN
+    /// URL an AirPlay receiver can reach over Wi-Fi. Returns nil when the device
+    /// has no shareable LAN address (offline / cellular-only — AirPlay is
+    /// impossible there anyway), so the caller falls back to the loopback URL.
+    func beginAirplaySession(relativePath: String) -> URL? {
+        guard let host = LANAddress.currentShareableIPv4() else { return nil }
+        let port = waitForReady()
+        guard port != 0 else { return nil }
+        let token = Self.randomToken()
+        let prefix = relativePath.lastIndex(of: "/").map { String(relativePath[...$0]) } ?? ""
+        queue.sync {
+            self.airplayToken = token
+            self.airplayPathPrefix = prefix
+        }
+        return Self.lanURL(host: host, port: port, token: token, relativePath: relativePath)
+    }
+
+    /// Revoke the AirPlay token so the download is no longer reachable over the
+    /// LAN. Called on every playback teardown.
+    func endAirplaySession() {
+        queue.async { [weak self] in
+            self?.airplayToken = ""
+            self?.airplayPathPrefix = ""
+        }
+    }
+
+    /// 128 bits of CSPRNG (SystemRandomNumberGenerator) as URL-safe hex.
+    private static func randomToken() -> String {
+        var rng = SystemRandomNumberGenerator()
+        let hi = UInt64.random(in: .min ... .max, using: &rng)
+        let lo = UInt64.random(in: .min ... .max, using: &rng)
+        return String(format: "%016llx%016llx", hi, lo)
+    }
+
     // MARK: - LAN configuration
 
     /// Update LAN sharing state. Pushed from `AppSettings` whenever the user
@@ -257,33 +303,50 @@ final class LocalHLSServer: @unchecked Sendable {
         let loopback = isLoopback(connection)
         let resolvedPath: String
         let servesIndex: Bool
+        // AirPlay peers authenticate with the per-session token in the path and
+        // may fetch download files only — never the browser index / player UI.
+        var fileOnly = false
         if loopback {
             resolvedPath = cleanPath
             servesIndex = false
         } else {
-            guard lanEnabled, !lanToken.isEmpty else {
-                send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-                return
-            }
             let segments = cleanPath.split(separator: "/", omittingEmptySubsequences: false)
-            guard let first = segments.first, first == Substring(lanToken) else {
-                send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-                return
+            let first = segments.first.map(String.init) ?? ""
+            if !airplayToken.isEmpty, first == airplayToken {
+                // AirPlay receiver (or the device dialing its own LAN IP): no
+                // password, files only, scoped to the playing item's folder.
+                let rest = segments.dropFirst().joined(separator: "/")
+                guard airplayPathPrefix.isEmpty || rest.hasPrefix(airplayPathPrefix) else {
+                    send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
+                    return
+                }
+                fileOnly = true
+                resolvedPath = rest
+                servesIndex = false
+            } else {
+                guard lanEnabled, !lanToken.isEmpty else {
+                    send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
+                    return
+                }
+                guard first == lanToken else {
+                    send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
+                    return
+                }
+                // Require a password (HTTP Basic Auth). A missing/empty configured
+                // password locks LAN access entirely; a wrong/absent header makes
+                // the browser show its native password prompt.
+                guard !lanPassword.isEmpty, basicAuthMatches(lines: lines) else {
+                    send(status: "401 Unauthorized", on: connection,
+                         extra: ["WWW-Authenticate": "Basic realm=\"Project Obsidian\", charset=\"UTF-8\""],
+                         then: { connection.cancel() })
+                    return
+                }
+                // Drop the token segment.
+                resolvedPath = segments.dropFirst().joined(separator: "/")
+                // Index page is served when the LAN peer asks for "/<token>/" or
+                // "/<token>" or "/<token>/index.html".
+                servesIndex = resolvedPath.isEmpty || resolvedPath == "index.html"
             }
-            // Require a password (HTTP Basic Auth). A missing/empty configured
-            // password locks LAN access entirely; a wrong/absent header makes
-            // the browser show its native password prompt.
-            guard !lanPassword.isEmpty, basicAuthMatches(lines: lines) else {
-                send(status: "401 Unauthorized", on: connection,
-                     extra: ["WWW-Authenticate": "Basic realm=\"Project Obsidian\", charset=\"UTF-8\""],
-                     then: { connection.cancel() })
-                return
-            }
-            // Drop the token segment.
-            resolvedPath = segments.dropFirst().joined(separator: "/")
-            // Index page is served when the LAN peer asks for "/<token>/" or
-            // "/<token>" or "/<token>/index.html".
-            servesIndex = resolvedPath.isEmpty || resolvedPath == "index.html"
         }
 
         if servesIndex {
@@ -294,16 +357,16 @@ final class LocalHLSServer: @unchecked Sendable {
         // Two virtual routes for browser playback:
         //   /<token>/hls.min.js     — the bundled hls.js library
         //   /<token>/<key>/play.html — a player page wrapping that key
-        if !loopback, resolvedPath == "hls.min.js" {
+        if !loopback, !fileOnly, resolvedPath == "hls.min.js" {
             serveBundledHLSJS(on: connection)
             return
         }
-        if !loopback, resolvedPath.hasSuffix("/play.html") {
+        if !loopback, !fileOnly, resolvedPath.hasSuffix("/play.html") {
             let key = String(resolvedPath.dropLast("/play.html".count))
             servePlayerPage(key: key, on: connection)
             return
         }
-        if !loopback, resolvedPath.hasSuffix("/progress") {
+        if !loopback, !fileOnly, resolvedPath.hasSuffix("/progress") {
             let key = String(resolvedPath.dropLast("/progress".count))
             serveProgress(key: key, query: query, on: connection)
             return

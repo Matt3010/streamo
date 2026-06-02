@@ -65,6 +65,12 @@ final class PlaybackController {
     private var sourceIndex = 0
     /// Resume seek applied once the item reaches .readyToPlay (0 = none).
     private var pendingStartAt: Double = 0
+    /// Offline playback is served over the LAN (device IP + per-session token)
+    /// so AirPlay can reach it. `offlineUsingLAN` is latched per item; on a load
+    /// failure (e.g. Local Network permission denied / no Wi-Fi) we retry once on
+    /// the loopback URL with AirPlay off, guarded by `offlineLoopbackForced`.
+    private var offlineUsingLAN = false
+    private var offlineLoopbackForced = false
 
     private func resolve(_ request: PlaybackRequest) async -> ProviderResolver.PlaybackResolution {
         if request.mediaType == .movie {
@@ -121,6 +127,7 @@ final class PlaybackController {
         sourceIndex = 0
         pendingStartAt = request.startAt
         didReachEnd = false
+        offlineLoopbackForced = false
         loadCurrentSource(request: request)
     }
 
@@ -144,6 +151,25 @@ final class PlaybackController {
         streamHeaders["X-Streamo-Client"] = "player"
         let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": streamHeaders]
         let maxHeight = AppSettings.shared.streamingMaxHeight
+
+        // For offline playback, prefer a LAN URL (device IP + per-session token)
+        // so an AirPlay receiver can fetch the asset over Wi-Fi; the device
+        // itself reaches the same URL too. Fall back to the loopback URL with
+        // AirPlay off when there's no LAN address or after a LAN load failure
+        // (e.g. Local Network permission denied). See the .failed handler.
+        var offlineExternalAllowed = false
+        offlineUsingLAN = false
+        let offlinePlaybackURL: URL? = {
+            guard isOffline, let loopback = request.offlineURL else { return nil }
+            if !offlineLoopbackForced,
+               let relPath = Self.offlineRelativePath(from: loopback),
+               let lanURL = LocalHLSServer.shared.beginAirplaySession(relativePath: relPath) {
+                offlineUsingLAN = true
+                offlineExternalAllowed = true
+                return lanURL
+            }
+            return loopback
+        }()
         // Through the proxy add query params:
         //  • c=player  → tag sub-resources/AirPlay in the proxy log.
         //  • q=<h>     → make the proxy filter the master to ONLY that variant,
@@ -154,7 +180,8 @@ final class PlaybackController {
         // the proxy we only CAP the resolution (below) — never via a custom
         // URL scheme, which would break AirPlay on a direct stream.
         let streamURL: URL = {
-            guard viaProxy == true, !isOffline else { return source.playlistURL }
+            if isOffline { return offlinePlaybackURL ?? source.playlistURL }
+            guard viaProxy == true else { return source.playlistURL }
             var extra = ["c": "player"]
             if maxHeight > 0 { extra["q"] = String(maxHeight) }
             return Self.appendingQuery(extra, on: source.playlistURL)
@@ -167,13 +194,16 @@ final class PlaybackController {
             item.preferredMaximumResolution = CGSize(width: maxHeight * 16 / 9, height: maxHeight)
         }
         let player = AVPlayer(playerItem: item)
-        // AirPlay routes a loopback URL nowhere useful, so leave it off for
-        // offline playback. Keep the default `automaticallyWaitsToMinimizeStalling`
+        // AirPlay hands the *URL* to the receiver, so it only works when that URL
+        // is reachable: streaming (always) or offline served over the LAN. A
+        // loopback offline URL points the receiver at itself, so keep it off in
+        // that fallback case. Keep the default `automaticallyWaitsToMinimizeStalling`
         // (true): turning it off makes `play()` no-op until the item is ready,
         // which is what was causing the "tap play/pause a few times to start"
         // behaviour on offline launches.
-        player.allowsExternalPlayback = !isOffline
-        player.usesExternalPlaybackWhileExternalScreenIsActive = !isOffline
+        let externalAllowed = isOffline ? offlineExternalAllowed : true
+        player.allowsExternalPlayback = externalAllowed
+        player.usesExternalPlaybackWhileExternalScreenIsActive = externalAllowed
         self.player = player
 
         installTimeObserver(on: player)
@@ -270,6 +300,16 @@ final class PlaybackController {
             print("[PlaybackController] AVPlayerItem failed (offline=\(isOffline)): \(String(describing: error))")
             dumpPlayerItemLogs()
             if isOffline, let request = activeRequest {
+                // A LAN/AirPlay attempt can fail when the device can't reach its
+                // own LAN address (Local Network permission denied / Wi-Fi off).
+                // Retry once on the loopback URL with AirPlay disabled before
+                // surfacing an error. teardownPlayer() revokes the AirPlay token.
+                if offlineUsingLAN, !offlineLoopbackForced {
+                    offlineLoopbackForced = true
+                    teardownPlayer()
+                    loadCurrentSource(request: request)
+                    return
+                }
                 // Offline playback has a single source — fall through to a
                 // specific user-facing error instead of generic "non disponibile".
                 state = .failed(offlineFailureMessage(for: request, error: error))
@@ -377,6 +417,17 @@ final class PlaybackController {
         player?.pause()
         player = nil
         didReachEnd = false
+        // Revoke any AirPlay token so the download stops being LAN-reachable.
+        LocalHLSServer.shared.endAirplaySession()
+    }
+
+    /// The `Downloads/`-relative path embedded in a `LocalHLSServer` playback
+    /// URL (loopback), used to re-issue the same asset on a LAN route. `path`
+    /// is percent-decoded; `beginAirplaySession` re-encodes the segments.
+    private static func offlineRelativePath(from url: URL) -> String? {
+        let path = url.path
+        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func configureAudioSession() {
