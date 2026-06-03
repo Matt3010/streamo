@@ -1,0 +1,32 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    restart: unless-stopped
+    ports:
+      - "${JELLYFIN_PORT:-18096}:8096"
+    volumes:
+      - ./jellyfin-data/config:/config
+      - ./jellyfin-data/cache:/cache
+    environment:
+      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PUBLIC_URL:-http://localhost:18096}
+
+  addon:
+    build:
+      context: ./addon
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${ADDON_PORT:-17871}:7000"
+    environment:
+      # Base URL players use for the HLS proxy — must be reachable from every
+      # Jellyfin client (LAN IP, not localhost / docker hostname).
+      - ADDON_PUBLIC_URL=${ADDON_PUBLIC_URL:-}
+      - ADDON_DATA_DIR=/data
+      - CATALOG_LOCALE=${CATALOG_LOCALE:-it}
+      # TMDB key — needed ONLY to translate the imdb/tmdb ids Gelato sends into
+      # an SC search. Defaults to the key bundled in the iOS app. Without it the
+      # addon still works for direct Stremio use (sc: ids), just not via Gelato.
+      - TMDB_API_KEY=${TMDB_API_KEY:-42b62dc72918b626d8ea3e33c35e16a6}
+      - TMDB_LANGUAGE=${TMDB_LANGUAGE:-it-IT}
+    volumes:
+      - ./addon-data:/data
