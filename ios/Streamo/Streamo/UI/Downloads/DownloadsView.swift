@@ -260,8 +260,14 @@ struct DownloadsView: View {
     private func seriesRow(title: String, poster: String?, episodes: [DownloadEntry]) -> some View {
         let done = episodes.filter { $0.state == .completed }.count
         let total = episodes.count
-        let detail = done == total ? "\(total) episodi scaricati"
+        var detail = done == total ? "\(total) episodi scaricati"
                                    : "\(done)/\(total) episodi scaricati"
+        // Total size shown once every episode folder has been measured, so the
+        // number never silently undercounts while scans are still running.
+        let sizes = episodes.compactMap { downloads.downloadedByteCount(for: $0) }
+        if sizes.count == episodes.count {
+            detail += " · \(Format.fileSize(sizes.reduce(0, +)))"
+        }
         return HStack(spacing: 12) {
             DownloadThumb(poster: poster)
             VStack(alignment: .leading, spacing: 4) {
@@ -435,17 +441,32 @@ private struct DownloadRow: View {
         }
     }
 
+    /// "320 MB" while data is on disk, nil before the first byte sample/scan.
+    private var sizeText: String? {
+        downloads.downloadedByteCount(for: entry).map(Format.fileSize)
+    }
+
+    /// Append the on-disk size to a state label when known.
+    private func withSize(_ label: String) -> String {
+        sizeText.map { "\(label) · \($0)" } ?? label
+    }
+
     private var subtitle: String {
         switch displayState {
-        case .queued:      return "In coda"
+        case .queued:      return withSize("In coda")
         case .downloading:
-            return isReconstructingProgress ? "Ricostruendo progresso" : "\(downloads.progressPercent(for: entry))%"
-        case .paused:      return "In pausa"
+            if isReconstructingProgress { return "Ricostruendo progresso" }
+            var label = withSize("\(downloads.progressPercent(for: entry))%")
+            if let rate = downloads.speed(for: entry) {
+                label += " · \(Format.speed(rate))"
+            }
+            return label
+        case .paused:      return withSize("In pausa")
         case .completed:
-            if watchPct >= 90 { return "Scaricato · visto" }
-            if watchPct > 0 { return "Scaricato · visto al \(Format.percentValue(watchPct))%" }
-            return "Scaricato — disponibile offline"
-        case .failed:      return "Download non riuscito"
+            if watchPct >= 90 { return withSize("Scaricato") + " · visto" }
+            if watchPct > 0 { return withSize("Scaricato") + " · visto al \(Format.percentValue(watchPct))%" }
+            return sizeText.map { "Scaricato · \($0) · offline" } ?? "Scaricato — disponibile offline"
+        case .failed:      return withSize("Download non riuscito")
         }
     }
 

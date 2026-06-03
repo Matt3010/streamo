@@ -15,6 +15,14 @@ final class DownloadManager {
 
     /// Live progress (0…1) per download key, while a transfer is running.
     private(set) var liveProgress: [String: Double] = [:]
+    /// Bytes on disk per download key: pushed live by the downloader while a
+    /// transfer runs, lazily rebuilt from a disk scan for idle entries.
+    private(set) var downloadedBytes: [String: Int64] = [:]
+    /// Smoothed transfer rate (bytes/sec) for the active download.
+    private(set) var liveSpeed: [String: Double] = [:]
+    @ObservationIgnored private var byteScanInFlight = Set<String>()
+    @ObservationIgnored private var speedSampleBytes: [String: Int64] = [:]
+    @ObservationIgnored private var speedSampleTime: [String: Date] = [:]
     /// Key of the download currently occupying the single active slot.
     private(set) var activeKey: String?
     /// True while a player is open — the active download is suspended.
@@ -274,6 +282,7 @@ final class DownloadManager {
         activeTask?.cancel()
         activeTask = nil
         activeKey = nil
+        clearSpeed(key: k)
         retryCount[k] = nil
         awaitingFirstProgressSample.remove(k)
         runGenerationByKey[k] = nil
@@ -312,6 +321,8 @@ final class DownloadManager {
         }
         try? FileManager.default.removeItem(at: Self.downloadDirectory(for: k))
         liveProgress[k] = nil
+        downloadedBytes[k] = nil
+        clearSpeed(key: k)
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
         awaitingFirstProgressSample.remove(k)
@@ -344,6 +355,75 @@ final class DownloadManager {
         Int((progress(for: entry) * 100).rounded())
     }
 
+    /// Bytes currently on disk for a download, or nil while unknown. Live
+    /// values come straight from the downloader; idle entries (paused /
+    /// completed / relaunch) trigger a one-shot background folder scan whose
+    /// result lands in `downloadedBytes` and re-renders the row.
+    func downloadedByteCount(for entry: DownloadEntry) -> Int64? {
+        let k = key(for: entry)
+        if let known = downloadedBytes[k] { return known > 0 ? known : nil }
+        scheduleDiskByteScan(forKey: k)
+        return nil
+    }
+
+    private func scheduleDiskByteScan(forKey k: String) {
+        guard !byteScanInFlight.contains(k) else { return }
+        byteScanInFlight.insert(k)
+        let dir = Self.downloadDirectory(for: k)
+        Task.detached(priority: .utility) {
+            let total = Self.folderSize(dir)
+            await MainActor.run {
+                let shared = DownloadManager.shared
+                shared.byteScanInFlight.remove(k)
+                // Don't clobber a live total that arrived while we scanned.
+                shared.downloadedBytes[k] = max(total, shared.downloadedBytes[k] ?? 0)
+            }
+        }
+    }
+
+    /// Smoothed bytes/sec for an actively-downloading entry, nil otherwise.
+    func speed(for entry: DownloadEntry) -> Double? {
+        let k = key(for: entry)
+        guard activeKey == k, let rate = liveSpeed[k], rate > 0 else { return nil }
+        return rate
+    }
+
+    /// Fold a byte sample into the EMA speed estimate. `resetBaseline` drops
+    /// the previous sample (fresh run / resume seed) so the on-disk jump from
+    /// already-present segments doesn't register as a transfer-rate spike.
+    private func updateSpeed(key k: String, bytes: Int64, resetBaseline: Bool) {
+        let now = Date()
+        guard !resetBaseline,
+              let lastTime = speedSampleTime[k],
+              let lastBytes = speedSampleBytes[k] else {
+            speedSampleTime[k] = now
+            speedSampleBytes[k] = bytes
+            return
+        }
+        let elapsed = now.timeIntervalSince(lastTime)
+        guard elapsed >= 1 else { return }   // throttle: one sample per second
+        let rate = Double(bytes - lastBytes) / elapsed
+        speedSampleTime[k] = now
+        speedSampleBytes[k] = bytes
+        liveSpeed[k] = liveSpeed[k].map { $0 * 0.7 + rate * 0.3 } ?? rate
+    }
+
+    private func clearSpeed(key k: String) {
+        liveSpeed[k] = nil
+        speedSampleBytes[k] = nil
+        speedSampleTime[k] = nil
+    }
+
+    private nonisolated static func folderSize(_ dir: URL) -> Int64 {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return 0
+        }
+        return files.reduce(Int64(0)) { sum, url in
+            sum + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+    }
+
     /// UI-facing state that prefers the current in-memory active slot over the
     /// last persisted SwiftData state. This avoids transient "queued/paused"
     /// labels while a resumed download is already running again.
@@ -370,6 +450,7 @@ final class DownloadManager {
             activeTask?.cancel()
             activeTask = nil
             let persisted = liveProgress[k] ?? entry.progress
+            clearSpeed(key: k)
             retryCount[k] = nil
             awaitingFirstProgressSample.remove(k)
             runGenerationByKey[k] = nil
@@ -511,14 +592,24 @@ final class DownloadManager {
                                              headers: headers,
                                              outputDirectory: outputDir,
                                              maxHeight: AppSettings.shared.downloadMaxHeight,
-                                             progress: { [weak self] frac in
+                                             progress: { [weak self] frac, bytes in
                 Task { @MainActor in
                     guard let self else { return }
                     guard self.isCurrentRun(key: k, runID: runID) else { return }
+                    // Disk usage only grows during a run; keep it monotonic so
+                    // per-track seeding on retry/resume can't bounce the label.
+                    let newBytes = max(bytes, self.downloadedBytes[k] ?? 0)
+                    self.downloadedBytes[k] = newBytes
+                    self.updateSpeed(key: k, bytes: newBytes, resetBaseline: self.awaitingFirstProgressSample.contains(k))
                     let isFirstSample = self.awaitingFirstProgressSample.remove(k) != nil
                     let prev = self.liveProgress[k] ?? 0
                     let next = isFirstSample ? frac : max(frac, prev)
                     self.liveProgress[k] = next
+                    // Forward progress proves the source is healthy again, so
+                    // refill the retry budget: the cap means "3 consecutive
+                    // attempts without progress", not 3 errors over the whole
+                    // multi-thousand-segment download.
+                    if next > prev { self.retryCount[k] = 0 }
                     self.persistLiveProgressIfNeeded(key: k, value: next, force: isFirstSample)
                 }
             })
@@ -547,7 +638,7 @@ final class DownloadManager {
                 }
                 return
             }
-            fail(key: k, runID: runID, error: nil)
+            fail(key: k, runID: runID, error: error.localizedDescription)
             return
         }
 
@@ -561,6 +652,7 @@ final class DownloadManager {
             library.completeDownload(entry, localPath: "Documents/Downloads/\(k)/master.m3u8")
         }
         debugLog("runDownload success key=\(k) run=\(runID)")
+        clearSpeed(key: k)
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
         awaitingFirstProgressSample.remove(k)
@@ -591,6 +683,7 @@ final class DownloadManager {
         }
         debugLog("cleanupActive key=\(k)\(runID.map { " run=\($0)" } ?? "")")
         liveProgress[k] = nil
+        clearSpeed(key: k)
         retryCount[k] = nil
         lastPersistedProgress[k] = nil
         awaitingFirstProgressSample.remove(k)

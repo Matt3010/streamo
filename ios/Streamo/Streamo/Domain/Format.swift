@@ -33,6 +33,16 @@ enum Format {
         return minutes == 1 ? "Visto 1 min" : "Visti \(minutes) min"
     }
 
+    /// Human file size, e.g. "320 MB" / "1,2 GB".
+    static func fileSize(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// Human transfer rate, e.g. "2,4 MB/s".
+    static func speed(_ bytesPerSecond: Double) -> String {
+        "\(ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .file))/s"
+    }
+
     /// Human watch-time, e.g. "12 h 30 min" / "45 min" / "0 min".
     static func watchTime(_ seconds: Double) -> String {
         let totalMin = Int(seconds / 60)

@@ -39,10 +39,11 @@ enum HLSDownloader {
     }
 
     /// Progress reported as a 0...1 fraction of the downloadable HLS resources
-    /// completed. We weight sub-playlists by actual work item count
+    /// completed, plus the cumulative bytes on disk (pre-existing files from a
+    /// resumed run included). We weight sub-playlists by actual work item count
     /// (keys/maps + media files) instead of giving each playlist an equal
     /// slice, so mixed audio/subtitle/video masters stay much smoother.
-    typealias ProgressHandler = @Sendable (Double) -> Void
+    typealias ProgressHandler = @Sendable (Double, Int64) -> Void
 
     /// Run the download. Honours `Task` cancellation between resources.
     static func download(masterURL: URL,
@@ -123,6 +124,9 @@ enum HLSDownloader {
             }
         }
 
+        // Cumulative bytes on disk for this title, shared across all tracks.
+        let byteCounter = ByteCounter()
+
         if subPlaylists.isEmpty {
             // Master is already the media playlist (single-stream case).
             try await downloadVariant(text: masterText,
@@ -133,9 +137,10 @@ enum HLSDownloader {
                                       session: session,
                                       progressBase: 0,
                                       progressSpan: 1,
+                                      bytes: byteCounter,
                                       progress: progress,
                                       writeAs: "master.m3u8")
-            progress(1)
+            progress(1, await byteCounter.total())
             return
         }
 
@@ -169,6 +174,7 @@ enum HLSDownloader {
                                       session: session,
                                       progressBase: Double(completedWeight) / Double(totalWeight),
                                       progressSpan: Double(item.weight) / Double(totalWeight),
+                                      bytes: byteCounter,
                                       progress: progress,
                                       writeAs: item.sub.localName)
             completedWeight += item.weight
@@ -178,7 +184,7 @@ enum HLSDownloader {
         // a master pointing at not-yet-saved tracks.
         let masterOut = outputDirectory.appendingPathComponent("master.m3u8")
         try masterLines.joined(separator: "\n").write(to: masterOut, atomically: true, encoding: .utf8)
-        progress(1)
+        progress(1, await byteCounter.total())
     }
 
     // MARK: - Variant selection
@@ -208,6 +214,7 @@ enum HLSDownloader {
                                         session: URLSession,
                                         progressBase: Double,
                                         progressSpan: Double,
+                                        bytes: ByteCounter,
                                         progress: @escaping ProgressHandler,
                                         writeAs filename: String) async throws {
         var lines = text.components(separatedBy: "\n")
@@ -245,11 +252,20 @@ enum HLSDownloader {
 
         let allResourceNames = keyDownloads.map { $0.localName } + segmentDownloads.map { $0.localName }
         let totalResources = max(1, allResourceNames.count)
-        var completedResources = allResourceNames.reduce(0) { partial, name in
+        // Seed completed count AND byte total from files already on disk so a
+        // resumed run reports honest numbers from the first sample.
+        var completedResources = 0
+        var existingBytes: Int64 = 0
+        for name in allResourceNames {
             let target = outputDirectory.appendingPathComponent(name)
-            return partial + (FileManager.default.fileExists(atPath: target.path) ? 1 : 0)
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: target.path),
+               let size = (attrs[.size] as? NSNumber)?.int64Value {
+                completedResources += 1
+                existingBytes += size
+            }
         }
-        progress(progressBase + progressSpan * Double(completedResources) / Double(totalResources))
+        var totalBytes = await bytes.add(existingBytes)
+        progress(progressBase + progressSpan * Double(completedResources) / Double(totalResources), totalBytes)
 
         // Keys are small but mandatory. Fetch them first and count them toward
         // progress so resume does not jump late from already-present segments.
@@ -260,7 +276,8 @@ enum HLSDownloader {
             let data = try await fetchData(url, headers: headers, session: session)
             try data.write(to: target, options: .atomic)
             completedResources += 1
-            progress(progressBase + progressSpan * Double(completedResources) / Double(totalResources))
+            totalBytes = await bytes.add(Int64(data.count))
+            progress(progressBase + progressSpan * Double(completedResources) / Double(totalResources), totalBytes)
         }
 
         // Segments in parallel with bounded concurrency.
@@ -279,13 +296,26 @@ enum HLSDownloader {
                     let data = try await fetchData(url, headers: headers, session: session)
                     try data.write(to: target, options: .atomic)
                     let done = await counter.increment()
-                    progress(progressBase + progressSpan * Double(done) / Double(totalResources))
+                    let total = await bytes.add(Int64(data.count))
+                    progress(progressBase + progressSpan * Double(done) / Double(totalResources), total)
                 }
             }
 
             for _ in 0..<min(maxConcurrentSegmentDownloads, segmentDownloads.count) { enqueue() }
             while try await group.next() != nil { enqueue() }
         }
+    }
+
+    /// Actor-backed running byte total shared by every track of one title.
+    private actor ByteCounter {
+        private var bytes: Int64 = 0
+
+        func add(_ n: Int64) -> Int64 {
+            bytes += n
+            return bytes
+        }
+
+        func total() -> Int64 { bytes }
     }
 
     /// Tiny actor-backed counter for thread-safe progress reporting across the
@@ -315,6 +345,11 @@ enum HLSDownloader {
         return text
     }
 
+    /// Per-request retry budget for transient failures (timeouts, dropped
+    /// connections, 5xx). Without it a single flaky segment among thousands
+    /// kills the whole task group and burns a manager-level retry.
+    private static let transientRetryAttempts = 3
+
     private static func fetchData(_ url: URL,
                                   headers: [String: String],
                                   session: URLSession) async throws -> Data {
@@ -323,11 +358,39 @@ enum HLSDownloader {
             request.setValue(v, forHTTPHeaderField: k)
         }
         request.timeoutInterval = 30
-        let (data, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw DownloadError.fetchFailed(url, http.statusCode)
+
+        var attempt = 0
+        while true {
+            attempt += 1
+            do {
+                try Task.checkCancellation()
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    // 5xx is worth retrying in place; 4xx usually means the
+                    // signed URL expired — propagate so the caller re-resolves
+                    // the source for fresh tokens.
+                    if (500...599).contains(http.statusCode), attempt < transientRetryAttempts {
+                        try await Task.sleep(for: .seconds(Double(attempt)))
+                        continue
+                    }
+                    throw DownloadError.fetchFailed(url, http.statusCode)
+                }
+                return data
+            } catch let error as URLError where isTransient(error) && attempt < transientRetryAttempts {
+                try await Task.sleep(for: .seconds(Double(attempt)))
+            }
         }
-        return data
+    }
+
+    private static func isTransient(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
+             .cannotFindHost, .dnsLookupFailed, .notConnectedToInternet,
+             .resourceUnavailable:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func resolveURL(_ candidate: String, relativeTo base: URL) -> URL {
