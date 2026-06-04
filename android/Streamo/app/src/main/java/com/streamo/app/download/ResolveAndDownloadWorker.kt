@@ -1,0 +1,419 @@
+package com.streamo.app.download
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.work.ForegroundInfo
+import com.streamo.app.MainActivity
+import com.streamo.app.R
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.StreamKey
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.hls.offline.HlsDownloader
+import androidx.media3.exoplayer.offline.DownloadHelper
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.work.BackoffPolicy
+import androidx.work.CoroutineWorker
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import java.util.concurrent.TimeUnit
+import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.provider.ProviderResolver
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+
+private const val TAG = "StreamoDownload"
+private const val PROGRESS_INTERVAL_MS = 800L
+
+@UnstableApi
+class ResolveAndDownloadWorker(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params) {
+
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface WorkerEntryPoint {
+        fun providerResolver(): ProviderResolver
+        fun repository(): StreamoRepository
+    }
+
+    private fun entryPoint(): WorkerEntryPoint =
+        EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
+
+    override suspend fun doWork(): Result {
+        val downloadId = inputData.getInt(KEY_DOWNLOAD_ID, -1)
+        Log.d(TAG, "Worker started for downloadId=$downloadId attempt=$runAttemptCount")
+        if (downloadId == -1) {
+            Log.e(TAG, "Invalid downloadId")
+            return Result.failure()
+        }
+
+        val repository = entryPoint().repository()
+        val resolver = entryPoint().providerResolver()
+
+        val entry = repository.getDownloadById(downloadId) ?: return Result.failure().also {
+            Log.e(TAG, "DownloadEntry not found for id=$downloadId")
+        }
+        Log.d(TAG, "Entry found: ${entry.title}, status=${entry.status}, retries=${entry.retryCount}")
+
+        if (entry.retryCount >= MAX_RETRIES) {
+            Log.e(TAG, "Max retries reached for downloadId=$downloadId")
+            repository.markDownloadFailed(downloadId, "Numero massimo di tentativi raggiunto")
+            return Result.failure()
+        }
+
+        // Online streaming in progress → don't compete for bandwidth. Pause and let the
+        // player re-enqueue us when it closes. No retry: retryCount stays intact.
+        if (DownloadGate.streamingActive.get()) {
+            Log.d(TAG, "Streaming active, pausing downloadId=$downloadId")
+            repository.updateDownloadStatus(downloadId, "paused")
+            return Result.failure()
+        }
+
+        repository.updateDownloadStatus(downloadId, "resolving")
+        Log.d(TAG, "Status set to resolving")
+
+        val itemTitle = if (entry.mediaType == "tv" && entry.season > 0) {
+            "${entry.title} · S${entry.season}E${entry.episode}"
+        } else {
+            entry.title
+        }
+        // Persistent foreground notification for the active download.
+        try {
+            setForeground(foregroundInfo(buildNotification(itemTitle, "In preparazione…", 0, true)))
+        } catch (e: Exception) {
+            Log.w(TAG, "setForeground failed", e)
+        }
+
+        try {
+            val contentId = "${entry.tmdbId}_${entry.mediaType}_${entry.season}_${entry.episode}"
+
+            // On resume, reuse the URL resolved on the first run. Re-resolving mints a
+            // fresh vixcloud auth token (?token=…&expires=…) → every segment gets a new
+            // URL → the default full-URL cache key misses every cached segment → restart
+            // from 0. Reusing the stored URL keeps the cache keys stable so the cached
+            // segments on disk are picked up and the download resumes where it left off.
+            val streamUrl = if (entry.streamUrl.isNotBlank()) {
+                Log.d(TAG, "Reusing stored streamUrl for resume: ${entry.streamUrl}")
+                entry.streamUrl
+            } else {
+                val resolution = if (entry.mediaType == "tv" && entry.season > 0) {
+                    resolver.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
+                } else {
+                    resolver.movieSource(entry.tmdbId, entry.title, null)
+                }
+                Log.d(TAG, "Resolver returned ${resolution.sources.size} source(s). Message=${resolution.message}")
+
+                if (resolution.sources.isEmpty()) {
+                    throw IllegalStateException(resolution.message ?: "Nessuno stream disponibile")
+                }
+                resolution.sources.first().playlistUrl
+            }
+            Log.d(TAG, "streamUrl=$streamUrl, contentId=$contentId")
+
+            repository.updateDownloadContentAndStatus(downloadId, contentId, streamUrl, "downloading")
+            Log.d(TAG, "Room updated to downloading")
+
+            // Resolve stream keys for a SINGLE video rendition (+ default audio).
+            // Without keys, HlsDownloader fetches every quality and every audio
+            // rendition, bloating the download 3-5x.
+            val streamKeys = resolveStreamKeys(streamUrl)
+            Log.d(TAG, "Resolved ${streamKeys.size} streamKey(s) for $contentId")
+
+            // Direct HLS download — bypass DownloadService entirely.
+            // HlsDownloader fetches the master playlist, the selected variant
+            // playlists, and their segments, writing them into the SimpleCache.
+            val mediaItem = MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .setStreamKeys(streamKeys)
+                .build()
+
+            // 6 parallel threads: sweet spot between speed and not triggering
+            // vixcloud rate-limits. More than 8 risks HTTP 429 / IP bans.
+            val downloader = HlsDownloader(
+                mediaItem,
+                DownloadInfrastructure.cacheDataSourceFactory,
+                Executors.newFixedThreadPool(6)
+            )
+
+            var lastUpdateTime = 0L
+            var lastBytes = 0L
+            val updatePending = AtomicBoolean(false)
+            val workerScope = CoroutineScope(coroutineContext + SupervisorJob())
+
+            Log.d(TAG, "Starting HlsDownloader for $contentId")
+            downloader.download { contentLength, bytesDownloaded, percent ->
+                // User pressed Stop, or online streaming started → bail out of the
+                // blocking download promptly. Cached segments stay on disk so the
+                // download can resume later.
+                if (isStopped) throw InterruptedException("Download stopped by user")
+                if (DownloadGate.streamingActive.get()) throw InterruptedException("Paused for streaming")
+                val now = System.currentTimeMillis()
+                if (now - lastUpdateTime > PROGRESS_INTERVAL_MS) {
+                    // Download speed = bytes gained since last write / elapsed time.
+                    // First tick (lastUpdateTime == 0) has no baseline → report 0.
+                    val speed = if (lastUpdateTime > 0L) {
+                        val deltaBytes = (bytesDownloaded - lastBytes).coerceAtLeast(0L)
+                        val deltaSec = (now - lastUpdateTime) / 1000.0
+                        if (deltaSec > 0) (deltaBytes / deltaSec).toLong() else 0L
+                    } else 0L
+
+                    lastUpdateTime = now
+                    lastBytes = bytesDownloaded
+
+                    val pct = if (percent >= 0f) percent else 0f
+                    val bytesTotal = if (pct > 0f && contentLength > 0) {
+                        contentLength
+                    } else 0L
+
+                    Log.d(TAG, "Progress: id=$downloadId pct=${"%.1f".format(pct)} bytes=$bytesDownloaded total=$bytesTotal speed=$speed")
+
+                    // Update the persistent notification.
+                    if (!isStopped) {
+                        val speedTxt = if (speed > 0) " · %.1f MB/s".format(speed / 1_048_576.0) else ""
+                        updateNotification(
+                            buildNotification(itemTitle, "${pct.toInt()}%$speedTxt", pct.toInt(), pct <= 0f)
+                        )
+                    }
+
+                    // De-bounce Room writes so the downloader thread never blocks on DB I/O.
+                    if (updatePending.compareAndSet(false, true)) {
+                        workerScope.launch {
+                            try {
+                                // Re-check: a Stop may have landed after the debounce was
+                                // scheduled. Don't clobber the "paused" status set by stop().
+                                if (isStopped) return@launch
+                                repository.updateDownloadProgress(
+                                    downloadId,
+                                    pct,
+                                    bytesDownloaded,
+                                    bytesTotal,
+                                    speed,
+                                    "downloading"
+                                )
+                            } finally {
+                                updatePending.set(false)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Log.d(TAG, "Download completed: id=$downloadId contentId=$contentId")
+            repository.updateDownloadProgress(
+                downloadId,
+                100f,
+                lastBytes,
+                lastBytes,
+                0L,
+                "completed"
+            )
+            return Result.success()
+        } catch (e: Exception) {
+            // Stopped by the user (cancelWorkByTag) → leave DB status as set by stop(), no retry.
+            if (isStopped) {
+                Log.d(TAG, "Worker stopped (cancelled) for id=$downloadId")
+                return Result.failure()
+            }
+            // Paused because streaming started mid-download → keep cache, mark paused,
+            // no retry. The player re-enqueues on close.
+            if (DownloadGate.streamingActive.get()) {
+                Log.d(TAG, "Worker paused for streaming, id=$downloadId")
+                repository.updateDownloadStatus(downloadId, "paused")
+                return Result.failure()
+            }
+            Log.e(TAG, "Worker failed (attempt $runAttemptCount)", e)
+            if (entry.retryCount < MAX_RETRIES) {
+                repository.incrementRetryAndReset(downloadId)
+                Log.d(TAG, "Scheduling retry for downloadId=$downloadId (retryCount=${entry.retryCount + 1})")
+                return Result.retry()
+            }
+            repository.markDownloadFailed(downloadId, e.localizedMessage)
+            return Result.failure()
+        }
+    }
+
+    /**
+     * Prepares the HLS manifest online and returns the stream keys for a single
+     * video rendition plus the default audio/text tracks, so the downloader grabs
+     * one quality instead of every variant. Empty list on failure → caller falls
+     * back to downloading all renditions rather than failing outright.
+     */
+    private suspend fun resolveStreamKeys(streamUrl: String): List<StreamKey> =
+        suspendCancellableCoroutine { continuation ->
+            val mediaItem = MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .build()
+            val downloadHelper = DownloadHelper.forMediaItem(
+                applicationContext,
+                mediaItem,
+                DefaultRenderersFactory(applicationContext),
+                DownloadInfrastructure.httpDataSourceFactory
+            )
+
+            downloadHelper.prepare(object : DownloadHelper.Callback {
+                override fun onPrepared(helper: DownloadHelper) {
+                    try {
+                        // Default selection picks one video rendition (best within
+                        // default constraints) + default audio/subtitle tracks.
+                        for (periodIndex in 0 until helper.periodCount) {
+                            helper.addTrackSelection(
+                                periodIndex,
+                                DefaultTrackSelector.Parameters.DEFAULT_WITHOUT_CONTEXT
+                            )
+                        }
+                        val keys = helper.getDownloadRequest(byteArrayOf()).streamKeys
+                        helper.release()
+                        continuation.resume(keys)
+                    } catch (e: Exception) {
+                        helper.release()
+                        Log.w(TAG, "Stream key resolution failed, downloading all renditions", e)
+                        continuation.resume(emptyList())
+                    }
+                }
+
+                override fun onPrepareError(helper: DownloadHelper, e: IOException) {
+                    helper.release()
+                    Log.w(TAG, "DownloadHelper prepare failed, downloading all renditions", e)
+                    continuation.resume(emptyList())
+                }
+            })
+
+            continuation.invokeOnCancellation { downloadHelper.release() }
+        }
+
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                ACTIVE_CHANNEL_ID,
+                "Download in corso",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Stato dei download attivi"
+                setShowBadge(false)
+            }
+            (applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(
+        contentTitle: String,
+        text: String,
+        pct: Int,
+        indeterminate: Boolean
+    ): Notification {
+        ensureChannel()
+        val pi = PendingIntent.getActivity(
+            applicationContext, 0,
+            Intent(applicationContext, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Builder(applicationContext, ACTIVE_CHANNEL_ID)
+            .setContentTitle(contentTitle)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setProgress(100, pct.coerceIn(0, 100), indeterminate)
+            .build()
+    }
+
+    private fun foregroundInfo(notification: Notification): ForegroundInfo =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(ACTIVE_NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(ACTIVE_NOTIF_ID, notification)
+        }
+
+    private fun updateNotification(notification: Notification) {
+        try {
+            NotificationManagerCompat.from(applicationContext).notify(ACTIVE_NOTIF_ID, notification)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS not granted — foreground service notice still shows.
+        }
+    }
+
+    companion object {
+        const val KEY_DOWNLOAD_ID = "download_entry_id"
+        const val MAX_RETRIES = 3
+        private const val ACTIVE_CHANNEL_ID = "streamo_active_download"
+        private const val ACTIVE_NOTIF_ID = 2002
+
+        /**
+         * Single unique chain for ALL downloads: WorkManager runs the chain one item at a
+         * time, so providers never see parallel requests (avoids rate-limit / ban / "too
+         * many requests"). APPEND_OR_REPLACE keeps the queue alive even if an item fails.
+         */
+        const val DOWNLOAD_QUEUE = "streamo_download_queue"
+
+        /** Per-download tag so a single item can be cancelled without touching the chain. */
+        fun tag(downloadId: Int) = "dl_$downloadId"
+
+        fun enqueue(context: Context, downloadId: Int) {
+            val request = OneTimeWorkRequestBuilder<ResolveAndDownloadWorker>()
+                .setInputData(
+                    Data.Builder().putInt(KEY_DOWNLOAD_ID, downloadId).build()
+                )
+                .addTag(tag(downloadId))
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 2000, TimeUnit.MILLISECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                DOWNLOAD_QUEUE,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                request
+            )
+        }
+
+        fun cancel(context: Context, downloadId: Int) {
+            WorkManager.getInstance(context).cancelAllWorkByTag(tag(downloadId))
+        }
+
+        /**
+         * Delete cached partial/complete data for a download. Blocking file I/O — call
+         * off the main thread. Used by the trash action (NOT by stop, which keeps data).
+         */
+        fun removeCachedData(streamUrl: String) {
+            if (streamUrl.isBlank()) return
+            try {
+                val mediaItem = MediaItem.Builder()
+                    .setUri(streamUrl)
+                    .setMimeType(MimeTypes.APPLICATION_M3U8)
+                    .build()
+                HlsDownloader(mediaItem, DownloadInfrastructure.cacheDataSourceFactory).remove()
+                Log.d(TAG, "Removed cached data for $streamUrl")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to remove cached data for $streamUrl", e)
+            }
+        }
+    }
+}

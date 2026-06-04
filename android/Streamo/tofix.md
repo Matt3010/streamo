@@ -1,0 +1,6 @@
+- lista "continua a guardare" mostra più elementi per la stessa serie, deve mostrare l'ultima cosa guardata forse l'ultimo espisodio dell'ultima stagione guardata oppure l'ultima cosa guardata in assoluto? - OK
+- nella lista download mettere la percentuale mb e velocità di download - OK
+- da sistemare stop e play di un download - OK
+- da sistemare keepawake dello schermo durante il play di un video
+- da aggiungere in casting icona sotto, e notifica permanente per gestione player - ok
+- da sistemare quando esco dallo streaming in trasmissione bisogna chiedere all'utente se interrompere oppure mettere in background, però dovrà essere visibile un avviso fisso non invadendte per ripreddere il controllo - ok[home-section-navigation.md](.claude/plans/home-section-navigation.md)
