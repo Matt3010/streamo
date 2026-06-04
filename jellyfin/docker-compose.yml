@@ -7,8 +7,9 @@ services:
     volumes:
       - ./jellyfin-data/config:/config
       - ./jellyfin-data/cache:/cache
-    environment:
-      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PUBLIC_URL:-http://localhost:18096}
+    # No PublishedServerUrl: Jellyfin auto-detects from the request host, so
+    # clients reach it at whatever address they used (LAN IP, hotspot, etc.)
+    # with no hardcoded host.
 
   addon:
     build:
@@ -18,9 +19,10 @@ services:
     ports:
       - "${ADDON_PORT:-17871}:7000"
     environment:
-      # Base URL players use for the HLS proxy — must be reachable from every
-      # Jellyfin client (LAN IP, not localhost / docker hostname).
-      - ADDON_PUBLIC_URL=${ADDON_PUBLIC_URL:-}
+      # Internal docker hostname. Jellyfin always transcodes this content, so
+      # players never hit the addon directly — only Jellyfin does, over the
+      # docker network. No host IP to hardcode; works on any network.
+      - ADDON_PUBLIC_URL=${ADDON_PUBLIC_URL:-http://addon:7000}
       - ADDON_DATA_DIR=/data
       - CATALOG_LOCALE=${CATALOG_LOCALE:-it}
       # TMDB key — needed ONLY to translate the imdb/tmdb ids Gelato sends into
