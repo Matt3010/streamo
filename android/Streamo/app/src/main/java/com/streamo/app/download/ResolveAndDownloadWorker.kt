@@ -140,9 +140,16 @@ class ResolveAndDownloadWorker(
 
             // Resolve stream keys for a SINGLE video rendition (+ default audio).
             // Without keys, HlsDownloader fetches every quality and every audio
-            // rendition, bloating the download 3-5x.
-            val streamKeys = resolveStreamKeys(streamUrl)
-            Log.d(TAG, "Resolved ${streamKeys.size} streamKey(s) for $contentId")
+            // rendition, bloating the download 3-5x. Il tetto altezza (se impostato)
+            // arriva da entry.quality: scarica la variante ≤ tetto più alta.
+            val maxHeight = DownloadQualityPref.capHeightFromEntryQuality(entry.quality)
+            val (streamKeys, chosenHeight) = resolveStreamKeys(streamUrl, maxHeight)
+            Log.d(TAG, "Resolved ${streamKeys.size} streamKey(s) for $contentId, height=$chosenHeight")
+            // Registra la risoluzione effettivamente scaricata (es. "1080p") al posto della
+            // label di preferenza ("Massima"), così l'item completato mostra la qualità vera.
+            if (chosenHeight != null) {
+                repository.updateDownloadQuality(downloadId, "${chosenHeight}p")
+            }
 
             // Direct HLS download — bypass DownloadService entirely.
             // HlsDownloader fetches the master playlist, the selected variant
@@ -264,7 +271,10 @@ class ResolveAndDownloadWorker(
      * one quality instead of every variant. Empty list on failure → caller falls
      * back to downloading all renditions rather than failing outright.
      */
-    private suspend fun resolveStreamKeys(streamUrl: String): List<StreamKey> =
+    private suspend fun resolveStreamKeys(
+        streamUrl: String,
+        maxHeight: Int?
+    ): Pair<List<StreamKey>, Int?> =
         suspendCancellableCoroutine { continuation ->
             val mediaItem = MediaItem.Builder()
                 .setUri(streamUrl)
@@ -280,28 +290,51 @@ class ResolveAndDownloadWorker(
             downloadHelper.prepare(object : DownloadHelper.Callback {
                 override fun onPrepared(helper: DownloadHelper) {
                     try {
-                        // Default selection picks one video rendition (best within
-                        // default constraints) + default audio/subtitle tracks.
+                        // Altezze video disponibili nel master playlist.
+                        val heights = mutableListOf<Int>()
                         for (periodIndex in 0 until helper.periodCount) {
-                            helper.addTrackSelection(
-                                periodIndex,
-                                DefaultTrackSelector.Parameters.DEFAULT_WITHOUT_CONTEXT
-                            )
+                            val groups = helper.getTrackGroups(periodIndex)
+                            for (g in 0 until groups.length) {
+                                val group = groups.get(g)
+                                for (t in 0 until group.length) {
+                                    val h = group.getFormat(t).height
+                                    if (h > 0) heights += h
+                                }
+                            }
+                        }
+                        // Altezza scelta: tetto → la più alta ≤ tetto (o la più bassa se
+                        // nessuna rientra); nessun tetto → la più alta disponibile.
+                        val chosenHeight = when {
+                            heights.isEmpty() -> null
+                            maxHeight == null -> heights.max()
+                            else -> heights.filter { it <= maxHeight }.maxOrNull() ?: heights.min()
+                        }
+                        val params = if (chosenHeight != null) {
+                            DefaultTrackSelector.Parameters.Builder(applicationContext)
+                                .setMaxVideoSize(Int.MAX_VALUE, chosenHeight)
+                                .build()
+                        } else {
+                            DefaultTrackSelector.Parameters.DEFAULT_WITHOUT_CONTEXT
+                        }
+                        // Default selection picks one video rendition (best within
+                        // constraints) + default audio/subtitle tracks.
+                        for (periodIndex in 0 until helper.periodCount) {
+                            helper.addTrackSelection(periodIndex, params)
                         }
                         val keys = helper.getDownloadRequest(byteArrayOf()).streamKeys
                         helper.release()
-                        continuation.resume(keys)
+                        continuation.resume(keys to chosenHeight)
                     } catch (e: Exception) {
                         helper.release()
                         Log.w(TAG, "Stream key resolution failed, downloading all renditions", e)
-                        continuation.resume(emptyList())
+                        continuation.resume(emptyList<StreamKey>() to null)
                     }
                 }
 
                 override fun onPrepareError(helper: DownloadHelper, e: IOException) {
                     helper.release()
                     Log.w(TAG, "DownloadHelper prepare failed, downloading all renditions", e)
-                    continuation.resume(emptyList())
+                    continuation.resume(emptyList<StreamKey>() to null)
                 }
             })
 

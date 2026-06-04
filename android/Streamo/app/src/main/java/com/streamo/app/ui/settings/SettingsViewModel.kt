@@ -8,6 +8,7 @@ import com.streamo.app.BuildConfig
 import com.streamo.app.data.backup.BackupManager
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.download.DownloadQualityPref
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +50,12 @@ class SettingsViewModel @Inject constructor(
     private val _accentColor = MutableStateFlow(SettingsDataStore.defaultAccent)
     val accentColor: StateFlow<Triple<Float, Float, Float>> = _accentColor.asStateFlow()
 
+    private val _downloadQualityWifi = MutableStateFlow<DownloadQualityPref>(DownloadQualityPref.Ask)
+    val downloadQualityWifi: StateFlow<DownloadQualityPref> = _downloadQualityWifi.asStateFlow()
+
+    private val _downloadQualityMobile = MutableStateFlow<DownloadQualityPref>(DownloadQualityPref.Ask)
+    val downloadQualityMobile: StateFlow<DownloadQualityPref> = _downloadQualityMobile.asStateFlow()
+
     private val _confirmRecalc = MutableStateFlow(false)
     val confirmRecalc: StateFlow<Boolean> = _confirmRecalc.asStateFlow()
 
@@ -75,6 +82,16 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             settings.accentColor.collect { _accentColor.value = it }
+        }
+        viewModelScope.launch {
+            settings.downloadQualityWifi.collect {
+                _downloadQualityWifi.value = DownloadQualityPref.parse(it)
+            }
+        }
+        viewModelScope.launch {
+            settings.downloadQualityMobile.collect {
+                _downloadQualityMobile.value = DownloadQualityPref.parse(it)
+            }
         }
     }
 
@@ -109,6 +126,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settings.setFoldersEnabled(value)
         }
+    }
+
+    fun setDownloadQualityWifi(pref: DownloadQualityPref) {
+        viewModelScope.launch { settings.setDownloadQualityWifi(pref.serialize()) }
+    }
+
+    fun setDownloadQualityMobile(pref: DownloadQualityPref) {
+        viewModelScope.launch { settings.setDownloadQualityMobile(pref.serialize()) }
     }
 
     fun setAccentColor(r: Float, g: Float, b: Float) {

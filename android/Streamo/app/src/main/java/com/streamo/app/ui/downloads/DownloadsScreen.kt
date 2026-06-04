@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,6 +58,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.ImagePlaceholder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +71,7 @@ fun DownloadsScreen(
     val entries by viewModel.entries.collectAsState(initial = emptyList())
 
     Scaffold(
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -78,7 +81,8 @@ fun DownloadsScreen(
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
@@ -157,181 +161,6 @@ fun DownloadsScreen(
                     }
                 }
             )
-        }
-    }
-}
-
-@Composable
-internal fun DownloadCard(
-    entry: DownloadEntry,
-    overview: String? = null,
-    episodeName: String? = null,
-    onClick: () -> Unit,
-    onStop: () -> Unit = {},
-    onRestart: () -> Unit = {},
-    onRequestDelete: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .let { if (entry.status == "completed") it.clickable(onClick = onClick) else it },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PosterThumb(
-                    posterPath = entry.stillPath ?: entry.posterPath,
-                    modifier = Modifier.size(64.dp)
-                )
-                Spacer(modifier = Modifier.size(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = entry.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = statusLabel(entry.status),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = statusColor(entry.status)
-                    )
-                    if (entry.season > 0) {
-                        val label = if (episodeName != null) {
-                            "Episodio ${entry.episode}${episodeName.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""}"
-                        } else if (entry.episode > 0) {
-                            "Stagione ${entry.season} · Episodio ${entry.episode}"
-                        } else {
-                            "Stagione ${entry.season}"
-                        }
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                val isActive = entry.status == "downloading" || entry.status == "pending" || entry.status == "resolving"
-                val isPaused = entry.status == "paused"
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (entry.status == "completed") {
-                        IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayCircle,
-                                contentDescription = "Riproduci",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    if (isActive) {
-                        IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.Pause,
-                                contentDescription = "Metti in pausa il download",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                    if (isPaused) {
-                        IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = "Riprendi il download",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    if (entry.status == "failed") {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Errore",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    IconButton(onClick = onRequestDelete, modifier = Modifier.size(40.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = "Elimina download",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-
-            val progress = entry.downloadPercentage
-            when {
-                entry.status == "downloading" && progress > 0f -> {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    val pct = (progress / 100f).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { pct },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color.DarkGray,
-                        drawStopIndicator = {}
-                    )
-                    Text(
-                        text = downloadDetailLine(
-                            progress,
-                            entry.bytesDownloaded,
-                            entry.bytesTotal,
-                            entry.bytesPerSecond
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-                entry.status == "downloading" && progress <= 0f || entry.status == "pending" || entry.status == "resolving" || entry.status == "paused" -> {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color.DarkGray
-                    )
-                    val detail = downloadDetailLine(
-                        0f,
-                        entry.bytesDownloaded,
-                        entry.bytesTotal,
-                        entry.bytesPerSecond
-                    )
-                    if (detail.isNotEmpty()) {
-                        Text(
-                            text = detail,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            overview?.takeIf { it.isNotBlank() }?.let {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
     }
 }
@@ -623,21 +452,15 @@ private fun SeriesDownloadGroupRow(
 }
 
 @Composable
-private fun PosterThumb(posterPath: String?, modifier: Modifier = Modifier) {
+internal fun PosterThumb(posterPath: String?, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(8.dp)
     if (posterPath.isNullOrBlank()) {
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surface),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Movie,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        ImagePlaceholder(
+            label = "",
+            showLabel = false,
+            iconSizeDp = 32.dp,
+            modifier = modifier.clip(shape)
+        )
     } else {
         AsyncImage(
             model = TMDBImage.url(posterPath, TMDBImage.Size.W185),

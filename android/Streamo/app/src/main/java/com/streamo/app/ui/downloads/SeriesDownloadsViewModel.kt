@@ -9,7 +9,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
+import androidx.media3.common.util.UnstableApi
 import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.download.DownloadQualityGate
+import com.streamo.app.download.DownloadQualityPref
+import com.streamo.app.download.DownloadQualityRequest
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.TVLogic
@@ -23,11 +27,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+@UnstableApi
 @HiltViewModel
 class SeriesDownloadsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: StreamoRepository,
     private val client: TMDBClient,
+    private val qualityGate: DownloadQualityGate,
     private val app: Application
 ) : ViewModel() {
 
@@ -139,7 +145,14 @@ class SeriesDownloadsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun addAndEnqueue(season: Int, episode: Int) {
+    // Modale di scelta qualità (preferenza "Chiedi").
+    var qualityRequest by mutableStateOf<DownloadQualityRequest?>(null)
+        private set
+    var qualityResolving by mutableStateOf(false)
+        private set
+    private var pendingTargets: List<Pair<Int, Int>> = emptyList()
+
+    private suspend fun addAndEnqueue(season: Int, episode: Int, quality: DownloadQualityPref) {
         val entry = DownloadEntry(
             tmdbId = tmdbId,
             mediaType = "tv",
@@ -148,6 +161,7 @@ class SeriesDownloadsViewModel @Inject constructor(
             episode = episode,
             contentId = "${tmdbId}_tv_${season}_${episode}",
             localPath = "",
+            quality = quality.entryQualityLabel(),
             status = "pending"
         )
         val id = repository.addDownload(entry)
@@ -155,8 +169,44 @@ class SeriesDownloadsViewModel @Inject constructor(
         ResolveAndDownloadWorker.enqueue(app, id.toInt())
     }
 
+    /**
+     * Scarica diretto se la preferenza di rete è impostata, altrimenti rileva le risoluzioni
+     * e apre la modale. [appliesToAll] avvisa che la scelta vale per tutti i [targets].
+     */
+    private suspend fun requestOrEnqueue(targets: List<Pair<Int, Int>>, appliesToAll: Boolean) {
+        if (targets.isEmpty()) return
+        val net = qualityGate.currentNetwork()
+        val pref = qualityGate.preferenceFor(net)
+        if (pref !is DownloadQualityPref.Ask) {
+            targets.forEach { addAndEnqueue(it.first, it.second, pref) }
+            return
+        }
+        pendingTargets = targets
+        qualityResolving = true
+        val first = targets.first()
+        val heights = qualityGate.availableHeights(tmdbId, "tv", title, first.first, first.second)
+        qualityResolving = false
+        qualityRequest = DownloadQualityRequest(net, heights, appliesToAll)
+    }
+
+    fun confirmQuality(pref: DownloadQualityPref, savePreference: Boolean) {
+        val req = qualityRequest ?: return
+        val targets = pendingTargets
+        qualityRequest = null
+        pendingTargets = emptyList()
+        viewModelScope.launch {
+            if (savePreference) qualityGate.savePreference(req.networkType, pref)
+            targets.forEach { addAndEnqueue(it.first, it.second, pref) }
+        }
+    }
+
+    fun dismissQuality() {
+        qualityRequest = null
+        pendingTargets = emptyList()
+    }
+
     fun enqueueDownload(season: Int, episode: Int) {
-        viewModelScope.launch { addAndEnqueue(season, episode) }
+        viewModelScope.launch { requestOrEnqueue(listOf(season to episode), appliesToAll = false) }
     }
 
     /** Enqueue every aired episode (all seasons) not already downloading/downloaded. */
@@ -164,12 +214,10 @@ class SeriesDownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             val existing = repository.downloadsForTmdbId(tmdbId).first()
                 .map { it.contentId }.toSet()
-            episodeDetails.keys
+            val targets = episodeDetails.keys
                 .sortedWith(compareBy({ it.first }, { it.second }))
-                .forEach { (season, episode) ->
-                    val contentId = "${tmdbId}_tv_${season}_${episode}"
-                    if (contentId !in existing) addAndEnqueue(season, episode)
-                }
+                .filter { (season, episode) -> "${tmdbId}_tv_${season}_${episode}" !in existing }
+            requestOrEnqueue(targets, appliesToAll = true)
         }
     }
 
@@ -208,14 +256,14 @@ class SeriesDownloadsViewModel @Inject constructor(
     fun stop(entry: DownloadEntry) {
         viewModelScope.launch {
             ResolveAndDownloadWorker.cancel(app, entry.id)
-            repository.updateDownloadStatus(entry.id, "paused")
+            repository.updateDownloadStatusResetSpeed(entry.id, "paused")
         }
     }
 
     fun restart(entry: DownloadEntry) {
         viewModelScope.launch {
             repository.resetRetryCount(entry.id)
-            repository.updateDownloadStatus(entry.id, "pending")
+            repository.updateDownloadStatusResetSpeed(entry.id, "pending")
             ResolveAndDownloadWorker.enqueue(app, entry.id)
         }
     }

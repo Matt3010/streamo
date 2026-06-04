@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
@@ -63,6 +66,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,6 +88,7 @@ fun SeriesDownloadsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -122,7 +129,8 @@ fun SeriesDownloadsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
@@ -204,6 +212,31 @@ fun SeriesDownloadsScreen(
             )
         }
 
+        // Rilevamento risoluzioni in corso (prima della modale "Chiedi").
+        if (viewModel.qualityResolving) {
+            AlertDialog(
+                onDismissRequest = {},
+                confirmButton = {},
+                title = { Text("Qualità download") },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Text("Rilevo le risoluzioni disponibili…")
+                    }
+                }
+            )
+        }
+
+        // Scelta qualità download (preferenza "Chiedi").
+        viewModel.qualityRequest?.let { req ->
+            DownloadQualityDialog(
+                request = req,
+                onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
+                onDismiss = { viewModel.dismissQuality() }
+            )
+        }
+
         // Confirm delete-all dialog
         if (confirmDeleteAll) {
             AlertDialog(
@@ -258,9 +291,7 @@ private fun AllEpisodesContent(
                         .fillMaxWidth()
                         .then(
                             if (showScrollHints) {
-                                Modifier
-                                    .horizontalScroll(scrollState)
-                                    .padding(start = 28.dp, end = 28.dp)
+                                Modifier.horizontalScroll(scrollState)
                             } else Modifier
                         )
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -293,10 +324,12 @@ private fun AllEpisodesContent(
                             .align(Alignment.CenterStart)
                             .width(28.dp)
                             .fillMaxHeight()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(fadeBg, Color.Transparent)
-                                )
+                            .then(
+                                if (canScrollLeft) Modifier.background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(fadeBg, Color.Transparent)
+                                    )
+                                ) else Modifier
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -312,10 +345,12 @@ private fun AllEpisodesContent(
                             .align(Alignment.CenterEnd)
                             .width(28.dp)
                             .fillMaxHeight()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(Color.Transparent, fadeBg)
-                                )
+                            .then(
+                                if (canScrollRight) Modifier.background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(Color.Transparent, fadeBg)
+                                    )
+                                ) else Modifier
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -357,23 +392,20 @@ private fun AllEpisodesContent(
                 items(viewModel.allEpisodes, key = { it.episodeNumber }) { ep ->
                     val contentId = "${viewModel.tmdbId}_tv_${viewModel.selectedSeason}_${ep.episodeNumber}"
                     val entry = downloadMap[contentId]
-                    val status = entry?.status
-                    val isActive = status == "downloading" || status == "pending" || status == "resolving" || status == "paused"
-                    val progress = entry?.downloadPercentage ?: 0f
 
-                    EpisodeDownloadRow(
-                        episode = ep,
-                        status = status,
-                        isActive = isActive,
-                        progress = progress,
-                        bytesDownloaded = entry?.bytesDownloaded ?: 0L,
-                        bytesTotal = entry?.bytesTotal ?: 0L,
-                        bytesPerSecond = entry?.bytesPerSecond ?: 0L,
+                    EpisodeDownloadCard(
+                        episodeNumber = ep.episodeNumber,
+                        episodeName = ep.name,
+                        overview = ep.overview,
+                        stillPath = ep.stillPath,
+                        entry = entry,
                         onDownload = {
                             onToggleDownload(viewModel.selectedSeason, ep.episodeNumber)
                         },
+                        onStop = { entry?.let { viewModel.stop(it) } },
+                        onRestart = { entry?.let { viewModel.restart(it) } },
                         onPlay = {
-                            if (entry != null && status == "completed") {
+                            if (entry != null && entry.status == "completed") {
                                 onNavigateToPlayer(
                                     entry.tmdbId,
                                     entry.mediaType,
@@ -395,21 +427,42 @@ private fun AllEpisodesContent(
     }
 }
 
+/**
+ * Card episodio condivisa (lista dettaglio + lista download globale): anteprima still
+ * quadrata con play sopra se completato, titolo + stato, cluster bottoni (scarica / pausa /
+ * riprendi + elimina), barra progresso con %·MB sempre (se ci sono dati) e velocità solo
+ * durante il download, descrizione episodio sotto.
+ *
+ * `entry` nullo = episodio non ancora scaricato (mostra solo il bottone Scarica).
+ */
 @Composable
-private fun EpisodeDownloadRow(
-    episode: TmdbEpisodeDetail,
-    status: String?,
-    isActive: Boolean,
-    progress: Float,
-    bytesDownloaded: Long = 0L,
-    bytesTotal: Long = 0L,
-    bytesPerSecond: Long = 0L,
+internal fun EpisodeDownloadCard(
+    episodeNumber: Int,
+    episodeName: String?,
+    overview: String?,
+    stillPath: String?,
+    entry: DownloadEntry?,
     onDownload: () -> Unit,
+    onStop: () -> Unit,
+    onRestart: () -> Unit,
     onPlay: () -> Unit,
     onRequestDelete: () -> Unit
 ) {
+    val status = entry?.status
+    val isActive = status == "downloading" || status == "pending" || status == "resolving"
+    val isPaused = status == "paused"
+    val isCompleted = status == "completed"
+    val isFailed = status == "failed"
+    val hasEntry = entry != null
+    val progress = entry?.downloadPercentage ?: 0f
+    val bytesDownloaded = entry?.bytesDownloaded ?: 0L
+    val bytesTotal = entry?.bytesTotal ?: 0L
+    val bytesPerSecond = entry?.bytesPerSecond ?: 0L
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { if (isCompleted) it.clickable(onClick = onPlay) else it },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
@@ -419,86 +472,107 @@ private fun EpisodeDownloadRow(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Anteprima episodio quadrata; se completato, play centrale sopra (come nel dettaglio).
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .let { if (isCompleted) it.clickable(onClick = onPlay) else it },
+                    contentAlignment = Alignment.Center
+                ) {
+                    PosterThumb(
+                        posterPath = stillPath ?: entry?.stillPath ?: entry?.posterPath,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (isCompleted) {
+                        // Scrim scuro così il play resta visibile su still chiare.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.35f))
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.PlayCircle,
+                            contentDescription = "Riproduci",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.size(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Episodio ${episode.episodeNumber}${episode.name?.let { " — $it" } ?: ""}",
+                        text = "Episodio $episodeNumber${episodeName?.let { " — $it" } ?: ""}",
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    status?.let {
-                        Text(
-                            text = statusLabel(it),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = statusColor(it)
-                        )
-                    }
+                    Text(
+                        text = status?.let { statusLabel(it) } ?: "Non scaricato",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = status?.let { statusColor(it) }
+                            ?: MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    when {
-                        status == "completed" -> {
-                            IconButton(onClick = onPlay, modifier = Modifier.size(40.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayCircle,
-                                    contentDescription = "Riproduci",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(onClick = onRequestDelete, modifier = Modifier.size(40.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Elimina",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        isActive -> {
-                            IconButton(onClick = onRequestDelete, modifier = Modifier.size(40.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Stop,
-                                    contentDescription = "Interrompi",
-                                    tint = Color.White
-                                )
-                            }
-                        }
-                        status == "failed" -> {
+                    if (isActive) {
+                        IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
                             Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Errore",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(24.dp)
+                                imageVector = Icons.Filled.Pause,
+                                contentDescription = "Metti in pausa il download",
+                                tint = Color.White
                             )
-                            IconButton(onClick = onRequestDelete, modifier = Modifier.size(40.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Elimina",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
-                        else -> {
-                            IconButton(onClick = onDownload, modifier = Modifier.size(40.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Download,
-                                    contentDescription = "Scarica",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                    }
+                    if (isPaused) {
+                        IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.PlayArrow,
+                                contentDescription = "Riprendi il download",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    if (isFailed) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Errore",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    if (!hasEntry || isFailed) {
+                        IconButton(onClick = onDownload, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Download,
+                                contentDescription = "Scarica",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    if (hasEntry) {
+                        IconButton(onClick = onRequestDelete, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Elimina download",
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
             }
 
-            when {
-                status == "downloading" && progress > 0f -> {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    val pct = (progress / 100f).coerceIn(0f, 1f)
+            // Barra progresso solo durante download/pausa. % e MB sempre se ci sono dati;
+            // la velocità solo mentre sta scaricando.
+            val showBar = isActive || isPaused
+            if (showBar) {
+                Spacer(modifier = Modifier.height(6.dp))
+                if (progress > 0f) {
                     LinearProgressIndicator(
-                        progress = { pct },
+                        progress = { (progress / 100f).coerceIn(0f, 1f) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp)
@@ -507,15 +581,7 @@ private fun EpisodeDownloadRow(
                         trackColor = Color.DarkGray,
                         drawStopIndicator = {}
                     )
-                    Text(
-                        text = downloadDetailLine(progress, bytesDownloaded, bytesTotal, bytesPerSecond),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-                status == "downloading" && progress <= 0f || status == "pending" || status == "resolving" || status == "paused" -> {
-                    Spacer(modifier = Modifier.height(6.dp))
+                } else {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -524,26 +590,45 @@ private fun EpisodeDownloadRow(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.DarkGray
                     )
-                    val detail = downloadDetailLine(0f, bytesDownloaded, bytesTotal, bytesPerSecond)
-                    if (detail.isNotEmpty()) {
-                        Text(
-                            text = detail,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
                 }
             }
+            val detail = if (isCompleted) {
+                // Completato: qualità · dimensione · data, niente percentuale/velocità.
+                val parts = mutableListOf<String>()
+                entry?.quality?.takeIf { it.isNotBlank() }?.let { parts += it }
+                (bytesDownloaded.takeIf { it > 0 } ?: bytesTotal)
+                    .takeIf { it > 0 }
+                    ?.let { parts += formatBytes(it) }
+                entry?.createdAt?.let {
+                    parts += SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
+                }
+                parts.joinToString(" · ")
+            } else {
+                downloadDetailLine(
+                    percentage = progress,
+                    bytesDownloaded = bytesDownloaded,
+                    bytesTotal = bytesTotal,
+                    // Velocità solo durante il download attivo.
+                    bytesPerSecond = if (status == "downloading") bytesPerSecond else 0L
+                )
+            }
+            if (detail.isNotEmpty()) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = if (showBar) 2.dp else 6.dp)
+                )
+            }
 
-            episode.overview?.takeIf { it.isNotBlank() }?.let {
+            overview?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             }
         }
@@ -584,31 +669,25 @@ private fun DownloadedOnlyContent(
         ) {
             items(entries.sortedBy { it.season * 1000 + it.episode }, key = { it.id }) { entry ->
                 val epDetail = viewModel.episodeDetails[Pair(entry.season, entry.episode)]
-                DownloadCard(
-                    entry = entry,
-                    overview = epDetail?.overview,
+                EpisodeDownloadCard(
+                    episodeNumber = entry.episode,
                     episodeName = epDetail?.name,
+                    overview = epDetail?.overview,
+                    stillPath = epDetail?.stillPath,
+                    entry = entry,
+                    onDownload = { viewModel.restart(entry) },
                     onStop = { viewModel.stop(entry) },
                     onRestart = { viewModel.restart(entry) },
-                    onClick = {
-                        if (entry.status == "completed") {
-                            onNavigateToPlayer(
-                                entry.tmdbId,
-                                entry.mediaType,
-                                entry.season,
-                                entry.episode,
-                                entry.title,
-                                entry.posterPath,
-                                null
-                            )
-                        } else {
-                            onNavigateToDetail(
-                                entry.tmdbId,
-                                entry.mediaType,
-                                entry.season,
-                                entry.episode
-                            )
-                        }
+                    onPlay = {
+                        onNavigateToPlayer(
+                            entry.tmdbId,
+                            entry.mediaType,
+                            entry.season,
+                            entry.episode,
+                            entry.title,
+                            entry.posterPath,
+                            null
+                        )
                     },
                     onRequestDelete = { onRequestDelete(entry) }
                 )

@@ -30,6 +30,8 @@ class SettingsDataStore @Inject constructor(
         private val ACCENT_R = floatPreferencesKey("accent_r")
         private val ACCENT_G = floatPreferencesKey("accent_g")
         private val ACCENT_B = floatPreferencesKey("accent_b")
+        private val DL_QUALITY_WIFI = stringPreferencesKey("download_quality_wifi")
+        private val DL_QUALITY_MOBILE = stringPreferencesKey("download_quality_mobile")
 
         val defaultAccent = Triple(0.898f, 0.035f, 0.078f)
     }
@@ -88,5 +90,22 @@ class SettingsDataStore @Inject constructor(
             it[ACCENT_G] = g
             it[ACCENT_B] = b
         }
+    }
+
+    // Qualità download per tipo di rete. Token: "ask" | "max" | "<altezza>". Default "ask".
+    val downloadQualityWifi: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[DL_QUALITY_WIFI] ?: "ask"
+    }
+
+    suspend fun setDownloadQualityWifi(value: String) {
+        context.dataStore.edit { it[DL_QUALITY_WIFI] = value }
+    }
+
+    val downloadQualityMobile: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[DL_QUALITY_MOBILE] ?: "ask"
+    }
+
+    suspend fun setDownloadQualityMobile(value: String) {
+        context.dataStore.edit { it[DL_QUALITY_MOBILE] = value }
     }
 }

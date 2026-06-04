@@ -17,7 +17,11 @@ import com.streamo.app.data.local.entity.WatchlistEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.data.remote.dto.TmdbReview
+import androidx.media3.common.util.UnstableApi
 import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.download.DownloadQualityGate
+import com.streamo.app.download.DownloadQualityPref
+import com.streamo.app.download.DownloadQualityRequest
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.provider.ProviderCandidate
 import com.streamo.app.provider.ProviderMatchStatus
@@ -41,12 +45,14 @@ enum class ProviderAvailability {
     UNKNOWN, RESOLVING, READY, UNAVAILABLE, NEEDS_PICKER
 }
 
+@UnstableApi
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val client: TMDBClient,
     private val repository: StreamoRepository,
     private val providerResolver: ProviderResolver,
+    private val qualityGate: DownloadQualityGate,
     private val app: Application
 ) : ViewModel() {
 
@@ -172,27 +178,75 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    // Modale di scelta qualità (preferenza "Chiedi"). null = nessuna modale aperta.
+    var qualityRequest by mutableStateOf<DownloadQualityRequest?>(null)
+        private set
+    var qualityResolving by mutableStateOf(false)
+        private set
+    private var pendingTarget: Pair<Int, Int>? = null
+
     fun enqueueDownload(season: Int = selectedSeason, episode: Int = 0) {
         viewModelScope.launch {
             val current = item ?: return@launch
-            val stillPath = if (isTV && episode > 0) {
-                episodes.firstOrNull { it.episodeNumber == episode }?.stillPath
-            } else null
-            val entry = DownloadEntry(
-                tmdbId = tmdbId,
-                mediaType = mediaType,
-                title = current.title ?: current.name ?: "",
-                season = season.takeIf { isTV } ?: 0,
-                episode = episode,
-                posterPath = current.posterPath,
-                stillPath = stillPath,
-                contentId = "${tmdbId}_${mediaType}_${season}_${episode}",
-                localPath = "",
-                status = "pending"
+            val net = qualityGate.currentNetwork()
+            val pref = qualityGate.preferenceFor(net)
+            if (pref !is DownloadQualityPref.Ask) {
+                doEnqueue(current.title ?: current.name ?: "", season, episode, pref)
+                return@launch
+            }
+            // "Chiedi": rileva le risoluzioni reali, poi mostra la modale.
+            pendingTarget = season to episode
+            qualityResolving = true
+            val heights = qualityGate.availableHeights(
+                tmdbId, mediaType, current.title ?: current.name ?: "", season, episode
             )
-            val id = repository.addDownload(entry)
-            ResolveAndDownloadWorker.enqueue(app, id.toInt())
+            qualityResolving = false
+            qualityRequest = DownloadQualityRequest(net, heights, appliesToAll = false)
         }
+    }
+
+    fun confirmQuality(pref: DownloadQualityPref, savePreference: Boolean) {
+        val req = qualityRequest ?: return
+        val target = pendingTarget
+        qualityRequest = null
+        pendingTarget = null
+        viewModelScope.launch {
+            if (savePreference) qualityGate.savePreference(req.networkType, pref)
+            val current = item ?: return@launch
+            val (season, episode) = target ?: return@launch
+            doEnqueue(current.title ?: current.name ?: "", season, episode, pref)
+        }
+    }
+
+    fun dismissQuality() {
+        qualityRequest = null
+        pendingTarget = null
+    }
+
+    private suspend fun doEnqueue(
+        title: String,
+        season: Int,
+        episode: Int,
+        quality: DownloadQualityPref
+    ) {
+        val stillPath = if (isTV && episode > 0) {
+            episodes.firstOrNull { it.episodeNumber == episode }?.stillPath
+        } else null
+        val entry = DownloadEntry(
+            tmdbId = tmdbId,
+            mediaType = mediaType,
+            title = title,
+            season = season.takeIf { isTV } ?: 0,
+            episode = episode,
+            posterPath = item?.posterPath,
+            stillPath = stillPath,
+            contentId = "${tmdbId}_${mediaType}_${season}_${episode}",
+            localPath = "",
+            quality = quality.entryQualityLabel(),
+            status = "pending"
+        )
+        val id = repository.addDownload(entry)
+        ResolveAndDownloadWorker.enqueue(app, id.toInt())
     }
 
     fun changeSeason(season: Int) {

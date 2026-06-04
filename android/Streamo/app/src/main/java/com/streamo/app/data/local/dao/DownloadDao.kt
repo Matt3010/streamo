@@ -33,6 +33,10 @@ interface DownloadDao {
     @Query("UPDATE downloads SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Int, status: String)
 
+    /** Cambia stato azzerando la velocità: evita di mostrare la velocità stale al resume. */
+    @Query("UPDATE downloads SET status = :status, bytesPerSecond = 0 WHERE id = :id")
+    suspend fun updateStatusAndResetSpeed(id: Int, status: String)
+
     @Query("UPDATE downloads SET contentId = :contentId, streamUrl = :streamUrl, status = :status WHERE id = :id")
     suspend fun updateContentAndStatus(id: Int, contentId: String, streamUrl: String, status: String)
 
@@ -53,4 +57,7 @@ interface DownloadDao {
 
     @Query("UPDATE downloads SET stillPath = :stillPath WHERE id = :id")
     suspend fun updateStillPath(id: Int, stillPath: String?)
+
+    @Query("UPDATE downloads SET quality = :quality WHERE id = :id")
+    suspend fun updateQuality(id: Int, quality: String)
 }

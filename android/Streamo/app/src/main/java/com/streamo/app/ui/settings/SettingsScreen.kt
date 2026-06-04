@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -55,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.gson.Gson
 import com.streamo.app.BuildConfig
+import com.streamo.app.download.DownloadQualityPref
+import com.streamo.app.download.NetworkType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +72,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val autoDelete by viewModel.autoDeleteWatched.collectAsState()
     val folders by viewModel.foldersEnabled.collectAsState()
     val accent by viewModel.accentColor.collectAsState()
+    val dlQualityWifi by viewModel.downloadQualityWifi.collectAsState()
+    val dlQualityMobile by viewModel.downloadQualityMobile.collectAsState()
+    // Rete di cui si sta scegliendo la qualità (null = nessun picker aperto).
+    var qualityPickerFor by remember { mutableStateOf<NetworkType?>(null) }
     val confirmRecalc by viewModel.confirmRecalc.collectAsState()
     val confirmRestore1 by viewModel.confirmRestoreStep1.collectAsState()
     val confirmRestore2 by viewModel.confirmRestoreStep2.collectAsState()
@@ -103,6 +111,49 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         if (loaded != null && !isTmdbKeyFocused) localTmdbKey = loaded
     }
     val focusManager = LocalFocusManager.current
+
+    qualityPickerFor?.let { net ->
+        val current = if (net == NetworkType.WIFI) dlQualityWifi else dlQualityMobile
+        val netLabel = if (net == NetworkType.WIFI) "Wi-Fi" else "rete mobile"
+        AlertDialog(
+            onDismissRequest = { qualityPickerFor = null },
+            title = { Text("Qualità download · $netLabel") },
+            text = {
+                Column {
+                    DownloadQualityPref.SETTINGS_OPTIONS.forEach { opt ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (net == NetworkType.WIFI) viewModel.setDownloadQualityWifi(opt)
+                                    else viewModel.setDownloadQualityMobile(opt)
+                                    qualityPickerFor = null
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = current.serialize() == opt.serialize(),
+                                onClick = {
+                                    if (net == NetworkType.WIFI) viewModel.setDownloadQualityWifi(opt)
+                                    else viewModel.setDownloadQualityMobile(opt)
+                                    qualityPickerFor = null
+                                }
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text(opt.label())
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { qualityPickerFor = null }) {
+                    Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
 
     if (confirmRecalc) {
         AlertDialog(
@@ -149,6 +200,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     }
 
     Scaffold(
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -159,7 +211,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
@@ -310,6 +363,32 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             }
 
+            // Download quality per network
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Qualità download", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Risoluzione massima per il download in base alla rete. \"Chiedi\" mostra una scelta a ogni download.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    QualityPickerRow(
+                        label = "Wi-Fi",
+                        value = dlQualityWifi.label(),
+                        onClick = { qualityPickerFor = NetworkType.WIFI }
+                    )
+                    QualityPickerRow(
+                        label = "Rete mobile",
+                        value = dlQualityMobile.label(),
+                        onClick = { qualityPickerFor = NetworkType.MOBILE }
+                    )
+                }
+            }
+
             // Organization
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -418,5 +497,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             }
         }
+    }
+}
+
+/** Riga impostazione qualità: etichetta a sinistra, valore corrente (cliccabile) a destra. */
+@Composable
+private fun QualityPickerRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }

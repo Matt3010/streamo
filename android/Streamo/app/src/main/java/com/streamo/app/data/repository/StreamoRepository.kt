@@ -62,6 +62,8 @@ class StreamoRepository @Inject constructor(
     suspend fun getDownloadByContentId(contentId: String): DownloadEntry? = downloadDao.getByContentId(contentId)
     fun downloadsForTmdbId(tmdbId: Int): Flow<List<DownloadEntry>> = downloadDao.getByTmdbId(tmdbId)
     suspend fun updateDownloadStatus(id: Int, status: String) = downloadDao.updateStatus(id, status)
+    suspend fun updateDownloadStatusResetSpeed(id: Int, status: String) =
+        downloadDao.updateStatusAndResetSpeed(id, status)
     suspend fun updateDownloadContentAndStatus(id: Int, contentId: String, streamUrl: String, status: String) =
         downloadDao.updateContentAndStatus(id, contentId, streamUrl, status)
 
@@ -78,6 +80,9 @@ class StreamoRepository @Inject constructor(
 
     suspend fun updateDownloadStillPath(id: Int, stillPath: String?) =
         downloadDao.updateStillPath(id, stillPath)
+
+    suspend fun updateDownloadQuality(id: Int, quality: String) =
+        downloadDao.updateQuality(id, quality)
 
     suspend fun incrementRetryAndReset(id: Int) =
         downloadDao.incrementRetryAndReset(id)

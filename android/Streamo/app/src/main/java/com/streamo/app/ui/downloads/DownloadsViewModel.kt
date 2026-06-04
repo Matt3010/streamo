@@ -90,7 +90,7 @@ class DownloadsViewModel @Inject constructor(
     fun stop(entry: DownloadEntry) {
         viewModelScope.launch {
             ResolveAndDownloadWorker.cancel(app, entry.id)
-            repository.updateDownloadStatus(entry.id, "paused")
+            repository.updateDownloadStatusResetSpeed(entry.id, "paused")
         }
     }
 
@@ -98,7 +98,7 @@ class DownloadsViewModel @Inject constructor(
     fun restart(entry: DownloadEntry) {
         viewModelScope.launch {
             repository.resetRetryCount(entry.id)
-            repository.updateDownloadStatus(entry.id, "pending")
+            repository.updateDownloadStatusResetSpeed(entry.id, "pending")
             ResolveAndDownloadWorker.enqueue(app, entry.id)
         }
     }
