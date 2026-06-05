@@ -2,6 +2,11 @@ package com.streamo.app.navigation
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -31,8 +36,18 @@ fun AppNavHost(
         navController = navController,
         startDestination = startDestination,
         modifier = modifier,
+        // Forward nav e cambio tab restano istantanei.
         enterTransition = { EnterTransition.None },
-        exitTransition = { ExitTransition.None }
+        exitTransition = { ExitTransition.None },
+        // Solo i pop animano: su Android 13+ la gesture "indietro" usa queste
+        // transizioni in modo seekable e mostra l'anteprima della schermata
+        // precedente. Su versioni più vecchie diventa una normale animazione di pop.
+        popEnterTransition = {
+            slideInHorizontally(animationSpec = tween(350)) { -it / 4 } + fadeIn(tween(350))
+        },
+        popExitTransition = {
+            slideOutHorizontally(animationSpec = tween(350)) { it } + fadeOut(tween(350))
+        }
     ) {
         composable<NavRoutes.Home> {
             HomeScreen(

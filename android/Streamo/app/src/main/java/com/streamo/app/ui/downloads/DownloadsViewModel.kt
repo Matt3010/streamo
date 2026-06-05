@@ -105,12 +105,23 @@ class DownloadsViewModel @Inject constructor(
 
     /** Trash: stop work, delete cached data from disk, then drop the DB row. */
     fun remove(entry: DownloadEntry) {
+        viewModelScope.launch { purge(entry) }
+    }
+
+    /** Bulk trash: purge every entry whose id is in [ids]. Used by multi-select. */
+    fun removeMany(ids: Collection<Int>) {
+        if (ids.isEmpty()) return
         viewModelScope.launch {
-            ResolveAndDownloadWorker.cancel(app, entry.id)
-            withContext(Dispatchers.IO) {
-                ResolveAndDownloadWorker.removeCachedData(entry.streamUrl)
-            }
-            repository.removeDownload(entry.id)
+            val byId = entries.value.associateBy { it.id }
+            ids.forEach { id -> byId[id]?.let { purge(it) } }
         }
+    }
+
+    private suspend fun purge(entry: DownloadEntry) {
+        ResolveAndDownloadWorker.cancel(app, entry.id)
+        withContext(Dispatchers.IO) {
+            ResolveAndDownloadWorker.removeCachedData(entry.streamUrl)
+        }
+        repository.removeDownload(entry.id)
     }
 }

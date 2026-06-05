@@ -1,7 +1,14 @@
 package com.streamo.app.ui.downloads
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +36,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,8 +49,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -70,22 +80,91 @@ fun DownloadsScreen(
 ) {
     val entries by viewModel.entries.collectAsState(initial = emptyList())
 
+    // Multi-select state: set of selected DownloadEntry ids (a series group selects all its ids).
+    var selectionMode by remember { mutableStateOf(false) }
+    val selectedIds = remember { mutableStateListOf<Int>() }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
+
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds.clear()
+    }
+
+    // Prune ids that no longer exist (e.g. after a download finishes/disappears).
+    LaunchedEffect(entries) {
+        selectedIds.retainAll(entries.mapTo(HashSet()) { it.id })
+        if (selectionMode && entries.isEmpty()) exitSelection()
+    }
+
+    BackHandler(enabled = selectionMode) { exitSelection() }
+
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Download",
-                        style = MaterialTheme.typography.titleLarge
+            if (selectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "${selectedIds.size} selezionati",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { exitSelection() }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Annulla selezione"
+                            )
+                        }
+                    },
+                    actions = {
+                        val allIds = entries.map { it.id }
+                        val allSelected = allIds.isNotEmpty() && allIds.all { it in selectedIds }
+                        Text(
+                            "Tutti",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Checkbox(
+                            checked = allSelected,
+                            onCheckedChange = {
+                                selectedIds.clear()
+                                if (!allSelected) selectedIds.addAll(allIds)
+                            }
+                        )
+                        IconButton(
+                            onClick = { confirmBulkDelete = true },
+                            enabled = selectedIds.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Elimina selezionati",
+                                tint = if (selectedIds.isNotEmpty()) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
                     )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
-            )
+            } else {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "Download",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
+                )
+            }
         }
     ) { paddingValues ->
         var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
@@ -122,6 +201,18 @@ fun DownloadsScreen(
                 items(movies, key = { it.id }) { entry ->
                     DownloadManagerRow(
                         entry = entry,
+                        selectionMode = selectionMode,
+                        selected = entry.id in selectedIds,
+                        onToggleSelection = {
+                            if (entry.id in selectedIds) selectedIds.remove(entry.id)
+                            else selectedIds.add(entry.id)
+                        },
+                        onLongPress = {
+                            if (!selectionMode) {
+                                selectionMode = true
+                                selectedIds.add(entry.id)
+                            }
+                        },
                         onStop = { viewModel.stop(entry) },
                         onRestart = { viewModel.restart(entry) },
                         onDelete = { entryToDelete = entry }
@@ -129,9 +220,22 @@ fun DownloadsScreen(
                 }
                 tvGroups.forEach { group ->
                     val head = group.first()
+                    val groupIds = group.map { it.id }
                     item(key = "series_${head.tmdbId}") {
                         SeriesDownloadGroupRow(
                             entries = group,
+                            selectionMode = selectionMode,
+                            selected = groupIds.all { it in selectedIds },
+                            onToggleSelection = {
+                                if (groupIds.all { it in selectedIds }) selectedIds.removeAll(groupIds)
+                                else { selectedIds.removeAll(groupIds); selectedIds.addAll(groupIds) }
+                            },
+                            onLongPress = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds.addAll(groupIds)
+                                }
+                            },
                             onClick = { onNavigateToSeriesDownloads(head.tmdbId, head.title) }
                         )
                     }
@@ -162,6 +266,32 @@ fun DownloadsScreen(
                 }
             )
         }
+
+        // Confirm bulk delete dialog (multi-select)
+        if (confirmBulkDelete) {
+            val count = selectedIds.size
+            AlertDialog(
+                onDismissRequest = { confirmBulkDelete = false },
+                title = { Text("Elimina download") },
+                text = { Text("Vuoi eliminare $count download selezionati?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.removeMany(selectedIds.toList())
+                            confirmBulkDelete = false
+                            exitSelection()
+                        }
+                    ) {
+                        Text("Elimina", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmBulkDelete = false }) {
+                        Text("Annulla", color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -177,9 +307,14 @@ internal fun downloadItemLabel(entry: DownloadEntry): String =
  * Riga manager-style: titolo, descrizione (stagione-episodio-nome per TV, anno per film),
  * stato, progress bar + dettaglio, bottoni stop (active), resume (paused), delete (sempre).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DownloadManagerRow(
     entry: DownloadEntry,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
+    onLongPress: () -> Unit,
     onStop: () -> Unit,
     onRestart: () -> Unit,
     onDelete: () -> Unit
@@ -193,7 +328,12 @@ private fun DownloadManagerRow(
     val progress = entry.downloadPercentage
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelection() },
+                onLongClick = onLongPress
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
@@ -275,31 +415,38 @@ private fun DownloadManagerRow(
                         }
                     }
                 }
+                SelectionCheckbox(
+                    selectionMode = selectionMode,
+                    selected = selected,
+                    onToggle = onToggleSelection
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isActive) {
-                        IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
+                    if (!selectionMode) {
+                        if (isActive) {
+                            IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Pause,
+                                    contentDescription = "Metti in pausa il download",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                        if (isPaused) {
+                            IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = "Riprendi il download",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                        IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                             Icon(
-                                imageVector = Icons.Filled.Pause,
-                                contentDescription = "Metti in pausa il download",
-                                tint = Color.White
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Elimina download",
+                                tint = MaterialTheme.colorScheme.error
                             )
                         }
-                    }
-                    if (isPaused) {
-                        IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = "Riprendi il download",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = "Elimina download",
-                            tint = MaterialTheme.colorScheme.error
-                        )
                     }
                 }
             }
@@ -359,9 +506,14 @@ internal fun statusColor(status: String) = when (status) {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeriesDownloadGroupRow(
     entries: List<DownloadEntry>,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
+    onLongPress: () -> Unit,
     onClick: () -> Unit
 ) {
     val head = entries.first()
@@ -391,7 +543,10 @@ private fun SeriesDownloadGroupRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelection() else onClick() },
+                onLongClick = onLongPress
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
@@ -442,12 +597,39 @@ private fun SeriesDownloadGroupRow(
                 }
             }
             Spacer(modifier = Modifier.size(8.dp))
-            Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (selectionMode) {
+                SelectionCheckbox(
+                    selectionMode = true,
+                    selected = selected,
+                    onToggle = onToggleSelection
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+    }
+}
+
+/** Checkbox a destra di ogni item che entra/esce animato in modalità selezione. */
+@Composable
+internal fun SelectionCheckbox(
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = selectionMode,
+        enter = fadeIn() + expandHorizontally(),
+        exit = fadeOut() + shrinkHorizontally()
+    ) {
+        Checkbox(
+            checked = selected,
+            onCheckedChange = { onToggle() }
+        )
     }
 }
 

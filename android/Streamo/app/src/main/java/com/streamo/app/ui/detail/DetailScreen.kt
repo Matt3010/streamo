@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -87,7 +87,6 @@ import com.streamo.app.data.remote.dto.TmdbReview
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
-import com.streamo.app.ui.common.SkeletonCard
 import com.streamo.app.ui.common.ImagePlaceholder
 import com.streamo.app.util.TVLogic
 import androidx.browser.customtabs.CustomTabsIntent
@@ -492,7 +491,7 @@ private fun DetailContent(
                                 Icon(
                                     imageVector = Icons.Filled.Download,
                                     contentDescription = "Scarica",
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = Color.White
                                 )
                             }
                         }
@@ -771,7 +770,7 @@ private fun EpisodesSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.KeyboardArrowLeft,
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                         contentDescription = "Scorri a sinistra",
                         tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (canScrollLeft) 0.7f else 0f),
                         modifier = Modifier.size(20.dp)
@@ -802,9 +801,47 @@ private fun EpisodesSection(
         }
 
         if (viewModel.loadingEpisodes) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
                 items(4) {
-                    SkeletonCard(width = 220.dp, modifier = Modifier.aspectRatio(16f / 9f))
+                    // Skeleton allineato a EpisodeCard: still 16:9 + area metadati stessa altezza.
+                    Column(modifier = Modifier.width(220.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF1E1E1E))
+                        )
+                        Column(modifier = Modifier.height(EPISODE_META_HEIGHT)) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 6.dp)
+                                    .fillMaxWidth(0.7f)
+                                    .height(14.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF1E1E1E))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 6.dp)
+                                    .fillMaxWidth()
+                                    .height(11.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF1E1E1E))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .fillMaxWidth(0.85f)
+                                    .height(11.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF1E1E1E))
+                            )
+                        }
+                    }
                 }
             }
         } else if (viewModel.episodes.isEmpty()) {
@@ -953,32 +990,38 @@ private fun EpisodeCard(
                     .size(44.dp)
             )
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        // Area metadati ad altezza fissa: titolo (1 riga) + overview (2 righe).
+        // Stessa altezza usata dallo skeleton così non c'è slittamento del layout.
+        Column(modifier = Modifier.height(EPISODE_META_HEIGHT)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = episode.name ?: "Episodio ${episode.episodeNumber}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             Text(
-                text = episode.name ?: "Episodio ${episode.episodeNumber}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        episode.overview?.takeIf { it.isNotBlank() }?.let {
-            Text(
-                text = it,
+                text = episode.overview?.takeIf { it.isNotBlank() } ?: "",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
+
+/** Altezza fissa dell'area titolo+overview di EpisodeCard (condivisa con lo skeleton). */
+private val EPISODE_META_HEIGHT = 58.dp
 
 @Composable
 private fun ReviewsSection(reviews: List<TmdbReview>) {

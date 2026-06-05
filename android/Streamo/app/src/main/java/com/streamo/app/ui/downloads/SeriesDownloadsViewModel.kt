@@ -232,6 +232,25 @@ class SeriesDownloadsViewModel @Inject constructor(
         viewModelScope.launch { purge(entry) }
     }
 
+    /** Bulk trash for multi-select. */
+    fun removeMany(entries: Collection<DownloadEntry>) {
+        if (entries.isEmpty()) return
+        viewModelScope.launch { entries.forEach { purge(it) } }
+    }
+
+    /** Enqueue download for the given episode numbers of [season] that aren't already present. */
+    fun downloadEpisodes(season: Int, episodes: Collection<Int>) {
+        if (episodes.isEmpty()) return
+        viewModelScope.launch {
+            val existing = repository.downloadsForTmdbId(tmdbId).first()
+                .map { it.contentId }.toSet()
+            val targets = episodes.sorted()
+                .map { season to it }
+                .filter { (s, e) -> "${tmdbId}_tv_${s}_${e}" !in existing }
+            requestOrEnqueue(targets, appliesToAll = targets.size > 1)
+        }
+    }
+
     /** Stop work, delete cached data from disk, then drop the DB row. */
     private suspend fun purge(entry: DownloadEntry) {
         ResolveAndDownloadWorker.cancel(app, entry.id)
