@@ -102,7 +102,10 @@ struct ProviderLoadedSeason: Decodable, Sendable {
 }
 
 struct ProviderTitlePage: Decodable, Sendable {
-    struct TitleObj: Decodable, Sendable { let seasons: [ProviderSeasonSummary]? }
+    struct TitleObj: Decodable, Sendable {
+        let tmdbId: Int?
+        let seasons: [ProviderSeasonSummary]?
+    }
     struct Props: Decodable, Sendable {
         let title: TitleObj?
         let loadedSeason: ProviderLoadedSeason?

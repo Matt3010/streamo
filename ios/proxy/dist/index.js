@@ -28,8 +28,14 @@ app.use((req, res, next) => {
         const masked = health ? health.through_cloudflare && !sameIp(originIp, egressIp) : null;
         // The app tags media requests as 'download' or 'player' (resolve/health
         // calls carry no tag → '-'), so the log shows what each request is for.
-        const client = headerValue(req.headers['x-streamo-client'], '-');
-        console.log(`[ios-proxy][${client}] ${res.statusCode} ${req.method} ${req.originalUrl} ${duration}ms${size}${upstream}`
+        // Sub-resources (segments/keys) and AirPlay requests can't send the header,
+        // so we also read the `c` query param the playlist rewriter embeds.
+        const client = clientTag(req);
+        // Redact the `key=` auth token before logging — it travels in every
+        // sub-resource URL (segments/keys/AirPlay), so the raw originalUrl would
+        // leak the long-lived proxy token into stdout on every request.
+        const safeUrl = redactAuthKey(req.originalUrl);
+        console.log(`[ios-proxy][${client}] ${res.statusCode} ${req.method} ${safeUrl} ${duration}ms${size}${upstream}`
             + ` origin_ip=${originIp} egress_ip=${egressIp} through_cf=${formatFlag(health?.through_cloudflare)}`
             + ` masked=${formatFlag(masked)} checked_at=${health?.checked_at ?? '-'}`);
     });
@@ -42,6 +48,9 @@ const HEALTH_CACHE_TTL_MS = 60_000;
 const STRONG_MATCH_THRESHOLD = 170;
 const MIN_CANDIDATE_SCORE = 40;
 const MAX_STORED_CANDIDATES = 10;
+// How many top-scored candidates to open (detail page) for an exact tmdb_id
+// match before falling back to the fuzzy threshold. Bounds the extra fetches.
+const MAX_CANDIDATES_PROBED = 6;
 let cachedBaseURL = null;
 let latestHealthCheck = null;
 let latestHealthCheckAtMs = 0;
@@ -93,8 +102,7 @@ app.post('/provider/resolve-movie', requireAuth, async (req, res) => {
 });
 app.get(/^\/playlist\/(.*)$/i, requireAuth, async (req, res) => {
     const tail = String(req.params[0] ?? '');
-    const queryStart = req.url.indexOf('?');
-    const search = queryStart >= 0 ? req.url.slice(queryStart) : '';
+    const search = querySuffix(req.url); // strips our `key` before hitting vixcloud
     const upstreamURL = `https://vixcloud.co/playlist/${tail}${search}`;
     res.locals.upstream = upstreamURL;
     let upstream;
@@ -121,7 +129,11 @@ app.get(/^\/playlist\/(.*)$/i, requireAuth, async (req, res) => {
     }
     const body = await upstream.text();
     copyProxyHeaders(upstream, res, true);
-    res.status(upstream.status).send(rewritePlaylist(body));
+    // `?q=<height>` (set by the app for forced streaming quality) keeps only the
+    // matching video variant in the master, so the player can't ABR to another.
+    const q = typeof req.query.q === 'string' ? parseInt(req.query.q, 10) : 0;
+    const filtered = q > 0 ? filterMasterToHeight(body, q) : body;
+    res.status(upstream.status).send(rewritePlaylist(filtered, authToken, clientTag(req)));
 });
 app.get(/^\/cdn\/([a-z0-9-]+)\/(.*)$/i, requireAuth, async (req, res) => {
     const host = `${String(req.params[0] ?? '')}.vix-content.net`;
@@ -296,6 +308,29 @@ async function resolveTitle(tmdbId, mediaType, title, releaseDate) {
     if (!best || best.score < MIN_CANDIDATE_SCORE || typeof best.entry.id !== 'number') {
         return { resolved: null, reason: 'not_found', candidates, match_status: 'failed' };
     }
+    // Deterministic match first: SC's search payload carries no tmdb_id, but each
+    // title's detail page does. Probe the top candidates in score order and keep
+    // the first whose own tmdb_id equals the one we're resolving — this
+    // disambiguates remakes/sequels that share a title (which the fuzzy score
+    // alone can pick wrong). Mirrors the jellyfin addon's resolve step.
+    const probeList = ranked.filter((entry) => entry.score >= MIN_CANDIDATE_SCORE).slice(0, MAX_CANDIDATES_PROBED);
+    for (const { entry } of probeList) {
+        const id = entry.id;
+        const slug = entry.slug?.trim();
+        if (typeof id !== 'number' || !slug) {
+            continue;
+        }
+        if (await fetchTitleTmdbId(id, slug) === tmdbId) {
+            return {
+                resolved: { id, slug, title: entry.name?.trim() || query, media_type: mediaType },
+                reason: null,
+                candidates,
+                match_status: 'auto_confirmed'
+            };
+        }
+    }
+    // Fallback: no candidate carried a matching tmdb_id (or SC omitted it), so
+    // fall back to the fuzzy strong-match threshold on the best title.
     if (best.score >= STRONG_MATCH_THRESHOLD) {
         return {
             resolved: {
@@ -393,6 +428,36 @@ async function searchTitles(query) {
     }
     const html = await response.text().catch(() => '');
     return extractSearchTitles(parseInertiaPage(html));
+}
+/// Fetch a title's detail page and read its `tmdb_id`. SC exposes the tmdb id
+/// only on the detail page (the search payload omits it), so this is the one
+/// extra request that turns a fuzzy name match into an exact id match.
+async function fetchTitleTmdbId(providerTitleId, slug) {
+    const baseURL = await providerCatalogBaseURL();
+    if (!baseURL) {
+        return null;
+    }
+    const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/titles/${providerTitleId}-${slug}`, baseURL);
+    const response = await fetchWithTimeout(url, {
+        headers: {
+            accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+        },
+        referrerPolicy: 'no-referrer'
+    }, PROVIDER_REQUEST_TIMEOUT_MS).catch(() => null);
+    if (!response?.ok) {
+        return null;
+    }
+    const contentType = response.headers.get('content-type') ?? '';
+    let data;
+    if (contentType.includes('application/json')) {
+        data = await response.json().catch(() => null);
+    }
+    else {
+        const html = await response.text().catch(() => '');
+        data = parseInertiaPage(html);
+    }
+    const tmdbId = data?.props?.title?.tmdb_id;
+    return typeof tmdbId === 'number' ? tmdbId : null;
 }
 async function fetchSeason(providerTitleId, providerSlug, seasonNumber) {
     const slug = providerSlug?.trim() || '';
@@ -510,7 +575,7 @@ async function proxyPassthrough(req, res, upstreamURL) {
     if (isPlaylist) {
         const body = await upstream.text();
         copyProxyHeaders(upstream, res, true);
-        res.status(upstream.status).send(rewritePlaylist(body));
+        res.status(upstream.status).send(rewritePlaylist(body, authToken, clientTag(req)));
         return;
     }
     await forwardResponse(upstream, res);
@@ -545,14 +610,67 @@ function copyProxyHeaders(upstream, res, isPlaylist) {
         res.type('application/vnd.apple.mpegurl');
     }
 }
-function rewritePlaylist(body) {
-    return body
+/// Keep only ONE video `#EXT-X-STREAM-INF` variant in a master playlist: the
+/// highest RESOLUTION height ≤ `maxHeight`, else the lowest (all taller), else
+/// (no RESOLUTION info) the highest BANDWIDTH. Non-master playlists (no
+/// STREAM-INF) pass through unchanged. This truly forces streaming quality —
+/// the player has no other variant to adapt to.
+function filterMasterToHeight(body, maxHeight) {
+    const lines = body.split('\n');
+    const blocks = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].trim().startsWith('#EXT-X-STREAM-INF'))
+            continue;
+        const inf = lines[i];
+        const bw = parseInt(inf.match(/BANDWIDTH=(\d+)/i)?.[1] ?? '0', 10);
+        const height = parseInt(inf.match(/RESOLUTION=\d+x(\d+)/i)?.[1] ?? '0', 10);
+        // The URI is the next non-empty, non-comment line.
+        let k = i + 1;
+        while (k < lines.length && (lines[k].trim() === '' || lines[k].trim().startsWith('#')))
+            k++;
+        if (k < lines.length)
+            blocks.push({ infIndex: i, uriIndex: k, bandwidth: bw, height });
+    }
+    if (blocks.length <= 1)
+        return body;
+    const withHeight = blocks.filter((b) => b.height > 0);
+    let chosen;
+    if (withHeight.length > 0) {
+        const eligible = withHeight.filter((b) => b.height <= maxHeight);
+        chosen = (eligible.length ? eligible : withHeight)
+            .sort((a, b) => (eligible.length ? b.height - a.height : a.height - b.height))[0];
+    }
+    else {
+        chosen = blocks.slice().sort((a, b) => b.bandwidth - a.bandwidth)[0];
+    }
+    if (!chosen)
+        return body;
+    const drop = new Set();
+    for (const b of blocks) {
+        if (b.uriIndex === chosen.uriIndex)
+            continue;
+        drop.add(b.infIndex);
+        drop.add(b.uriIndex);
+    }
+    return lines.filter((_, idx) => !drop.has(idx)).join('\n');
+}
+function rewritePlaylist(body, token, client = '-') {
+    // Step 1: rewrite absolute upstream URLs to proxy-relative paths.
+    const rewritten = body
         .replace(/https?:\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi, '/cdn/$1$2')
         .replace(/\/\/([a-z0-9-]+)\.vix-content\.net(\/[^\s"']*)/gi, '/cdn/$1$2')
         .replace(/https?:\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi, '$1')
         .replace(/\/\/vixcloud\.co(\/(?:playlist|storage)\/[^\s"']*|\/jwplayer-[^\s"']*|\/favicon\.ico)/gi, '$1')
         .replace(/https?:\/\/vixcloud\.co(\/[^\s"']*)/gi, '/vixcloud$1')
         .replace(/\/\/vixcloud\.co(\/[^\s"']*)/gi, '/vixcloud$1');
+    // Step 2: append our `?key=` (auth) and `&c=` (client tag for logging) to
+    // EVERY proxy-relative URL (sub-playlists, segments, and the EXT-X-KEY/
+    // enc.key, which vixcloud often references with a root-relative URL we
+    // didn't touch above). AirPlay receivers send no headers, so both must
+    // travel in each sub-resource URL. Skip any that already carry the key.
+    const key = encodeURIComponent(token);
+    const suffix = client !== '-' ? `key=${key}&c=${encodeURIComponent(client)}` : `key=${key}`;
+    return rewritten.replace(/\/(?:cdn|vixcloud|storage|playlist)\/[^\s"']*/gi, (m) => (/[?&]key=/.test(m) ? m : (m.includes('?') ? `${m}&${suffix}` : `${m}?${suffix}`)));
 }
 function buildPlaylistURLs(html) {
     const token = extractAny(html, [
@@ -790,9 +908,21 @@ function requestBaseURL(req) {
     const proto = headerValue(req.headers['x-forwarded-proto'], req.protocol).split(',')[0].trim();
     return `${proto}://${req.get('host')}`;
 }
+function redactAuthKey(url) {
+    return url.replace(/([?&]key=)[^&]*/gi, '$1***');
+}
 function querySuffix(url) {
     const start = url.indexOf('?');
-    return start >= 0 ? url.slice(start) : '';
+    if (start < 0)
+        return '';
+    // Strip only OUR params (key/c/q) while keeping every other param byte-for-
+    // byte: vixcloud signs `token`/`expires`, so re-encoding via URLSearchParams
+    // (which canonicalizes +, /, =, %xx) could invalidate the CDN signature.
+    const internal = new Set(['key', 'c', 'q']);
+    const kept = url.slice(start + 1)
+        .split('&')
+        .filter((pair) => pair !== '' && !internal.has(pair.split('=')[0]));
+    return kept.length ? `?${kept.join('&')}` : '';
 }
 function firstMatch(value, regex) {
     const match = value.match(regex);
@@ -862,6 +992,16 @@ function headerValue(value, fallback) {
     }
     return value ?? fallback;
 }
+/// The request's client tag for logging: the `X-Streamo-Client` header, or the
+/// `c` query param the playlist rewriter embeds (so segments/keys and AirPlay
+/// — which can't send the header — are still attributed), else '-'.
+function clientTag(req) {
+    const header = headerValue(req.headers['x-streamo-client'], '').trim();
+    if (header)
+        return header;
+    const q = typeof req.query.c === 'string' ? req.query.c.trim() : '';
+    return q || '-';
+}
 function activeSortValue(value) {
     return value ? 0 : 1;
 }
@@ -925,7 +1065,13 @@ async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     }
 }
 function requireAuth(req, res, next) {
-    const candidate = bearerToken(req.headers.authorization) || headerValue(req.headers['x-proxy-token'], '').trim();
+    // `?key=` query fallback so AirPlay receivers — which fetch the stream URL
+    // with NO custom headers — can still authenticate. (We use `key`, not
+    // `token`, because `token` is vixcloud's own CDN parameter.)
+    const queryKey = typeof req.query.key === 'string' ? req.query.key.trim() : '';
+    const candidate = bearerToken(req.headers.authorization)
+        || headerValue(req.headers['x-proxy-token'], '').trim()
+        || queryKey;
     if (candidate && timingSafeEqual(candidate, authToken)) {
         next();
         return;

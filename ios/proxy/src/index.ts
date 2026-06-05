@@ -58,6 +58,9 @@ const HEALTH_CACHE_TTL_MS = 60_000;
 const STRONG_MATCH_THRESHOLD = 170;
 const MIN_CANDIDATE_SCORE = 40;
 const MAX_STORED_CANDIDATES = 10;
+// How many top-scored candidates to open (detail page) for an exact tmdb_id
+// match before falling back to the fuzzy threshold. Bounds the extra fetches.
+const MAX_CANDIDATES_PROBED = 6;
 
 let cachedBaseURL: { value: string; fetchedAt: number } | null = null;
 let latestHealthCheck: ProxyHealthResponse | null = null;
@@ -421,6 +424,30 @@ async function resolveTitle(
     return { resolved: null, reason: 'not_found', candidates, match_status: 'failed' };
   }
 
+  // Deterministic match first: SC's search payload carries no tmdb_id, but each
+  // title's detail page does. Probe the top candidates in score order and keep
+  // the first whose own tmdb_id equals the one we're resolving — this
+  // disambiguates remakes/sequels that share a title (which the fuzzy score
+  // alone can pick wrong). Mirrors the jellyfin addon's resolve step.
+  const probeList = ranked.filter((entry) => entry.score >= MIN_CANDIDATE_SCORE).slice(0, MAX_CANDIDATES_PROBED);
+  for (const { entry } of probeList) {
+    const id = entry.id;
+    const slug = entry.slug?.trim();
+    if (typeof id !== 'number' || !slug) {
+      continue;
+    }
+    if (await fetchTitleTmdbId(id, slug) === tmdbId) {
+      return {
+        resolved: { id, slug, title: entry.name?.trim() || query, media_type: mediaType },
+        reason: null,
+        candidates,
+        match_status: 'auto_confirmed'
+      };
+    }
+  }
+
+  // Fallback: no candidate carried a matching tmdb_id (or SC omitted it), so
+  // fall back to the fuzzy strong-match threshold on the best title.
   if (best.score >= STRONG_MATCH_THRESHOLD) {
     return {
       resolved: {
@@ -545,6 +572,40 @@ async function searchTitles(query: string): Promise<ProviderSearchTitle[] | null
 
   const html = await response.text().catch(() => '');
   return extractSearchTitles(parseInertiaPage(html));
+}
+
+/// Fetch a title's detail page and read its `tmdb_id`. SC exposes the tmdb id
+/// only on the detail page (the search payload omits it), so this is the one
+/// extra request that turns a fuzzy name match into an exact id match.
+async function fetchTitleTmdbId(providerTitleId: number, slug: string): Promise<number | null> {
+  const baseURL = await providerCatalogBaseURL();
+  if (!baseURL) {
+    return null;
+  }
+
+  const url = new URL(`/${PROVIDER_CATALOG_LOCALE}/titles/${providerTitleId}-${slug}`, baseURL);
+  const response = await fetchWithTimeout(url, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+    },
+    referrerPolicy: 'no-referrer'
+  }, PROVIDER_REQUEST_TIMEOUT_MS).catch(() => null);
+
+  if (!response?.ok) {
+    return null;
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  let data: { props?: { title?: { tmdb_id?: number | null } } } | null;
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => null) as typeof data;
+  } else {
+    const html = await response.text().catch(() => '');
+    data = parseInertiaPage(html) as typeof data;
+  }
+
+  const tmdbId = data?.props?.title?.tmdb_id;
+  return typeof tmdbId === 'number' ? tmdbId : null;
 }
 
 async function fetchSeason(

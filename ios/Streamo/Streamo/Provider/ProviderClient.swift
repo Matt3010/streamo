@@ -12,6 +12,9 @@ actor ProviderClient {
     static let strongMatchThreshold = 170
     static let minCandidateScore = 40
     static let maxStoredCandidates = 10
+    // How many top-scored candidates to open (detail page) for an exact tmdb_id
+    // match before falling back to the fuzzy threshold. Bounds the extra fetches.
+    static let maxCandidatesProbed = 6
 
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -71,6 +74,22 @@ actor ProviderClient {
             return ProviderResolveTitleOutcome(resolved: nil, reason: .notFound, candidates: Array(candidates), matchStatus: .failed)
         }
 
+        // Deterministic match first: SC's search payload carries no tmdb_id, but
+        // each title's detail page does. Probe the top candidates in score order
+        // and keep the first whose own tmdb_id equals the one we're resolving —
+        // this disambiguates remakes/sequels that share a title (which the fuzzy
+        // score alone can pick wrong). Mirrors the jellyfin addon's resolve step.
+        let probeList = ranked.filter { $0.1 >= Self.minCandidateScore }.prefix(Self.maxCandidatesProbed)
+        for (candidate, _) in probeList {
+            guard let id = candidate.id, let slug = candidate.slug?.trimmed, !slug.isEmpty else { continue }
+            if await fetchTitleTMDBId(providerTitleId: id, slug: slug) == tmdbId {
+                let resolved = ProviderResolvedTitle(id: id, slug: candidate.slug, title: candidate.name?.trimmed ?? query, mediaType: mediaType)
+                return ProviderResolveTitleOutcome(resolved: resolved, reason: nil, candidates: Array(candidates), matchStatus: .autoConfirmed)
+            }
+        }
+
+        // Fallback: no candidate carried a matching tmdb_id (or SC omitted it),
+        // so fall back to the fuzzy strong-match threshold on the best title.
         if best.1 >= Self.strongMatchThreshold {
             let resolved = ProviderResolvedTitle(id: bestId, slug: best.0.slug, title: best.0.name?.trimmed ?? query, mediaType: mediaType)
             return ProviderResolveTitleOutcome(resolved: resolved, reason: nil, candidates: Array(candidates), matchStatus: .autoConfirmed)
@@ -138,6 +157,23 @@ actor ProviderClient {
             page = parseInertiaPage(html: String(decoding: data, as: UTF8.self), as: ProviderTitlePage.self)
         }
         return page?.props?.loadedSeason
+    }
+
+    /// Fetch a title's detail page and read its `tmdb_id`. SC exposes the tmdb id
+    /// only on the detail page (the search payload omits it), so this is the one
+    /// extra request that turns a fuzzy name match into an exact id match.
+    private func fetchTitleTMDBId(providerTitleId: Int, slug: String) async -> Int? {
+        guard let base = await baseURL() else { return nil }
+        guard let url = URL(string: "\(base)/\(locale)/titles/\(providerTitleId)-\(slug)"),
+              let (data, http) = await get(url), (200...299).contains(http.statusCode) else { return nil }
+
+        let page: ProviderTitlePage?
+        if (http.value(forHTTPHeaderField: "content-type") ?? "").contains("application/json") {
+            page = try? decoder.decode(ProviderTitlePage.self, from: data)
+        } else {
+            page = parseInertiaPage(html: String(decoding: data, as: UTF8.self), as: ProviderTitlePage.self)
+        }
+        return page?.props?.title?.tmdbId
     }
 
     /// Fetch the iframe page and extract the absolute vixcloud embed URL.
