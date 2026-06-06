@@ -13,7 +13,9 @@ interface TMDBApi {
 
     @GET("{endpoint}")
     suspend fun list(
-        @Path("endpoint") endpoint: String,
+        // endpoint contains a slash (e.g. "movie/upcoming"); encoded=true stops Retrofit
+        // turning the "/" into "%2F", which TMDB would 404.
+        @Path(value = "endpoint", encoded = true) endpoint: String,
         @Query("api_key") apiKey: String,
         @Query("language") language: String = "it-IT",
         @Query("region") region: String = "IT",

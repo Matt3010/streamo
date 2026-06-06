@@ -40,6 +40,10 @@ sealed class NavRoutes {
     @Serializable
     data object ContinueWatching : NavRoutes()
 
+    /** TV-only: collapsed Watchlist + History + Continue Watching. */
+    @Serializable
+    data object Library : NavRoutes()
+
     @Serializable
     data class SectionList(
         val title: String,
