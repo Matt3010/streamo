@@ -162,6 +162,8 @@ fun PlayerScreen(
     val dlnaConnected by viewModel.dlnaConnected.collectAsState()
     var showDlnaDialog by remember { mutableStateOf(false) }
     var showExitCastDialog by remember { mutableStateOf(false) }
+    var showOfflineCastWarning by remember { mutableStateOf(false) }
+    var pendingOfflineRenderer by remember { mutableStateOf<com.streamo.app.player.dlna.DlnaRenderer?>(null) }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsMenu by remember { mutableStateOf(false) }
@@ -244,7 +246,7 @@ fun PlayerScreen(
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
     }
 
     // Durante il cast il video è sulla TV: lascia spegnere lo schermo del telefono
@@ -264,7 +266,7 @@ fun PlayerScreen(
             val window = (context as? Activity)?.window
             val decorView = window?.decorView
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             WindowCompat.setDecorFitsSystemWindows(window ?: return@onDispose, true)
             WindowInsetsControllerCompat(window ?: return@onDispose, decorView ?: return@onDispose).show(WindowInsetsCompat.Type.systemBars())
             @Suppress("DEPRECATION")
@@ -555,21 +557,19 @@ fun PlayerScreen(
                             }
                         }
                         // Trasmissione su TV via DLNA (LG, Samsung, ...).
-                        if (!isOfflinePlayback) {
-                            IconButton(onClick = {
-                                // All'apertura della modale metti in pausa il video locale.
-                                if (dlnaConnected == null) {
-                                    viewModel.pausePlayback()
-                                    viewModel.discoverDlna()
-                                }
-                                showDlnaDialog = true
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Cast,
-                                    contentDescription = "Trasmetti su TV",
-                                    tint = if (dlnaConnected != null) MaterialTheme.colorScheme.primary else Color.White
-                                )
+                        IconButton(onClick = {
+                            // All'apertura della modale metti in pausa il video locale.
+                            if (dlnaConnected == null) {
+                                viewModel.pausePlayback()
+                                viewModel.discoverDlna()
                             }
+                            showDlnaDialog = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Filled.Cast,
+                                contentDescription = "Trasmetti su TV",
+                                tint = if (dlnaConnected != null) MaterialTheme.colorScheme.primary else Color.White
+                            )
                         }
                         if (dlnaConnected == null) {
                             IconButton(onClick = { settingsPanel = null; settingsMenu = true }) {
@@ -610,17 +610,20 @@ fun PlayerScreen(
                 // holds the spinner instead of the play button (drawn below), so
                 // they never overlap.
                 if (playbackEnded) {
-                    IconButton(
-                        onClick = { viewModel.replay() },
+                    Box(
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .size(80.dp)
+                            .size(68.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .clickable { viewModel.replay() },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Replay,
                             contentDescription = "Riproduci dall'inizio",
                             tint = Color.White,
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier.size(40.dp)
                         )
                     }
                 } else {
@@ -629,46 +632,59 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { captureFrame(); viewModel.seekBack() },
-                            modifier = Modifier.size(64.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .clickable { captureFrame(); viewModel.seekBack() },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Replay10,
                                 contentDescription = "Indietro di 10 secondi",
                                 tint = Color.White,
-                                modifier = Modifier.size(38.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                         // Middle slot: empty while buffering (spinner overlay fills
-                        // it), otherwise the play/pause button.
+                        // it), otherwise the play/pause button. Circle is bigger than
+                        // skip buttons (68dp vs 48dp).
                         Box(
-                            modifier = Modifier.size(80.dp),
+                            modifier = Modifier.size(68.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             if (!buffering && !loading) {
-                                IconButton(
-                                    onClick = { viewModel.togglePlayPause() },
-                                    modifier = Modifier.size(80.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.55f))
+                                        .clickable { viewModel.togglePlayPause() },
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                         contentDescription = if (isPlaying) "Pausa" else "Play",
                                         tint = Color.White,
-                                        modifier = Modifier.size(38.dp)
+                                        modifier = Modifier.size(40.dp)
                                     )
                                 }
                             }
                         }
-                        IconButton(
-                            onClick = { captureFrame(); viewModel.seekForward() },
-                            modifier = Modifier.size(64.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .clickable { captureFrame(); viewModel.seekForward() },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Forward10,
                                 contentDescription = "Avanti di 10 secondi",
                                 tint = Color.White,
-                                modifier = Modifier.size(38.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
@@ -942,8 +958,13 @@ fun PlayerScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            viewModel.castToDlna(renderer)
-                                            showDlnaDialog = false
+                                            if (isOfflinePlayback) {
+                                                pendingOfflineRenderer = renderer
+                                                showOfflineCastWarning = true
+                                            } else {
+                                                viewModel.castToDlna(renderer)
+                                                showDlnaDialog = false
+                                            }
                                         }
                                         .padding(vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -980,6 +1001,38 @@ fun PlayerScreen(
                 dismissButton = {
                     TextButton(onClick = { showDlnaDialog = false }) {
                         Text("Chiudi", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+        }
+
+        if (showOfflineCastWarning) {
+            AlertDialog(
+                onDismissRequest = { showOfflineCastWarning = false },
+                containerColor = Color(0xFF1E1E20),
+                title = { Text("Cast da offline", color = Color.White) },
+                text = {
+                    Text(
+                        "Il contenuto è scaricato offline. La TV lo riprodurrà in streaming via internet, consumando dati di rete. Continuare?",
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showOfflineCastWarning = false
+                        showDlnaDialog = false
+                        pendingOfflineRenderer?.let { viewModel.castToDlna(it, forceStreaming = true) }
+                        pendingOfflineRenderer = null
+                    }) {
+                        Text("Continua")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showOfflineCastWarning = false
+                        pendingOfflineRenderer = null
+                    }) {
+                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             )

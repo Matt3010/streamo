@@ -65,9 +65,19 @@ fun TvProgressMediaCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.08f else 1f,
+        targetValue = if (focused) 1.05f else 1f,
         animationSpec = tween(durationMillis = 150),
         label = "tvProgressCardScale"
+    )
+    val titleScale by animateFloatAsState(
+        targetValue = if (focused) 1.08f else 1f,
+        animationSpec = tween(durationMillis = 150),
+        label = "tvProgressCardTitleScale"
+    )
+    val labelScale by animateFloatAsState(
+        targetValue = if (focused) 1.08f else 1f,
+        animationSpec = tween(durationMillis = 150),
+        label = "tvProgressCardLabelScale"
     )
 
     Column(
@@ -79,7 +89,7 @@ fun TvProgressMediaCard(
                 indication = null,
                 onClick = onClick
             ),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.Start
     ) {
         Box(
             modifier = Modifier
@@ -156,7 +166,7 @@ fun TvProgressMediaCard(
             color = if (focused) Color.White else MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp).scale(titleScale)
         )
 
         val timeText = statusText ?: if (durationSeconds > 0) {
@@ -174,7 +184,8 @@ fun TvProgressMediaCard(
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.scale(labelScale)
             )
         }
     }

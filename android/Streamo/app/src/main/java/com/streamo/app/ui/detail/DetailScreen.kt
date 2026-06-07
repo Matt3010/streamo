@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Star
@@ -980,9 +981,9 @@ private fun EpisodeCard(
                     trackColor = Color.Transparent,
                 )
             }
-            // White play/replay button centered over the still.
+            // White play/replay arrow centered over the still.
             Icon(
-                imageVector = if (watched) Icons.Filled.Replay else Icons.Filled.PlayCircle,
+                imageVector = if (watched) Icons.Filled.Replay else Icons.Filled.PlayArrow,
                 contentDescription = if (watched) "Riguarda" else "Riproduci",
                 tint = Color.White,
                 modifier = Modifier

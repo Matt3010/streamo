@@ -443,7 +443,10 @@ private fun TvEpisodeCard(
         else -> 0f
     }
 
-    TvFocusable(onClick = onClick, scaleOnFocus = 1.06f, modifier = Modifier.width(260.dp)) { focused ->
+    // No scaleOnFocus: a focus scale grows the (tall) card's mapped bounds, which makes
+    // the parent LazyColumn micro-scroll vertically on every horizontal focus move — the
+    // annoying up/down jitter. The focus frame + play icon + brightened title are enough.
+    TvFocusable(onClick = onClick, modifier = Modifier.width(260.dp)) { focused ->
         Column {
             Box(modifier = Modifier.fillMaxWidth().tvFocusFrame(focused)) {
                 Box(
@@ -474,21 +477,15 @@ private fun TvEpisodeCard(
                                 )
                             )
                     )
-                    // Episode number top-left
-                    Box(
+                    // Episode number bottom-left (no background, pure white text like mobile)
+                    Text(
+                        text = "${episode.episodeNumber}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
                         modifier = Modifier
+                            .align(Alignment.BottomStart)
                             .padding(8.dp)
-                            .align(Alignment.TopStart)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "E${episode.episodeNumber}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White
-                        )
-                    }
+                    )
                     // Watched / timestamp bottom-right
                     val statusText = when {
                         watched -> "Visto"

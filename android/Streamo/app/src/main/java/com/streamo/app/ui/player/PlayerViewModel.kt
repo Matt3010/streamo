@@ -184,9 +184,35 @@ class PlayerViewModel @Inject constructor(
     fun discoverDlna() = castController.discover()
 
     /** Avvia la trasmissione del contenuto corrente sul renderer e pausa il player locale. */
-    fun castToDlna(renderer: DlnaRenderer) {
+    fun castToDlna(renderer: DlnaRenderer, forceStreaming: Boolean = false) {
+        if (currentIsOffline && !forceStreaming) return // file locale non raggiungibile dal TV
+        if (currentIsOffline && forceStreaming) {
+            viewModelScope.launch {
+                _loading.value = true
+                _error.value = null
+                try {
+                    val resolution = if (mediaType == "tv" && season > 0) {
+                        resolver.episodeSource(tmdbId, title, releaseDate, season, episode)
+                    } else {
+                        resolver.movieSource(tmdbId, title, releaseDate)
+                    }
+                    if (resolution.sources.isEmpty()) {
+                        _loading.value = false
+                        return@launch
+                    }
+                    val src = resolution.sources.first()
+                    val pos = player.currentPosition.coerceAtLeast(0L)
+                    player.pause()
+                    castController.start(renderer, src.playlistUrl, src.headers, buildCastMedia(), pos)
+                    _loading.value = false
+                } catch (e: Exception) {
+                    _loading.value = false
+                    _error.value = "Errore nel risolvere lo stream per il cast"
+                }
+            }
+            return
+        }
         val url = currentStreamUrl ?: return
-        if (currentIsOffline) return // file locale non raggiungibile dal TV
         val pos = player.currentPosition.coerceAtLeast(0L)
         player.pause()
         castController.start(renderer, url, currentHeaders, buildCastMedia(), pos)
@@ -242,8 +268,6 @@ class PlayerViewModel @Inject constructor(
 
     /** Last subtitle track explicitly enabled, so the quick toggle can re-enable it. */
     private var lastSubtitleTrack: TrackInfo? = null
-
-    private val cacheDataSourceFactory: CacheDataSource.Factory = DownloadInfrastructure.cacheDataSourceFactory
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -527,10 +551,15 @@ class PlayerViewModel @Inject constructor(
         currentIsOffline = forceOffline
         _isOfflinePlayback.value = forceOffline
         val factory = if (forceOffline) {
-            // Offline playback: serve only from cache, do not attempt network requests
-            CacheDataSource.Factory()
-                .setCache(DownloadInfrastructure.cache)
-                .setFlags(CacheDataSource.FLAG_BLOCK_ON_CACHE)
+            // Offline playback. A download grabs only ONE video rendition + the default
+            // audio (stream keys), but the cached master playlist still advertises every
+            // rendition (all subtitle/audio/video variants). The player can auto-select an
+            // un-downloaded rendition (e.g. a locale-matched subtitle/audio) whose segments
+            // aren't on disk — a cache-only factory then throws "PlaceholderDataSource
+            // cannot be opened" and playback dies. Use the shared cache+upstream factory
+            // (vixcloud headers, FLAG_IGNORE_CACHE_ON_ERROR): the downloaded rendition still
+            // plays from disk, and any missing rendition falls through to the network.
+            DownloadInfrastructure.cacheDataSourceFactory
         } else {
             // Build an upstream DataSource.Factory with vixcloud headers
             val upstreamFactory = DefaultHttpDataSource.Factory()

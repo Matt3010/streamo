@@ -54,9 +54,14 @@ fun TvMediaCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.08f else 1f,
+        targetValue = if (focused) 1.05f else 1f,
         animationSpec = tween(durationMillis = 150),
         label = "tvCardScale"
+    )
+    val titleScale by animateFloatAsState(
+        targetValue = if (focused) 1.08f else 1f,
+        animationSpec = tween(durationMillis = 150),
+        label = "tvCardTitleScale"
     )
 
     Column(
@@ -68,7 +73,7 @@ fun TvMediaCard(
                 indication = null,
                 onClick = onClick
             ),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.Start
     ) {
         Box(
             modifier = Modifier
@@ -104,8 +109,7 @@ fun TvMediaCard(
             else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp).scale(titleScale)
         )
     }
 }
