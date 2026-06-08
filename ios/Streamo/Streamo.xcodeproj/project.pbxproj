@@ -10,6 +10,8 @@
 		B1E34F4F2FC6EB220089E72A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1E34F4E2FC6EB210089E72A /* WidgetKit.framework */; };
 		B1E34F512FC6EB220089E72A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1E34F502FC6EB220089E72A /* SwiftUI.framework */; };
 		B1E34F5C2FC6EB240089E72A /* StreamoWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1E34F4C2FC6EB210089E72A /* StreamoWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C0FFEE0000000000000000F2 /* WireProxyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */; };
+		C0FFEE0000000000000000F3 /* WireProxyKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,6 +36,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0FFEE0000000000000000F4 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				C0FFEE0000000000000000F3 /* WireProxyKit.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +55,7 @@
 		B1E34F4E2FC6EB210089E72A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		B1E34F502FC6EB220089E72A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		B1E34F652FC6ED180089E72A /* StreamoWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StreamoWidgetExtension.entitlements; sourceTree = "<group>"; };
+		C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = WireProxyKit.xcframework; path = "../wireproxykit/WireProxyKit.xcframework"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -86,6 +100,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0FFEE0000000000000000F2 /* WireProxyKit.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,6 +141,7 @@
 			children = (
 				B1E34F4E2FC6EB210089E72A /* WidgetKit.framework */,
 				B1E34F502FC6EB220089E72A /* SwiftUI.framework */,
+				C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -141,6 +157,7 @@
 				AA0000000000000000000008 /* Frameworks */,
 				AA0000000000000000000009 /* Resources */,
 				B1E34F612FC6EB240089E72A /* Embed Foundation Extensions */,
+				C0FFEE0000000000000000F4 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -401,6 +418,10 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UIViewControllerBasedStatusBarAppearance = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../wireproxykit",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -434,6 +455,10 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UIViewControllerBasedStatusBarAppearance = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../wireproxykit",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

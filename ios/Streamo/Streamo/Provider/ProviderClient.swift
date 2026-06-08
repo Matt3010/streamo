@@ -16,7 +16,7 @@ actor ProviderClient {
     // match before falling back to the fuzzy threshold. Bounds the extra fetches.
     static let maxCandidatesProbed = 6
 
-    private let session: URLSession
+    private var session: URLSession
     private let decoder: JSONDecoder
 
     private var cachedBaseURL: String?
@@ -34,6 +34,11 @@ actor ProviderClient {
     }
 
     private var locale: String { AppSettings.shared.providerLocale }
+
+    /// Swap the URLSession used for every request. `ProviderResolver` points
+    /// this at the WARP-proxied session when proxy mode is active (hiding the
+    /// device IP during catalog search/scrape) and back at `.shared` otherwise.
+    func setSession(_ session: URLSession) { self.session = session }
 
     // MARK: - Title resolution
 

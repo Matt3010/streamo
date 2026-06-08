@@ -5,12 +5,16 @@ struct AdvancedSettingsView: View {
     @Environment(Library.self) private var library
 
     @State private var confirmRecalc = false
-    @State private var proxyTestState: ProxyTestState = .idle
+    @State private var warpState: WarpUIState = .idle
+    @State private var warpBusy = false
+    /// Whether the gomobile WARP engine is linked in this build. Checked on
+    /// appear; when false the toggle is disabled with an explanation.
+    @State private var warpAvailable = true
 
     var body: some View {
         Form {
             catalogSection
-            proxySection
+            warpSection
 
             Section {
                 TextField("Locale provider", text: $settings.providerLocale)
@@ -18,7 +22,7 @@ struct AdvancedSettingsView: View {
                     .autocorrectionDisabled()
                     .font(.system(.body, design: .monospaced))
                     .onChange(of: settings.providerLocale) { _, _ in
-                        proxyTestState = .idle
+                        warpState = .idle
                     }
             } header: {
                 Text("Provider")
@@ -36,6 +40,10 @@ struct AdvancedSettingsView: View {
         }
         .navigationTitle("Avanzate")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            warpAvailable = await WarpTunnel.shared.isAvailable
+            if settings.warpRegistered, case .idle = warpState { warpState = .registered }
+        }
         .confirmationDialog("Ricalcolare la libreria?", isPresented: $confirmRecalc, titleVisibility: .visible) {
             Button("Ricalcola", role: .destructive) {
                 let n = library.recalculate()
@@ -71,138 +79,97 @@ struct AdvancedSettingsView: View {
     }
 
     @ViewBuilder
-    private var proxySection: some View {
+    private var warpSection: some View {
         Section {
-            Toggle("Usa proxy", isOn: $settings.providerProxyEnabled)
-                .onChange(of: settings.providerProxyEnabled) { _, _ in
-                    proxyTestState = .idle
-                }
+            Toggle("WARP", isOn: $settings.warpEnabled)
+                .disabled(!warpAvailable || !settings.warpRegistered)
+                .onChange(of: settings.warpEnabled) { _, _ in warpState = .idle }
 
-            TextField("URL proxy WARP", text: $settings.providerProxyURL)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(.body, design: .monospaced))
-                .onChange(of: settings.providerProxyURL) { _, _ in
-                    proxyTestState = .idle
-                }
-
-            SecureField("Token proxy", text: $settings.providerProxyToken)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(.body, design: .monospaced))
-                .onChange(of: settings.providerProxyToken) { _, _ in
-                    proxyTestState = .idle
-                }
-
-            if let normalized = settings.providerProxyBaseURL {
-                LabeledContent("Base URL", value: normalized.absoluteString)
-                    .font(.system(.footnote, design: .monospaced))
+            if !warpAvailable {
+                Text("Il motore WARP non è incluso in questa build. Compila e collega l'xcframework `WireProxyKit` (gomobile) per abilitarlo.")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
             }
 
-            Button(proxyButtonTitle) {
-                Task { await runProxyTest() }
+            if settings.warpRegistered {
+                Button("Verifica egress") { Task { await verifyEgress() } }
+                    .disabled(warpBusy)
+                Button("Rigenera account WARP", role: .destructive) { Task { await registerWarp() } }
+                    .disabled(warpBusy)
+            } else {
+                Button("Registra account WARP") { Task { await registerWarp() } }
+                    .disabled(warpBusy)
             }
-            .disabled(isTesting)
 
-            switch proxyTestState {
+            switch warpState {
             case .idle:
                 EmptyView()
-            case .testing:
-                HStack(spacing: 10) {
-                    ProgressView()
-                    Text("Test in corso…")
-                        .foregroundStyle(.secondary)
-                }
-            case .success(let health):
+            case .working(let msg):
+                HStack(spacing: 10) { ProgressView(); Text(msg).foregroundStyle(.secondary) }
+            case .registered:
+                Text("Account WARP registrato")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.green)
+            case .egress(let warp, let ip, let colo):
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Proxy operativo")
+                    Text(warp ? "Egress protetto da WARP" : "WARP non attivo sull'egress")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.green)
-                    LabeledContent("WARP", value: health.warp ? "Attivo" : "Spento")
-                    LabeledContent("Provider", value: health.providerReachable ? "OK" : "Errore")
-                    LabeledContent("Vixcloud", value: health.vixcloudReachable ? "OK" : "Errore")
-                    if let colo = health.colo, !colo.isEmpty {
-                        LabeledContent("Colo", value: colo)
-                    }
+                        .foregroundStyle(warp ? .green : .red)
+                    if let ip { LabeledContent("IP egress", value: ip) }
+                    if let colo, !colo.isEmpty { LabeledContent("Colo", value: colo) }
                 }
                 .font(.footnote)
             case .failure(let message):
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                Text(message).font(.footnote).foregroundStyle(.red)
             }
         } header: {
-            Text("Proxy WARP")
+            Text("WARP")
         } footer: {
-            Text("Incolla URL e token generato dal proxy. Quando è attivo, l'app non passa automaticamente al collegamento diretto se il server non risponde.")
-        }
-    }
-
-    private var isTesting: Bool {
-        if case .testing = proxyTestState { return true }
-        return false
-    }
-
-    private var proxyButtonTitle: String {
-        switch proxyTestState {
-        case .testing: return "Test in corso…"
-        default: return "Testa proxy"
+            Text("Registra un account Cloudflare WARP gratuito sul dispositivo. Quando WARP è attivo, ricerca e riproduzione escono da un IP Cloudflare — il tuo IP resta nascosto a StreamingCommunity. Nessun server esterno.")
         }
     }
 
     @MainActor
-    private func runProxyTest() async {
-        guard settings.providerProxyBaseURL != nil else {
-            proxyTestState = .failure("Inserisci un URL valido, ad esempio `https://proxy.example.com`.")
-            return
+    private func registerWarp() async {
+        warpBusy = true
+        warpState = .working("Registrazione WARP…")
+        defer { warpBusy = false }
+        do {
+            _ = try await WarpAccount.shared.register()
+            settings.warpRegistered = true
+            warpState = .registered
+            ToastCenter.shared.show("Account WARP registrato")
+        } catch {
+            settings.warpRegistered = await WarpAccount.shared.isRegistered
+            warpState = .failure((error as? LocalizedError)?.errorDescription ?? "Registrazione WARP fallita.")
+            ToastCenter.shared.show("Registrazione WARP fallita")
         }
-        guard settings.hasProviderProxyToken else {
-            proxyTestState = .failure("Inserisci il token generato dal proxy.")
-            return
-        }
-
-        proxyTestState = .testing
-        let response = await ProviderProxyClient.shared.healthCheckResult()
-        guard let health = response.value else {
-            let message = response.error == .unauthorized
-                ? "Token proxy non valido."
-                : "Proxy non raggiungibile."
-            proxyTestState = .failure(message)
-            ToastCenter.shared.show(message)
-            return
-        }
-
-        if health.ok {
-            proxyTestState = .success(health)
-            ToastCenter.shared.show("Proxy operativo")
-            return
-        }
-
-        proxyTestState = .failure(failedHealthMessage(health))
-        ToastCenter.shared.show("Test proxy fallito")
     }
 
-    private func failedHealthMessage(_ health: ProviderProxyClient.HealthCheck) -> String {
-        if !health.warp {
-            return "Il proxy risponde ma WARP non è attivo."
+    @MainActor
+    private func verifyEgress() async {
+        warpBusy = true
+        warpState = .working("Verifica egress…")
+        defer { warpBusy = false }
+        do {
+            _ = try await WarpTunnel.shared.start()
+        } catch {
+            warpState = .failure((error as? LocalizedError)?.errorDescription ?? "Impossibile avviare il tunnel WARP.")
+            return
         }
-        if !health.providerReachable {
-            return "Il proxy risponde ma non riesce a raggiungere streamingcommunity."
+        guard let trace = await WarpTunnel.shared.trace() else {
+            warpState = .failure("Egress non raggiungibile.")
+            return
         }
-        if !health.vixcloudReachable {
-            return "Il proxy risponde ma non riesce a raggiungere vixcloud."
-        }
-        if !health.errors.isEmpty {
-            return health.errors.joined(separator: ", ")
-        }
-        return "Test proxy fallito."
+        warpState = .egress(warp: trace.warp, ip: trace.ip, colo: trace.colo)
+        ToastCenter.shared.show(trace.warp ? "Egress protetto" : "WARP non attivo")
     }
 }
 
-private enum ProxyTestState {
+private enum WarpUIState {
     case idle
-    case testing
-    case success(ProviderProxyClient.HealthCheck)
+    case working(String)
+    case registered
+    case egress(warp: Bool, ip: String?, colo: String?)
     case failure(String)
 }
