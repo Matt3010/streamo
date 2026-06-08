@@ -48,6 +48,14 @@ final class LocalHLSServer: @unchecked Sendable {
     private var airplayToken: String = ""
     private var airplayPathPrefix: String = ""
 
+    /// Auth token for the live-proxy routes (`/playlist`, `/cdn`, …). When the
+    /// app plays through the on-device WARP proxy, the rewritten playlist embeds
+    /// this as `?key=` on every sub-resource so AirPlay receivers (no headers)
+    /// authenticate via the URL alone. Loopback (on-device) is always trusted;
+    /// LAN peers must present a matching `key`. Set by `ProviderResolver` when a
+    /// proxied session begins. Read on `queue`.
+    private var liveProxyToken: String = ""
+
     /// On-disk root the server reads from. Every download goes under a
     /// per-entry subfolder here.
     let documentsRoot: URL = {
@@ -215,6 +223,48 @@ final class LocalHLSServer: @unchecked Sendable {
         }
     }
 
+    // MARK: - Live proxy (on-device WARP)
+
+    /// Set (or clear) the live-proxy auth token. Passing "" disables LAN access
+    /// to the proxy routes (loopback stays open).
+    func setLiveProxyToken(_ token: String) {
+        queue.async { [weak self] in self?.liveProxyToken = token }
+    }
+
+    /// Map an upstream vixcloud / vix-content URL to the matching on-device
+    /// proxy URL, appending the auth `key`, client tag `c` and forced-quality
+    /// `q`. `host` nil → loopback (on-device playback); a LAN IP → AirPlay.
+    /// Preserves the upstream query (vixcloud signs `token`/`expires`).
+    static func liveProxyURL(forUpstream upstream: URL, host: String?, port: UInt16,
+                             key: String, client: String, maxHeight: Int) -> URL? {
+        guard let proxyPath = proxyPath(forUpstream: upstream) else { return nil }
+        let base = host.map { "http://\($0):\(port)" } ?? "http://127.0.0.1:\(port)"
+        guard var comps = URLComponents(string: base + proxyPath) else { return nil }
+        // Keep the upstream signed query verbatim, then add our params.
+        var items = comps.queryItems ?? []
+        items.append(URLQueryItem(name: "key", value: key))
+        if client != "-" { items.append(URLQueryItem(name: "c", value: client)) }
+        if maxHeight > 0 { items.append(URLQueryItem(name: "q", value: String(maxHeight))) }
+        comps.queryItems = items
+        return comps.url
+    }
+
+    /// Forward mapping (upstream URL → proxy path), mirroring the reverse done
+    /// by `liveProxyUpstream`. Returns the path + the upstream query string.
+    private static func proxyPath(forUpstream upstream: URL) -> String? {
+        guard let host = upstream.host else { return nil }
+        let path = upstream.path
+        let query = upstream.query.map { "?\($0)" } ?? ""
+        if host.hasSuffix(".vix-content.net") {
+            let sub = String(host.dropLast(".vix-content.net".count))
+            return "/cdn/\(sub)\(path)\(query)"
+        }
+        guard host == "vixcloud.co" else { return nil }
+        if path.hasPrefix("/playlist/") || path.hasPrefix("/storage/") { return "\(path)\(query)" }
+        if path.hasPrefix("/jwplayer-") || path == "/favicon.ico" { return "\(path)\(query)" }
+        return "/vixcloud\(path)\(query)"
+    }
+
     /// 128 bits of CSPRNG (SystemRandomNumberGenerator) as URL-safe hex.
     private static func randomToken() -> String {
         var rng = SystemRandomNumberGenerator()
@@ -301,6 +351,27 @@ final class LocalHLSServer: @unchecked Sendable {
         // allowed in. LAN peers must present the token as the first path
         // segment; we strip it before mapping to disk.
         let loopback = isLoopback(connection)
+
+        // Live-proxy routes take precedence (on-device WARP egress). They use a
+        // `?key=` query token for non-loopback (AirPlay) auth — not the path
+        // token used for download files — so handle them before the LAN logic.
+        // `rawCleanPath` keeps the percent-encoded tail so vixcloud signatures
+        // and segment names pass through untouched.
+        let rawCleanPath = pathOnly.hasPrefix("/") ? String(pathOnly.dropFirst()) : pathOnly
+        if let upstream = Self.liveProxyUpstream(forPath: rawCleanPath, query: query) {
+            let params = Self.parseQuery(query)
+            let authorized = loopback || (!liveProxyToken.isEmpty && params["key"] == liveProxyToken)
+            guard authorized else {
+                send(status: "401 Unauthorized", on: connection, then: { connection.cancel() })
+                return
+            }
+            handleLiveProxy(upstream: upstream,
+                            forceHeight: params["q"].flatMap { Int($0) } ?? 0,
+                            client: params["c"] ?? "-",
+                            requestLines: lines, on: connection)
+            return
+        }
+
         let resolvedPath: String
         let servesIndex: Bool
         // AirPlay peers authenticate with the per-session token in the path and
@@ -657,6 +728,132 @@ final class LocalHLSServer: @unchecked Sendable {
             if err != nil { connection.cancel(); return }
             then()
         })
+    }
+
+    // MARK: - Live proxy request handling
+
+    private struct ProxyUpstream: Sendable { let url: String; let kind: ProxyKind }
+    private enum ProxyKind: Sendable { case playlist, auto, other }
+
+    /// Reverse of `liveProxyURL`: proxy path → upstream URL. Strips our internal
+    /// params (key/c/q), preserving the rest byte-for-byte (vixcloud signs
+    /// token/expires). Returns nil for non-proxy paths.
+    private static func liveProxyUpstream(forPath path: String, query: String) -> ProxyUpstream? {
+        let suffix = querySuffix(query)
+        if path == "favicon.ico" { return ProxyUpstream(url: "https://vixcloud.co/favicon.ico\(suffix)", kind: .other) }
+        if path.hasPrefix("playlist/") {
+            return ProxyUpstream(url: "https://vixcloud.co/\(path)\(suffix)", kind: .playlist)
+        }
+        if path.hasPrefix("cdn/") {
+            let rest = String(path.dropFirst("cdn/".count))
+            guard let slash = rest.firstIndex(of: "/") else { return nil }
+            let sub = String(rest[..<slash])
+            let tail = String(rest[rest.index(after: slash)...])
+            guard !sub.isEmpty, sub.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
+            return ProxyUpstream(url: "https://\(sub).vix-content.net/\(tail)\(suffix)", kind: .auto)
+        }
+        if path.hasPrefix("storage/") {
+            return ProxyUpstream(url: "https://vixcloud.co/\(path)\(suffix)", kind: .auto)
+        }
+        if path.hasPrefix("jwplayer-") {
+            return ProxyUpstream(url: "https://vixcloud.co/\(path)\(suffix)", kind: .other)
+        }
+        if path.hasPrefix("vixcloud/") {
+            let tail = String(path.dropFirst("vixcloud/".count))
+            return ProxyUpstream(url: "https://vixcloud.co/\(tail)\(suffix)", kind: .auto)
+        }
+        return nil
+    }
+
+    /// Keep every query param except our internal key/c/q, byte-for-byte.
+    private static func querySuffix(_ query: String) -> String {
+        guard !query.isEmpty else { return "" }
+        let internalKeys: Set<String> = ["key", "c", "q"]
+        let kept = query.split(separator: "&").filter { pair in
+            guard !pair.isEmpty else { return false }
+            let name = pair.split(separator: "=", maxSplits: 1).first.map(String.init) ?? String(pair)
+            return !internalKeys.contains(name)
+        }
+        return kept.isEmpty ? "" : "?" + kept.joined(separator: "&")
+    }
+
+    /// Fetch the upstream through the WARP tunnel session and relay it.
+    /// Playlists are rewritten (proxy-relative URLs + auth) and optionally
+    /// quality-capped; everything else is passed through. The whole response is
+    /// buffered — playlists are tiny and media segments are a few MB, matching
+    /// the former Node proxy's per-segment behaviour.
+    private func handleLiveProxy(upstream: ProxyUpstream, forceHeight: Int, client: String,
+                                 requestLines: [String], on connection: NWConnection) {
+        guard let url = URL(string: upstream.url) else {
+            send(status: "502 Bad Gateway", on: connection, then: { connection.cancel() })
+            return
+        }
+        let token = liveProxyToken
+        let rangeHeader = Self.headerValue("range", in: requestLines)
+        let acceptHeader = Self.headerValue("accept", in: requestLines) ?? "*/*"
+
+        Task { [weak self] in
+            guard let self else { connection.cancel(); return }
+            let session = await WarpTunnel.shared.warpSession()
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 30
+            request.setValue(acceptHeader, forHTTPHeaderField: "Accept")
+            request.setValue("https://vixcloud.co", forHTTPHeaderField: "Origin")
+            // Forward Range only for media (segments) — a playlist must come back
+            // whole (200) so the rewrite sees the full manifest.
+            if let rangeHeader, upstream.kind != .playlist {
+                request.setValue(rangeHeader, forHTTPHeaderField: "Range")
+            }
+
+            guard let (data, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse else {
+                self.queue.async { self.send(status: "502 Bad Gateway", on: connection, then: { connection.cancel() }) }
+                return
+            }
+            let contentType = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
+            let isPlaylist = upstream.kind == .playlist
+                || (upstream.kind == .auto && (contentType.contains("mpegurl") || contentType.contains("m3u8") || url.path.hasSuffix(".m3u8")))
+            let statusLine = "\(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))"
+
+            if isPlaylist {
+                var body = String(decoding: data, as: UTF8.self)
+                if forceHeight > 0 { body = HLSProxyRewriter.filterMasterToHeight(body, maxHeight: forceHeight) }
+                body = HLSProxyRewriter.rewritePlaylist(body, token: token, client: client)
+                let out = Data(body.utf8)
+                let headers: [String: String] = [
+                    "Content-Type": "application/vnd.apple.mpegurl",
+                    "Cache-Control": http.value(forHTTPHeaderField: "Cache-Control") ?? "no-store",
+                ]
+                self.queue.async { self.sendData(statusLine: statusLine, headers: headers, data: out, on: connection) }
+            } else {
+                var headers: [String: String] = [:]
+                for name in ["Content-Type", "Cache-Control", "ETag", "Last-Modified", "Expires", "Accept-Ranges", "Content-Range"] {
+                    if let v = http.value(forHTTPHeaderField: name) { headers[name] = v }
+                }
+                if headers["Content-Type"] == nil { headers["Content-Type"] = "application/octet-stream" }
+                self.queue.async { self.sendData(statusLine: statusLine, headers: headers, data: data, on: connection) }
+            }
+        }
+    }
+
+    /// Case-insensitive HTTP header lookup over the raw request lines (skips the
+    /// request line). Returns the trimmed value, or nil.
+    private static func headerValue(_ name: String, in lines: [String]) -> String? {
+        let prefix = name.lowercased() + ":"
+        guard let line = lines.dropFirst().first(where: { $0.lowercased().hasPrefix(prefix) }) else { return nil }
+        return String(line.drop(while: { $0 != ":" }).dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Send a full in-memory response (own Content-Length) then close.
+    private func sendData(statusLine: String, headers: [String: String], data: Data, on connection: NWConnection) {
+        var h = "HTTP/1.1 \(statusLine)\r\n"
+        for (k, v) in headers { h += "\(k): \(v)\r\n" }
+        h += "Content-Length: \(data.count)\r\n"
+        h += "Connection: close\r\n\r\n"
+        var out = Data(h.utf8)
+        out.append(data)
+        connection.send(content: out, contentContext: .finalMessage, isComplete: true,
+                        completion: .contentProcessed { _ in connection.cancel() })
     }
 
     // MARK: - Helpers

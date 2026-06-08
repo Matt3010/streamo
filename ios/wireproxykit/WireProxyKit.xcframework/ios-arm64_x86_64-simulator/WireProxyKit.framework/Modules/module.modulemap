@@ -1,0 +1,8 @@
+framework module "WireProxyKit" {
+	header "ref.h"
+    header "Wireproxykit.objc.h"
+    header "Universe.objc.h"
+    header "WireProxyKit.h"
+
+    export *
+}

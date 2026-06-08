@@ -19,11 +19,16 @@ actor VixcloudClient {
         "Origin": "https://vixcloud.co",
     ]
 
-    private let session: URLSession
+    private var session: URLSession
 
     init(session: URLSession = .shared) {
         self.session = session
     }
+
+    /// Swap the URLSession used for embed/playlist fetches. `ProviderResolver`
+    /// points this at the WARP-proxied session in proxy mode so the embed page
+    /// (and thus the device IP) is hidden from vixcloud.
+    func setSession(_ session: URLSession) { self.session = session }
 
     struct PlaybackSource: Sendable {
         let playlistURL: URL

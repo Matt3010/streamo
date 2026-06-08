@@ -23,11 +23,11 @@ struct LibraryBackupPayload: Codable {
         var tmdbApiKey: String
         var autoplayNext: Bool
         var providerLocale: String
-        var providerProxyURL: String?
-        var providerProxyToken: String?
-        /// Optional for backward compatibility: backups made before this field
-        /// existed simply leave the proxy master switch at its current value.
-        var providerProxyEnabled: Bool?
+        /// Optional for backward compatibility: the WARP master switch. The
+        /// account itself lives in the Keychain and is never exported, so a
+        /// restore only flips the toggle (and only takes effect once the
+        /// device registers its own account).
+        var warpEnabled: Bool?
         var autoDeleteWatchedDownloads: Bool
         /// Optional for backward compatibility (added later).
         var showCardInfo: Bool?
@@ -142,8 +142,7 @@ extension Library {
         let s = AppSettings.shared
         payload.settings = .init(
             tmdbApiKey: s.tmdbApiKey, autoplayNext: s.autoplayNext, providerLocale: s.providerLocale,
-            providerProxyURL: s.providerProxyURL, providerProxyToken: s.providerProxyToken,
-            providerProxyEnabled: s.providerProxyEnabled,
+            warpEnabled: s.warpEnabled,
             autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
             showCardInfo: s.showCardInfo,
             streamingMaxHeight: s.streamingMaxHeight, downloadMaxHeight: s.downloadMaxHeight,
@@ -232,10 +231,8 @@ extension Library {
             s.tmdbApiKey = snap.tmdbApiKey
             s.autoplayNext = snap.autoplayNext
             s.providerLocale = snap.providerLocale
-            s.providerProxyURL = snap.providerProxyURL ?? ""
-            s.providerProxyToken = snap.providerProxyToken ?? ""
             // Absent in older backups → keep the device's current switch.
-            if let proxyEnabled = snap.providerProxyEnabled { s.providerProxyEnabled = proxyEnabled }
+            if let warpEnabled = snap.warpEnabled { s.warpEnabled = warpEnabled }
             s.autoDeleteWatchedDownloads = snap.autoDeleteWatchedDownloads
             if let showCardInfo = snap.showCardInfo { s.showCardInfo = showCardInfo }
             if let h = snap.streamingMaxHeight { s.streamingMaxHeight = h }
