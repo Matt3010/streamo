@@ -18,6 +18,8 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.tv.material3.DrawerValue
@@ -33,6 +36,7 @@ import androidx.tv.material3.NavigationDrawer
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.rememberDrawerState
 import com.streamo.app.navigation.NavRoutes
+import com.streamo.app.player.streamo.StreamoCastReceiver
 import com.streamo.app.ui.common.AmbientBackground
 
 private data class TvNavItem(
@@ -60,6 +64,33 @@ fun TvRootView() {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+
+    // Consumer globale dei comandi di cast Streamo. Usa pendingPlay (StateFlow) invece del
+    // flusso live così funziona anche a cold-start: il service porta l'app in primo piano,
+    // qui leggiamo il Play in sospeso e apriamo il player. Se il player è già aperto, il
+    // cambio contenuto lo gestisce TvPlayerScreen via il flusso commands. Transport idem.
+    val castViewModel: TvCastViewModel = hiltViewModel()
+    val pendingPlay by StreamoCastReceiver.pendingPlay.collectAsState()
+    LaunchedEffect(pendingPlay) {
+        val cmd = pendingPlay ?: return@LaunchedEffect
+        StreamoCastReceiver.clearPendingPlay()
+        val onPlayer = navController.currentDestination?.hierarchy?.any {
+            it.hasRoute(NavRoutes.Player::class)
+        } == true
+        if (onPlayer) return@LaunchedEffect
+        if (cmd.startPositionMs > 0) {
+            castViewModel.saveExternalStartPosition(
+                cmd.tmdbId, cmd.mediaType, cmd.season, cmd.episode, cmd.startPositionMs,
+                cmd.title, cmd.posterUrl
+            )
+        }
+        navController.navigate(
+            NavRoutes.Player(
+                cmd.tmdbId, cmd.mediaType, cmd.season, cmd.episode,
+                cmd.title, cmd.posterUrl, cmd.releaseDate
+            )
+        )
+    }
 
     // Hide the rail on the Player (immersive playback).
     val showDrawer = currentDestination?.hierarchy?.any {

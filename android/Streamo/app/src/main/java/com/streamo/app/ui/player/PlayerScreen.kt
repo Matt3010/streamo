@@ -120,6 +120,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.streamo.app.player.PipController
+import com.streamo.app.player.dlna.DlnaRenderer
+import com.streamo.app.player.streamo.StreamoRenderer
+import com.streamo.app.ui.player.cast.CastDeviceGroup
+import com.streamo.app.ui.player.cast.CastPickerDialog
 import com.streamo.app.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -160,10 +164,23 @@ fun PlayerScreen(
     val dlnaRenderers by viewModel.dlnaRenderers.collectAsState()
     val dlnaScanning by viewModel.dlnaScanning.collectAsState()
     val dlnaConnected by viewModel.dlnaConnected.collectAsState()
-    var showDlnaDialog by remember { mutableStateOf(false) }
+    val streamoRenderers by viewModel.streamoRenderers.collectAsState()
+    val streamoScanning by viewModel.streamoScanning.collectAsState()
+    val castProtocolPrefs by viewModel.castProtocolPrefs.collectAsState()
+    val streamoConnected by viewModel.streamoConnected.collectAsState()
+    var showCastDialog by remember { mutableStateOf(false) }
     var showExitCastDialog by remember { mutableStateOf(false) }
     var showOfflineCastWarning by remember { mutableStateOf(false) }
     var pendingOfflineRenderer by remember { mutableStateOf<com.streamo.app.player.dlna.DlnaRenderer?>(null) }
+    var pendingStreamoRenderer by remember { mutableStateOf<com.streamo.app.player.streamo.StreamoRenderer?>(null) }
+
+    val isCastActive = dlnaConnected != null || streamoConnected != null
+    val castDeviceName = dlnaConnected?.friendlyName ?: streamoConnected?.friendlyName ?: "TV"
+    val castProtocol = when {
+        streamoConnected != null -> "streamo"
+        dlnaConnected != null -> "dlna"
+        else -> null
+    }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsMenu by remember { mutableStateOf(false) }
@@ -251,9 +268,9 @@ fun PlayerScreen(
 
     // Durante il cast il video è sulla TV: lascia spegnere lo schermo del telefono
     // (il proxy resta vivo via wake/wifi lock). In locale tieni lo schermo acceso.
-    LaunchedEffect(dlnaConnected) {
+    LaunchedEffect(isCastActive) {
         val window = (context as? Activity)?.window ?: return@LaunchedEffect
-        if (dlnaConnected != null) {
+        if (isCastActive) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -287,7 +304,7 @@ fun PlayerScreen(
         }
     }
     BackHandler {
-        if (dlnaConnected != null) {
+        if (isCastActive) {
             // In trasmissione: chiedi se interrompere o continuare in background.
             showExitCastDialog = true
         } else if (viewModel.player.isPlaying && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -440,7 +457,7 @@ fun PlayerScreen(
 
         // Schermo scuro durante la trasmissione su TV: il video è sulla TV, qui mostriamo
         // solo lo stato. I controlli del player (toccando lo schermo) comandano la TV.
-        if (dlnaConnected != null) {
+        if (isCastActive) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -470,7 +487,7 @@ fun PlayerScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Trasmissione su ${dlnaConnected?.friendlyName ?: "TV"}",
+                        text = "Trasmissione su $castDeviceName",
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
@@ -526,7 +543,7 @@ fun PlayerScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
-                            if (dlnaConnected != null) showExitCastDialog = true else onBack()
+                            if (isCastActive) showExitCastDialog = true else onBack()
                         }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -546,7 +563,7 @@ fun PlayerScreen(
                         Spacer(modifier = Modifier.weight(1f))
                         // Durante la trasmissione su TV sottotitoli e impostazioni
                         // agiscono solo sul player locale (in pausa): nascondili.
-                        if (dlnaConnected == null && subtitleTracks.isNotEmpty()) {
+                        if (!isCastActive && subtitleTracks.isNotEmpty()) {
                             val subtitlesOn = selectedSubtitle != null
                             IconButton(onClick = { viewModel.toggleSubtitles() }) {
                                 Icon(
@@ -556,22 +573,22 @@ fun PlayerScreen(
                                 )
                             }
                         }
-                        // Trasmissione su TV via DLNA (LG, Samsung, ...).
+                        // Trasmissione su TV (DLNA o Streamo).
                         IconButton(onClick = {
                             // All'apertura della modale metti in pausa il video locale.
-                            if (dlnaConnected == null) {
+                            if (!isCastActive) {
                                 viewModel.pausePlayback()
                                 viewModel.discoverDlna()
                             }
-                            showDlnaDialog = true
+                            showCastDialog = true
                         }) {
                             Icon(
                                 imageVector = Icons.Filled.Cast,
                                 contentDescription = "Trasmetti su TV",
-                                tint = if (dlnaConnected != null) MaterialTheme.colorScheme.primary else Color.White
+                                tint = if (isCastActive) MaterialTheme.colorScheme.primary else Color.White
                             )
                         }
-                        if (dlnaConnected == null) {
+                        if (!isCastActive) {
                             IconButton(onClick = { settingsPanel = null; settingsMenu = true }) {
                                 Icon(
                                     imageVector = Icons.Filled.Settings,
@@ -915,7 +932,7 @@ fun PlayerScreen(
                 dismissButton = {
                     TextButton(onClick = {
                         showExitCastDialog = false
-                        viewModel.stopDlna()
+                        viewModel.stopCast()
                         onBack()
                     }) {
                         Text("Interrompi", color = MaterialTheme.colorScheme.error)
@@ -924,85 +941,38 @@ fun PlayerScreen(
             )
         }
 
-        if (showDlnaDialog) {
-            AlertDialog(
-                onDismissRequest = { showDlnaDialog = false },
-                containerColor = Color(0xFF1E1E20),
-                title = { Text("Trasmetti su TV", color = Color.White) },
-                text = {
-                    Column {
-                        val connected = dlnaConnected
-                        if (connected != null) {
-                            Text(
-                                "In riproduzione su ${connected.friendlyName}",
-                                color = Color.White
-                            )
-                        } else if (dlnaScanning) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Ricerca dispositivi…", color = Color.White)
-                            }
-                        } else if (dlnaRenderers.isEmpty()) {
-                            Text(
-                                "Nessun dispositivo trovato. Verifica che la TV sia accesa e sulla stessa rete Wi-Fi.",
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
-                        } else {
-                            dlnaRenderers.forEach { renderer ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            if (isOfflinePlayback) {
-                                                pendingOfflineRenderer = renderer
-                                                showOfflineCastWarning = true
-                                            } else {
-                                                viewModel.castToDlna(renderer)
-                                                showDlnaDialog = false
-                                            }
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Tv,
-                                        contentDescription = null,
-                                        tint = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(renderer.friendlyName, color = Color.White)
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (dlnaConnected != null) {
-                        TextButton(onClick = {
-                            viewModel.stopDlna()
-                            showDlnaDialog = false
-                        }) {
-                            Text("Interrompi", color = MaterialTheme.colorScheme.error)
-                        }
+        if (showCastDialog) {
+            val groups = remember(dlnaRenderers, streamoRenderers) {
+                buildCastDeviceGroups(dlnaRenderers, streamoRenderers)
+            }
+            CastPickerDialog(
+                groups = groups,
+                dlnaScanning = dlnaScanning,
+                streamoScanning = streamoScanning,
+                connectedName = if (isCastActive) castDeviceName else null,
+                connectedProtocol = castProtocol,
+                preferredProtocol = { key -> castProtocolPrefs[key] },
+                onCastToDlna = { renderer ->
+                    if (isOfflinePlayback) {
+                        pendingOfflineRenderer = renderer
+                        showOfflineCastWarning = true
                     } else {
-                        TextButton(
-                            onClick = { viewModel.discoverDlna() },
-                            enabled = !dlnaScanning
-                        ) {
-                            Text("Aggiorna")
-                        }
+                        viewModel.castToDlna(renderer)
+                        showCastDialog = false
                     }
                 },
-                dismissButton = {
-                    TextButton(onClick = { showDlnaDialog = false }) {
-                        Text("Chiudi", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                onCastToStreamo = { renderer ->
+                    // Streamo: la TV risolve in autonomia, no offline warning.
+                    viewModel.castToStreamo(renderer)
+                    showCastDialog = false
+                },
+                onStopCast = {
+                    viewModel.stopCast()
+                    showCastDialog = false
+                },
+                onRefresh = { viewModel.discoverDlna() },
+                onRemember = { key, protocol -> viewModel.rememberCastProtocol(key, protocol) },
+                onDismiss = { showCastDialog = false }
             )
         }
 
@@ -1020,7 +990,7 @@ fun PlayerScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         showOfflineCastWarning = false
-                        showDlnaDialog = false
+                        showCastDialog = false
                         pendingOfflineRenderer?.let { viewModel.castToDlna(it, forceStreaming = true) }
                         pendingOfflineRenderer = null
                     }) {
@@ -1169,6 +1139,46 @@ fun PlayerScreen(
         }
     }
 }
+
+/** Raggruppa i renderer DLNA e Streamo per IP in [CastDeviceGroup]. */
+private fun buildCastDeviceGroups(
+    dlna: List<DlnaRenderer>,
+    streamo: List<StreamoRenderer>
+): List<CastDeviceGroup> {
+    val ips = linkedSetOf<String>()
+    val dlnaByIp = dlna.groupBy { normalizeIp(extractIp(it.controlUrl)) }
+    val streamoByIp = streamo.groupBy { normalizeIp(it.host) }
+
+    ips.addAll(dlnaByIp.keys)
+    ips.addAll(streamoByIp.keys)
+
+    return ips.mapNotNull { ip ->
+        val d = dlnaByIp[ip]?.firstOrNull()
+        val s = streamoByIp[ip]?.firstOrNull()
+        val name = s?.friendlyName
+            ?: d?.friendlyName
+            ?: return@mapNotNull null
+        CastDeviceGroup(ip = ip, name = name, dlnaRenderer = d, streamoRenderer = s)
+    }
+}
+
+/** Estrae l'IP da un URL DLNA (es. "http://192.168.1.50:1033/..."). */
+private fun extractIp(url: String): String {
+    return try {
+        val uri = java.net.URI(url)
+        uri.host ?: url
+    } catch (_: Exception) {
+        url
+    }
+}
+
+/**
+ * Normalizza un host per il raggruppamento: minuscolo, senza parentesi IPv6 e senza
+ * zone id ("fe80::1%wlan0" → "fe80::1"). Così l'IP DLNA (SSDP) e l'IP Streamo (NSD)
+ * dello stesso dispositivo combaciano e [CastDeviceGroup.hasBoth] funziona.
+ */
+private fun normalizeIp(host: String): String =
+    host.trim().lowercase().removePrefix("[").substringBefore("]").substringBefore("%")
 
 @Composable
 private fun PlayerSettingsRow(

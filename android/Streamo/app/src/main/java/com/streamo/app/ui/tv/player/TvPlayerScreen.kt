@@ -80,6 +80,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.streamo.app.player.streamo.StreamoCastReceiver
+import com.streamo.app.player.streamo.StreamoCommand
+import com.streamo.app.player.streamo.StreamoStatus
 import com.streamo.app.ui.player.PlayerViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.util.Format
@@ -102,11 +105,15 @@ import kotlinx.coroutines.delay
  * sub-panels, every row a [TvFocusable]. Back steps out of a sub-panel, then closes.
  *
  * Drops vs phone: PiP, DLNA cast, forced landscape, touch Slider/scrubber.
+ *
+ * @param onNavigateToPlayer chiamata quando arriva un comando di play dal telefono
+ *   (Streamo cast): tmdbId, mediaType, season, episode, title, poster, releaseDate.
  */
 @OptIn(UnstableApi::class)
 @Composable
 fun TvPlayerScreen(
     onBack: () -> Unit = {},
+    onNavigateToPlayer: (Int, String, Int, Int, String, String?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val isPlaying by viewModel.isPlaying.collectAsState()
@@ -181,7 +188,67 @@ fun TvPlayerScreen(
         onDispose {
             window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             viewModel.saveCurrentProgress()
+            // Segnala al telefono che la TV non sta più riproducendo, così la sua sessione
+            // cast termina (il polling /status vedrebbe altrimenti uno stato congelato).
+            StreamoCastReceiver.updateStatus(
+                StreamoStatus(
+                    status = "stopped",
+                    positionMs = 0,
+                    durationMs = 0,
+                    title = null,
+                    tmdbId = null,
+                    mediaType = null
+                )
+            )
         }
+    }
+
+    // Ricezione comandi Streamo cast dal telefono (transport mentre il player è aperto;
+    // i Play quando la TV è ferma li gestisce il consumer globale in TvRootView).
+    LaunchedEffect(Unit) {
+        StreamoCastReceiver.commands.collect { cmd ->
+            when (cmd) {
+                is StreamoCommand.Play -> {
+                    viewModel.saveCurrentProgress()
+                    // Salva un progress entry con la posizione di partenza desiderata,
+                    // così il nuovo PlayerViewModel lo riprende automaticamente.
+                    if (cmd.startPositionMs > 0) {
+                        viewModel.saveExternalStartPosition(
+                            cmd.tmdbId, cmd.mediaType, cmd.season, cmd.episode,
+                            cmd.startPositionMs, cmd.title, cmd.posterUrl
+                        )
+                    }
+                    onBack()
+                    onNavigateToPlayer(
+                        cmd.tmdbId, cmd.mediaType, cmd.season, cmd.episode,
+                        cmd.title, cmd.posterUrl, cmd.releaseDate
+                    )
+                }
+                is StreamoCommand.Pause -> viewModel.player.pause()
+                is StreamoCommand.Resume -> viewModel.player.play()
+                is StreamoCommand.Stop -> onBack()
+                is StreamoCommand.Seek -> viewModel.player.seekTo(cmd.positionMs)
+            }
+        }
+    }
+
+    // Reporta stato riproduzione al server Streamo.
+    LaunchedEffect(isPlaying, currentPosition, duration) {
+        StreamoCastReceiver.updateStatus(
+            StreamoStatus(
+                status = when {
+                    loading || buffering -> "loading"
+                    playbackEnded -> "stopped"
+                    isPlaying -> "playing"
+                    else -> "paused"
+                },
+                positionMs = currentPosition,
+                durationMs = duration,
+                title = viewModel.title,
+                tmdbId = viewModel.tmdbId,
+                mediaType = viewModel.mediaType
+            )
+        )
     }
 
     // Back navigation, layered by state (only one handler enabled at a time).

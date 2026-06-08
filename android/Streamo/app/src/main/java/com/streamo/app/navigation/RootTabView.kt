@@ -137,7 +137,7 @@ fun RootTabView() {
                 castSession?.let { s ->
                     CastBanner(
                         title = s.media.displayTitle,
-                        tvName = s.renderer.friendlyName,
+                        tvName = s.rendererName,
                         isPlaying = castPlaying,
                         onClick = {
                             navController.navigate(

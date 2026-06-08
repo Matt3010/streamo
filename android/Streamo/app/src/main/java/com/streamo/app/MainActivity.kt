@@ -2,6 +2,7 @@ package com.streamo.app
 
 import android.Manifest
 import android.app.PictureInPictureParams
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -52,6 +53,14 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         val isTv = isTvDevice()
+        // Orientamento per form factor: telefono bloccato in portrait, TV in landscape
+        // (il lock portrait nel manifest stirerebbe la UI TV). Il player phone cambia
+        // requestedOrientation a runtime, sovrascrivendo questo default quando serve.
+        requestedOrientation = if (isTv) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         setContent {
             val accent by settings.accentColor.collectAsState(initial = SettingsDataStore.defaultAccent)
             val accentColor = Color(accent.first, accent.second, accent.third)

@@ -8,9 +8,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.streamo.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,6 +35,7 @@ class SettingsDataStore @Inject constructor(
         private val ACCENT_B = floatPreferencesKey("accent_b")
         private val DL_QUALITY_WIFI = stringPreferencesKey("download_quality_wifi")
         private val DL_QUALITY_MOBILE = stringPreferencesKey("download_quality_mobile")
+        private val RENDERER_PROTOCOL_PREFS = stringPreferencesKey("renderer_protocol_prefs")
 
         val defaultAccent = Triple(0.898f, 0.035f, 0.078f)
     }
@@ -107,5 +111,38 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setDownloadQualityMobile(value: String) {
         context.dataStore.edit { it[DL_QUALITY_MOBILE] = value }
+    }
+
+    // --- Preferenze protocollo cast per dispositivo ---
+
+    private val gson = Gson()
+    private val mapType = object : TypeToken<MutableMap<String, String>>() {}.type
+
+    /**
+     * Mappa "ip|name" → "streamo"|"dlna".
+     * Esempio: "192.168.1.42|Streamo - Soggiorno" → "streamo"
+     */
+    val rendererProtocolPrefs: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
+        val json = prefs[RENDERER_PROTOCOL_PREFS] ?: return@map emptyMap()
+        try {
+            gson.fromJson(json, mapType) ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun getProtocolPreference(ip: String, name: String): Flow<String?> =
+        rendererProtocolPrefs.map { it["$ip|$name"] }
+
+    suspend fun setProtocolPreference(ip: String, name: String, protocol: String) {
+        val current = rendererProtocolPrefs.first().toMutableMap()
+        current["$ip|$name"] = protocol
+        context.dataStore.edit { it[RENDERER_PROTOCOL_PREFS] = gson.toJson(current) }
+    }
+
+    suspend fun clearProtocolPreference(ip: String, name: String) {
+        val current = rendererProtocolPrefs.first().toMutableMap()
+        current.remove("$ip|$name")
+        context.dataStore.edit { it[RENDERER_PROTOCOL_PREFS] = gson.toJson(current) }
     }
 }

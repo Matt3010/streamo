@@ -99,7 +99,12 @@ fun TvAppNavHost(
             }
             composable<NavRoutes.Player> {
                 TvPlayerScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onNavigateToPlayer = { tmdbId, mediaType, season, episode, title, poster, releaseDate ->
+                        navController.navigate(
+                            NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate)
+                        )
+                    }
                 )
             }
         }

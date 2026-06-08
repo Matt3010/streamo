@@ -291,6 +291,22 @@ class DlnaCastManager {
         DlnaPosition(pos, dur)
     }
 
+    /**
+     * Stato di trasporto della TV (GetTransportInfo) → CurrentTransportState:
+     * "PLAYING" | "PAUSED_PLAYBACK" | "STOPPED" | "TRANSITIONING" | "NO_MEDIA_PRESENT".
+     * Usa tryLock come [positionInfo]: se un comando occupa l'AVTransport, salta il tick.
+     */
+    suspend fun transportState(renderer: DlnaRenderer): String? = withContext(Dispatchers.IO) {
+        if (!soapMutex.tryLock()) return@withContext null
+        val body = try {
+            rawQuery(renderer.controlUrl, "GetTransportInfo", soap("GetTransportInfo", "<InstanceID>0</InstanceID>"))
+        } finally {
+            soapMutex.unlock()
+        } ?: return@withContext null
+        Regex("<CurrentTransportState>(.*?)</CurrentTransportState>")
+            .find(body)?.groupValues?.get(1)?.trim()?.ifBlank { null }
+    }
+
     /** ms → "H:MM:SS" per il campo Target/REL_TIME. */
     private fun formatTime(ms: Long): String {
         val total = (ms / 1000).coerceAtLeast(0)

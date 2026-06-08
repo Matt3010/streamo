@@ -50,7 +50,7 @@ fun MediaCard(
                     model = posterUrl,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxSize()
                 )
             } else {
                 ImagePlaceholder(modifier = Modifier.fillMaxSize())

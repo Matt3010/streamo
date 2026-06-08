@@ -7,6 +7,8 @@ import com.streamo.app.download.DownloadStateSyncer
 import com.streamo.app.download.StreamoDownloadService
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.common.util.UnstableApi
+import com.streamo.app.player.streamo.StreamoCastService
+import com.streamo.app.util.isTvDevice
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -56,6 +58,12 @@ class StreamoApplication : Application() {
             Log.d(TAG, "DownloadService.start called")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start DownloadService", e)
+        }
+
+        // Avvia il server cast Streamo-to-Streamo sui dispositivi TV.
+        if (isTvDevice()) {
+            StreamoCastService.startIfTv(this)
+            Log.d(TAG, "StreamoCastService started (TV device)")
         }
     }
 }

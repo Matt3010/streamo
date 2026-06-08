@@ -29,6 +29,7 @@ import com.streamo.app.player.cast.CastController
 import com.streamo.app.player.cast.CastMedia
 import com.streamo.app.player.cast.CastSession
 import com.streamo.app.player.dlna.DlnaRenderer
+import com.streamo.app.player.streamo.StreamoRenderer
 import com.streamo.app.data.local.entity.HistoryEntry
 import com.streamo.app.data.local.entity.ProgressEntry
 import com.streamo.app.data.preferences.SettingsDataStore
@@ -50,6 +51,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -162,15 +164,24 @@ class PlayerViewModel @Inject constructor(
     private fun episodeSubtitle(): String? =
         if (mediaType == "tv" && season > 0) _episodeTitle.value?.takeIf { it.isNotBlank() } else null
 
-    // --- DLNA — delega al CastController app-scoped (la trasmissione sopravvive alla
-    // chiusura del player, gestione notifica/proxy/lock fuori dalla schermata). ---
+    // --- Cast (DLNA + Streamo) — delega al CastController app-scoped. ---
 
-    val dlnaRenderers: StateFlow<List<DlnaRenderer>> = castController.renderers
-    val dlnaScanning: StateFlow<Boolean> = castController.scanning
+    val dlnaRenderers: StateFlow<List<DlnaRenderer>> = castController.dlnaRenderers
+    val dlnaScanning: StateFlow<Boolean> = castController.dlnaScanning
 
-    /** Renderer su cui si trasmette QUESTO contenuto (null se nessun cast o cast di altro). */
+    val streamoRenderers: StateFlow<List<StreamoRenderer>> = castController.streamoRenderers
+    val streamoScanning: StateFlow<Boolean> = castController.streamoScanning
+
+    /** Renderer DLNA su cui si trasmette QUESTO contenuto. */
     private val _dlnaConnected = MutableStateFlow<DlnaRenderer?>(null)
     val dlnaConnected: StateFlow<DlnaRenderer?> = _dlnaConnected.asStateFlow()
+
+    /** Renderer Streamo su cui si trasmette QUESTO contenuto. */
+    private val _streamoConnected = MutableStateFlow<StreamoRenderer?>(null)
+    val streamoConnected: StateFlow<StreamoRenderer?> = _streamoConnected.asStateFlow()
+
+    /** True se questo contenuto è in cast (DLNA o Streamo). */
+    val isCastActive: Boolean get() = _dlnaConnected.value != null || _streamoConnected.value != null
 
     private fun castMatchesThis(s: CastSession?): Boolean =
         s != null && s.media.tmdbId == tmdbId && s.media.mediaType == mediaType &&
@@ -182,6 +193,20 @@ class PlayerViewModel @Inject constructor(
     )
 
     fun discoverDlna() = castController.discover()
+
+    /** Preferenze protocollo cast per dispositivo ("ip|name" → "streamo"|"dlna"). */
+    val castProtocolPrefs: StateFlow<Map<String, String>> = settings.rendererProtocolPrefs
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyMap())
+
+    /** Salva/azzera la preferenza protocollo per un dispositivo. protocol vuoto = azzera. */
+    fun rememberCastProtocol(deviceKey: String, protocol: String) {
+        val ip = deviceKey.substringBefore("|")
+        val name = deviceKey.substringAfter("|", "")
+        viewModelScope.launch {
+            if (protocol.isBlank()) settings.clearProtocolPreference(ip, name)
+            else settings.setProtocolPreference(ip, name, protocol)
+        }
+    }
 
     /** Avvia la trasmissione del contenuto corrente sul renderer e pausa il player locale. */
     fun castToDlna(renderer: DlnaRenderer, forceStreaming: Boolean = false) {
@@ -218,7 +243,24 @@ class PlayerViewModel @Inject constructor(
         castController.start(renderer, url, currentHeaders, buildCastMedia(), pos)
     }
 
-    fun stopDlna() {
+    /** Avvia la trasmissione Streamo (HTTP → app Streamo sulla TV). */
+    fun castToStreamo(renderer: StreamoRenderer) {
+        viewModelScope.launch {
+            val pos = player.currentPosition.coerceAtLeast(0L)
+            player.pause()
+            _loading.value = true
+            _error.value = null
+            val ok = castController.startStreamo(renderer, buildCastMedia(), pos)
+            _loading.value = false
+            if (!ok) {
+                _error.value = "Impossibile connettersi alla TV Streamo " +
+                    "(${renderer.host}:${renderer.port}). Verifica che l'app Streamo sia " +
+                    "aperta sulla TV e sulla stessa rete."
+            }
+        }
+    }
+
+    fun stopCast() {
         val pos = _currentPosition.value
         castController.stop()
         // Riprende/avvia il locale: se non era mai stato caricato (riaggancio), carica.
@@ -358,7 +400,7 @@ class PlayerViewModel @Inject constructor(
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 // In trasmissione lo stato play arriva dal CastController, non dal locale.
-                if (_dlnaConnected.value == null) _isPlaying.value = playing
+                if (_dlnaConnected.value == null && _streamoConnected.value == null) _isPlaying.value = playing
             }
 
             override fun onPlayerError(e: PlaybackException) {
@@ -370,7 +412,7 @@ class PlayerViewModel @Inject constructor(
         // Posizione locale (solo quando NON stiamo trasmettendo questo contenuto).
         viewModelScope.launch {
             while (true) {
-                if (_dlnaConnected.value == null) {
+                if (_dlnaConnected.value == null && _streamoConnected.value == null) {
                     _currentPosition.value = player.currentPosition.coerceAtLeast(0L)
                     _bufferedPosition.value = player.bufferedPosition.coerceAtLeast(0L)
                 }
@@ -381,23 +423,52 @@ class PlayerViewModel @Inject constructor(
         // Aggancia questo contenuto se è quello in trasmissione, e specchia lo stato cast.
         viewModelScope.launch {
             castController.session.collect { s ->
-                _dlnaConnected.value = if (castMatchesThis(s)) s?.renderer else null
+                if (castMatchesThis(s)) {
+                    when (s) {
+                        is CastSession.Dlna -> {
+                            _dlnaConnected.value = s.renderer
+                            _streamoConnected.value = null
+                        }
+                        is CastSession.Streamo -> {
+                            _streamoConnected.value = s.renderer
+                            _dlnaConnected.value = null
+                        }
+                        null -> {
+                            _dlnaConnected.value = null
+                            _streamoConnected.value = null
+                        }
+                    }
+                } else {
+                    _dlnaConnected.value = null
+                    _streamoConnected.value = null
+                }
             }
         }
         viewModelScope.launch {
-            castController.position.collect { if (_dlnaConnected.value != null) _currentPosition.value = it }
+            castController.position.collect {
+                if (_dlnaConnected.value != null || _streamoConnected.value != null) _currentPosition.value = it
+            }
         }
         viewModelScope.launch {
-            castController.duration.collect { if (_dlnaConnected.value != null && it > 0) _duration.value = it }
+            castController.duration.collect {
+                if ((_dlnaConnected.value != null || _streamoConnected.value != null) && it > 0) _duration.value = it
+            }
         }
         viewModelScope.launch {
-            castController.isPlaying.collect { if (_dlnaConnected.value != null) _isPlaying.value = it }
+            castController.isPlaying.collect {
+                if (_dlnaConnected.value != null || _streamoConnected.value != null) _isPlaying.value = it
+            }
         }
 
         // Riaggancio: se il CastController trasmette già questo contenuto non caricare il
         // locale (la trasmissione è in corso); altrimenti avvia normalmente.
         if (castMatchesThis(castController.session.value)) {
-            _dlnaConnected.value = castController.session.value?.renderer
+            val s = castController.session.value
+            when (s) {
+                is CastSession.Dlna -> _dlnaConnected.value = s.renderer
+                is CastSession.Streamo -> _streamoConnected.value = s.renderer
+                null -> {}
+            }
             _loading.value = false
         } else {
             load()
@@ -429,7 +500,7 @@ class PlayerViewModel @Inject constructor(
 
     fun replay() {
         _playbackEnded.value = false
-        if (_dlnaConnected.value != null) {
+        if (isCastActive) {
             castController.seekTo(0)
             return
         }
@@ -624,11 +695,11 @@ class PlayerViewModel @Inject constructor(
 
     /** Pausa il player locale (es. all'apertura della modale di trasmissione). */
     fun pausePlayback() {
-        if (_dlnaConnected.value == null && player.isPlaying) player.pause()
+        if (!isCastActive && player.isPlaying) player.pause()
     }
 
     fun togglePlayPause() {
-        if (_dlnaConnected.value != null) {
+        if (isCastActive) {
             castController.togglePlay()
             return
         }
@@ -636,7 +707,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun seekBack() {
-        if (_dlnaConnected.value != null) {
+        if (isCastActive) {
             castController.seekBy(-10_000)
             return
         }
@@ -644,7 +715,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun seekForward() {
-        if (_dlnaConnected.value != null) {
+        if (isCastActive) {
             castController.seekBy(10_000)
             return
         }
@@ -652,8 +723,8 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun seekTo(positionMs: Long) {
-        // DLNA: il seek lo esegue la TV (debounce gestito dal CastController).
-        if (_dlnaConnected.value != null) {
+        // Cast: il seek lo esegue il dispositivo remoto (debounce gestito dal CastController).
+        if (isCastActive) {
             castController.seekTo(positionMs)
             return
         }
@@ -771,6 +842,43 @@ class PlayerViewModel @Inject constructor(
                     )
                 )
             }
+        }
+    }
+
+    /**
+     * Salva un progress entry per contenuto esterno (es. comando cast Streamo),
+     * così il prossimo [load] lo riprende automaticamente alla posizione voluta.
+     *
+     * Preserva titolo/poster/durata reali se già presenti: [ProgressEntry] usa REPLACE su
+     * chiave composta, quindi scrivere title="" sovrascriverebbe la card Continue Watching.
+     */
+    fun saveExternalStartPosition(
+        tmdbId: Int,
+        mediaType: String,
+        season: Int,
+        episode: Int,
+        positionMs: Long,
+        title: String = "",
+        posterPath: String? = null
+    ) {
+        viewModelScope.launch {
+            val posSec = (positionMs / 1000.0)
+            val existing = repository.getProgressByCoordinate(tmdbId, mediaType, season, episode)
+            // Mantieni la durata reale se nota; altrimenti valore alto fittizio così il
+            // resume check (>10s, <90%) passa.
+            val dur = existing?.durationSeconds?.takeIf { it > posSec } ?: (posSec + 3600.0)
+            repository.saveProgress(
+                ProgressEntry(
+                    tmdbId = tmdbId,
+                    mediaType = mediaType,
+                    season = season,
+                    episode = episode,
+                    positionSeconds = posSec,
+                    durationSeconds = dur,
+                    title = title.ifBlank { existing?.title ?: "" },
+                    posterPath = posterPath ?: existing?.posterPath
+                )
+            )
         }
     }
 
