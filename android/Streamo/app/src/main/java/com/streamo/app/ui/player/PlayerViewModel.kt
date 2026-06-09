@@ -15,6 +15,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -41,6 +42,7 @@ import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.provider.PlaybackSource
 import com.streamo.app.provider.ProviderDebugLogger
 import com.streamo.app.provider.ProviderResolver
+import com.streamo.app.provider.warp.WarpTunnel
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.TVLogic
 import kotlinx.coroutines.flow.first
@@ -64,7 +66,8 @@ class PlayerViewModel @Inject constructor(
     private val repository: StreamoRepository,
     private val settings: SettingsDataStore,
     private val client: TMDBClient,
-    private val castController: CastController
+    private val castController: CastController,
+    private val warpTunnel: WarpTunnel
 ) : ViewModel() {
 
     val tmdbId: Int = savedStateHandle["tmdbId"] ?: 0
@@ -155,6 +158,9 @@ class PlayerViewModel @Inject constructor(
     private var currentStreamUrl: String? = null
     private var currentHeaders: Map<String, String> = emptyMap()
     private var currentIsOffline = false
+    // Whether the current resolution was obtained through WARP — online segments
+    // are then fetched through the proxied OkHttp client to keep the IP masked.
+    private var currentViaProxy = false
 
     /** Titolo per notifica/overlay: per le serie include "· S{s}E{e}". */
     fun displayTitle(): String =
@@ -572,6 +578,7 @@ class PlayerViewModel @Inject constructor(
                     return@launch
                 }
 
+                currentViaProxy = resolution.viaProxy
                 playbackSources = resolution.sources
                 sourceIndex = 0
                 _sources.value = resolution.sources
@@ -632,10 +639,20 @@ class PlayerViewModel @Inject constructor(
             // plays from disk, and any missing rendition falls through to the network.
             DownloadInfrastructure.cacheDataSourceFactory
         } else {
-            // Build an upstream DataSource.Factory with vixcloud headers
-            val upstreamFactory = DefaultHttpDataSource.Factory()
-            if (headers.isNotEmpty()) {
-                upstreamFactory.setDefaultRequestProperties(headers)
+            // Build an upstream DataSource.Factory with vixcloud headers. When the
+            // resolution went through WARP, route segment fetches through the
+            // proxied OkHttp client too, so playback egresses from the Cloudflare
+            // IP (not just the metadata resolve). Falls back to direct if the
+            // tunnel dropped between resolve and playback.
+            val proxiedClient = if (currentViaProxy) warpTunnel.proxiedClient() else null
+            val upstreamFactory: androidx.media3.datasource.DataSource.Factory = if (proxiedClient != null) {
+                OkHttpDataSource.Factory(proxiedClient).apply {
+                    if (headers.isNotEmpty()) setDefaultRequestProperties(headers)
+                }
+            } else {
+                DefaultHttpDataSource.Factory().apply {
+                    if (headers.isNotEmpty()) setDefaultRequestProperties(headers)
+                }
             }
 
             // Use CacheDataSource.Factory: cached segments are served from disk,

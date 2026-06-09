@@ -232,7 +232,10 @@ data class PlaybackResolution(
     val reason: ProviderResolveFailureReason?,
     val message: String?,
     val providerTitle: ProviderResolvedTitle?,
-    val candidates: List<ProviderCandidate>
+    val candidates: List<ProviderCandidate>,
+    /** Whether sources were resolved through the WARP proxy (drives the player's
+     * choice of a proxied DataSource and the WARP/Diretto badge). */
+    val viaProxy: Boolean = false
 )
 
 // endregion

@@ -9,6 +9,7 @@ import com.streamo.app.data.backup.BackupManager
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.StreamoRepository
 import com.streamo.app.download.DownloadQualityPref
+import com.streamo.app.provider.warp.WarpTunnel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ class SettingsViewModel @Inject constructor(
     private val backupManager: BackupManager,
     private val repository: StreamoRepository,
     private val settings: SettingsDataStore,
+    private val warpTunnel: WarpTunnel,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -67,6 +69,26 @@ class SettingsViewModel @Inject constructor(
 
     private val _pendingRestoreUri = MutableStateFlow<Uri?>(null)
 
+    // region WARP (Cloudflare IP-masking)
+
+    /** True only when the gomobile engine (warpkit.aar) is linked. */
+    val warpAvailable: Boolean = warpTunnel.isAvailable
+
+    private val _warpEnabled = MutableStateFlow(false)
+    val warpEnabled: StateFlow<Boolean> = _warpEnabled.asStateFlow()
+
+    private val _warpRegistered = MutableStateFlow(false)
+    val warpRegistered: StateFlow<Boolean> = _warpRegistered.asStateFlow()
+
+    private val _warpBusy = MutableStateFlow(false)
+    val warpBusy: StateFlow<Boolean> = _warpBusy.asStateFlow()
+
+    /** Egress status line shown under the toggle (e.g. "WARP attivo · IP 1.2.3.4 · MXP"). */
+    private val _warpStatus = MutableStateFlow<String?>(null)
+    val warpStatus: StateFlow<String?> = _warpStatus.asStateFlow()
+
+    // endregion
+
     val appVersion: String = BuildConfig.VERSION_NAME
 
     init {
@@ -92,6 +114,12 @@ class SettingsViewModel @Inject constructor(
             settings.downloadQualityMobile.collect {
                 _downloadQualityMobile.value = DownloadQualityPref.parse(it)
             }
+        }
+        viewModelScope.launch {
+            settings.warpEnabled.collect { _warpEnabled.value = it }
+        }
+        viewModelScope.launch {
+            settings.warpRegistered.collect { _warpRegistered.value = it }
         }
     }
 
@@ -135,6 +163,64 @@ class SettingsViewModel @Inject constructor(
     fun setDownloadQualityMobile(pref: DownloadQualityPref) {
         viewModelScope.launch { settings.setDownloadQualityMobile(pref.serialize()) }
     }
+
+    // region WARP actions
+
+    fun setWarpEnabled(value: Boolean) {
+        viewModelScope.launch {
+            settings.setWarpEnabled(value)
+            if (!value) {
+                warpTunnel.stop()
+                _warpStatus.value = null
+            }
+        }
+    }
+
+    /** Register a fresh WARP account (one-time). */
+    fun registerWarp() {
+        if (_warpBusy.value) return
+        viewModelScope.launch {
+            _warpBusy.value = true
+            _warpStatus.value = "Registrazione in corso…"
+            try {
+                warpTunnel.register()
+                _warpStatus.value = "Account WARP registrato."
+                _message.value = "Account WARP registrato"
+            } catch (e: Exception) {
+                _warpStatus.value = "Registrazione fallita: ${e.message ?: "errore"}"
+                _message.value = "Registrazione WARP fallita"
+            } finally {
+                _warpBusy.value = false
+            }
+        }
+    }
+
+    /** Bring the tunnel up and fetch the Cloudflare trace to confirm egress. */
+    fun verifyEgress() {
+        if (_warpBusy.value) return
+        viewModelScope.launch {
+            _warpBusy.value = true
+            _warpStatus.value = "Verifica egress in corso…"
+            try {
+                if (!warpTunnel.start()) {
+                    _warpStatus.value = "Tunnel WARP non pronto. Riprova tra qualche secondo."
+                    return@launch
+                }
+                val trace = warpTunnel.trace()
+                _warpStatus.value = when {
+                    trace == null -> "Verifica fallita: nessuna risposta."
+                    trace.warp -> "WARP attivo · IP ${trace.ip ?: "?"}${trace.colo?.let { " · $it" } ?: ""}"
+                    else -> "Tunnel attivo ma WARP=off · IP ${trace.ip ?: "?"}"
+                }
+            } catch (e: Exception) {
+                _warpStatus.value = "Verifica fallita: ${e.message ?: "errore"}"
+            } finally {
+                _warpBusy.value = false
+            }
+        }
+    }
+
+    // endregion
 
     fun setAccentColor(r: Float, g: Float, b: Float) {
         viewModelScope.launch {

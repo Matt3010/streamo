@@ -74,6 +74,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val accent by viewModel.accentColor.collectAsState()
     val dlQualityWifi by viewModel.downloadQualityWifi.collectAsState()
     val dlQualityMobile by viewModel.downloadQualityMobile.collectAsState()
+    val warpEnabled by viewModel.warpEnabled.collectAsState()
+    val warpRegistered by viewModel.warpRegistered.collectAsState()
+    val warpBusy by viewModel.warpBusy.collectAsState()
+    val warpStatus by viewModel.warpStatus.collectAsState()
     // Rete di cui si sta scegliendo la qualità (null = nessun picker aperto).
     var qualityPickerFor by remember { mutableStateOf<NetworkType?>(null) }
     val confirmRecalc by viewModel.confirmRecalc.collectAsState()
@@ -333,6 +337,67 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         checked = autoplay,
                         onCheckedChange = { viewModel.setAutoplayNext(it) }
                     )
+                }
+            }
+
+            // WARP (Cloudflare IP-masking)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Maschera IP (WARP)", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Instrada il traffico del provider e la riproduzione attraverso Cloudflare WARP, nascondendo il tuo IP. Non copre il cast su TV esterne.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Switch(
+                            checked = warpEnabled,
+                            onCheckedChange = { viewModel.setWarpEnabled(it) },
+                            enabled = viewModel.warpAvailable && warpRegistered && !warpBusy
+                        )
+                    }
+
+                    if (!viewModel.warpAvailable) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Motore WARP non incluso in questa build. Genera warpkit.aar (android/wireproxykit/build.sh) e ricompila.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { viewModel.registerWarp() },
+                            enabled = !warpBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (warpRegistered) "Rigenera account WARP" else "Registra account WARP")
+                        }
+                        TextButton(
+                            onClick = { viewModel.verifyEgress() },
+                            enabled = !warpBusy && warpRegistered,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Verifica egress")
+                        }
+                        warpStatus?.let { status ->
+                            Text(
+                                status,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
 

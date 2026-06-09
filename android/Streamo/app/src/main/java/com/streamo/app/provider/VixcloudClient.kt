@@ -20,6 +20,14 @@ import javax.inject.Singleton
 class VixcloudClient @Inject constructor(
     private val client: OkHttpClient
 ) {
+    /** Active HTTP client, swapped to a WARP-proxied client when IP-masking is
+     * on (see [com.streamo.app.provider.ProviderResolver.prepareWARP]). */
+    @Volatile
+    private var activeClient: OkHttpClient = client
+
+    fun setClient(c: OkHttpClient) { activeClient = c }
+    fun resetClient() { activeClient = client }
+
     companion object {
         /** Headers vixcloud expects (the web proxy spoofed these on the playlist). */
         val playbackHeaders: Map<String, String> = mapOf(
@@ -83,7 +91,7 @@ class VixcloudClient @Inject constructor(
                 .header("Accept", "text/html,application/xhtml+xml,*/*")
                 .header("User-Agent", "Mozilla/5.0")
                 .build()
-            val response = client.newCall(request).execute()
+            val response = activeClient.newCall(request).execute()
             if (!response.isSuccessful) {
                 ProviderDebugLogger.logError("VixcloudClient.fetchHTML: HTTP ${response.code}")
                 return@withContext null

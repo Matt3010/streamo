@@ -36,6 +36,9 @@ class SettingsDataStore @Inject constructor(
         private val DL_QUALITY_WIFI = stringPreferencesKey("download_quality_wifi")
         private val DL_QUALITY_MOBILE = stringPreferencesKey("download_quality_mobile")
         private val RENDERER_PROTOCOL_PREFS = stringPreferencesKey("renderer_protocol_prefs")
+        private val WARP_ENABLED = booleanPreferencesKey("warp_enabled")
+        private val WARP_REGISTERED = booleanPreferencesKey("warp_registered")
+        private val WARP_CONFIG = stringPreferencesKey("warp_config")
 
         val defaultAccent = Triple(0.898f, 0.035f, 0.078f)
     }
@@ -71,6 +74,44 @@ class SettingsDataStore @Inject constructor(
     suspend fun setFoldersEnabled(value: Boolean) {
         context.dataStore.edit { it[FOLDERS_ENABLED] = value }
     }
+
+    // region WARP (Cloudflare IP-masking)
+
+    /** User toggle: route provider/playback traffic through the WARP tunnel. */
+    val warpEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[WARP_ENABLED] ?: false
+    }
+
+    suspend fun setWarpEnabled(value: Boolean) {
+        context.dataStore.edit { it[WARP_ENABLED] = value }
+    }
+
+    /** Whether a WARP account has been registered (a config is stored). */
+    val warpRegistered: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[WARP_REGISTERED] ?: false
+    }
+
+    /** Stored `[Interface]`/`[Peer]` wireproxy config (includes the WG private
+     * key). Null until registered. */
+    val warpConfig: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[WARP_CONFIG]
+    }
+
+    suspend fun setWarpConfig(config: String) {
+        context.dataStore.edit {
+            it[WARP_CONFIG] = config
+            it[WARP_REGISTERED] = true
+        }
+    }
+
+    suspend fun clearWarpConfig() {
+        context.dataStore.edit {
+            it.remove(WARP_CONFIG)
+            it[WARP_REGISTERED] = false
+        }
+    }
+
+    // endregion
 
     val autoDeleteWatched: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[AUTO_DELETE_WATCHED] ?: false

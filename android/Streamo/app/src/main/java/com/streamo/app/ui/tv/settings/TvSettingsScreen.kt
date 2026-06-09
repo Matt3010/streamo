@@ -42,6 +42,10 @@ fun TvSettingsScreen(
     val tmdbApiKey by viewModel.tmdbApiKey.collectAsState()
     val autoplayNext by viewModel.autoplayNext.collectAsState()
     val autoDeleteWatched by viewModel.autoDeleteWatched.collectAsState()
+    val warpEnabled by viewModel.warpEnabled.collectAsState()
+    val warpRegistered by viewModel.warpRegistered.collectAsState()
+    val warpBusy by viewModel.warpBusy.collectAsState()
+    val warpStatus by viewModel.warpStatus.collectAsState()
     val stats by viewModel.stats.collectAsState()
     val message by viewModel.message.collectAsState()
 
@@ -85,6 +89,51 @@ fun TvSettingsScreen(
             checked = autoDeleteWatched,
             onToggle = { viewModel.setAutoDeleteWatched(it) }
         )
+
+        // WARP (Cloudflare IP-masking)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Maschera IP (WARP)",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        if (!viewModel.warpAvailable) {
+            Text(
+                text = "Motore WARP non incluso in questa build (warpkit.aar).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        } else {
+            if (warpRegistered) {
+                SettingsToggleRow(
+                    label = "Instrada il traffico tramite WARP",
+                    checked = warpEnabled,
+                    onToggle = { viewModel.setWarpEnabled(it) }
+                )
+            }
+            SettingsValueRow(
+                label = if (warpRegistered) "Rigenera account WARP" else "Registra account WARP",
+                value = if (warpBusy) "…" else if (warpRegistered) "Registrato" else "Non registrato",
+                onClick = { viewModel.registerWarp() }
+            )
+            if (warpRegistered) {
+                SettingsValueRow(
+                    label = "Verifica egress",
+                    value = if (warpBusy) "…" else "Premi per verificare",
+                    onClick = { viewModel.verifyEgress() }
+                )
+            }
+            warpStatus?.let { status ->
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+        }
 
         if (stats.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))

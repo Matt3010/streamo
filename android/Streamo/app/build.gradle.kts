@@ -112,6 +112,12 @@ dependencies {
     // DLNA: proxy HTTP locale per servire lo stream HLS alle TV
     implementation(libs.nanohttpd)
 
+    // WARP (Cloudflare) IP-masking: userspace WireGuard via gomobile .aar.
+    // Built by android/wireproxykit/build.sh into app/libs/warpkit.aar.
+    // fileTree (not files(...)) so the app still builds WITHOUT the .aar —
+    // WarpEngine then reflects no class and degrades to "non disponibile".
+    implementation(fileTree("libs") { include("*.aar") })
+
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
 

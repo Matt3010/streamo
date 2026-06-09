@@ -29,6 +29,17 @@ class ProviderClient @Inject constructor(
     private val client: OkHttpClient,
     private val settings: SettingsDataStore
 ) {
+    /**
+     * HTTP client used for every request. Swapped to a WARP-proxied client by
+     * [com.streamo.app.provider.ProviderResolver.prepareWARP] when IP-masking is
+     * on, and reset to the direct [client] otherwise. Mirrors iOS `setSession`.
+     */
+    @Volatile
+    private var activeClient: OkHttpClient = client
+
+    fun setClient(c: OkHttpClient) { activeClient = c }
+    fun resetClient() { activeClient = client }
+
     companion object {
         private const val LINK_SOURCE_URL =
             "https://api.telegra.ph/getPage/Link-Aggiornato-StreamingCommunity-09-29?return_content=true"
@@ -171,7 +182,7 @@ class ProviderClient @Inject constructor(
                 .header("Accept", "application/json")
                 .header("User-Agent", "Mozilla/5.0")
                 .build()
-            val response = client.newCall(request).execute()
+            val response = activeClient.newCall(request).execute()
             if (!response.isSuccessful) {
                 ProviderDebugLogger.logError("fetchBaseURL: HTTP ${response.code}")
                 return@withContext null
@@ -488,7 +499,7 @@ class ProviderClient @Inject constructor(
                     .header("User-Agent", "Mozilla/5.0")
                     .build()
                 ProviderDebugLogger.log("HTTP GET $url")
-                val response = client.newCall(request).execute()
+                val response = activeClient.newCall(request).execute()
                 if (!response.isSuccessful) {
                     ProviderDebugLogger.logError("HTTP GET failed: ${response.code} for $url")
                     return@withContext null

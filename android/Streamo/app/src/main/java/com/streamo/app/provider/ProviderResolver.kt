@@ -1,7 +1,10 @@
 package com.streamo.app.provider
 
 import com.streamo.app.data.local.entity.ProviderMappingEntity
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.provider.warp.WarpTunnel
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,21 +20,56 @@ import javax.inject.Singleton
 class ProviderResolver @Inject constructor(
     private val provider: ProviderClient,
     private val vix: VixcloudClient,
-    private val repository: StreamoRepository
+    private val repository: StreamoRepository,
+    private val warpTunnel: WarpTunnel,
+    private val settings: SettingsDataStore
 ) {
     private val titleCache = mutableMapOf<String, ProviderResolveTitleOutcome>()
 
-    private fun cacheKey(id: Int, type: String) = "$type:$id"
+    private fun cacheKey(id: Int, type: String, useProxy: Boolean) =
+        "$type:$id:${if (useProxy) "proxy" else "local"}"
+
+    // Proxy-on and proxy-off resolve into separate cache entries: a WARP resolve
+    // must not be reused when WARP is off (and vice-versa). prime/invalidate touch
+    // both so a confirmed mapping is reused regardless of the current mode.
+    private fun cacheKeysForAllModes(id: Int, type: String) =
+        listOf(cacheKey(id, type, false), cacheKey(id, type, true))
+
+    /**
+     * Point the provider/vixcloud clients at the WARP-proxied client when the
+     * toggle is on and the tunnel comes up; otherwise fall back to direct.
+     * Returns the *effective* proxy state so callers pick the matching cache key
+     * and playback path. Android port of iOS `ProviderResolver.prepareWARP`.
+     */
+    private suspend fun prepareWARP(): Boolean {
+        val enabled = settings.warpEnabled.first()
+        if (!enabled || !warpTunnel.isAvailable) {
+            provider.resetClient()
+            vix.resetClient()
+            return false
+        }
+        val proxied = if (warpTunnel.start()) warpTunnel.proxiedClient() else null
+        if (proxied == null) {
+            ProviderDebugLogger.log("ProviderResolver.prepareWARP: tunnel not ready → direct")
+            provider.resetClient()
+            vix.resetClient()
+            return false
+        }
+        provider.setClient(proxied)
+        vix.setClient(proxied)
+        ProviderDebugLogger.log("ProviderResolver.prepareWARP: routing through WARP proxy")
+        return true
+    }
 
     /** Seed the in-memory cache from a persisted mapping so a confirmed title
      * is reused without re-searching. */
     fun prime(tmdbId: Int, mediaType: String, outcome: ProviderResolveTitleOutcome) {
-        titleCache[cacheKey(tmdbId, mediaType)] = outcome
+        for (key in cacheKeysForAllModes(tmdbId, mediaType)) titleCache[key] = outcome
     }
 
     /** Drop the cached title outcome (forces the next resolve to re-search). */
     fun invalidate(tmdbId: Int, mediaType: String) {
-        titleCache.remove(cacheKey(tmdbId, mediaType))
+        for (key in cacheKeysForAllModes(tmdbId, mediaType)) titleCache.remove(key)
     }
 
     /** Resolve (or reuse cached) the provider title for a TMDB id. */
@@ -42,8 +80,21 @@ class ProviderResolver @Inject constructor(
         releaseDate: String?,
         forceRefresh: Boolean = false
     ): ProviderResolveTitleOutcome {
-        ProviderDebugLogger.log("ProviderResolver.resolveTitle: tmdbId=$tmdbId mediaType=$mediaType forceRefresh=$forceRefresh")
-        val key = cacheKey(tmdbId, mediaType)
+        val useProxy = prepareWARP()
+        return resolveTitleInternal(tmdbId, mediaType, title, releaseDate, forceRefresh, useProxy)
+    }
+
+    /** Resolve once the WARP session/mode is already prepared. */
+    private suspend fun resolveTitleInternal(
+        tmdbId: Int,
+        mediaType: String,
+        title: String,
+        releaseDate: String?,
+        forceRefresh: Boolean,
+        useProxy: Boolean
+    ): ProviderResolveTitleOutcome {
+        ProviderDebugLogger.log("ProviderResolver.resolveTitle: tmdbId=$tmdbId mediaType=$mediaType forceRefresh=$forceRefresh useProxy=$useProxy")
+        val key = cacheKey(tmdbId, mediaType, useProxy)
         if (!forceRefresh) {
             titleCache[key]?.let {
                 ProviderDebugLogger.log("ProviderResolver.resolveTitle: returning cached outcome resolved=${it.resolved != null}")
@@ -64,32 +115,37 @@ class ProviderResolver @Inject constructor(
             title = candidate.title,
             mediaType = mediaType
         )
-        val existing = titleCache[cacheKey(tmdbId, mediaType)]
-        titleCache[cacheKey(tmdbId, mediaType)] = ProviderResolveTitleOutcome(
+        val existing = cacheKeysForAllModes(tmdbId, mediaType)
+            .firstNotNullOfOrNull { titleCache[it]?.candidates?.takeIf { c -> c.isNotEmpty() } }
+            ?: emptyList()
+        val outcome = ProviderResolveTitleOutcome(
             resolved = resolved,
             reason = null,
-            candidates = existing?.candidates ?: emptyList(),
+            candidates = existing,
             matchStatus = ProviderMatchStatus.MANUAL_CONFIRMED
         )
+        for (key in cacheKeysForAllModes(tmdbId, mediaType)) titleCache[key] = outcome
     }
 
     // region Playable source
 
     suspend fun movieSource(tmdbId: Int, title: String, releaseDate: String?): PlaybackResolution {
         ProviderDebugLogger.log("ProviderResolver.movieSource: tmdbId=$tmdbId title='$title'")
-        val outcome = resolveTitle(tmdbId, "movie", title, releaseDate)
+        val useProxy = prepareWARP()
+        val outcome = resolveTitleInternal(tmdbId, "movie", title, releaseDate, forceRefresh = false, useProxy = useProxy)
         val resolved = outcome.resolved
             ?: return PlaybackResolution(
                 sources = emptyList(),
                 reason = outcome.reason ?: ProviderResolveFailureReason.NOT_FOUND,
                 message = unavailableMessage(outcome.reason),
                 providerTitle = null,
-                candidates = outcome.candidates
+                candidates = outcome.candidates,
+                viaProxy = useProxy
             ).also {
                 ProviderDebugLogger.log("ProviderResolver.movieSource: no resolved title (reason=${outcome.reason})")
             }
         val embed = provider.movieEmbed(resolved.id)
-        return finalize(embed, resolved, outcome.candidates)
+        return finalize(embed, resolved, outcome.candidates, useProxy)
     }
 
     suspend fun episodeSource(
@@ -100,25 +156,28 @@ class ProviderResolver @Inject constructor(
         episode: Int
     ): PlaybackResolution {
         ProviderDebugLogger.log("ProviderResolver.episodeSource: tmdbId=$tmdbId title='$title' S${season}E$episode")
-        val outcome = resolveTitle(tmdbId, "tv", title, releaseDate)
+        val useProxy = prepareWARP()
+        val outcome = resolveTitleInternal(tmdbId, "tv", title, releaseDate, forceRefresh = false, useProxy = useProxy)
         val resolved = outcome.resolved
             ?: return PlaybackResolution(
                 sources = emptyList(),
                 reason = outcome.reason ?: ProviderResolveFailureReason.NOT_FOUND,
                 message = unavailableMessage(outcome.reason),
                 providerTitle = null,
-                candidates = outcome.candidates
+                candidates = outcome.candidates,
+                viaProxy = useProxy
             ).also {
                 ProviderDebugLogger.log("ProviderResolver.episodeSource: no resolved title (reason=${outcome.reason})")
             }
         val embed = provider.episodeEmbed(resolved.id, resolved.slug, season, episode)
-        return finalize(embed, resolved, outcome.candidates)
+        return finalize(embed, resolved, outcome.candidates, useProxy)
     }
 
     private suspend fun finalize(
         embed: ProviderEmbedOutcome,
         resolved: ProviderResolvedTitle,
-        candidates: List<ProviderCandidate>
+        candidates: List<ProviderCandidate>,
+        useProxy: Boolean
     ): PlaybackResolution {
         ProviderDebugLogger.log("ProviderResolver.finalize: embedUrl=${embed.embedUrl != null} reason=${embed.reason}")
         val embedUrl = embed.embedUrl
@@ -127,7 +186,8 @@ class ProviderResolver @Inject constructor(
                 reason = embed.reason ?: ProviderResolveFailureReason.NOT_FOUND,
                 message = unavailableMessage(embed.reason),
                 providerTitle = resolved,
-                candidates = candidates
+                candidates = candidates,
+                viaProxy = useProxy
             ).also {
                 ProviderDebugLogger.log("ProviderResolver.finalize: no embed URL")
             }
@@ -139,7 +199,8 @@ class ProviderResolver @Inject constructor(
                 reason = null,
                 message = null,
                 providerTitle = resolved,
-                candidates = candidates
+                candidates = candidates,
+                viaProxy = useProxy
             )
         } catch (e: Exception) {
             ProviderDebugLogger.logError("ProviderResolver.finalize: vix.playbackSources failed", e)
@@ -148,7 +209,8 @@ class ProviderResolver @Inject constructor(
                 reason = ProviderResolveFailureReason.TEMPORARILY_UNAVAILABLE,
                 message = e.message ?: "Riproduzione non disponibile.",
                 providerTitle = resolved,
-                candidates = candidates
+                candidates = candidates,
+                viaProxy = useProxy
             )
         }
     }
