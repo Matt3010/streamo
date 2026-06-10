@@ -12,6 +12,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,9 +21,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -261,7 +264,7 @@ fun DownloadsScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { entryToDelete = null }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurface)
+                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             )
@@ -287,7 +290,7 @@ fun DownloadsScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { confirmBulkDelete = false }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurface)
+                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             )
@@ -420,10 +423,16 @@ private fun DownloadManagerRow(
                     selected = selected,
                     onToggle = onToggleSelection
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!selectionMode) {
+                if (!selectionMode) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.width(IntrinsicSize.Min)
+                    ) {
                         if (isActive) {
-                            IconButton(onClick = onStop, modifier = Modifier.size(40.dp)) {
+                            IconButton(
+                                onClick = onStop,
+                                modifier = Modifier.size(40.dp).clip(CircleShape)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Filled.Pause,
                                     contentDescription = "Metti in pausa il download",
@@ -432,7 +441,10 @@ private fun DownloadManagerRow(
                             }
                         }
                         if (isPaused) {
-                            IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
+                            IconButton(
+                                onClick = onRestart,
+                                modifier = Modifier.size(40.dp).clip(CircleShape)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Filled.PlayArrow,
                                     contentDescription = "Riprendi il download",
@@ -440,7 +452,10 @@ private fun DownloadManagerRow(
                                 )
                             }
                         }
-                        IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(40.dp).clip(CircleShape)
+                        ) {
                             Icon(
                                 imageVector = Icons.Filled.Delete,
                                 contentDescription = "Elimina download",

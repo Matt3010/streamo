@@ -7,17 +7,19 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.work.ForegroundInfo
-import com.streamo.app.MainActivity
-import com.streamo.app.R
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.StreamKey
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.hls.offline.HlsDownloader
 import androidx.media3.exoplayer.offline.DownloadHelper
@@ -26,22 +28,31 @@ import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import java.util.concurrent.TimeUnit
+import com.streamo.app.MainActivity
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.provider.ProviderResolver
+import com.streamo.app.provider.VixcloudClient
+import com.streamo.app.provider.warp.WarpTunnel
+import com.streamo.app.tmdb.TMDBImage
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
@@ -59,6 +70,8 @@ class ResolveAndDownloadWorker(
     interface WorkerEntryPoint {
         fun providerResolver(): ProviderResolver
         fun repository(): AppRepository
+        fun warpTunnel(): WarpTunnel
+        fun settings(): SettingsDataStore
     }
 
     private fun entryPoint(): WorkerEntryPoint =
@@ -74,6 +87,8 @@ class ResolveAndDownloadWorker(
 
         val repository = entryPoint().repository()
         val resolver = entryPoint().providerResolver()
+        val warpTunnel = entryPoint().warpTunnel()
+        val settings = entryPoint().settings()
 
         val entry = repository.getDownloadById(downloadId) ?: return Result.failure().also {
             Log.e(TAG, "DownloadEntry not found for id=$downloadId")
@@ -102,12 +117,36 @@ class ResolveAndDownloadWorker(
         } else {
             entry.title
         }
+        // Load poster bitmap once for the notification large icon.
+        val posterBitmap = loadPosterBitmap(entry.posterPath)
         // Persistent foreground notification for the active download.
         try {
-            setForeground(foregroundInfo(buildNotification(itemTitle, "In preparazione…", 0, true)))
+            setForeground(foregroundInfo(buildNotification(itemTitle, "In preparazione…", 0, true, posterBitmap)))
         } catch (e: Exception) {
             Log.w(TAG, "setForeground failed", e)
         }
+
+        // Build upstream DataSource.Factory with vixcloud headers (Referer, Origin).
+        // When WARP is enabled, start the tunnel and route through its proxied client
+        // so the IP matches what vixcloud saw during resolution (token IP-binding).
+        val proxiedClient = if (settings.warpEnabled.first() && warpTunnel.isAvailable) {
+            if (warpTunnel.start()) warpTunnel.proxiedClient() else null
+        } else null
+
+        val upstreamFactory: DataSource.Factory = if (proxiedClient != null) {
+            OkHttpDataSource.Factory(proxiedClient)
+                .setDefaultRequestProperties(VixcloudClient.playbackHeaders)
+                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        } else {
+            // Reuse the tuned infrastructure factory for direct downloads.
+            DownloadInfrastructure.httpDataSourceFactory
+        }
+
+        // Wrap in CacheDataSource so cached segments serve from disk.
+        val proxiedCacheFactory = CacheDataSource.Factory()
+            .setCache(DownloadInfrastructure.cache)
+            .setUpstreamDataSourceFactory(upstreamFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
         try {
             val contentId = "${entry.tmdbId}_${entry.mediaType}_${entry.season}_${entry.episode}"
@@ -143,7 +182,7 @@ class ResolveAndDownloadWorker(
             // rendition, bloating the download 3-5x. Il tetto altezza (se impostato)
             // arriva da entry.quality: scarica la variante ≤ tetto più alta.
             val maxHeight = DownloadQualityPref.capHeightFromEntryQuality(entry.quality)
-            val (streamKeys, chosenHeight) = resolveStreamKeys(streamUrl, maxHeight)
+            val (streamKeys, chosenHeight) = resolveStreamKeys(streamUrl, maxHeight, upstreamFactory)
             Log.d(TAG, "Resolved ${streamKeys.size} streamKey(s) for $contentId, height=$chosenHeight")
             // Registra la risoluzione effettivamente scaricata (es. "1080p") al posto della
             // label di preferenza ("Massima"), così l'item completato mostra la qualità vera.
@@ -164,7 +203,7 @@ class ResolveAndDownloadWorker(
             // vixcloud rate-limits. More than 8 risks HTTP 429 / IP bans.
             val downloader = HlsDownloader(
                 mediaItem,
-                DownloadInfrastructure.cacheDataSourceFactory,
+                proxiedCacheFactory,
                 Executors.newFixedThreadPool(6)
             )
 
@@ -204,7 +243,7 @@ class ResolveAndDownloadWorker(
                     if (!isStopped) {
                         val speedTxt = if (speed > 0) " · %.1f MB/s".format(speed / 1_048_576.0) else ""
                         updateNotification(
-                            buildNotification(itemTitle, "${pct.toInt()}%$speedTxt", pct.toInt(), pct <= 0f)
+                            buildNotification(itemTitle, "${pct.toInt()}%$speedTxt", pct.toInt(), pct <= 0f, posterBitmap)
                         )
                     }
 
@@ -273,7 +312,8 @@ class ResolveAndDownloadWorker(
      */
     private suspend fun resolveStreamKeys(
         streamUrl: String,
-        maxHeight: Int?
+        maxHeight: Int?,
+        upstreamFactory: DataSource.Factory
     ): Pair<List<StreamKey>, Int?> =
         suspendCancellableCoroutine { continuation ->
             val mediaItem = MediaItem.Builder()
@@ -284,7 +324,7 @@ class ResolveAndDownloadWorker(
                 applicationContext,
                 mediaItem,
                 DefaultRenderersFactory(applicationContext),
-                DownloadInfrastructure.httpDataSourceFactory
+                upstreamFactory
             )
 
             downloadHelper.prepare(object : DownloadHelper.Callback {
@@ -341,6 +381,26 @@ class ResolveAndDownloadWorker(
             continuation.invokeOnCancellation { downloadHelper.release() }
         }
 
+    /**
+     * Fetch poster Bitmap from TMDB to show as large icon in notification.
+     * Runs on IO dispatcher. Returns null on any failure (network, decode, missing path).
+     */
+    private suspend fun loadPosterBitmap(posterPath: String?): Bitmap? {
+        val url = TMDBImage.url(posterPath, TMDBImage.Size.W154) ?: return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val connection = java.net.URL(url).openConnection()
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                val input = connection.getInputStream()
+                BitmapFactory.decodeStream(input).also { input.close() }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load poster bitmap for notification", e)
+                null
+            }
+        }
+    }
+
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -360,7 +420,8 @@ class ResolveAndDownloadWorker(
         contentTitle: String,
         text: String,
         pct: Int,
-        indeterminate: Boolean
+        indeterminate: Boolean,
+        largeIcon: Bitmap? = null
     ): Notification {
         ensureChannel()
         val pi = PendingIntent.getActivity(
@@ -374,6 +435,7 @@ class ResolveAndDownloadWorker(
             .setContentTitle(contentTitle)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setLargeIcon(largeIcon)
             .setContentIntent(pi)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

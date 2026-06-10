@@ -278,7 +278,7 @@ fun SeriesDownloadsScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { episodeToDelete = null }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurface)
+                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             )

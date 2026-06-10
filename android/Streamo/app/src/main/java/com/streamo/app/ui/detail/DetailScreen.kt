@@ -33,9 +33,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SmartDisplay
@@ -474,7 +474,7 @@ private fun DetailContent(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             } else {
-                                Icon(Icons.Filled.PlayCircle, contentDescription = null)
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
                             Text(viewModel.playLabel)
@@ -545,7 +545,11 @@ private fun DetailContent(
                             active = viewModel.isWatched,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Filled.CheckCircle, contentDescription = null)
+                            Icon(
+                                if (viewModel.isWatched) Icons.Filled.CheckCircle
+                                else Icons.Outlined.CheckCircle,
+                                contentDescription = null
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(if (viewModel.isWatched) "Visto" else "Segna visto", maxLines = 1)
                         }
@@ -679,7 +683,7 @@ private fun DetailContent(
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.showProviderPicker = false }) {
-                        Text("Chiudi")
+                        Text("Chiudi", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             )
@@ -718,7 +722,7 @@ private fun EpisodesUnavailable(message: String?) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader(
             title = "Episodi",
-            icon = Icons.Filled.PlayCircle
+            icon = Icons.Filled.PlayArrow
         )
         Text(
             text = message ?: "Streaming non disponibile per questa serie.",
@@ -736,7 +740,7 @@ private fun EpisodesSection(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader(
             title = "Episodi",
-            icon = Icons.Filled.PlayCircle
+            icon = Icons.Filled.PlayArrow
         )
 
         // Season picker

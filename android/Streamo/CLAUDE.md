@@ -17,6 +17,8 @@ Single module `:app`. Gradle 8.10.2 wrapper, AGP 8.7.3, Kotlin 2.1.20, JDK 11. U
 
 There is essentially no test suite yet — only the scaffold `ExampleUnitTest`. Verify changes by building and running on a device.
 
+**Always verify generated code compiles** (`./gradlew assembleDebug`) — mandatory when the change touches many files or adds anything that requires new imports. After renaming classes or Hilt-annotated types, incremental builds can fail on stale generated artifacts: retry with `./gradlew clean assembleDebug` before assuming the code is wrong.
+
 The TMDB key is baked via `BuildConfig.DEFAULT_TMDB_API_KEY` in `app/build.gradle.kts`; users can override it in Settings. `release` is signed with the debug key and `isMinifyEnabled = false`.
 
 ## Architecture

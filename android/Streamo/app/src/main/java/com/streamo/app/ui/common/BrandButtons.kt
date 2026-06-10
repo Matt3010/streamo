@@ -48,13 +48,16 @@ fun BrandButton(
 
 /**
  * Bottone secondario "glass" scuro con bordo sottile; diventa primary quando
- * [active] (es. titolo già in watchlist) — port del kind `.secondary` iOS.
+ * [active] (es. titolo già in watchlist). Quando [outlined] è true, lo stato
+ * inattivo è trasparente (solo bordo bianco) invece del riempimento glass — port
+ * del kind `.secondary` iOS.
  */
 @Composable
 fun BrandSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     active: Boolean = false,
+    outlined: Boolean = false,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
@@ -66,6 +69,11 @@ fun BrandSecondaryButton(
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
+            )
+        } else if (outlined) {
+            ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = Color.White
             )
         } else {
             ButtonDefaults.buttonColors(

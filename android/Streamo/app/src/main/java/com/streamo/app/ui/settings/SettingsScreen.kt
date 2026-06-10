@@ -2,11 +2,15 @@ package com.streamo.app.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,11 +18,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,19 +46,40 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material3.OutlinedTextField
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.NetworkType
 
-@OptIn(ExperimentalMaterial3Api::class)
+private fun hsvColor(h: Float, s: Float, v: Float): Color =
+    Color(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))
+
+private fun rgbToHsv(r: Float, g: Float, b: Float): Triple<Float, Float, Float> {
+    val mx = maxOf(r, g, b); val mn = minOf(r, g, b); val d = mx - mn
+    val v = mx; val s = if (mx == 0f) 0f else d / mx
+    val h = when {
+        d == 0f -> 0f; mx == r -> (((g - b) / d) % 6f) * 60f
+        mx == g -> ((b - r) / d + 2f) * 60f; else -> ((r - g) / d + 4f) * 60f
+    }
+    return Triple(if (h < 0) h + 360f else h, s, v)
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     onNavigateToAdvanced: () -> Unit = {},
@@ -249,20 +277,42 @@ fun SettingsScreen(
                         Color(0xFFFFEB3B),
                         Color(0xFFE91E63)
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        presets.forEach { color ->
-                            val current = Color(accent.first, accent.second, accent.third)
-                            val selected = color == current
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .clickable { viewModel.setAccentColor(color.red, color.green, color.blue) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (selected) {
-                                    Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.3f), CircleShape))
+                    val currentColor = Color(accent.first, accent.second, accent.third)
+                    var showPicker by remember { mutableStateOf(false) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(currentColor)
+                                .clickable { showPicker = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = "Scegli colore",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            presets.forEach { color ->
+                                val selected = color == currentColor
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                        .clickable { viewModel.setAccentColor(color.red, color.green, color.blue) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (selected) {
+                                        Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.3f), CircleShape))
+                                    }
                                 }
                             }
                         }
@@ -270,6 +320,133 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = { viewModel.resetAccentColor() }) {
                         Text("Ripristina rosso predefinito")
+                    }
+
+                    // Color picker dialog — palette saturazione/luminosità + hue + RGB
+                    if (showPicker) {
+                        var hue by remember { mutableFloatStateOf(0f) }
+                        var sat by remember { mutableFloatStateOf(1f) }
+                        var value by remember { mutableFloatStateOf(1f) }
+                        // Init from current colour
+                        LaunchedEffect(Unit) {
+                            val (h, s, v) = rgbToHsv(currentColor.red, currentColor.green, currentColor.blue)
+                            hue = h; sat = s; value = v
+                        }
+                        val pickerColor = remember(hue, sat, value) { hsvColor(hue, sat, value) }
+                        // Stato testo RGB per input manuale
+                        var rText by remember { mutableStateOf("") }
+                        var gText by remember { mutableStateOf("") }
+                        var bText by remember { mutableStateOf("") }
+                        // Init da colore corrente
+                        LaunchedEffect(Unit) {
+                            rText = (currentColor.red * 255).toInt().toString()
+                            gText = (currentColor.green * 255).toInt().toString()
+                            bText = (currentColor.blue * 255).toInt().toString()
+                        }
+                        // Sync palette → text quando l'utente trascina
+                        LaunchedEffect(pickerColor) {
+                            rText = (pickerColor.red * 255).toInt().toString()
+                            gText = (pickerColor.green * 255).toInt().toString()
+                            bText = (pickerColor.blue * 255).toInt().toString()
+                        }
+                        AlertDialog(
+                            onDismissRequest = { showPicker = false },
+                            title = { Text("Scegli colore") },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    // 2D palette — saturation × value at fixed hue using gradient brushes
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Brush.verticalGradient(listOf(Color.White, Color.Black)))
+                                            .background(Brush.horizontalGradient(listOf(Color.White, hsvColor(hue, 1f, 1f))))
+                                            .pointerInput(Unit) {
+                                            detectDragGestures { change, _ ->
+                                                change.consume()
+                                                sat = (change.position.x / size.width).coerceIn(0f, 1f)
+                                                value = 1f - (change.position.y / size.height).coerceIn(0f, 1f)
+                                            }
+                                        }
+                                    ) {
+                                        // Crosshair indicator
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val cx = sat * size.width; val cy = (1f - value) * size.height
+                                            drawCircle(Color.White, radius = 6f, center = Offset(cx, cy))
+                                            drawCircle(Color.Black.copy(alpha = 0.5f), radius = 6f, center = Offset(cx, cy), style = Stroke(width = 2f))
+                                        }
+                                    }
+                                    // Hue slider with gradient strip
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Brush.horizontalGradient(listOf(
+                                                Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+                                            )))
+                                            .pointerInput(Unit) {
+                                            detectDragGestures { change, _ ->
+                                                change.consume()
+                                                hue = (change.position.x / size.width * 360f).coerceIn(0f, 360f)
+                                            }
+                                        }
+                                    ) {
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val tx = hue / 360f * size.width
+                                            drawCircle(Color.White, radius = 8f, center = Offset(tx, size.height / 2f))
+                                            drawCircle(Color.Black.copy(alpha = 0.4f), radius = 8f, center = Offset(tx, size.height / 2f), style = Stroke(2f))
+                                        }
+                                    }
+
+                                    // Preview + RGB input fields (0-255)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(pickerColor)
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        val fields = listOf("R" to rText, "G" to gText, "B" to bText)
+                                        fields.forEachIndexed { i, (label, text) ->
+                                            OutlinedTextField(
+                                                value = text,
+                                                onValueChange = { newVal ->
+                                                    val filtered = newVal.filter { it.isDigit() }.take(3)
+                                                    // Aggiorna lo stato del campo corretto
+                                                    val r = if (i == 0) filtered else rText
+                                                    val g = if (i == 1) filtered else gText
+                                                    val b = if (i == 2) filtered else bText
+                                                    rText = r; gText = g; bText = b
+                                                    // Se tutti e tre hanno valori validi, aggiorna palette
+                                                    val ri = r.toIntOrNull()?.coerceIn(0, 255)
+                                                    val gi = g.toIntOrNull()?.coerceIn(0, 255)
+                                                    val bi = b.toIntOrNull()?.coerceIn(0, 255)
+                                                    if (ri != null && gi != null && bi != null) {
+                                                        val (h, s, v) = rgbToHsv(ri / 255f, gi / 255f, bi / 255f)
+                                                        hue = h; sat = s; value = v
+                                                    }
+                                                },
+                                                modifier = Modifier.width(56.dp),
+                                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                textStyle = MaterialTheme.typography.bodyMedium
+                                            )
+                                            if (i < 2) Spacer(Modifier.width(6.dp))
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    viewModel.setAccentColor(pickerColor.red, pickerColor.green, pickerColor.blue)
+                                    showPicker = false
+                                }) { Text("Applica") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showPicker = false }) { Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                        )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(

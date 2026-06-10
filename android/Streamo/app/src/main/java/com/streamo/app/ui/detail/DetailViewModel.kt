@@ -430,8 +430,8 @@ class DetailViewModel @Inject constructor(
         if (progress.mediaType != "tv") return null
         val ended = progress.durationSeconds > 0 && progress.positionSeconds >= progress.durationSeconds * TVLogic.WATCHED_THRESHOLD
         if (!ended) return Pair(progress.season, progress.episode)
+        // Ended: go to next episode. If no next episode (all watched), return null.
         return TVLogic.nextEpisode(item ?: return null, progress.season, progress.episode)
-            ?: Pair(progress.season, progress.episode)
     }
 
     private suspend fun movieResume(): ProgressEntry? {
