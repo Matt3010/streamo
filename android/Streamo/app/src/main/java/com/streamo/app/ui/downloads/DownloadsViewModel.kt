@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.tmdb.TMDBClient
@@ -12,8 +13,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -23,12 +27,16 @@ import javax.inject.Inject
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val repository: AppRepository,
+    private val settings: SettingsDataStore,
     private val app: Application,
     private val tmdbClient: TMDBClient
 ) : ViewModel() {
 
     val entries: StateFlow<List<DownloadEntry>> = repository.downloads()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _warpChangedEntry = MutableStateFlow<Pair<DownloadEntry, Boolean>?>(null)
+    val warpChangedEntry: StateFlow<Pair<DownloadEntry, Boolean>?> = _warpChangedEntry.asStateFlow()
 
     init {
         // Backfill posterPath + stillPath for legacy downloads that predate the fields.
@@ -94,13 +102,30 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    /** Resume a stopped/failed download: cached segments are reused, only missing ones fetched. */
+    /** Resume a stopped/failed download — checks if WARP state changed. */
     fun restart(entry: DownloadEntry) {
         viewModelScope.launch {
-            repository.resetRetryCount(entry.id)
-            repository.updateDownloadStatusResetSpeed(entry.id, "pending")
-            ResolveAndDownloadWorker.enqueue(app, entry.id)
+            val currentWarp = settings.warpEnabled.first()
+            if (entry.warpEnabled != currentWarp && entry.streamUrl.isNotBlank()) {
+                _warpChangedEntry.value = entry to currentWarp
+                return@launch
+            }
+            doRestart(entry)
         }
+    }
+
+    /** Force restart even when WARP state changed (user confirmed dialog). */
+    fun restartAnyway(entry: DownloadEntry) {
+        _warpChangedEntry.value = null
+        viewModelScope.launch { doRestart(entry) }
+    }
+
+    fun clearWarpWarning() { _warpChangedEntry.value = null }
+
+    private suspend fun doRestart(entry: DownloadEntry) {
+        repository.resetRetryCount(entry.id)
+        repository.updateDownloadStatusResetSpeed(entry.id, "pending")
+        ResolveAndDownloadWorker.enqueue(app, entry.id)
     }
 
     /** Trash: stop work, delete cached data from disk, then drop the DB row. */

@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -80,11 +81,13 @@ import java.util.Locale
 fun SeriesDownloadsScreen(
     onNavigateToDetail: (Int, String, Int, Int) -> Unit = { _, _, _, _ -> },
     onNavigateToPlayer: (Int, String, Int, Int, String, String?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
+    onNavigateToAdvanced: () -> Unit = {},
     onBack: () -> Unit = {},
     viewModel: SeriesDownloadsViewModel = hiltViewModel()
 ) {
     val downloadMap by viewModel.downloadMap.collectAsState()
     val dbEntries by viewModel.dbEntries.collectAsState(initial = emptyList())
+    val warpChangedEntry by viewModel.warpChangedEntry.collectAsState()
     var episodeToDelete by remember { mutableStateOf<Int?>(null) }
     var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
@@ -378,6 +381,40 @@ fun SeriesDownloadsScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { confirmBulkDelete = false }) {
+                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+        }
+
+        // WARP state changed warning dialog
+        warpChangedEntry?.let { (entry, currentWarp) ->
+            AlertDialog(
+                onDismissRequest = { viewModel.clearWarpWarning() },
+                title = { Text("WARP cambiato") },
+                text = {
+                    Column {
+                        Text(
+                            if (currentWarp)
+                                "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
+                            else
+                                "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
+                            Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Impostazioni WARP")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.restartAnyway(entry) }) {
+                        Text("Scarica di nuovo")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.clearWarpWarning() }) {
                         Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }

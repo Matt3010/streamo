@@ -55,6 +55,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import okhttp3.OkHttpClient
 
 private const val TAG = "MediaDownload"
 private const val PROGRESS_INTERVAL_MS = 800L
@@ -133,14 +134,17 @@ class ResolveAndDownloadWorker(
             if (warpTunnel.start()) warpTunnel.proxiedClient() else null
         } else null
 
-        val upstreamFactory: DataSource.Factory = if (proxiedClient != null) {
-            OkHttpDataSource.Factory(proxiedClient)
-                .setDefaultRequestProperties(VixcloudClient.playbackHeaders)
-                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        } else {
-            // Reuse the tuned infrastructure factory for direct downloads.
-            DownloadInfrastructure.httpDataSourceFactory
-        }
+        // Always use the same vixcloud-friendly headers regardless of WARP state.
+        // A dedicated OkHttpClient with fresh connection pool avoids stale connections
+        // and the Accept: */* header that vixcloud rejects for HLS endpoints.
+        val baseClient = proxiedClient ?: OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        val upstreamFactory: DataSource.Factory = OkHttpDataSource.Factory(baseClient)
+            .setDefaultRequestProperties(VixcloudClient.playbackHeaders)
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
         // Wrap in CacheDataSource so cached segments serve from disk.
         val proxiedCacheFactory = CacheDataSource.Factory()
@@ -151,27 +155,23 @@ class ResolveAndDownloadWorker(
         try {
             val contentId = "${entry.tmdbId}_${entry.mediaType}_${entry.season}_${entry.episode}"
 
-            // On resume, reuse the URL resolved on the first run. Re-resolving mints a
-            // fresh vixcloud auth token (?token=…&expires=…) → every segment gets a new
-            // URL → the default full-URL cache key misses every cached segment → restart
-            // from 0. Reusing the stored URL keeps the cache keys stable so the cached
-            // segments on disk are picked up and the download resumes where it left off.
-            val streamUrl = if (entry.streamUrl.isNotBlank()) {
-                Log.d(TAG, "Reusing stored streamUrl for resume: ${entry.streamUrl}")
-                entry.streamUrl
+            // Always resolve a fresh streamUrl so the vixcloud token matches the
+            // current network path (WARP on/off). Reusing a stored URL whose token
+            // was minted under a different IP (e.g. WARP was toggled between runs)
+            // gets a 403 because vixcloud binds tokens to the requesting IP.
+            // The downside is that cached segments from a previous attempt won't
+            // be found under the new token — but correctness beats resume speed.
+            val resolution = if (entry.mediaType == "tv" && entry.season > 0) {
+                resolver.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
             } else {
-                val resolution = if (entry.mediaType == "tv" && entry.season > 0) {
-                    resolver.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
-                } else {
-                    resolver.movieSource(entry.tmdbId, entry.title, null)
-                }
-                Log.d(TAG, "Resolver returned ${resolution.sources.size} source(s). Message=${resolution.message}")
-
-                if (resolution.sources.isEmpty()) {
-                    throw IllegalStateException(resolution.message ?: "Nessuno stream disponibile")
-                }
-                resolution.sources.first().playlistUrl
+                resolver.movieSource(entry.tmdbId, entry.title, null)
             }
+            Log.d(TAG, "Resolver returned ${resolution.sources.size} source(s). Message=${resolution.message}")
+
+            if (resolution.sources.isEmpty()) {
+                throw IllegalStateException(resolution.message ?: "Nessuno stream disponibile")
+            }
+            val streamUrl = resolution.sources.first().playlistUrl
             Log.d(TAG, "streamUrl=$streamUrl, contentId=$contentId")
 
             repository.updateDownloadContentAndStatus(downloadId, contentId, streamUrl, "downloading")
@@ -389,9 +389,11 @@ class ResolveAndDownloadWorker(
         val url = TMDBImage.url(posterPath, TMDBImage.Size.W154) ?: return null
         return withContext(Dispatchers.IO) {
             try {
-                val connection = java.net.URL(url).openConnection()
-                connection.connectTimeout = 3000
-                connection.readTimeout = 3000
+                val connection = java.net.URL(url).openConnection().apply {
+                    connectTimeout = 3000
+                    readTimeout = 3000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                }
                 val input = connection.getInputStream()
                 BitmapFactory.decodeStream(input).also { input.close() }
             } catch (e: Exception) {

@@ -24,5 +24,6 @@ data class DownloadEntry(
     val bytesPerSecond: Long = 0L,
     val errorMessage: String? = null,
     val retryCount: Int = 0,
+    val warpEnabled: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )

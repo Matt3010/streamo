@@ -2,6 +2,7 @@ package com.streamo.app.ui.tv.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,7 +27,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.streamo.app.R
 import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.settings.SettingsViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
@@ -151,6 +158,36 @@ fun TvSettingsScreen(
                 color = MaterialTheme.colorScheme.primary
             )
         }
+
+        // TMDB attribution
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Attribuzione",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.tmdb_logo),
+                contentDescription = "TMDB",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .width(200.dp)
+                    .height(16.dp)
+            )
+        }
+        Text(
+            text = "Questa applicazione utilizza TMDB e le API di TMDB ma non è approvata, certificata o in alcun modo autorizzata da TMDB.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
     }
 }
 

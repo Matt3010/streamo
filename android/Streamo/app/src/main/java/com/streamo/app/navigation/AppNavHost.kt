@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import com.streamo.app.ui.continuewatching.ContinueWatchingScreen
 import com.streamo.app.ui.detail.DetailScreen
 import com.streamo.app.ui.downloads.DownloadsScreen
@@ -93,11 +94,13 @@ fun AppNavHost(
         }
         composable<NavRoutes.Settings> {
             SettingsScreen(
-                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings) }
+                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings()) }
             )
         }
-        composable<NavRoutes.AdvancedSettings> {
+        composable<NavRoutes.AdvancedSettings> { backStackEntry ->
+            val route: NavRoutes.AdvancedSettings = backStackEntry.toRoute()
             AdvancedSettingsScreen(
+                scrollToWarp = route.scrollToWarp,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -117,7 +120,8 @@ fun AppNavHost(
                     navController.navigate(
                         NavRoutes.SeriesDownloads(tmdbId, title, showAllEpisodes = false)
                     )
-                }
+                },
+                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings(scrollToWarp = true)) }
             )
         }
         composable<NavRoutes.SeriesDownloads> {
@@ -132,6 +136,7 @@ fun AppNavHost(
                         NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate)
                     )
                 },
+                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings(scrollToWarp = true)) },
                 onBack = { navController.popBackStack() }
             )
         }

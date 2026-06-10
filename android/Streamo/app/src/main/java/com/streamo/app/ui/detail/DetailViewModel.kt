@@ -38,7 +38,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.streamo.app.data.preferences.SettingsDataStore
 import javax.inject.Inject
 
 enum class ProviderAvailability {
@@ -53,6 +55,7 @@ class DetailViewModel @Inject constructor(
     private val repository: AppRepository,
     private val providerResolver: ProviderResolver,
     private val qualityGate: DownloadQualityGate,
+    private val settings: SettingsDataStore,
     private val app: Application
 ) : ViewModel() {
 
@@ -296,7 +299,8 @@ class DetailViewModel @Inject constructor(
             contentId = "${tmdbId}_${mediaType}_${season}_${episode}",
             localPath = "",
             quality = quality.entryQualityLabel(),
-            status = "pending"
+            status = "pending",
+            warpEnabled = settings.warpEnabled.first()
         )
         val id = repository.addDownload(entry)
         ResolveAndDownloadWorker.enqueue(app, id.toInt())

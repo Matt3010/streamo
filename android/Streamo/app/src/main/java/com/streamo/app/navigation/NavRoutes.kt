@@ -28,7 +28,7 @@ sealed class NavRoutes {
     data object Settings : NavRoutes()
 
     @Serializable
-    data object AdvancedSettings : NavRoutes()
+    data class AdvancedSettings(val scrollToWarp: Boolean = false) : NavRoutes()
 
     @Serializable
     data object Downloads : NavRoutes()

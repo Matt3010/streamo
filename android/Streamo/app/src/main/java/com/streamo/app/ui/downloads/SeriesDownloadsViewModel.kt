@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
 import androidx.media3.common.util.UnstableApi
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadQualityGate
 import com.streamo.app.download.DownloadQualityPref
@@ -34,12 +35,17 @@ class SeriesDownloadsViewModel @Inject constructor(
     private val repository: AppRepository,
     private val client: TMDBClient,
     private val qualityGate: DownloadQualityGate,
+    private val settings: SettingsDataStore,
     private val app: Application
 ) : ViewModel() {
 
     val tmdbId: Int = checkNotNull(savedStateHandle["tmdbId"])
     val title: String = checkNotNull(savedStateHandle["title"])
     val showAllEpisodes: Boolean = savedStateHandle["showAllEpisodes"] ?: false
+    private var seriesPosterPath: String? = null
+
+    private val _warpChangedEntry = MutableStateFlow<Pair<DownloadEntry, Boolean>?>(null)
+    val warpChangedEntry: StateFlow<Pair<DownloadEntry, Boolean>?> = _warpChangedEntry.asStateFlow()
 
     // Raw downloads from DB
     val dbEntries = repository.downloadsForTmdbId(tmdbId)
@@ -77,6 +83,7 @@ class SeriesDownloadsViewModel @Inject constructor(
             loadError = null
             try {
                 val details = client.details(tmdbId, "tv")
+                seriesPosterPath = details.posterPath
                 val available = TVLogic.availableSeasons(details)
                 seasons = available
 
@@ -159,10 +166,12 @@ class SeriesDownloadsViewModel @Inject constructor(
             title = title,
             season = season,
             episode = episode,
+            posterPath = seriesPosterPath,
             contentId = "${tmdbId}_tv_${season}_${episode}",
             localPath = "",
             quality = quality.entryQualityLabel(),
-            status = "pending"
+            status = "pending",
+            warpEnabled = settings.warpEnabled.first()
         )
         val id = repository.addDownload(entry)
         // Serial queue: one download at a time (see ResolveAndDownloadWorker.enqueue).
@@ -279,11 +288,29 @@ class SeriesDownloadsViewModel @Inject constructor(
         }
     }
 
+    /** Resume a stopped/failed download — checks if WARP state changed. */
     fun restart(entry: DownloadEntry) {
         viewModelScope.launch {
-            repository.resetRetryCount(entry.id)
-            repository.updateDownloadStatusResetSpeed(entry.id, "pending")
-            ResolveAndDownloadWorker.enqueue(app, entry.id)
+            val currentWarp = settings.warpEnabled.first()
+            if (entry.warpEnabled != currentWarp && entry.streamUrl.isNotBlank()) {
+                _warpChangedEntry.value = entry to currentWarp
+                return@launch
+            }
+            doRestart(entry)
         }
+    }
+
+    /** Force restart even when WARP state changed (user confirmed dialog). */
+    fun restartAnyway(entry: DownloadEntry) {
+        _warpChangedEntry.value = null
+        viewModelScope.launch { doRestart(entry) }
+    }
+
+    fun clearWarpWarning() { _warpChangedEntry.value = null }
+
+    private suspend fun doRestart(entry: DownloadEntry) {
+        repository.resetRetryCount(entry.id)
+        repository.updateDownloadStatusResetSpeed(entry.id, "pending")
+        ResolveAndDownloadWorker.enqueue(app, entry.id)
     }
 }

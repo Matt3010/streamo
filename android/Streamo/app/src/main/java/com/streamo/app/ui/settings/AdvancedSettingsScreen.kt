@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -44,14 +46,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.BuildConfig
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdvancedSettingsScreen(
+    scrollToWarp: Boolean = false,
     onBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -64,6 +70,19 @@ fun AdvancedSettingsScreen(
     val warpBusy by viewModel.warpBusy.collectAsState()
     val warpStatus by viewModel.warpStatus.collectAsState()
     val confirmRecalc by viewModel.confirmRecalc.collectAsState()
+
+    val scrollState = rememberScrollState()
+    var warpCardOffset by remember { mutableStateOf(0f) }
+    var highlightWarp by remember { mutableStateOf(false) }
+
+    LaunchedEffect(scrollToWarp) {
+        if (scrollToWarp) {
+            highlightWarp = true
+            scrollState.animateScrollTo(warpCardOffset.toInt())
+            kotlinx.coroutines.delay(3000)
+            highlightWarp = false
+        }
+    }
 
     val focusManager = LocalFocusManager.current
 
@@ -128,7 +147,7 @@ fun AdvancedSettingsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // TMDB API Key
@@ -215,7 +234,16 @@ fun AdvancedSettingsScreen(
 
             // WARP (Cloudflare IP-masking)
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coords ->
+                        warpCardOffset = coords.positionInRoot().y
+                    }
+                    .then(
+                        if (highlightWarp) Modifier.border(
+                            2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)
+                        ) else Modifier
+                    ),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
