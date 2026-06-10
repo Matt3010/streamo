@@ -15,13 +15,15 @@ data class HomeSection(
     val mediaType: String,
     val title: String,
     val icon: ImageVector,
-    val endpoint: String
+    val endpoint: String,
+    /** Caricata solo per alimentare hero/Top 10, non mostrata come riga (come iOS). */
+    val hiddenFromRows: Boolean = false
 )
 
 object HomeSections {
     val all: List<HomeSection> = listOf(
-        HomeSection("movie-trending", "movie", "Film di tendenza", Icons.Filled.LocalFireDepartment, "trending/movie/day"),
-        HomeSection("tv-trending", "tv", "Serie TV di tendenza", Icons.Filled.LocalFireDepartment, "trending/tv/day"),
+        HomeSection("movie-trending", "movie", "Film di tendenza", Icons.Filled.LocalFireDepartment, "trending/movie/day", hiddenFromRows = true),
+        HomeSection("tv-trending", "tv", "Serie TV di tendenza", Icons.Filled.LocalFireDepartment, "trending/tv/day", hiddenFromRows = true),
         HomeSection("movie-now_playing", "movie", "Al cinema", Icons.Filled.Movie, "movie/now_playing"),
         HomeSection("tv-on_the_air", "tv", "Serie TV in onda", Icons.Filled.Tv, "tv/on_the_air"),
         HomeSection("movie-popular", "movie", "Film più visti", Icons.Filled.Visibility, "movie/popular"),

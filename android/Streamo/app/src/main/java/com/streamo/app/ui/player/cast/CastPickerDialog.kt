@@ -44,22 +44,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamo.app.player.dlna.DlnaRenderer
-import com.streamo.app.player.streamo.StreamoRenderer
+import com.streamo.app.player.lancast.LanRenderer
 
 /**
  * Dialog di selezione dispositivo cast. Raggruppa i dispositivi per IP:
- * se un dispositivo espone sia Streamo (NSD) che DLNA (SSDP), mostra un
+ * se un dispositivo espone sia Obsidian (NSD) che DLNA (SSDP), mostra un
  * pannello-dettaglio orizzontale con scelta del protocollo + checkbox
  * "Ricorda la scelta".
  *
  * @param groups        dispositivi raggruppati per IP
  * @param dlnaScanning  true se la scansione DLNA è in corso
- * @param streamoScanning true se la scansione Streamo è in corso
+ * @param lanScanning true se la scansione Obsidian è in corso
  * @param connectedName nome del dispositivo connesso (null se nessuno)
  * @param connectedProtocol protocollo del dispositivo connesso ("streamo"/"dlna")
  * @param preferredProtocol protocollo preferito per ogni device key (null = chiedi sempre)
  * @param onCastToDlna  callback cast DLNA
- * @param onCastToStreamo callback cast Streamo
+ * @param onCastToLan callback cast Obsidian
  * @param onStopCast    callback interrompi cast
  * @param onRefresh     callback riscansione
  * @param onRemember    callback ricorda preferenza (key, protocol)
@@ -69,18 +69,18 @@ import com.streamo.app.player.streamo.StreamoRenderer
 fun CastPickerDialog(
     groups: List<CastDeviceGroup>,
     dlnaScanning: Boolean,
-    streamoScanning: Boolean,
+    lanScanning: Boolean,
     connectedName: String?,
     connectedProtocol: String?,
     preferredProtocol: (String) -> String?,
     onCastToDlna: (DlnaRenderer) -> Unit,
-    onCastToStreamo: (StreamoRenderer) -> Unit,
+    onCastToLan: (LanRenderer) -> Unit,
     onStopCast: () -> Unit,
     onRefresh: () -> Unit,
     onRemember: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val scanning = dlnaScanning || streamoScanning
+    val scanning = dlnaScanning || lanScanning
 
     // Stato pannello-dettaglio: null = lista master, non-null = dettaglio del device.
     var detailGroup by remember { mutableStateOf<CastDeviceGroup?>(null) }
@@ -106,7 +106,7 @@ fun CastPickerDialog(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        val protoLabel = if (connectedProtocol == "streamo") "Streamo" else "DLNA"
+                        val protoLabel = if (connectedProtocol == "streamo") "Obsidian" else "DLNA"
                         Text(
                             "In riproduzione su $connectedName ($protoLabel)",
                             color = Color.White
@@ -162,7 +162,7 @@ fun CastPickerDialog(
                                         group = group,
                                         preferredProtocol = preferredProtocol,
                                         onCastToDlna = { onCastToDlna(it) },
-                                        onCastToStreamo = { onCastToStreamo(it) },
+                                        onCastToLan = { onCastToLan(it) },
                                         onShowDetail = { detailGroup = it }
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
@@ -175,7 +175,7 @@ fun CastPickerDialog(
                                 preferredProtocol = preferredProtocol,
                                 onBack = { detailGroup = null },
                                 onCastToDlna = { onCastToDlna(it) },
-                                onCastToStreamo = { onCastToStreamo(it) },
+                                onCastToLan = { onCastToLan(it) },
                                 onRemember = onRemember
                             )
                         }
@@ -207,7 +207,7 @@ fun CastPickerDialog(
  * al callback onShowDetail quando servono entrambi i metodi e non c'è preferenza.
  *
  * - una sola modalità disponibile → connette subito, modalità tra parentesi
- *   (es. "Soggiorno (Streamo)");
+ *   (es. "Soggiorno (Obsidian)");
  * - entrambe le modalità + preferenza salvata valida → connette subito col protocollo
  *   ricordato, "Cambia metodo" riapre il pannello-dettaglio via onShowDetail;
  * - entrambe le modalità senza preferenza → tap apre il pannello-dettaglio via onShowDetail.
@@ -217,21 +217,21 @@ private fun CastDeviceRow(
     group: CastDeviceGroup,
     preferredProtocol: (String) -> String?,
     onCastToDlna: (DlnaRenderer) -> Unit,
-    onCastToStreamo: (StreamoRenderer) -> Unit,
+    onCastToLan: (LanRenderer) -> Unit,
     onShowDetail: (CastDeviceGroup) -> Unit
 ) {
     val savedPref = preferredProtocol(group.key)
     // Preferenza valida solo se il protocollo ricordato è ancora disponibile sul device.
     val effectivePref = savedPref?.takeIf {
-        (it == "streamo" && group.streamoRenderer != null) ||
+        (it == "streamo" && group.lanRenderer != null) ||
             (it == "dlna" && group.dlnaRenderer != null)
     }
 
-    fun protoLabel(p: String) = if (p == "streamo") "Streamo" else "DLNA"
+    fun protoLabel(p: String) = if (p == "streamo") "Obsidian" else "DLNA"
 
     fun connect(protocol: String) {
         when (protocol) {
-            "streamo" -> group.streamoRenderer?.let { onCastToStreamo(it) }
+            "streamo" -> group.lanRenderer?.let { onCastToLan(it) }
             "dlna" -> group.dlnaRenderer?.let { onCastToDlna(it) }
         }
     }
@@ -243,7 +243,7 @@ private fun CastDeviceRow(
     ) {
         // Una sola modalità: voce unica, connette diretto, modalità tra parentesi.
         if (!group.hasBoth) {
-            val proto = if (group.streamoRenderer != null) "streamo" else "dlna"
+            val proto = if (group.lanRenderer != null) "streamo" else "dlna"
             ProtocolConnectRow(
                 label = "${group.name} (${protoLabel(proto)})",
                 badge = if (proto == "streamo") "Raccomandato" else null,
@@ -280,7 +280,7 @@ private fun CastDeviceRow(
 
 /**
  * Pannello-dettaglio: header con back + nome device, due ProtocolConnectRow
- * (Streamo raccomandato + DLNA) e checkbox "Ricorda la scelta".
+ * (Obsidian raccomandato + DLNA) e checkbox "Ricorda la scelta".
  */
 @Composable
 private fun CastDetailPanel(
@@ -288,7 +288,7 @@ private fun CastDetailPanel(
     preferredProtocol: (String) -> String?,
     onBack: () -> Unit,
     onCastToDlna: (DlnaRenderer) -> Unit,
-    onCastToStreamo: (StreamoRenderer) -> Unit,
+    onCastToLan: (LanRenderer) -> Unit,
     onRemember: (String, String) -> Unit
 ) {
     val savedPref = preferredProtocol(group.key)
@@ -297,7 +297,7 @@ private fun CastDetailPanel(
     fun connect(protocol: String) {
         if (rememberChoice) onRemember(group.key, protocol)
         when (protocol) {
-            "streamo" -> group.streamoRenderer?.let { onCastToStreamo(it) }
+            "streamo" -> group.lanRenderer?.let { onCastToLan(it) }
             "dlna" -> group.dlnaRenderer?.let { onCastToDlna(it) }
         }
     }
@@ -340,7 +340,7 @@ private fun CastDetailPanel(
         }
         Spacer(modifier = Modifier.height(6.dp))
         ProtocolConnectRow(
-            label = "Streamo",
+            label = "Obsidian",
             badge = "Raccomandato",
             preferred = savedPref == "streamo",
             onClick = { connect("streamo") }

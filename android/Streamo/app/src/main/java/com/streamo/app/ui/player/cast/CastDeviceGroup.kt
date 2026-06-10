@@ -1,27 +1,27 @@
 package com.streamo.app.ui.player.cast
 
 import com.streamo.app.player.dlna.DlnaRenderer
-import com.streamo.app.player.streamo.StreamoRenderer
+import com.streamo.app.player.lancast.LanRenderer
 
 /**
  * Dispositivo raggruppato per IP: stesso IP = stesso dispositivo fisico,
- * che può esporre sia DLNA (SSDP) che Streamo (NSD).
+ * che può esporre sia DLNA (SSDP) che Obsidian (NSD).
  */
 data class CastDeviceGroup(
     val ip: String,
     val name: String,
     val dlnaRenderer: DlnaRenderer?,
-    val streamoRenderer: StreamoRenderer?
+    val lanRenderer: LanRenderer?
 ) {
     /** Key per il salvataggio preferenze: "ip|name". */
     val key: String get() = "$ip|$name"
 
     /** True se il dispositivo supporta entrambi i protocolli. */
-    val hasBoth: Boolean get() = dlnaRenderer != null && streamoRenderer != null
+    val hasBoth: Boolean get() = dlnaRenderer != null && lanRenderer != null
 
     /** Protocolli disponibili per questo dispositivo. */
     val availableProtocols: List<String> get() = buildList {
-        if (streamoRenderer != null) add(PROTO_STREAMO)
+        if (lanRenderer != null) add(PROTO_STREAMO)
         if (dlnaRenderer != null) add(PROTO_DLNA)
     }
 

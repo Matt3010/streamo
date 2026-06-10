@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,12 +14,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val TAG = "StreamoDownload"
+private const val TAG = "MediaDownload"
 
 @UnstableApi
 @Singleton
 class DownloadStateSyncer @Inject constructor(
-    private val repository: StreamoRepository,
+    private val repository: AppRepository,
     @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)

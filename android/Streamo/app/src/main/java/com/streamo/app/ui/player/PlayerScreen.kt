@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionOff
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Speed
@@ -121,7 +122,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.streamo.app.player.PipController
 import com.streamo.app.player.dlna.DlnaRenderer
-import com.streamo.app.player.streamo.StreamoRenderer
+import com.streamo.app.player.lancast.LanRenderer
 import com.streamo.app.ui.player.cast.CastDeviceGroup
 import com.streamo.app.ui.player.cast.CastPickerDialog
 import com.streamo.app.util.Format
@@ -138,6 +139,7 @@ fun PlayerScreen(
     val view = LocalView.current
 
     val loading by viewModel.loading.collectAsState()
+    val warpEnabled by viewModel.warpEnabled.collectAsState()
     val error by viewModel.error.collectAsState()
     val debugLogs by viewModel.debugLogs.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
@@ -164,20 +166,20 @@ fun PlayerScreen(
     val dlnaRenderers by viewModel.dlnaRenderers.collectAsState()
     val dlnaScanning by viewModel.dlnaScanning.collectAsState()
     val dlnaConnected by viewModel.dlnaConnected.collectAsState()
-    val streamoRenderers by viewModel.streamoRenderers.collectAsState()
-    val streamoScanning by viewModel.streamoScanning.collectAsState()
+    val lanRenderers by viewModel.lanRenderers.collectAsState()
+    val lanScanning by viewModel.lanScanning.collectAsState()
     val castProtocolPrefs by viewModel.castProtocolPrefs.collectAsState()
-    val streamoConnected by viewModel.streamoConnected.collectAsState()
+    val lanConnected by viewModel.lanConnected.collectAsState()
     var showCastDialog by remember { mutableStateOf(false) }
     var showExitCastDialog by remember { mutableStateOf(false) }
     var showOfflineCastWarning by remember { mutableStateOf(false) }
     var pendingOfflineRenderer by remember { mutableStateOf<com.streamo.app.player.dlna.DlnaRenderer?>(null) }
-    var pendingStreamoRenderer by remember { mutableStateOf<com.streamo.app.player.streamo.StreamoRenderer?>(null) }
+    var pendingLanRenderer by remember { mutableStateOf<com.streamo.app.player.lancast.LanRenderer?>(null) }
 
-    val isCastActive = dlnaConnected != null || streamoConnected != null
-    val castDeviceName = dlnaConnected?.friendlyName ?: streamoConnected?.friendlyName ?: "TV"
+    val isCastActive = dlnaConnected != null || lanConnected != null
+    val castDeviceName = dlnaConnected?.friendlyName ?: lanConnected?.friendlyName ?: "TV"
     val castProtocol = when {
-        streamoConnected != null -> "streamo"
+        lanConnected != null -> "streamo"
         dlnaConnected != null -> "dlna"
         else -> null
     }
@@ -388,11 +390,19 @@ fun PlayerScreen(
                     .background(Color.Black.copy(alpha = 0.6f)),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 3.dp,
-                    modifier = Modifier.size(48.dp)
-                )
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    if (warpEnabled) {
+                        WarpBadge()
+                    }
+                }
             }
         }
 
@@ -573,7 +583,7 @@ fun PlayerScreen(
                                 )
                             }
                         }
-                        // Trasmissione su TV (DLNA o Streamo).
+                        // Trasmissione su TV (DLNA o Obsidian).
                         IconButton(onClick = {
                             // All'apertura della modale metti in pausa il video locale.
                             if (!isCastActive) {
@@ -942,13 +952,13 @@ fun PlayerScreen(
         }
 
         if (showCastDialog) {
-            val groups = remember(dlnaRenderers, streamoRenderers) {
-                buildCastDeviceGroups(dlnaRenderers, streamoRenderers)
+            val groups = remember(dlnaRenderers, lanRenderers) {
+                buildCastDeviceGroups(dlnaRenderers, lanRenderers)
             }
             CastPickerDialog(
                 groups = groups,
                 dlnaScanning = dlnaScanning,
-                streamoScanning = streamoScanning,
+                lanScanning = lanScanning,
                 connectedName = if (isCastActive) castDeviceName else null,
                 connectedProtocol = castProtocol,
                 preferredProtocol = { key -> castProtocolPrefs[key] },
@@ -961,9 +971,9 @@ fun PlayerScreen(
                         showCastDialog = false
                     }
                 },
-                onCastToStreamo = { renderer ->
-                    // Streamo: la TV risolve in autonomia, no offline warning.
-                    viewModel.castToStreamo(renderer)
+                onCastToLan = { renderer ->
+                    // Obsidian: la TV risolve in autonomia, no offline warning.
+                    viewModel.castToLan(renderer)
                     showCastDialog = false
                 },
                 onStopCast = {
@@ -1140,25 +1150,25 @@ fun PlayerScreen(
     }
 }
 
-/** Raggruppa i renderer DLNA e Streamo per IP in [CastDeviceGroup]. */
+/** Raggruppa i renderer DLNA e Obsidian per IP in [CastDeviceGroup]. */
 private fun buildCastDeviceGroups(
     dlna: List<DlnaRenderer>,
-    streamo: List<StreamoRenderer>
+    streamo: List<LanRenderer>
 ): List<CastDeviceGroup> {
     val ips = linkedSetOf<String>()
     val dlnaByIp = dlna.groupBy { normalizeIp(extractIp(it.controlUrl)) }
-    val streamoByIp = streamo.groupBy { normalizeIp(it.host) }
+    val lanByIp = streamo.groupBy { normalizeIp(it.host) }
 
     ips.addAll(dlnaByIp.keys)
-    ips.addAll(streamoByIp.keys)
+    ips.addAll(lanByIp.keys)
 
     return ips.mapNotNull { ip ->
         val d = dlnaByIp[ip]?.firstOrNull()
-        val s = streamoByIp[ip]?.firstOrNull()
+        val s = lanByIp[ip]?.firstOrNull()
         val name = s?.friendlyName
             ?: d?.friendlyName
             ?: return@mapNotNull null
-        CastDeviceGroup(ip = ip, name = name, dlnaRenderer = d, streamoRenderer = s)
+        CastDeviceGroup(ip = ip, name = name, dlnaRenderer = d, lanRenderer = s)
     }
 }
 
@@ -1174,7 +1184,7 @@ private fun extractIp(url: String): String {
 
 /**
  * Normalizza un host per il raggruppamento: minuscolo, senza parentesi IPv6 e senza
- * zone id ("fe80::1%wlan0" → "fe80::1"). Così l'IP DLNA (SSDP) e l'IP Streamo (NSD)
+ * zone id ("fe80::1%wlan0" → "fe80::1"). Così l'IP DLNA (SSDP) e l'IP Obsidian (NSD)
  * dello stesso dispositivo combaciano e [CastDeviceGroup.hasBoth] funziona.
  */
 private fun normalizeIp(host: String): String =
@@ -1251,5 +1261,26 @@ private fun PlayerOptionRow(label: String, selected: Boolean, onClick: () -> Uni
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(text = label, color = Color.White, fontSize = 15.sp)
+    }
+}
+
+/** Badge "maschera IP" mostrato durante il caricamento quando WARP è attivo. */
+@Composable
+private fun WarpBadge() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Icon(
+            imageVector = androidx.compose.material.icons.Icons.Filled.Lock,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(text = "Maschera IP attiva (WARP)", color = Color.White, fontSize = 12.sp)
     }
 }

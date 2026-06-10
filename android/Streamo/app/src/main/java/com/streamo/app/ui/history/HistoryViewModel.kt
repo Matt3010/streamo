@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.HistoryEntry
 import com.streamo.app.data.local.entity.ProgressEntry
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.util.TVLogic
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +44,7 @@ data class HistoryUiState(
 
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
-    private val repository: StreamoRepository
+    private val repository: AppRepository
 ) : ViewModel() {
 
     private val filter = MutableStateFlow(HistoryFilter.ALL)

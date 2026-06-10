@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.streamo.app.BuildConfig
 import com.streamo.app.data.backup.BackupManager
 import com.streamo.app.data.preferences.SettingsDataStore
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.provider.warp.WarpTunnel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,7 +24,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val backupManager: BackupManager,
-    private val repository: StreamoRepository,
+    private val repository: AppRepository,
     private val settings: SettingsDataStore,
     private val warpTunnel: WarpTunnel,
     @ApplicationContext private val context: Context
@@ -40,6 +40,10 @@ class SettingsViewModel @Inject constructor(
     val tmdbApiKey: StateFlow<String?> = settings.tmdbApiKey
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    // null = non ancora caricato: il campo locale evita il flash del default.
+    val providerLocale: StateFlow<String?> = settings.providerLocale
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val _autoplayNext = MutableStateFlow(true)
     val autoplayNext: StateFlow<Boolean> = _autoplayNext.asStateFlow()
 
@@ -49,6 +53,9 @@ class SettingsViewModel @Inject constructor(
     private val _foldersEnabled = MutableStateFlow(true)
     val foldersEnabled: StateFlow<Boolean> = _foldersEnabled.asStateFlow()
 
+    private val _showCardInfo = MutableStateFlow(true)
+    val showCardInfo: StateFlow<Boolean> = _showCardInfo.asStateFlow()
+
     private val _accentColor = MutableStateFlow(SettingsDataStore.defaultAccent)
     val accentColor: StateFlow<Triple<Float, Float, Float>> = _accentColor.asStateFlow()
 
@@ -57,6 +64,10 @@ class SettingsViewModel @Inject constructor(
 
     private val _downloadQualityMobile = MutableStateFlow<DownloadQualityPref>(DownloadQualityPref.Ask)
     val downloadQualityMobile: StateFlow<DownloadQualityPref> = _downloadQualityMobile.asStateFlow()
+
+    // Cap qualità streaming: token "auto"|"1080"|"720"|"480".
+    private val _streamingQuality = MutableStateFlow("auto")
+    val streamingQuality: StateFlow<String> = _streamingQuality.asStateFlow()
 
     private val _confirmRecalc = MutableStateFlow(false)
     val confirmRecalc: StateFlow<Boolean> = _confirmRecalc.asStateFlow()
@@ -103,6 +114,9 @@ class SettingsViewModel @Inject constructor(
             settings.foldersEnabled.collect { _foldersEnabled.value = it }
         }
         viewModelScope.launch {
+            settings.showCardInfo.collect { _showCardInfo.value = it }
+        }
+        viewModelScope.launch {
             settings.accentColor.collect { _accentColor.value = it }
         }
         viewModelScope.launch {
@@ -114,6 +128,9 @@ class SettingsViewModel @Inject constructor(
             settings.downloadQualityMobile.collect {
                 _downloadQualityMobile.value = DownloadQualityPref.parse(it)
             }
+        }
+        viewModelScope.launch {
+            settings.streamingQuality.collect { _streamingQuality.value = it }
         }
         viewModelScope.launch {
             settings.warpEnabled.collect { _warpEnabled.value = it }
@@ -138,6 +155,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setProviderLocale(value: String) {
+        viewModelScope.launch {
+            val trimmed = value.trim()
+            if (trimmed.isNotBlank()) settings.setProviderLocale(trimmed)
+        }
+    }
+
+    fun resetProviderLocale() {
+        viewModelScope.launch {
+            settings.setProviderLocale("it")
+        }
+    }
+
     fun setAutoplayNext(value: Boolean) {
         viewModelScope.launch {
             settings.setAutoplayNext(value)
@@ -156,12 +186,22 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setShowCardInfo(value: Boolean) {
+        viewModelScope.launch {
+            settings.setShowCardInfo(value)
+        }
+    }
+
     fun setDownloadQualityWifi(pref: DownloadQualityPref) {
         viewModelScope.launch { settings.setDownloadQualityWifi(pref.serialize()) }
     }
 
     fun setDownloadQualityMobile(pref: DownloadQualityPref) {
         viewModelScope.launch { settings.setDownloadQualityMobile(pref.serialize()) }
+    }
+
+    fun setStreamingQuality(token: String) {
+        viewModelScope.launch { settings.setStreamingQuality(token) }
     }
 
     // region WARP actions

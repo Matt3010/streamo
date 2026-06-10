@@ -3,7 +3,7 @@ package com.streamo.app.ui.continuewatching
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.ProgressEntry
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.util.TVLogic
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,7 +15,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ContinueWatchingViewModel @Inject constructor(
-    private val repository: StreamoRepository
+    private val repository: AppRepository
 ) : ViewModel() {
 
     val items: StateFlow<List<ProgressEntry>> = repository.progress()

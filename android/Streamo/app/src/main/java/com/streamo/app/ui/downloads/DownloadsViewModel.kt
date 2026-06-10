@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.tmdb.TMDBClient
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,7 +22,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
-    private val repository: StreamoRepository,
+    private val repository: AppRepository,
     private val app: Application,
     private val tmdbClient: TMDBClient
 ) : ViewModel() {

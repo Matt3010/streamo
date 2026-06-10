@@ -38,7 +38,7 @@ class LocalHlsProxy(
     val streamUrl: String get() = "$baseUrl/stream.m3u8"
 
     private companion object {
-        const val TAG = "StreamoDlna"
+        const val TAG = "DlnaCast"
         const val MIME_HLS = "application/vnd.apple.mpegurl"
     }
 

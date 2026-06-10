@@ -32,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +51,7 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val gridState = rememberLazyGridState()
+    val showCardInfo by viewModel.showCardInfo.collectAsState()
 
     LaunchedEffect(gridState, viewModel.query) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo }
@@ -126,6 +129,9 @@ fun SearchScreen(
                     MediaCard(
                         title = item.displayTitle,
                         posterUrl = TMDBImage.url(item.posterPath, TMDBImage.Size.W500),
+                        year = item.year,
+                        rating = item.voteAverage,
+                        showInfo = showCardInfo,
                         onClick = {
                             viewModel.saveSearchQuery(viewModel.query)
                             onNavigateToDetail(item.id, type, 0, 0)

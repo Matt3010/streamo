@@ -22,6 +22,7 @@ import com.streamo.app.ui.home.HomeScreen
 import com.streamo.app.ui.player.PlayerScreen
 import com.streamo.app.ui.search.SearchScreen
 import com.streamo.app.ui.sectionlist.SectionListScreen
+import com.streamo.app.ui.settings.AdvancedSettingsScreen
 import com.streamo.app.ui.settings.SettingsScreen
 import com.streamo.app.ui.watchlist.WatchlistScreen
 
@@ -91,7 +92,14 @@ fun AppNavHost(
             )
         }
         composable<NavRoutes.Settings> {
-            SettingsScreen()
+            SettingsScreen(
+                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings) }
+            )
+        }
+        composable<NavRoutes.AdvancedSettings> {
+            AdvancedSettingsScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
         composable<NavRoutes.Downloads> {
             DownloadsScreen(

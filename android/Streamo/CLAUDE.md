@@ -21,11 +21,11 @@ The TMDB key is baked via `BuildConfig.DEFAULT_TMDB_API_KEY` in `app/build.gradl
 
 ## Architecture
 
-**MVVM + Hilt + Compose + Room.** Single-activity (`MainActivity`), single Application (`StreamoApplication`, `@HiltAndroidApp`). Package root `com.streamo.app`.
+**MVVM + Hilt + Compose + Room.** Single-activity (`MainActivity`), single Application (`MainApplication`, `@HiltAndroidApp`). Package root `com.streamo.app`.
 
 - **DI** (`di/`): `NetworkModule` (Retrofit→TMDB on `api.themoviedb.org/3/`, Gson with snake_case naming), `DatabaseModule` (Room), `AppModule`. All `@Singleton` in `SingletonComponent`.
 - **Navigation** (`navigation/`): type-safe `NavRoutes` sealed class (`@Serializable` data objects/classes — args travel as typed fields, e.g. `Detail(tmdbId, mediaType, resumeSeason, resumeEpisode)`). `LocalNavController` composition-local + `RootTabView` for the bottom tabs. Pass `onNavigateTo...` lambdas into reusable composables rather than the NavController.
-- **Data** (`data/`): `repository/StreamoRepository` is the single repository over Room DAOs. Entities: `ProgressEntry`, `HistoryEntry`, `WatchlistEntry`, `DownloadEntry`, `ProviderMappingEntity`, `SearchHistoryEntry`. `preferences/SettingsDataStore` (DataStore). `backup/BackupManager` does JSON export/import (uses kotlinx.serialization; Retrofit uses Gson).
+- **Data** (`data/`): `repository/AppRepository` is the single repository over Room DAOs. Entities: `ProgressEntry`, `HistoryEntry`, `WatchlistEntry`, `DownloadEntry`, `ProviderMappingEntity`, `SearchHistoryEntry`. `preferences/SettingsDataStore` (DataStore). `backup/BackupManager` does JSON export/import (uses kotlinx.serialization; Retrofit uses Gson).
 - **UI** (`ui/`): one package per screen, each `@HiltViewModel`. `ui/common` holds shared composables; `ui/theme` the Material3 theme.
 
 ### Provider chain (how a TMDB title becomes a playable stream)
@@ -44,9 +44,9 @@ TMDB title → ProviderClient.search() → ProviderResolver → VixcloudClient.p
 
 Offline download is HLS via Media3. There was a migration from a `DownloadService`-driven approach to a `WorkManager` one; both still exist:
 
-- **`DownloadInfrastructure`** (object, init'd in `StreamoApplication.onCreate`): owns the Media3 `SimpleCache`, `DownloadManager`, and a tuned OkHttp client (HTTP/2 multiplexing, 6-connection pool). Must be initialized before use.
+- **`DownloadInfrastructure`** (object, init'd in `MainApplication.onCreate`): owns the Media3 `SimpleCache`, `DownloadManager`, and a tuned OkHttp client (HTTP/2 multiplexing, 6-connection pool). Must be initialized before use.
 - **`ResolveAndDownloadWorker`** (`CoroutineWorker`, linear backoff): the **current** path — resolves the provider source then downloads directly via `HlsDownloader`. New downloads go here.
-- `StreamoDownloadService` + `DownloadStateSyncer` are kept for notifications and to sync legacy/in-flight downloads. `StreamoApplication` purges stale `DownloadManager` entries left by the old approach on startup.
+- `MediaDownloadService` + `DownloadStateSyncer` are kept for notifications and to sync legacy/in-flight downloads. `MainApplication` purges stale `DownloadManager` entries left by the old approach on startup.
 - Quality selection: `DownloadQuality`, `DownloadQualityGate`, `DownloadResolutionProbe`, `DownloadGate`. Per-network quality preference exists (see recent commit).
 
 ### Playback & casting (`player/`)
@@ -54,6 +54,7 @@ Offline download is HLS via Media3. There was a migration from a `DownloadServic
 - `PlaybackService` (Media3 `MediaSessionService`) + `PlaybackSessionHolder`; `PipController` for picture-in-picture.
 - `player/cast`: `CastController` + `CastBannerViewModel` — a persistent banner lets the user reclaim control or background a cast session.
 - `player/dlna`: `DlnaCastManager`, `DlnaSessionPlayer`, and `LocalHlsProxy` (NanoHTTPD) — serves the HLS stream over a local HTTP proxy so DLNA/TV renderers can fetch it.
+- `player/lancast`: `LanCast*` classes — the app-to-app cast protocol (NSD `_streamo._tcp` discovery + HTTP REST) between phone and the app on Android TV / Fire TV.
 
 ### TV logic (`util/TVLogic`)
 

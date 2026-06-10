@@ -76,6 +76,7 @@ fun HomeScreen(
 ) {
     val watchlist by viewModel.watchlist.collectAsState()
     val progress by viewModel.progress.collectAsState()
+    val showCardInfo by viewModel.showCardInfo.collectAsState()
     val navController = LocalNavController.current
     var showRemoveDialog by remember { mutableStateOf(false) }
     var entryToRemove by remember { mutableStateOf<ProgressEntry?>(null) }
@@ -89,12 +90,7 @@ fun HomeScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Streamo",
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                },
+                title = {},
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background,
@@ -137,6 +133,31 @@ fun HomeScreen(
                         )
                     }
                 } else {
+                    // Hero carousel (trending merge) — full-bleed in cima.
+                    if (viewModel.heroItems.isNotEmpty()) {
+                        item {
+                            HomeHero(
+                                items = viewModel.heroItems,
+                                isInWatchlist = { item -> watchlist.any { it.tmdbId == item.id } },
+                                onPlay = { item ->
+                                    navController.navigate(
+                                        NavRoutes.Player(
+                                            tmdbId = item.id,
+                                            mediaType = item.mediaType ?: "movie",
+                                            title = item.displayTitle,
+                                            poster = item.posterPath,
+                                            releaseDate = item.primaryDate
+                                        )
+                                    )
+                                },
+                                onToggleWatchlist = { viewModel.toggleWatchlist(it) },
+                                onOpen = { item ->
+                                    onNavigateToDetail(item.id, item.mediaType ?: "movie", 0, 0)
+                                }
+                            )
+                        }
+                    }
+
                     // Continue watching
                     if (progress.isNotEmpty()) {
                         item {
@@ -157,18 +178,33 @@ fun HomeScreen(
                         item {
                             MyListRow(
                                 entries = watchlist,
+                                showInfo = showCardInfo,
                                 onNavigateToDetail = onNavigateToDetail,
                                 onHeaderClick = { navController.navigate(NavRoutes.Watchlist) }
                             )
                         }
                     }
 
+                    // Top 10
+                    if (viewModel.top10.isNotEmpty()) {
+                        item {
+                            Top10Row(
+                                items = viewModel.top10,
+                                showInfo = showCardInfo,
+                                onItemClick = { item ->
+                                    onNavigateToDetail(item.id, item.mediaType ?: "movie", 0, 0)
+                                }
+                            )
+                        }
+                    }
+
                     // Sections
-                    items(HomeSections.all) { section ->
+                    items(HomeSections.all.filter { !it.hiddenFromRows }) { section ->
                         SectionRow(
                             section = section,
                             items = viewModel.itemsFor(section),
                             loading = viewModel.isLoading,
+                            showInfo = showCardInfo,
                             onItemClick = { item ->
                                 onNavigateToDetail(item.id, section.mediaType, 0, 0)
                             },
@@ -308,6 +344,7 @@ private fun ContinueWatchingRow(
 @Composable
 private fun MyListRow(
     entries: List<WatchlistEntry>,
+    showInfo: Boolean,
     onNavigateToDetail: (Int, String, Int, Int) -> Unit,
     onHeaderClick: () -> Unit
 ) {
@@ -325,6 +362,7 @@ private fun MyListRow(
                 MediaCard(
                     title = entry.title,
                     posterUrl = entry.posterPath?.let { TMDBImage.url(it, TMDBImage.Size.W500) },
+                    showInfo = showInfo,
                     onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, 0, 0) }
                 )
             }
@@ -337,6 +375,7 @@ private fun SectionRow(
     section: HomeSection,
     items: List<TmdbItem>,
     loading: Boolean,
+    showInfo: Boolean,
     onItemClick: (TmdbItem) -> Unit,
     onHeaderClick: () -> Unit,
     onLoadMore: () -> Unit
@@ -377,6 +416,9 @@ private fun SectionRow(
                     MediaCard(
                         title = item.displayTitle,
                         posterUrl = TMDBImage.url(item.posterPath, TMDBImage.Size.W500),
+                        year = item.year,
+                        rating = item.voteAverage,
+                        showInfo = showInfo,
                         onClick = { onItemClick(item) }
                     )
                 }

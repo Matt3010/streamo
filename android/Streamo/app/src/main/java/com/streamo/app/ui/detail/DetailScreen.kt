@@ -32,10 +32,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ThumbUp
@@ -86,12 +89,16 @@ import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.data.remote.dto.TmdbReview
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.BrandButton
+import com.streamo.app.ui.common.BrandIconButton
+import com.streamo.app.ui.common.BrandSecondaryButton
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.ImagePlaceholder
 import com.streamo.app.util.TVLogic
 import androidx.browser.customtabs.CustomTabsIntent
 import android.net.Uri
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -101,6 +108,14 @@ fun DetailScreen(onBack: () -> Unit = {}) {
     val viewModel: DetailViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
         viewModel.load()
+    }
+
+    val toastContext = LocalContext.current
+    LaunchedEffect(viewModel.infoMessage) {
+        viewModel.infoMessage?.let {
+            Toast.makeText(toastContext, it, Toast.LENGTH_SHORT).show()
+            viewModel.consumeInfoMessage()
+        }
     }
 
     val scrollState = rememberScrollState()
@@ -424,7 +439,7 @@ private fun DetailContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Button(
+                        BrandButton(
                             onClick = {
                                 when {
                                     needsPicker -> viewModel.showProviderPicker = true
@@ -464,17 +479,14 @@ private fun DetailContent(
                             }
                             Text(viewModel.playLabel)
                         }
-                        IconButton(
-                            onClick = { viewModel.toggleWatchlist() }
-                        ) {
-                            Icon(
-                                imageVector = if (isInWatchlist) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                                contentDescription = if (isInWatchlist) "Rimuovi da lista" else "Aggiungi a lista",
-                                tint = if (isInWatchlist) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        BrandIconButton(
+                            onClick = { viewModel.toggleWatchlist() },
+                            icon = if (isInWatchlist) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = if (isInWatchlist) "Rimuovi da lista" else "Aggiungi a lista",
+                            active = isInWatchlist
+                        )
                         if (!isUnavailable) {
-                            IconButton(
+                            BrandIconButton(
                                 onClick = {
                                     if (viewModel.isTV) {
                                         navController.navigate(
@@ -487,19 +499,15 @@ private fun DetailContent(
                                     } else {
                                         viewModel.enqueueDownload()
                                     }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Download,
-                                    contentDescription = "Scarica",
-                                    tint = Color.White
-                                )
-                            }
+                                },
+                                icon = Icons.Filled.Download,
+                                contentDescription = "Scarica"
+                            )
                         }
                     }
 
                     if (viewModel.isTV && isReady && viewModel.nextAfterResumeEpisode != null) {
-                        TextButton(
+                        BrandSecondaryButton(
                             onClick = {
                                 val next = viewModel.nextAfterResumeEpisode!!
                                 navController.navigate(
@@ -516,15 +524,44 @@ private fun DetailContent(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            Icon(Icons.Filled.SkipNext, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text("Vai al prossimo")
                         }
                     }
 
-                    TextButton(
-                        onClick = { viewModel.markWatched() },
-                        modifier = Modifier.fillMaxWidth()
+                    // Azioni secondarie compatte: marca visto + trailer sulla
+                    // stessa riga, stile glass coerente con gli altri bottoni.
+                    val context = LocalContext.current
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Marca come visto")
+                        BrandSecondaryButton(
+                            onClick = {
+                                if (viewModel.isWatched) viewModel.markUnwatched()
+                                else viewModel.markWatched()
+                            },
+                            active = viewModel.isWatched,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (viewModel.isWatched) "Visto" else "Segna visto", maxLines = 1)
+                        }
+                        viewModel.trailerUrl?.let { url ->
+                            BrandSecondaryButton(
+                                onClick = {
+                                    val intent = CustomTabsIntent.Builder().build()
+                                    intent.launchUrl(context, Uri.parse(url))
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.SmartDisplay, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Trailer", maxLines = 1)
+                            }
+                        }
                     }
 
                     // Cast
@@ -543,20 +580,6 @@ private fun DetailContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-
-                    // Trailer button
-                    val context = LocalContext.current
-                    viewModel.trailerUrl?.let { url ->
-                        TextButton(
-                            onClick = {
-                                val intent = CustomTabsIntent.Builder().build()
-                                intent.launchUrl(context, Uri.parse(url))
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Trailer")
-                        }
                     }
             }
 
@@ -1133,7 +1156,7 @@ private fun ErrorState(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onRetry) {
+        BrandButton(onClick = onRetry) {
             Text("Riprova")
         }
     }

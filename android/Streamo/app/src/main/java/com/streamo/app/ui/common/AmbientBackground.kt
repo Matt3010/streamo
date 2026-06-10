@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import com.streamo.app.ui.theme.StreamoRed
+import com.streamo.app.ui.theme.BrandRed
 
 @Composable
 fun AmbientBackground() {
@@ -17,7 +17,7 @@ fun AmbientBackground() {
             .background(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        StreamoRed.copy(alpha = 0.05f),
+                        BrandRed.copy(alpha = 0.05f),
                         Color(red = 0.03f, green = 0.03f, blue = 0.04f),
                         Color.Black
                     ),

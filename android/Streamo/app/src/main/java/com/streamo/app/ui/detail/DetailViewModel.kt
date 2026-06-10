@@ -18,7 +18,7 @@ import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.data.remote.dto.TmdbReview
 import androidx.media3.common.util.UnstableApi
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadQualityGate
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.DownloadQualityRequest
@@ -50,7 +50,7 @@ enum class ProviderAvailability {
 class DetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val client: TMDBClient,
-    private val repository: StreamoRepository,
+    private val repository: AppRepository,
     private val providerResolver: ProviderResolver,
     private val qualityGate: DownloadQualityGate,
     private val app: Application
@@ -162,20 +162,73 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Segna il titolo come visto senza riprodurlo (port di markWatched iOS):
+     * salva un marker di progresso completato (position == duration) che conta
+     * come visto ma non mostra barre né appare in "Continua a guardare".
+     * Per le serie azzera prima il progresso e marca l'ultimo episodio uscito.
+     */
     fun markWatched() {
         viewModelScope.launch {
             val current = item ?: return@launch
+            val title = current.title ?: current.name ?: ""
+            var markedSeason = 0
+            var markedEpisode = 0
+
+            if (isTV) {
+                val last = TVLogic.effectiveLastEpisode(current) ?: return@launch
+                markedSeason = last.first
+                markedEpisode = last.second
+                repository.deleteProgress(tmdbId)
+            }
+            repository.saveProgress(
+                ProgressEntry(
+                    tmdbId = tmdbId,
+                    mediaType = mediaType,
+                    season = markedSeason,
+                    episode = markedEpisode,
+                    positionSeconds = 1.0,
+                    durationSeconds = 1.0,
+                    title = title,
+                    posterPath = current.posterPath
+                )
+            )
             repository.addToHistory(
                 HistoryEntry(
                     tmdbId = tmdbId,
                     mediaType = mediaType,
-                    title = current.title ?: current.name ?: "",
+                    title = title,
                     posterPath = current.posterPath,
-                    season = selectedSeason.takeIf { isTV } ?: 0,
-                    episode = 0
+                    season = markedSeason,
+                    episode = markedEpisode
                 )
             )
+            computeResume()
+            infoMessage = "Segnato come visto"
         }
+    }
+
+    /**
+     * Annulla il "visto" (port di markUnwatched iOS): rimuove tutto il
+     * progresso del titolo, così torna "da vedere".
+     */
+    fun markUnwatched() {
+        viewModelScope.launch {
+            repository.deleteProgress(tmdbId)
+            computeResume()
+            infoMessage = "Segnato come da vedere"
+        }
+    }
+
+    /** True se il titolo risulta interamente visto (marker o riproduzione). */
+    var isWatched by mutableStateOf(false)
+        private set
+
+    /** Messaggio one-shot mostrato come toast dalla UI; azzerare dopo l'uso. */
+    var infoMessage by mutableStateOf<String?>(null)
+
+    fun consumeInfoMessage() {
+        infoMessage = null
     }
 
     // Modale di scelta qualità (preferenza "Chiedi"). null = nessuna modale aperta.
@@ -358,6 +411,17 @@ class DetailViewModel @Inject constructor(
         } else {
             movieResumeEntry = movieResume()
         }
+        isWatched = computeWatched()
+    }
+
+    /** Interamente visto = ultimo progresso completato e nessun episodio successivo. */
+    private suspend fun computeWatched(): Boolean {
+        val p = repository.getLatestProgressForTitle(tmdbId, mediaType) ?: return false
+        val ended = p.durationSeconds > 0 && p.positionSeconds >= p.durationSeconds * TVLogic.WATCHED_THRESHOLD
+        if (!ended) return false
+        if (!isTV) return true
+        val current = item ?: return true
+        return TVLogic.nextEpisode(current, p.season, p.episode) == null
     }
 
     private suspend fun nextUnwatched(): Pair<Int, Int>? {

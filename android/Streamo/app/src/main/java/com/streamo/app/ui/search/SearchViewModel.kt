@@ -7,20 +7,28 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.SearchHistoryEntry
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.remote.dto.TmdbItem
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.tmdb.TMDBClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val client: TMDBClient,
-    private val repository: StreamoRepository
+    private val repository: AppRepository,
+    settings: SettingsDataStore
 ) : ViewModel() {
+
+    val showCardInfo: StateFlow<Boolean> = settings.showCardInfo
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     var query by mutableStateOf("")
         private set

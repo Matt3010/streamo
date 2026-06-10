@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Streamo</string>
+    <string name="app_name">Project Obsidian</string>
     <string name="home">Home</string>
     <string name="search">Cerca</string>
     <string name="watchlist">Lista</string>
@@ -56,7 +56,7 @@
     <string name="create_backup">Crea backup</string>
     <string name="restore_backup">Ripristina da backup</string>
     <string name="app_version">Versione</string>
-    <string name="legal_notice">Streamo — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.</string>
+    <string name="legal_notice">Project Obsidian — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.</string>
     <string name="download_notification_channel_name">Download</string>
     <string name="download_notification_channel_description">Notifiche per i download in corso</string>
 </resources>

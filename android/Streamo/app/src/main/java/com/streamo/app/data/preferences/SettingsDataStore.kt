@@ -29,12 +29,14 @@ class SettingsDataStore @Inject constructor(
         private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
         private val PROVIDER_LOCALE = stringPreferencesKey("provider_locale")
         private val FOLDERS_ENABLED = booleanPreferencesKey("folders_enabled")
+        private val SHOW_CARD_INFO = booleanPreferencesKey("show_card_info")
         private val AUTO_DELETE_WATCHED = booleanPreferencesKey("auto_delete_watched_downloads")
         private val ACCENT_R = floatPreferencesKey("accent_r")
         private val ACCENT_G = floatPreferencesKey("accent_g")
         private val ACCENT_B = floatPreferencesKey("accent_b")
         private val DL_QUALITY_WIFI = stringPreferencesKey("download_quality_wifi")
         private val DL_QUALITY_MOBILE = stringPreferencesKey("download_quality_mobile")
+        private val STREAMING_QUALITY = stringPreferencesKey("streaming_quality")
         private val RENDERER_PROTOCOL_PREFS = stringPreferencesKey("renderer_protocol_prefs")
         private val WARP_ENABLED = booleanPreferencesKey("warp_enabled")
         private val WARP_REGISTERED = booleanPreferencesKey("warp_registered")
@@ -73,6 +75,15 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setFoldersEnabled(value: Boolean) {
         context.dataStore.edit { it[FOLDERS_ENABLED] = value }
+    }
+
+    /** Mostra titolo/anno/voto sotto le card (Continua a guardare le mostra sempre). */
+    val showCardInfo: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[SHOW_CARD_INFO] ?: true
+    }
+
+    suspend fun setShowCardInfo(value: Boolean) {
+        context.dataStore.edit { it[SHOW_CARD_INFO] = value }
     }
 
     // region WARP (Cloudflare IP-masking)
@@ -154,6 +165,15 @@ class SettingsDataStore @Inject constructor(
         context.dataStore.edit { it[DL_QUALITY_MOBILE] = value }
     }
 
+    // Cap risoluzione streaming. Token: "auto" | "1080" | "720" | "480". Default "auto".
+    val streamingQuality: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[STREAMING_QUALITY] ?: "auto"
+    }
+
+    suspend fun setStreamingQuality(value: String) {
+        context.dataStore.edit { it[STREAMING_QUALITY] = value }
+    }
+
     // --- Preferenze protocollo cast per dispositivo ---
 
     private val gson = Gson()
@@ -161,7 +181,7 @@ class SettingsDataStore @Inject constructor(
 
     /**
      * Mappa "ip|name" → "streamo"|"dlna".
-     * Esempio: "192.168.1.42|Streamo - Soggiorno" → "streamo"
+     * Esempio: "192.168.1.42|Obsidian - Soggiorno" → "streamo"
      */
     val rendererProtocolPrefs: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
         val json = prefs[RENDERER_PROTOCOL_PREFS] ?: return@map emptyMap()

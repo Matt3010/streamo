@@ -3,18 +3,18 @@ package com.streamo.app.ui.tv
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.ProgressEntry
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * ViewModel a livello di root TV: serve solo al consumer globale dei comandi Streamo
+ * ViewModel a livello di root TV: serve solo al consumer globale dei comandi Obsidian
  * cast per persistere la posizione di partenza prima di aprire il player.
  */
 @HiltViewModel
 class TvCastViewModel @Inject constructor(
-    private val repository: StreamoRepository
+    private val repository: AppRepository
 ) : ViewModel() {
 
     /**

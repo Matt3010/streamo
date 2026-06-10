@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.navigation.RootTabView
-import com.streamo.app.ui.theme.StreamoTheme
+import com.streamo.app.ui.theme.AppTheme
 import com.streamo.app.ui.tv.TvRootView
 import com.streamo.app.util.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val accent by settings.accentColor.collectAsState(initial = SettingsDataStore.defaultAccent)
             val accentColor = Color(accent.first, accent.second, accent.third)
-            StreamoTheme(accentColor = accentColor) {
+            AppTheme(accentColor = accentColor) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

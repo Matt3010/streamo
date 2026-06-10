@@ -80,9 +80,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import com.streamo.app.player.streamo.StreamoCastReceiver
-import com.streamo.app.player.streamo.StreamoCommand
-import com.streamo.app.player.streamo.StreamoStatus
+import com.streamo.app.player.lancast.LanCastReceiver
+import com.streamo.app.player.lancast.LanCommand
+import com.streamo.app.player.lancast.LanStatus
 import com.streamo.app.ui.player.PlayerViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.util.Format
@@ -107,7 +107,7 @@ import kotlinx.coroutines.delay
  * Drops vs phone: PiP, DLNA cast, forced landscape, touch Slider/scrubber.
  *
  * @param onNavigateToPlayer chiamata quando arriva un comando di play dal telefono
- *   (Streamo cast): tmdbId, mediaType, season, episode, title, poster, releaseDate.
+ *   (Obsidian cast): tmdbId, mediaType, season, episode, title, poster, releaseDate.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -190,8 +190,8 @@ fun TvPlayerScreen(
             viewModel.saveCurrentProgress()
             // Segnala al telefono che la TV non sta più riproducendo, così la sua sessione
             // cast termina (il polling /status vedrebbe altrimenti uno stato congelato).
-            StreamoCastReceiver.updateStatus(
-                StreamoStatus(
+            LanCastReceiver.updateStatus(
+                LanStatus(
                     status = "stopped",
                     positionMs = 0,
                     durationMs = 0,
@@ -203,12 +203,12 @@ fun TvPlayerScreen(
         }
     }
 
-    // Ricezione comandi Streamo cast dal telefono (transport mentre il player è aperto;
+    // Ricezione comandi Obsidian cast dal telefono (transport mentre il player è aperto;
     // i Play quando la TV è ferma li gestisce il consumer globale in TvRootView).
     LaunchedEffect(Unit) {
-        StreamoCastReceiver.commands.collect { cmd ->
+        LanCastReceiver.commands.collect { cmd ->
             when (cmd) {
-                is StreamoCommand.Play -> {
+                is LanCommand.Play -> {
                     viewModel.saveCurrentProgress()
                     // Salva un progress entry con la posizione di partenza desiderata,
                     // così il nuovo PlayerViewModel lo riprende automaticamente.
@@ -224,18 +224,18 @@ fun TvPlayerScreen(
                         cmd.title, cmd.posterUrl, cmd.releaseDate
                     )
                 }
-                is StreamoCommand.Pause -> viewModel.player.pause()
-                is StreamoCommand.Resume -> viewModel.player.play()
-                is StreamoCommand.Stop -> onBack()
-                is StreamoCommand.Seek -> viewModel.player.seekTo(cmd.positionMs)
+                is LanCommand.Pause -> viewModel.player.pause()
+                is LanCommand.Resume -> viewModel.player.play()
+                is LanCommand.Stop -> onBack()
+                is LanCommand.Seek -> viewModel.player.seekTo(cmd.positionMs)
             }
         }
     }
 
-    // Reporta stato riproduzione al server Streamo.
+    // Reporta stato riproduzione al server Obsidian.
     LaunchedEffect(isPlaying, currentPosition, duration) {
-        StreamoCastReceiver.updateStatus(
-            StreamoStatus(
+        LanCastReceiver.updateStatus(
+            LanStatus(
                 status = when {
                     loading || buffering -> "loading"
                     playbackEnded -> "stopped"

@@ -11,8 +11,8 @@ import com.streamo.app.player.PlaybackSessionHolder
 import com.streamo.app.player.dlna.DlnaCastManager
 import com.streamo.app.player.dlna.DlnaRenderer
 import com.streamo.app.player.dlna.DlnaSessionPlayer
-import com.streamo.app.player.streamo.StreamoCastClient
-import com.streamo.app.player.streamo.StreamoRenderer
+import com.streamo.app.player.lancast.LanCastClient
+import com.streamo.app.player.lancast.LanRenderer
 import com.streamo.app.tmdb.TMDBImage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +49,7 @@ sealed class CastSession {
     data class Dlna(val renderer: DlnaRenderer, override val media: CastMedia) : CastSession() {
         override val rendererName: String get() = renderer.friendlyName
     }
-    data class Streamo(val renderer: StreamoRenderer, override val media: CastMedia) : CastSession() {
+    data class Lan(val renderer: LanRenderer, override val media: CastMedia) : CastSession() {
         override val rendererName: String get() = renderer.friendlyName
     }
 }
@@ -61,7 +61,7 @@ sealed class CastSession {
  *
  * Supporta due protocolli:
  * - **DLNA** (UPnP/SSDP → SOAP AVTransport) per smart TV generiche
- * - **Streamo** (NSD → HTTP REST) per app Streamo su Android TV / Fire TV
+ * - **Obsidian** (NSD → HTTP REST) per app Obsidian su Android TV / Fire TV
  */
 @UnstableApi
 @Singleton
@@ -69,7 +69,7 @@ class CastController @Inject constructor(
     @ApplicationContext private val appContext: Context
 ) {
     private val dlna = DlnaCastManager()
-    private val streamoClient = StreamoCastClient()
+    private val lanClient = LanCastClient()
     private val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
 
     // --- Renderer discovery ---
@@ -77,14 +77,14 @@ class CastController @Inject constructor(
     private val _dlnaRenderers = MutableStateFlow<List<DlnaRenderer>>(emptyList())
     val dlnaRenderers: StateFlow<List<DlnaRenderer>> = _dlnaRenderers.asStateFlow()
 
-    private val _streamoRenderers = MutableStateFlow<List<StreamoRenderer>>(emptyList())
-    val streamoRenderers: StateFlow<List<StreamoRenderer>> = _streamoRenderers.asStateFlow()
+    private val _lanRenderers = MutableStateFlow<List<LanRenderer>>(emptyList())
+    val lanRenderers: StateFlow<List<LanRenderer>> = _lanRenderers.asStateFlow()
 
     private val _dlnaScanning = MutableStateFlow(false)
     val dlnaScanning: StateFlow<Boolean> = _dlnaScanning.asStateFlow()
 
-    private val _streamoScanning = MutableStateFlow(false)
-    val streamoScanning: StateFlow<Boolean> = _streamoScanning.asStateFlow()
+    private val _lanScanning = MutableStateFlow(false)
+    val lanScanning: StateFlow<Boolean> = _lanScanning.asStateFlow()
 
     // --- Sessione e stato playback ---
 
@@ -107,25 +107,25 @@ class CastController @Inject constructor(
     private var pollJob: Job? = null
     private var seekJob: Job? = null
 
-    /** Contatore errori consecutivi nel polling Streamo (dopo 3 → sessione persa). */
-    private var streamoPollFailures = 0
+    /** Contatore errori consecutivi nel polling Obsidian (dopo 3 → sessione persa). */
+    private var lanPollFailures = 0
 
     /**
-     * Stato "stopped" consecutivi nel polling Streamo. Richiede 2 letture (≈2s) prima di
+     * Stato "stopped" consecutivi nel polling Obsidian. Richiede 2 letture (≈2s) prima di
      * terminare: un cambio contenuto (re-cast/episodio) fa passare la TV per un breve
      * "stopped" durante la transizione di schermata; un solo campione lo ucciderebbe.
      */
-    private var streamoStoppedStreak = 0
+    private var lanStoppedStreak = 0
 
     /**
      * True una volta che la TV ha riportato uno stato attivo (playing/paused/loading).
      * Prima della conferma "stopped" è solo l'app TV che sta ancora avviando il player
      * (cold start), NON fine riproduzione: ignorarlo o la sessione muore subito.
      */
-    private var streamoActiveConfirmed = false
+    private var lanActiveConfirmed = false
 
     /** Letture "stopped" in attesa del primo avvio TV; oltre la soglia → TV non parte. */
-    private var streamoLaunchPolls = 0
+    private var lanLaunchPolls = 0
 
     /** True una volta che la TV DLNA ha riportato lo stato PLAYING almeno una volta. */
     private var dlnaPlayConfirmed = false
@@ -141,15 +141,15 @@ class CastController @Inject constructor(
     fun discover() {
         scope.launch {
             _dlnaScanning.value = true
-            _streamoScanning.value = true
+            _lanScanning.value = true
             coroutineScope {
                 val dlnaJob = async { dlna.discover(appContext) }
-                val streamoJob = async { streamoClient.discover(appContext) }
+                val lanJob = async { lanClient.discover(appContext) }
                 _dlnaRenderers.value = dlnaJob.await()
-                _streamoRenderers.value = streamoJob.await()
+                _lanRenderers.value = lanJob.await()
             }
             _dlnaScanning.value = false
-            _streamoScanning.value = false
+            _lanScanning.value = false
         }
     }
 
@@ -188,27 +188,27 @@ class CastController @Inject constructor(
     }
 
     /**
-     * Avvia la trasmissione Streamo (HTTP → TV Streamo).
+     * Avvia la trasmissione Obsidian (HTTP → TV Obsidian).
      * @return true se la TV ha accettato il comando di play, false altrimenti
      * (così il chiamante può mostrare un errore invece di fallire in silenzio).
      */
-    suspend fun startStreamo(
-        renderer: StreamoRenderer,
+    suspend fun startLanCast(
+        renderer: LanRenderer,
         media: CastMedia,
         startPositionMs: Long
     ): Boolean {
-        val ok = streamoClient.play(renderer, media, startPositionMs)
+        val ok = lanClient.play(renderer, media, startPositionMs)
         if (!ok) return false
         _position.value = startPositionMs
         _duration.value = 0
         // Sessione PRIMA di isPlaying — vedi nota in start(): il collector isPlaying del
         // telefono è gated sul renderer connesso, impostato dal collector della sessione.
-        _session.value = CastSession.Streamo(renderer, media)
+        _session.value = CastSession.Lan(renderer, media)
         _isPlaying.value = true
-        streamoPollFailures = 0
-        streamoStoppedStreak = 0
-        streamoActiveConfirmed = false
-        streamoLaunchPolls = 0
+        lanPollFailures = 0
+        lanStoppedStreak = 0
+        lanActiveConfirmed = false
+        lanLaunchPolls = 0
         attachSession(media)
         acquireLocks()
         startPolling()
@@ -229,7 +229,7 @@ class CastController @Inject constructor(
             scope.launch {
                 when (s) {
                     is CastSession.Dlna -> dlna.stop(s.renderer)
-                    is CastSession.Streamo -> streamoClient.stop(s.renderer)
+                    is CastSession.Lan -> lanClient.stop(s.renderer)
                 }
             }
         }
@@ -253,7 +253,7 @@ class CastController @Inject constructor(
         scope.launch {
             when (s) {
                 is CastSession.Dlna -> if (play) dlna.resume(s.renderer) else dlna.pause(s.renderer)
-                is CastSession.Streamo -> if (play) streamoClient.resume(s.renderer) else streamoClient.pause(s.renderer)
+                is CastSession.Lan -> if (play) lanClient.resume(s.renderer) else lanClient.pause(s.renderer)
             }
         }
         sessionPlayer?.refresh()
@@ -270,7 +270,7 @@ class CastController @Inject constructor(
             delay(350)
             when (s) {
                 is CastSession.Dlna -> dlna.seek(s.renderer, pos)
-                is CastSession.Streamo -> streamoClient.seek(s.renderer, pos)
+                is CastSession.Lan -> lanClient.seek(s.renderer, pos)
             }
         }
     }
@@ -311,32 +311,32 @@ class CastController @Inject constructor(
                             }
                             sessionPlayer?.refresh()
                         }
-                        is CastSession.Streamo -> {
-                            val st = streamoClient.status(s.renderer)
+                        is CastSession.Lan -> {
+                            val st = lanClient.status(s.renderer)
                             if (st != null) {
-                                streamoPollFailures = 0
+                                lanPollFailures = 0
                                 if (st.status == "stopped") {
-                                    if (streamoActiveConfirmed) {
+                                    if (lanActiveConfirmed) {
                                         // La TV stava riproducendo: 2 "stopped" consecutivi
                                         // (≈2s) = fine reale (un singolo può essere un re-cast).
-                                        streamoStoppedStreak++
-                                        if (streamoStoppedStreak >= 2) {
+                                        lanStoppedStreak++
+                                        if (lanStoppedStreak >= 2) {
                                             stop()
                                             return@launch
                                         }
                                     } else {
                                         // App TV ancora in avvio (cold start): attendi senza
                                         // azzerare la posizione, ma rinuncia dopo ~30s.
-                                        streamoLaunchPolls++
-                                        if (streamoLaunchPolls >= 30) {
+                                        lanLaunchPolls++
+                                        if (lanLaunchPolls >= 30) {
                                             stop()
                                             return@launch
                                         }
                                     }
                                 } else {
                                     // playing/paused/loading: la TV è viva, aggancia lo stato.
-                                    streamoActiveConfirmed = true
-                                    streamoStoppedStreak = 0
+                                    lanActiveConfirmed = true
+                                    lanStoppedStreak = 0
                                     // Specchia lo stato reale: il bottone play sul telefono
                                     // deve seguire la TV, non restare sul valore iniziale.
                                     _isPlaying.value = (st.status == "playing")
@@ -344,8 +344,8 @@ class CastController @Inject constructor(
                                     if (st.durationMs > 0) _duration.value = st.durationMs
                                 }
                             } else {
-                                streamoPollFailures++
-                                if (streamoPollFailures >= 3) {
+                                lanPollFailures++
+                                if (lanPollFailures >= 3) {
                                     stop()
                                     return@launch
                                 }

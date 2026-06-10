@@ -2,7 +2,7 @@ package com.streamo.app.provider
 
 import com.streamo.app.data.local.entity.ProviderMappingEntity
 import com.streamo.app.data.preferences.SettingsDataStore
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.provider.warp.WarpTunnel
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -20,7 +20,7 @@ import javax.inject.Singleton
 class ProviderResolver @Inject constructor(
     private val provider: ProviderClient,
     private val vix: VixcloudClient,
-    private val repository: StreamoRepository,
+    private val repository: AppRepository,
     private val warpTunnel: WarpTunnel,
     private val settings: SettingsDataStore
 ) {

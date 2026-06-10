@@ -31,6 +31,9 @@ fun MediaCard(
     modifier: Modifier = Modifier,
     width: Dp = 140.dp,
     aspectRatio: Float = 2f / 3f,
+    year: Int? = null,
+    rating: Double? = null,
+    showInfo: Boolean = true,
     onClick: () -> Unit = {}
 ) {
     Column(
@@ -56,14 +59,30 @@ fun MediaCard(
                 ImagePlaceholder(modifier = Modifier.fillMaxSize())
             }
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp)
-        )
+        if (showInfo) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            val meta = buildList {
+                year?.let { add(it.toString()) }
+                rating?.takeIf { it > 0.0 }?.let { add("★ ${"%.1f".format(it)}") }
+            }.joinToString("  ·  ")
+            if (meta.isNotEmpty()) {
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
     }
 }
 

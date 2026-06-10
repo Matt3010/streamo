@@ -8,26 +8,56 @@ import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.ProgressEntry
 import com.streamo.app.data.local.entity.WatchlistEntry
 import com.streamo.app.data.remote.dto.TmdbItem
-import com.streamo.app.data.repository.StreamoRepository
+import androidx.compose.runtime.derivedStateOf
+import com.streamo.app.data.preferences.SettingsDataStore
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.TVLogic
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val client: TMDBClient,
-    private val repository: StreamoRepository
+    private val repository: AppRepository,
+    settings: SettingsDataStore
 ) : ViewModel() {
+
+    val showCardInfo: StateFlow<Boolean> = settings.showCardInfo
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     var rows by mutableStateOf(mapOf<String, List<TmdbItem>>())
         private set
+
+    /** Trending merge (movie+tv) per popolarità: primi 6 alimentano l'hero carousel. */
+    val heroItems by derivedStateOf {
+        trendingMerged().take(6)
+    }
+
+    /** Top 10 = trending merge, primi 10 esclusi gli item già nell'hero (no duplicati). */
+    val top10 by derivedStateOf {
+        val heroIds = heroItems.map { it.id to it.mediaType }.toSet()
+        trendingMerged().filterNot { (it.id to it.mediaType) in heroIds }.take(10)
+    }
+
+    private fun trendingMerged(): List<TmdbItem> {
+        val movies = (rows["movie-trending"].orEmpty()).map { it.withMediaType("movie") }
+        val tv = (rows["tv-trending"].orEmpty()).map { it.withMediaType("tv") }
+        return (movies + tv)
+            .distinctBy { it.id to it.mediaType }
+            .sortedByDescending { it.popularity ?: 0.0 }
+    }
+
+    private fun TmdbItem.withMediaType(type: String): TmdbItem =
+        if (mediaType.isNullOrBlank()) copy(mediaType = type) else this
 
     var isLoading by mutableStateOf(false)
         private set
@@ -125,6 +155,24 @@ class HomeViewModel @Inject constructor(
     fun removeProgress(id: Int) {
         viewModelScope.launch {
             repository.deleteProgress(id)
+        }
+    }
+
+    /** Toggle watchlist per l'hero: aggiunge se assente, rimuove se già presente. */
+    fun toggleWatchlist(item: TmdbItem) {
+        viewModelScope.launch {
+            if (repository.isInWatchlist(item.id)) {
+                repository.removeFromWatchlist(item.id)
+            } else {
+                repository.addToWatchlist(
+                    WatchlistEntry(
+                        tmdbId = item.id,
+                        mediaType = item.mediaType ?: "movie",
+                        title = item.displayTitle,
+                        posterPath = item.posterPath
+                    )
+                )
+            }
         }
     }
 }

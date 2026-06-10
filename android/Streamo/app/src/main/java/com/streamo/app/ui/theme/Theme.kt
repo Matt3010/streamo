@@ -12,10 +12,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = StreamoRed,
+    primary = BrandRed,
     onPrimary = Color.White,
-    primaryContainer = StreamoRed.copy(alpha = 0.15f),
-    onPrimaryContainer = StreamoRedBright,
+    primaryContainer = BrandRed.copy(alpha = 0.15f),
+    onPrimaryContainer = BrandRedBright,
     secondary = Color(0xFFB0B0B0),
     onSecondary = Color.White,
     secondaryContainer = DarkSurfaceVariant,
@@ -34,8 +34,8 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun StreamoTheme(
-    accentColor: Color = StreamoRed,
+fun AppTheme(
+    accentColor: Color = BrandRed,
     content: @Composable () -> Unit
 ) {
     val colorScheme = DarkColorScheme.copy(
@@ -55,7 +55,7 @@ fun StreamoTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = StreamoTypography,
+        typography = AppTypography,
         content = content
     )
 }

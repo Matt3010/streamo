@@ -36,7 +36,7 @@ import androidx.tv.material3.NavigationDrawer
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.rememberDrawerState
 import com.streamo.app.navigation.NavRoutes
-import com.streamo.app.player.streamo.StreamoCastReceiver
+import com.streamo.app.player.lancast.LanCastReceiver
 import com.streamo.app.ui.common.AmbientBackground
 
 private data class TvNavItem(
@@ -65,15 +65,15 @@ fun TvRootView() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Consumer globale dei comandi di cast Streamo. Usa pendingPlay (StateFlow) invece del
+    // Consumer globale dei comandi di cast Obsidian. Usa pendingPlay (StateFlow) invece del
     // flusso live così funziona anche a cold-start: il service porta l'app in primo piano,
     // qui leggiamo il Play in sospeso e apriamo il player. Se il player è già aperto, il
     // cambio contenuto lo gestisce TvPlayerScreen via il flusso commands. Transport idem.
     val castViewModel: TvCastViewModel = hiltViewModel()
-    val pendingPlay by StreamoCastReceiver.pendingPlay.collectAsState()
+    val pendingPlay by LanCastReceiver.pendingPlay.collectAsState()
     LaunchedEffect(pendingPlay) {
         val cmd = pendingPlay ?: return@LaunchedEffect
-        StreamoCastReceiver.clearPendingPlay()
+        LanCastReceiver.clearPendingPlay()
         val onPlayer = navController.currentDestination?.hierarchy?.any {
             it.hasRoute(NavRoutes.Player::class)
         } == true

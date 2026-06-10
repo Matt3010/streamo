@@ -49,6 +49,7 @@ fun SectionListScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val title by viewModel.title.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
+    val showCardInfo by viewModel.showCardInfo.collectAsState()
     val gridState = rememberLazyGridState()
 
     LaunchedEffect(gridState) {
@@ -132,6 +133,9 @@ fun SectionListScreen(
                     MediaCard(
                         title = item.displayTitle,
                         posterUrl = TMDBImage.url(item.posterPath, TMDBImage.Size.W500),
+                        year = item.year,
+                        rating = item.voteAverage,
+                        showInfo = showCardInfo,
                         onClick = { onNavigateToDetail(item.id, viewModel.mediaType, 0, 0) }
                     )
                 }

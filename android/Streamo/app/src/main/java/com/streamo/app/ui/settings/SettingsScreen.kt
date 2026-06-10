@@ -14,20 +14,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -43,49 +41,38 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.google.gson.Gson
-import com.streamo.app.BuildConfig
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.NetworkType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onNavigateToAdvanced: () -> Unit = {},
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val snackbarHostState = remember { SnackbarHostState() }
     val message by viewModel.message.collectAsState()
     val stats by viewModel.stats.collectAsState()
-    val tmdbKey by viewModel.tmdbApiKey.collectAsState()
-    var localTmdbKey by rememberSaveable { mutableStateOf("") }
     val autoplay by viewModel.autoplayNext.collectAsState()
     val autoDelete by viewModel.autoDeleteWatched.collectAsState()
     val folders by viewModel.foldersEnabled.collectAsState()
+    val showCardInfo by viewModel.showCardInfo.collectAsState()
     val accent by viewModel.accentColor.collectAsState()
     val dlQualityWifi by viewModel.downloadQualityWifi.collectAsState()
     val dlQualityMobile by viewModel.downloadQualityMobile.collectAsState()
-    val warpEnabled by viewModel.warpEnabled.collectAsState()
-    val warpRegistered by viewModel.warpRegistered.collectAsState()
-    val warpBusy by viewModel.warpBusy.collectAsState()
-    val warpStatus by viewModel.warpStatus.collectAsState()
+    val streamingQuality by viewModel.streamingQuality.collectAsState()
     // Rete di cui si sta scegliendo la qualità (null = nessun picker aperto).
     var qualityPickerFor by remember { mutableStateOf<NetworkType?>(null) }
-    val confirmRecalc by viewModel.confirmRecalc.collectAsState()
+    var showStreamingQualityPicker by remember { mutableStateOf(false) }
     val confirmRestore1 by viewModel.confirmRestoreStep1.collectAsState()
     val confirmRestore2 by viewModel.confirmRestoreStep2.collectAsState()
-
-    val context = LocalContext.current
-    val gson = remember { Gson() }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -105,16 +92,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             viewModel.clearMessage()
         }
     }
-
-    // Sincronizza dal ViewModel solo quando il campo non è in editing,
-    // così l'utente può cancellare/digitare senza che il valore venga sovrascritto.
-    var isTmdbKeyFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(tmdbKey) {
-        // tmdbKey null = ancora in caricamento: non toccare il campo (evita flash del default)
-        val loaded = tmdbKey
-        if (loaded != null && !isTmdbKeyFocused) localTmdbKey = loaded
-    }
-    val focusManager = LocalFocusManager.current
 
     qualityPickerFor?.let { net ->
         val current = if (net == NetworkType.WIFI) dlQualityWifi else dlQualityMobile
@@ -159,18 +136,42 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         )
     }
 
-    if (confirmRecalc) {
+    if (showStreamingQualityPicker) {
+        val options = listOf("auto" to "Auto", "1080" to "1080p", "720" to "720p", "480" to "480p")
         AlertDialog(
-            onDismissRequest = { viewModel.dismissRecalcDialog() },
-            title = { Text("Ricalcolare la libreria?") },
-            text = { Text("Elimina i progressi dei titoli non più in cronologia né in lista. La cronologia e la lista non vengono toccate.") },
-            confirmButton = {
-                TextButton(
-                    onClick = { viewModel.recalculateLibrary() },
-                ) { Text("Ricalcola") }
+            onDismissRequest = { showStreamingQualityPicker = false },
+            title = { Text("Qualità streaming") },
+            text = {
+                Column {
+                    options.forEach { (token, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setStreamingQuality(token)
+                                    showStreamingQualityPicker = false
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = streamingQuality == token,
+                                onClick = {
+                                    viewModel.setStreamingQuality(token)
+                                    showStreamingQualityPicker = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text(label)
+                        }
+                    }
+                }
             },
+            confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissRecalcDialog() }) { Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                TextButton(onClick = { showStreamingQualityPicker = false }) {
+                    Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         )
     }
@@ -230,50 +231,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // TMDB API Key
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Catalogo (TMDB)", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = localTmdbKey,
-                        onValueChange = {
-                            // value resta locale (no caret jump); persiste subito (blank ignorato dal VM)
-                            localTmdbKey = it
-                            viewModel.setTmdbApiKey(it)
-                        },
-                        label = { Text("Chiave API TMDB") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { state -> isTmdbKeyFocused = state.isFocused }
-                    )
-                    if (localTmdbKey.isBlank()) {
-                        Text(
-                            "Senza chiave il catalogo non si carica.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    TextButton(
-                        onClick = {
-                            localTmdbKey = BuildConfig.DEFAULT_TMDB_API_KEY
-                            viewModel.resetTmdbApiKey()
-                        },
-                        enabled = localTmdbKey != BuildConfig.DEFAULT_TMDB_API_KEY
-                    ) {
-                        Text("Ripristina chiave predefinita")
-                    }
-                }
-            }
-
-            // Accent color
+            // Aspetto: colore + info card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -282,7 +240,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     Text("Colore dell'app", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     val presets = listOf(
-                        Color(0xFFE50914), // Streamo red
+                        Color(0xFFE50914), // brand red
                         Color(0xFF2196F3),
                         Color(0xFF4CAF50),
                         Color(0xFFFF9800),
@@ -300,11 +258,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                                     .size(36.dp)
                                     .clip(CircleShape)
                                     .background(color)
-                                    .clickable { viewModel.setAccentColor(color.red, color.green, color.blue) }
-                                    .then(
-                                        if (selected) Modifier.padding(2.dp).background(Color.Transparent, CircleShape)
-                                        else Modifier
-                                    ),
+                                    .clickable { viewModel.setAccentColor(color.red, color.green, color.blue) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (selected) {
@@ -315,32 +269,32 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = { viewModel.resetAccentColor() }) {
-                        Text("Ripristina rosso Streamo")
+                        Text("Ripristina rosso predefinito")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Mostra titolo, anno e voto", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Mostra le informazioni sotto le copertine. \"Continua a guardare\" le mostra comunque.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Switch(
+                            checked = showCardInfo,
+                            onCheckedChange = { viewModel.setShowCardInfo(it) }
+                        )
                     }
                 }
             }
 
             // Playback
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Riproduci episodio successivo", style = MaterialTheme.typography.bodyLarge)
-                    Switch(
-                        checked = autoplay,
-                        onCheckedChange = { viewModel.setAutoplayNext(it) }
-                    )
-                }
-            }
-
-            // WARP (Cloudflare IP-masking)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -351,53 +305,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Maschera IP (WARP)", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "Instrada il traffico del provider e la riproduzione attraverso Cloudflare WARP, nascondendo il tuo IP. Non copre il cast su TV esterne.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(modifier = Modifier.size(12.dp))
+                        Text("Riproduci episodio successivo", style = MaterialTheme.typography.bodyLarge)
                         Switch(
-                            checked = warpEnabled,
-                            onCheckedChange = { viewModel.setWarpEnabled(it) },
-                            enabled = viewModel.warpAvailable && warpRegistered && !warpBusy
+                            checked = autoplay,
+                            onCheckedChange = { viewModel.setAutoplayNext(it) }
                         )
                     }
-
-                    if (!viewModel.warpAvailable) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Motore WARP non incluso in questa build. Genera warpkit.aar (android/wireproxykit/build.sh) e ricompila.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = { viewModel.registerWarp() },
-                            enabled = !warpBusy,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(if (warpRegistered) "Rigenera account WARP" else "Registra account WARP")
-                        }
-                        TextButton(
-                            onClick = { viewModel.verifyEgress() },
-                            enabled = !warpBusy && warpRegistered,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Verifica egress")
-                        }
-                        warpStatus?.let { status ->
-                            Text(
-                                status,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    QualityPickerRow(
+                        label = "Qualità streaming",
+                        value = streamingQualityLabel(streamingQuality),
+                        onClick = { showStreamingQualityPicker = true }
+                    )
                 }
             }
 
@@ -481,25 +399,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             }
 
-            // Maintenance
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Manutenzione", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.showRecalcDialog() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Ricalcola libreria")
-                    }
-                    Text(
-                        "Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla cronologia e dalla lista, e aggiorna le statistiche e \"Continua a guardare\".",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
             // Statistics
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -520,7 +419,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Backup", style = MaterialTheme.typography.titleMedium)
                     Button(
-                        onClick = { exportLauncher.launch("streamo_backup.json") },
+                        onClick = { exportLauncher.launch("project-obsidian-backup.json") },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Esporta backup JSON")
@@ -535,6 +434,36 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         "Il backup esporta lista, cronologia, progressi, segnalibri e impostazioni in un file .json che puoi salvare dove vuoi. Il ripristino sostituisce TUTTI i dati attuali. I file dei download non sono inclusi: andranno riscaricati.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Advanced settings link
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToAdvanced),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Impostazioni avanzate", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Chiave TMDB, provider, maschera IP (WARP), manutenzione.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -555,7 +484,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Streamo — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.",
+                        "Project Obsidian — app personale. Lo streaming usa provider di terze parti; la legalità dipende dalle tue leggi locali.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -563,6 +492,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         }
     }
+}
+
+private fun streamingQualityLabel(token: String): String = when (token) {
+    "1080" -> "1080p"
+    "720" -> "720p"
+    "480" -> "480p"
+    else -> "Auto"
 }
 
 /** Riga impostazione qualità: etichetta a sinistra, valore corrente (cliccabile) a destra. */

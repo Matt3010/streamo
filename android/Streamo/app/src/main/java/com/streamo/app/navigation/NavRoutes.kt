@@ -28,6 +28,9 @@ sealed class NavRoutes {
     data object Settings : NavRoutes()
 
     @Serializable
+    data object AdvancedSettings : NavRoutes()
+
+    @Serializable
     data object Downloads : NavRoutes()
 
     @Serializable

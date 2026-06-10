@@ -4,20 +4,27 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.tmdb.TMDBClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SectionListViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val client: TMDBClient
+    private val client: TMDBClient,
+    settings: SettingsDataStore
 ) : ViewModel() {
+
+    val showCardInfo: StateFlow<Boolean> = settings.showCardInfo
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     private val _title = MutableStateFlow("")
     val title: StateFlow<String> = _title

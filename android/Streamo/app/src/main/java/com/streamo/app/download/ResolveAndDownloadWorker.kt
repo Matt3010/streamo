@@ -30,7 +30,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.provider.ProviderResolver
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -45,7 +45,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
-private const val TAG = "StreamoDownload"
+private const val TAG = "MediaDownload"
 private const val PROGRESS_INTERVAL_MS = 800L
 
 @UnstableApi
@@ -58,7 +58,7 @@ class ResolveAndDownloadWorker(
     @InstallIn(SingletonComponent::class)
     interface WorkerEntryPoint {
         fun providerResolver(): ProviderResolver
-        fun repository(): StreamoRepository
+        fun repository(): AppRepository
     }
 
     private fun entryPoint(): WorkerEntryPoint =

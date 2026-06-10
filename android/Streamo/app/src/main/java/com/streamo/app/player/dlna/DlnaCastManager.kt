@@ -49,7 +49,7 @@ class DlnaCastManager {
     private val soapMutex = Mutex()
 
     private companion object {
-        const val TAG = "StreamoDlna"
+        const val TAG = "DlnaCast"
         const val SSDP_ADDR = "239.255.255.250"
         const val SSDP_PORT = 1900
         const val AVT = "urn:schemas-upnp-org:service:AVTransport:1"

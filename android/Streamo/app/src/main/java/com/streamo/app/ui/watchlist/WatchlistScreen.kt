@@ -2,13 +2,16 @@ package com.streamo.app.ui.watchlist
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,6 +36,8 @@ fun WatchlistScreen(
 ) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val items by viewModel.items.collectAsState()
+    val selectedType by viewModel.selectedType.collectAsState()
+    val selectedStatus by viewModel.selectedStatus.collectAsState()
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -54,28 +59,48 @@ fun WatchlistScreen(
             )
         }
     ) { paddingValues ->
-        if (items.isEmpty()) {
-            Text(
-                text = "La tua lista è vuota. Aggiungi titoli dalla pagina dei dettagli.",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(24.dp),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 140.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                items(items) { item ->
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 140.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            // Filtro tipo.
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Tutti", selectedType == WatchlistType.ALL) { viewModel.setType(WatchlistType.ALL) }
+                    Chip("TV", selectedType == WatchlistType.TV) { viewModel.setType(WatchlistType.TV) }
+                    Chip("Film", selectedType == WatchlistType.MOVIE) { viewModel.setType(WatchlistType.MOVIE) }
+                }
+            }
+
+            // Filtro stato.
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Tutti", selectedStatus == WatchlistStatusFilter.ALL) { viewModel.setStatus(WatchlistStatusFilter.ALL) }
+                    Chip("Da guardare", selectedStatus == WatchlistStatusFilter.TODO) { viewModel.setStatus(WatchlistStatusFilter.TODO) }
+                    Chip("In corso", selectedStatus == WatchlistStatusFilter.IN_PROGRESS) { viewModel.setStatus(WatchlistStatusFilter.IN_PROGRESS) }
+                    Chip("Visto", selectedStatus == WatchlistStatusFilter.DONE) { viewModel.setStatus(WatchlistStatusFilter.DONE) }
+                }
+            }
+
+            if (items.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text = "Nessun titolo in questa categoria. Cambia filtro o aggiungi titoli dalla pagina dei dettagli.",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 40.dp, start = 8.dp, end = 8.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                items(items, key = { "${it.entry.mediaType}-${it.entry.tmdbId}" }) { item ->
                     val entry = item.entry
                     val p = item.progress
                     ProgressMediaCard(
@@ -85,10 +110,24 @@ fun WatchlistScreen(
                         episode = p?.episode?.takeIf { entry.mediaType == "tv" && it > 0 },
                         positionSeconds = p?.positionSeconds ?: 0.0,
                         durationSeconds = p?.durationSeconds ?: 0.0,
-                        onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, p?.season ?: 0, p?.episode ?: 0) }
+                        onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, p?.season ?: 0, p?.episode ?: 0) },
+                        onRemove = { viewModel.remove(entry.tmdbId) }
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primary,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+        )
+    )
 }

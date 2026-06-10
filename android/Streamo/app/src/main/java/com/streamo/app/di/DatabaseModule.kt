@@ -2,7 +2,7 @@ package com.streamo.app.di
 
 import android.content.Context
 import androidx.room.Room
-import com.streamo.app.data.local.StreamoDatabase
+import com.streamo.app.data.local.AppDatabase
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -16,37 +16,37 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): StreamoDatabase {
+    fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(
             context,
-            StreamoDatabase::class.java,
+            AppDatabase::class.java,
             "streamo.db"
         )
             .addMigrations(
-                StreamoDatabase.MIGRATION_5_6,
-                StreamoDatabase.MIGRATION_6_7,
-                StreamoDatabase.MIGRATION_7_8,
-                StreamoDatabase.MIGRATION_8_9,
-                StreamoDatabase.MIGRATION_9_10
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8,
+                AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10
             )
             .build()
     }
 
     @Provides
-    fun provideWatchlistDao(db: StreamoDatabase) = db.watchlistDao()
+    fun provideWatchlistDao(db: AppDatabase) = db.watchlistDao()
 
     @Provides
-    fun provideProgressDao(db: StreamoDatabase) = db.progressDao()
+    fun provideProgressDao(db: AppDatabase) = db.progressDao()
 
     @Provides
-    fun provideHistoryDao(db: StreamoDatabase) = db.historyDao()
+    fun provideHistoryDao(db: AppDatabase) = db.historyDao()
 
     @Provides
-    fun provideProviderMappingDao(db: StreamoDatabase) = db.providerMappingDao()
+    fun provideProviderMappingDao(db: AppDatabase) = db.providerMappingDao()
 
     @Provides
-    fun provideDownloadDao(db: StreamoDatabase) = db.downloadDao()
+    fun provideDownloadDao(db: AppDatabase) = db.downloadDao()
 
     @Provides
-    fun provideSearchHistoryDao(db: StreamoDatabase) = db.searchHistoryDao()
+    fun provideSearchHistoryDao(db: AppDatabase) = db.searchHistoryDao()
 }

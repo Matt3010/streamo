@@ -10,7 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
 import androidx.media3.common.util.UnstableApi
-import com.streamo.app.data.repository.StreamoRepository
+import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadQualityGate
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.DownloadQualityRequest
@@ -31,7 +31,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SeriesDownloadsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val repository: StreamoRepository,
+    private val repository: AppRepository,
     private val client: TMDBClient,
     private val qualityGate: DownloadQualityGate,
     private val app: Application
