@@ -119,6 +119,11 @@ data class TmdbReview(
 )
 
 @Serializable
+data class TmdbGenreListResponse(
+    val genres: List<TmdbGenre>
+)
+
+@Serializable
 data class TmdbItem(
     val id: Int,
     @SerialName("media_type")

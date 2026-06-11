@@ -238,11 +238,13 @@ fun TvDetailScreen(
                             Icon(
                                 Icons.Filled.PlayArrow,
                                 contentDescription = null,
-                                tint = if (focused) Color.Black else Color.White
+                                tint = if (focused) Color.Black
+                                else MaterialTheme.colorScheme.onPrimary
                             )
                             Text(
                                 viewModel.playLabel,
-                                color = if (focused) Color.Black else Color.White,
+                                color = if (focused) Color.Black
+                                else MaterialTheme.colorScheme.onPrimary,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -339,7 +341,11 @@ fun TvDetailScreen(
                                         Text(
                                             text = "Stagione $season",
                                             style = MaterialTheme.typography.labelLarge,
-                                            color = if (focused) Color.Black else Color.White
+                                            color = when {
+                                                focused -> Color.Black
+                                                selected -> MaterialTheme.colorScheme.onPrimary
+                                                else -> Color.White
+                                            }
                                         )
                                     }
                                 }

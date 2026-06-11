@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,8 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +49,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.BuildConfig
+import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassDefaults
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,10 +150,7 @@ fun AdvancedSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // TMDB API Key
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Catalogo (TMDB)", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -193,10 +189,7 @@ fun AdvancedSettingsScreen(
             }
 
             // Provider locale
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Provider", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -233,7 +226,7 @@ fun AdvancedSettingsScreen(
             }
 
             // WARP (Cloudflare IP-masking)
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { coords ->
@@ -241,10 +234,9 @@ fun AdvancedSettingsScreen(
                     }
                     .then(
                         if (highlightWarp) Modifier.border(
-                            2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)
+                            2.dp, MaterialTheme.colorScheme.primary, GlassDefaults.Shape
                         ) else Modifier
-                    ),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -303,10 +295,7 @@ fun AdvancedSettingsScreen(
             }
 
             // Maintenance
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Manutenzione", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
