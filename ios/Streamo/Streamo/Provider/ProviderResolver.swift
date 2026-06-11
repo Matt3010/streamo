@@ -98,6 +98,7 @@ actor ProviderResolver {
         guard AppSettings.shared.providerProxyActive else {
             await provider.setSession(.shared)
             await vix.setSession(.shared)
+            await AnimeUnityClient.shared.setSession(.shared)
             return .direct
         }
         guard (try? await WarpTunnel.shared.start()) == true else {
@@ -106,6 +107,7 @@ actor ProviderResolver {
         let session = await WarpTunnel.shared.warpSession()
         await provider.setSession(session)
         await vix.setSession(session)
+        await AnimeUnityClient.shared.setSession(session)
         return .proxied
     }
 
@@ -188,6 +190,40 @@ actor ProviderResolver {
         return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates, useProxy: useProxy, client: client)
     }
 
+    // MARK: - AnimeUnity (native catalog, no TMDB)
+
+    /// Point the AnimeUnity client at the right egress before a catalog
+    /// browse/search. Returns `false` when WARP is on but the tunnel won't start
+    /// (fail closed — a direct request would leak the device IP), so the caller
+    /// surfaces an error instead of scraping from the device IP.
+    func ensureAnimeSession() async -> Bool {
+        switch await prepareWARP() {
+        case .unavailable: return false
+        case .direct, .proxied: return true
+        }
+    }
+
+    /// Resolve an AnimeUnity episode to playable sources. AnimeUnity has its own
+    /// catalog/ids, so there's no TMDB title resolution — the caller already has
+    /// the entry id, slug and episode id. The video path (embed → vixcloud →
+    /// WARP/LocalHLSServer) is identical to StreamingCommunity.
+    func animeSource(animeId: Int, slug: String?, episodeId: Int, client: ProxyClient) async -> PlaybackResolution {
+        let useProxy: Bool
+        switch await prepareWARP() {
+        case .unavailable: return warpUnavailableResolution()
+        case .direct: useProxy = false
+        case .proxied: useProxy = true
+        }
+        let embedUrl: String
+        do {
+            embedUrl = try await AnimeUnityClient.shared.embedURL(episodeId: episodeId, animeId: animeId, slug: slug)
+        } catch {
+            let msg = (error as? LocalizedError)?.errorDescription ?? "Episodio non disponibile."
+            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: msg, providerTitle: nil, candidates: [], viaProxy: useProxy)
+        }
+        return await buildSources(embedUrl: embedUrl, useProxy: useProxy, client: client, providerTitle: nil, candidates: [])
+    }
+
     // MARK: - Finalize (embed → playable sources)
 
     /// Fetch the embed and build playable sources. In WARP mode the sources are
@@ -197,7 +233,14 @@ actor ProviderResolver {
         guard let embedUrl = embed.embedUrl else {
             return PlaybackResolution(sources: [], reason: embed.reason ?? .notFound, message: unavailableMessage(embed.reason), providerTitle: resolved, candidates: candidates, viaProxy: useProxy)
         }
+        return await buildSources(embedUrl: embedUrl, useProxy: useProxy, client: client, providerTitle: resolved, candidates: candidates)
+    }
 
+    /// Shared embed → playable sources core, used by both StreamingCommunity and
+    /// AnimeUnity (both end at a vixcloud embed URL). `providerTitle`/`candidates`
+    /// are SC-only metadata (nil/[] for anime).
+    private func buildSources(embedUrl: String, useProxy: Bool, client: ProxyClient, providerTitle: ProviderResolvedTitle?, candidates: [ProviderCandidate]) async -> PlaybackResolution {
+        let resolved = providerTitle
         let upstreamSources: [VixcloudClient.PlaybackSource]
         do {
             upstreamSources = try await vix.playbackSources(embedURL: embedUrl)

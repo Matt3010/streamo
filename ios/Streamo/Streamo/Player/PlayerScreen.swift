@@ -95,7 +95,7 @@ struct PlayerScreen: View {
                 if let r = controller.activeRequest {
                     library.saveHistory(tmdbId: r.tmdbId, type: r.mediaType,
                                         season: r.season, episode: r.episode,
-                                        title: r.title, poster: r.poster)
+                                        title: r.title, poster: r.poster, source: r.source)
                 }
                 maybeAutoplayNext()
             }
@@ -113,17 +113,26 @@ struct PlayerScreen: View {
     /// teardown so the player no longer references the file.
     private func autoDeleteIfWatched(_ req: PlaybackRequest?) {
         guard AppSettings.shared.autoDeleteWatchedDownloads, let r = req,
-              let p = library.progress(r.tmdbId, r.mediaType, season: r.season, episode: r.episode),
+              let p = library.progress(r.tmdbId, r.mediaType, season: r.season, episode: r.episode, source: r.source),
               p.duration > 0, p.position >= p.duration * TVLogic.watchedThreshold,
-              let dl = library.download(r.tmdbId, r.mediaType, season: r.season, episode: r.episode),
+              let dl = library.download(r.tmdbId, r.mediaType, season: r.season, episode: r.episode, source: r.source),
               dl.state == .completed else { return }
         DownloadManager.shared.delete(dl)
+    }
+
+    /// Artwork URL for the loading/error backdrop. AnimeUnity carries an
+    /// absolute image URL; TMDB carries a path resolved through `TmdbImage`.
+    private var artworkURL: URL? {
+        if request.source == .animeUnity {
+            return request.artworkURLString.flatMap(URL.init(string:))
+        }
+        return TmdbImage.url(request.backdrop ?? request.poster, .w1280)
     }
 
     /// Blurred title artwork shown behind the loading / error states.
     private var artworkBackground: some View {
         Group {
-            if let url = TmdbImage.url(request.backdrop ?? request.poster, .w1280) {
+            if let url = artworkURL {
                 PosterImage(url: url, contentMode: .fill)
             } else {
                 Color.black
@@ -146,18 +155,21 @@ struct PlayerScreen: View {
             tmdbId: r.tmdbId, type: r.mediaType,
             season: r.season, episode: r.episode,
             position: position, duration: duration,
-            title: r.title, poster: r.poster, backdrop: r.backdrop
+            title: r.title, poster: r.poster, backdrop: r.backdrop, source: r.source,
+            providerEpisodeId: r.animeEpisodeId, providerSlug: r.animeSlug
         )
         library.saveHistory(tmdbId: r.tmdbId, type: r.mediaType,
                             season: r.season, episode: r.episode,
-                            title: r.title, poster: r.poster)
+                            title: r.title, poster: r.poster, source: r.source)
     }
 
     /// When the setting is on, advance a finished TV episode to the next aired
     /// one — native replacement for embed-bridge.js autoplay.
     private func maybeAutoplayNext() {
+        // Anime autoplay-next is driven from AnimeDetailView (it has the ordered
+        // episode-id list); TMDB autoplay uses the show's season layout here.
         guard AppSettings.shared.autoplayNext,
-              let cur = controller.activeRequest, cur.mediaType == .tv else { return }
+              let cur = controller.activeRequest, cur.source == .tmdb, cur.mediaType == .tv else { return }
         Task {
             guard let item = try? await TMDBClient.shared.details(id: cur.tmdbId, type: .tv),
                   let next = TVLogic.nextEpisode(item, season: cur.season, episode: cur.episode) else { return }

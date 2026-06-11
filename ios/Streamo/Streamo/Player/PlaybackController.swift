@@ -5,7 +5,9 @@ import Observation
 /// What to play. Carries enough to resolve the provider source and (later)
 /// persist progress.
 struct PlaybackRequest: Equatable, Identifiable {
-    var id: String { "\(tmdbId)-\(mediaType.rawValue)-\(season)-\(episode)" }
+    var id: String { "\(source.rawValue)-\(tmdbId)-\(mediaType.rawValue)-\(season)-\(episode)" }
+    /// For `.animeUnity` this `tmdbId` actually holds the AnimeUnity entry id
+    /// (see `ContentSource`); season is 1 and episode is the AU episode number.
     let tmdbId: Int
     let mediaType: MediaType
     let title: String
@@ -20,6 +22,15 @@ struct PlaybackRequest: Equatable, Identifiable {
     /// loopback `http://127.0.0.1:<port>/.../master.m3u8` served by
     /// `LocalHLSServer` from a completed offline download.
     var offlineURL: URL? = nil
+    /// Which catalog resolves this request. `.tmdb` → StreamingCommunity (via
+    /// TMDB title), `.animeUnity` → AnimeUnity (native ids below).
+    var source: ContentSource = .tmdb
+    /// AnimeUnity entry slug (for the embed-url Referer). `.animeUnity` only.
+    var animeSlug: String? = nil
+    /// AnimeUnity episode id passed to `/embed-url/{id}`. `.animeUnity` only.
+    var animeEpisodeId: Int? = nil
+    /// Absolute artwork URL (AnimeUnity posters are full URLs, not TMDB paths).
+    var artworkURLString: String? = nil
 }
 
 /// Resolves a provider source and drives an AVPlayer. Headers (Referer/Origin)
@@ -75,6 +86,11 @@ final class PlaybackController {
     private var loopbackForced = false
 
     private func resolve(_ request: PlaybackRequest) async -> ProviderResolver.PlaybackResolution {
+        if request.source == .animeUnity {
+            return await ProviderResolver.shared.animeSource(
+                animeId: request.tmdbId, slug: request.animeSlug,
+                episodeId: request.animeEpisodeId ?? 0, client: .player)
+        }
         if request.mediaType == .movie {
             return await ProviderResolver.shared.movieSource(tmdbId: request.tmdbId, title: request.title, releaseDate: request.releaseDate, client: .player)
         }

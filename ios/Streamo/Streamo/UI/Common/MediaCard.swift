@@ -20,6 +20,13 @@ struct CardItem: Identifiable, Equatable {
     var watchStatus: String?
     /// Grey tertiary line (release/resume note).
     var nextReleaseText: String?
+    /// Absolute artwork URL for non-TMDB sources (AnimeUnity). When set, the
+    /// card renders this directly and skips the TMDB image-path resolution and
+    /// the detail-enrichment fetch.
+    var absolutePoster: URL?
+    /// Overrides the computed "S1 E2" episode badge (AnimeUnity uses "Ep. 5",
+    /// having no season concept).
+    var episodeLabel: String?
 
     var id: String { "\(mediaType.rawValue)-\(tmdbId)-\(season ?? 0)-\(episode ?? 0)" }
 
@@ -70,6 +77,28 @@ struct CardItem: Identifiable, Equatable {
         self.title = e.title ?? "Senza titolo"
         self.poster = e.poster
         self.status = e.status
+    }
+
+    /// From an AnimeUnity catalog entry (native, absolute poster URL, no TMDB).
+    init(anime a: AUAnime) {
+        self.tmdbId = a.id
+        self.mediaType = .tv
+        self.title = a.displayTitle
+        self.year = a.year.map(String.init)
+        self.absolutePoster = URL(string: a.imageurl ?? "")
+    }
+
+    /// From an AnimeUnity continue-watching progress row. The stored title is
+    /// the player overlay ("Name • Ep. N"); strip the episode suffix so the card
+    /// shows the clean name plus its own "Ep. N" badge.
+    init(animeProgress p: ProgressEntry) {
+        self.tmdbId = p.tmdbId
+        self.mediaType = .tv
+        self.title = p.animeTitleBase ?? "Anime"
+        self.absolutePoster = URL(string: p.poster ?? "")
+        self.position = p.position
+        self.duration = p.duration
+        self.episodeLabel = "Ep. \(p.episode)"
     }
 
     /// From a history entry.
@@ -149,6 +178,7 @@ struct MediaCard: View {
     }
 
     private var episodeBadge: String? {
+        if let label = card.episodeLabel { return label }
         guard card.mediaType == .tv, let s = card.season, let e = card.episode, s > 0, e > 0 else { return nil }
         return "S\(s) E\(e)"
     }
@@ -220,6 +250,7 @@ struct MediaCard: View {
     }
 
     private var imageURL: URL? {
+        if let absolutePoster = card.absolutePoster { return absolutePoster }
         if aspectRatio > 1, backdrop != nil {
             return TmdbImage.backdropURL(backdrop, .w780)
         }
@@ -271,6 +302,9 @@ struct MediaCard: View {
     // MARK: Enrichment
 
     private func enrich() async {
+        // Non-TMDB cards (AnimeUnity) carry their own artwork and have no TMDB
+        // id to look up — never enrich them.
+        guard card.absolutePoster == nil else { return }
         guard detail == nil else { return }
         // Only hit the network when something's actually missing.
         let needYearRating = card.year == nil || card.rating == nil
@@ -290,19 +324,26 @@ struct MediaCard: View {
     }
 }
 
-/// Thin red progress bar (0–100). Shared by cards.
+/// Thin red progress bar (0–100). Shared by cards and the anime episode grid.
+/// `rounded` picks a capsule (cards) or a square-cornered rectangle (grid cells
+/// pinned to a rectangular edge).
 struct ProgressBar: View {
     let percent: Double
+    var rounded: Bool = true
 
     var body: some View {
         if Format.percentValue(percent) > 0 {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.28))
-                    Capsule().fill(Theme.red).frame(width: geo.size.width * percent / 100)
+                    track.fill(.white.opacity(0.28))
+                    track.fill(Theme.red).frame(width: geo.size.width * percent / 100)
                 }
             }
             .frame(height: 4)
         }
+    }
+
+    private var track: AnyShape {
+        rounded ? AnyShape(Capsule()) : AnyShape(Rectangle())
     }
 }

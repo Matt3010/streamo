@@ -102,6 +102,15 @@ struct RootTabView: View {
             .tag(AppNavigation.Tab.search)
 
             NavigationStack {
+                AnimeCatalogView()
+                    .navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
+                    .toolbarActions()
+                    .background { AmbientBackground() }
+            }
+            .tabItem { Label("Anime", systemImage: "sparkles.tv.fill") }
+            .tag(AppNavigation.Tab.anime)
+
+            NavigationStack {
                 WatchlistView()
                     .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
                     .toolbarActions()
