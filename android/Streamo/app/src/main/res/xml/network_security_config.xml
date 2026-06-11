@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Permette traffico HTTP in chiaro. Serve al DLNA: i Media Renderer (smart TV) sulla
+  LAN espongono device description e endpoint SOAP solo in HTTP su IP privati dinamici
+  (es. http://192.168.1.172:1033/), non risolvibili con regole per-dominio.
+  Il traffico verso domini pubblici con URL https resta cifrato (vixcloud usa https).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
