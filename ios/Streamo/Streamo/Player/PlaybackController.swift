@@ -278,6 +278,9 @@ final class PlaybackController {
     func teardown() {
         flushProgress()
         teardownPlayer()
+        // Release the audio session back to the keep-alive's mixable policy
+        // (so a still-running background download doesn't stop the user's music).
+        BackgroundKeepAlive.shared.setPlayerActive(false)
         NowPlayingCenter.shared.clear()
         // Only resume if streaming actually paused them (offline never did).
         if activeRequest?.offlineURL == nil {
@@ -466,8 +469,13 @@ final class PlaybackController {
     }
 
     private func configureAudioSession() {
+        // Claim audio for the player: a non-mixable `.playback` session is what
+        // makes PIP auto-start when the app is backgrounded. Tell the keep-alive
+        // the player owns audio now, so a concurrent download / LAN keep-alive
+        // can't leave a `.mixWithOthers` session that blocks PIP.
+        BackgroundKeepAlive.shared.setPlayerActive(true)
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .moviePlayback)
+        try? session.setCategory(.playback, mode: .moviePlayback, options: [])
         try? session.setActive(true)
     }
 }

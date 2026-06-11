@@ -36,8 +36,35 @@ final class BackgroundKeepAlive {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private var observersInstalled = false
+    /// True while the video player owns the audio session. PIP auto-start
+    /// REQUIRES a non-mixable `.playback` session, but the keep-alive otherwise
+    /// runs `.mixWithOthers` (so the user's music survives a pure download / LAN
+    /// share). When the player is active we drop `.mixWithOthers` so PIP can
+    /// engage; the player's own audio keeps the process alive anyway.
+    @ObservationIgnored private var playerActive = false
 
     private init() {}
+
+    /// Tell the keep-alive whether the video player currently owns audio.
+    /// Re-applies the session category live so a download/LAN keep-alive that's
+    /// already running can't leave a mixable session that blocks PIP.
+    func setPlayerActive(_ active: Bool) {
+        guard playerActive != active else { return }
+        playerActive = active
+        if isActive { applySessionCategory() }
+    }
+
+    /// Category policy: non-mixable movie playback while the player is active
+    /// (PIP-eligible), mixable otherwise (don't stop the user's music for a
+    /// background download / LAN share).
+    private func applySessionCategory() {
+        let session = AVAudioSession.sharedInstance()
+        if playerActive {
+            try? session.setCategory(.playback, mode: .moviePlayback, options: [])
+        } else {
+            try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        }
+    }
 
     // MARK: - Reason-based gating
 
@@ -64,9 +91,9 @@ final class BackgroundKeepAlive {
         guard !isActive else { return }
         do {
             let session = AVAudioSession.sharedInstance()
-            // `.mixWithOthers` lets the user's music keep playing on the
-            // phone while our silent keep-alive runs alongside it.
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            // Non-mixable while the player owns audio (so PIP can auto-start),
+            // mixable otherwise (user's music survives a background download).
+            applySessionCategory()
             try session.setActive(true, options: [])
         } catch {
             // If activation failed (e.g. another app holds exclusive audio

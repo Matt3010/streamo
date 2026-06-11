@@ -26,6 +26,19 @@ final class HomeViewModel {
     func reload() async {
         isLoading = true
         errorMessage = nil
+        await fetchAllRows()
+        if !rows.values.contains(where: { !$0.isEmpty }) {
+            errorMessage = AppSettings.shared.hasTmdbKey
+                ? "Impossibile caricare il catalogo. Controlla la connessione."
+                : "Aggiungi la tua chiave API TMDB nelle Impostazioni."
+        }
+        isLoading = false
+    }
+
+    /// One concurrent pass over every home row. Only a non-empty result
+    /// overwrites an existing row, so a transient failure on pull-to-refresh
+    /// keeps the previously-loaded content instead of blanking the screen.
+    private func fetchAllRows() async {
         await withTaskGroup(of: (String, [TmdbItem]?).self) { group in
             for section in HomeSections.all {
                 group.addTask { [client] in
@@ -34,17 +47,14 @@ final class HomeViewModel {
                 }
             }
             for await (id, items) in group {
-                // Always record the outcome (even an empty/failed fetch) so a
-                // completed-but-empty row stops showing skeletons forever.
-                rows[id] = items ?? []
+                if let items, !items.isEmpty {
+                    rows[id] = items
+                } else if rows[id] == nil {
+                    // Record the empty outcome so the row stops showing skeletons.
+                    rows[id] = []
+                }
             }
         }
-        if !rows.values.contains(where: { !$0.isEmpty }) {
-            errorMessage = AppSettings.shared.hasTmdbKey
-                ? "Impossibile caricare il catalogo. Controlla la connessione."
-                : "Aggiungi la tua chiave API TMDB nelle Impostazioni."
-        }
-        isLoading = false
     }
 
     func items(for section: HomeSection) -> [TmdbItem] {
