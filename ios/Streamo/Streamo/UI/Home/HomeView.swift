@@ -50,10 +50,6 @@ struct HomeView: View {
             }
             .padding(.bottom, 12)
         }
-        // Pull-to-refresh so a partial load (e.g. only the trending rows that
-        // feed the hero failed while the tunnel was warming) can be recovered
-        // without leaving the tab.
-        .refreshable { await model.reload() }
         // Let the hero bleed up behind the status bar / nav bar; the toolbar
         // buttons float over it.
         .ignoresSafeArea(edges: .top)
