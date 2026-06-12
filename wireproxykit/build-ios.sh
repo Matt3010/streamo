@@ -4,12 +4,15 @@
 #
 #   sudo xcode-select -s /Applications/Xcode.app   # if `xcode-select -p` shows CommandLineTools
 #   brew install go                                 # if `go` is missing
-#   ./build.sh
+#   ./build-ios.sh
 #
-# Then drag the produced WireProxyKit.xcframework into the Streamo target
-# (General → Frameworks, Libraries, and Embedded Content → Embed & Sign).
+# Output: ios/Streamo/Frameworks/WireProxyKit.xcframework, already
+# wired into Streamo.xcodeproj (Embed & Sign). Commit it like Android commits
+# warpkit.aar, so other machines/CI don't need Go + Xcode toolchain.
 set -e
 cd "$(dirname "$0")"
+
+OUT="$(cd ../ios/Streamo && pwd)/Frameworks" # ios/Streamo/Frameworks (where Xcode consumes it)
 
 [ "$(id -u)" = 0 ] && { echo "ERROR: do NOT run with sudo (pollutes ~/go with root-owned files). Run as your user."; exit 1; }
 command -v go >/dev/null 2>&1 || { echo "ERROR: Go not installed (brew install go)"; exit 1; }
@@ -33,10 +36,11 @@ go mod tidy
 echo "==> gomobile init"
 gomobile init
 
-echo "==> Building xcframework"
-rm -rf WireProxyKit.xcframework
-gomobile bind -target=ios,iossimulator -o WireProxyKit.xcframework .
+echo "==> Building xcframework -> $OUT"
+mkdir -p "$OUT"
+rm -rf "$OUT/WireProxyKit.xcframework"
+gomobile bind -target=ios,iossimulator -o "$OUT/WireProxyKit.xcframework" .
 
 echo ""
-echo "OK -> $(pwd)/WireProxyKit.xcframework"
-echo "Drag it into the Streamo target (Embed & Sign), then rebuild the app."
+echo "OK -> $OUT/WireProxyKit.xcframework"
+echo "Already referenced by Streamo.xcodeproj (Frameworks/). Just rebuild the app."

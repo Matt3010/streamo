@@ -13,6 +13,9 @@ import SwiftData
 final class WatchlistEntry {
     var tmdbId: Int = 0
     var mediaTypeRaw: String = MediaType.movie.rawValue
+    /// Catalog this row belongs to ("tmdb" | "au"). Default keeps pre-existing
+    /// rows valid without a migration. See `ContentSource`.
+    var sourceRaw: String = ContentSource.tmdb.rawValue
     var title: String?
     var poster: String?
     var statusRaw: String = WatchlistStatus.todo.rawValue
@@ -27,6 +30,7 @@ final class WatchlistEntry {
     var lastKnownAiredSeason: Int?
 
     var mediaType: MediaType { MediaType(rawValue: mediaTypeRaw) ?? .movie }
+    var source: ContentSource { ContentSource(rawValue: sourceRaw) ?? .tmdb }
     var status: WatchlistStatus {
         get { WatchlistStatus(rawValue: statusRaw) ?? .todo }
         set { statusRaw = newValue.rawValue }
@@ -34,9 +38,11 @@ final class WatchlistEntry {
 
     init(tmdbId: Int, mediaType: MediaType, title: String?, poster: String?,
          status: WatchlistStatus = .todo, addedAt: Date = .now, doneAiredEpisodes: Int? = nil,
-         lastKnownAiredEpisodes: Int? = nil, lastKnownAiredSeason: Int? = nil) {
+         lastKnownAiredEpisodes: Int? = nil, lastKnownAiredSeason: Int? = nil,
+         source: ContentSource = .tmdb) {
         self.tmdbId = tmdbId
         self.mediaTypeRaw = mediaType.rawValue
+        self.sourceRaw = source.rawValue
         self.title = title
         self.poster = poster
         self.statusRaw = status.rawValue
@@ -51,6 +57,7 @@ final class WatchlistEntry {
 final class ProgressEntry {
     var tmdbId: Int = 0
     var mediaTypeRaw: String = MediaType.movie.rawValue
+    var sourceRaw: String = ContentSource.tmdb.rawValue
     var season: Int = 0
     var episode: Int = 0
     var position: Double = 0
@@ -61,14 +68,25 @@ final class ProgressEntry {
     var backdrop: String?
     /// Hidden from the "Continua a guardare" row (without deleting progress).
     var hiddenFromContinue: Bool = false
+    /// For non-TMDB sources (AnimeUnity): the provider episode id and entry slug
+    /// needed to resume playback straight from a continue-watching card without
+    /// re-opening the detail page. `nil` for TMDB rows.
+    var providerEpisodeId: Int?
+    var providerSlug: String?
 
     var mediaType: MediaType { MediaType(rawValue: mediaTypeRaw) ?? .movie }
+    var source: ContentSource { ContentSource(rawValue: sourceRaw) ?? .tmdb }
+    /// AnimeUnity progress `title` is stored as the player overlay
+    /// ("Name • Ep. N"); this is the clean entry name (before " • ").
+    var animeTitleBase: String? { title?.components(separatedBy: " • ").first }
 
     init(tmdbId: Int, mediaType: MediaType, season: Int, episode: Int,
          position: Double, duration: Double, updatedAt: Date = .now,
-         title: String?, poster: String?, backdrop: String?, hiddenFromContinue: Bool = false) {
+         title: String?, poster: String?, backdrop: String?, hiddenFromContinue: Bool = false,
+         source: ContentSource = .tmdb, providerEpisodeId: Int? = nil, providerSlug: String? = nil) {
         self.tmdbId = tmdbId
         self.mediaTypeRaw = mediaType.rawValue
+        self.sourceRaw = source.rawValue
         self.season = season
         self.episode = episode
         self.position = position
@@ -78,6 +96,8 @@ final class ProgressEntry {
         self.poster = poster
         self.backdrop = backdrop
         self.hiddenFromContinue = hiddenFromContinue
+        self.providerEpisodeId = providerEpisodeId
+        self.providerSlug = providerSlug
     }
 }
 
@@ -85,6 +105,7 @@ final class ProgressEntry {
 final class HistoryEntry {
     var tmdbId: Int = 0
     var mediaTypeRaw: String = MediaType.movie.rawValue
+    var sourceRaw: String = ContentSource.tmdb.rawValue
     var season: Int = 0
     var episode: Int = 0
     var watchedAt: Date = Date.now
@@ -100,12 +121,15 @@ final class HistoryEntry {
     var durationSeconds: Double = 0
 
     var mediaType: MediaType { MediaType(rawValue: mediaTypeRaw) ?? .movie }
+    var source: ContentSource { ContentSource(rawValue: sourceRaw) ?? .tmdb }
 
     init(tmdbId: Int, mediaType: MediaType, season: Int, episode: Int,
          watchedAt: Date = .now, title: String?, poster: String?,
-         progressSeconds: Double = 0, durationSeconds: Double = 0) {
+         progressSeconds: Double = 0, durationSeconds: Double = 0,
+         source: ContentSource = .tmdb) {
         self.tmdbId = tmdbId
         self.mediaTypeRaw = mediaType.rawValue
+        self.sourceRaw = source.rawValue
         self.season = season
         self.episode = episode
         self.watchedAt = watchedAt
@@ -126,6 +150,7 @@ final class HistoryEntry {
 final class DownloadEntry {
     var tmdbId: Int = 0
     var mediaTypeRaw: String = MediaType.movie.rawValue
+    var sourceRaw: String = ContentSource.tmdb.rawValue
     var season: Int = 0
     var episode: Int = 0
     var title: String?
@@ -155,6 +180,7 @@ final class DownloadEntry {
     var itemJSON: String?
 
     var mediaType: MediaType { MediaType(rawValue: mediaTypeRaw) ?? .movie }
+    var source: ContentSource { ContentSource(rawValue: sourceRaw) ?? .tmdb }
     var state: DownloadState {
         get { DownloadState(rawValue: stateRaw) ?? .queued }
         set { stateRaw = newValue.rawValue }
@@ -165,9 +191,11 @@ final class DownloadEntry {
          episodeTitle: String? = nil, episodeOverview: String? = nil,
          episodeStill: String? = nil, episodeRuntime: Int? = nil,
          state: DownloadState = .queued, progress: Double = 0,
-         localPath: String? = nil, addedAt: Date = .now) {
+         localPath: String? = nil, addedAt: Date = .now,
+         source: ContentSource = .tmdb) {
         self.tmdbId = tmdbId
         self.mediaTypeRaw = mediaType.rawValue
+        self.sourceRaw = source.rawValue
         self.season = season
         self.episode = episode
         self.title = title

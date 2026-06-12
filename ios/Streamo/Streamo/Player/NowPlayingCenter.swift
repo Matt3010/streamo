@@ -73,6 +73,7 @@ final class NowPlayingCenter {
     }
 
     private func loadArtwork(_ url: URL, token: Int) async {
+        // TMDB artwork is neutral metadata — always direct, never through WARP.
         guard let (data, _) = try? await URLSession.shared.data(from: url),
               let image = UIImage(data: data), token == artworkToken else { return }
         let art = MPMediaItemArtwork(boundsSize: image.size) { _ in image }

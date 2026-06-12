@@ -14,6 +14,7 @@ final class AppSettings {
         static let tmdbApiKey = "tmdbApiKey"
         static let autoplayNext = "autoplayNext"
         static let providerLocale = "providerLocale"
+        static let animeUnityBaseURL = "animeUnityBaseURL"
         static let warpEnabled = "warpEnabled"
         static let warpRegistered = "warpRegistered"
         static let autoDeleteWatchedDownloads = "autoDeleteWatchedDownloads"
@@ -36,6 +37,10 @@ final class AppSettings {
     /// Default baked from the existing web `.env`. Overridable in Settings.
     static let defaultTmdbApiKey = "42b62dc72918b626d8ea3e33c35e16a6"
 
+    /// AnimeUnity catalog host (no trailing slash). The domain rotates; this is
+    /// the current primary, overridable from Advanced settings if it moves.
+    static let defaultAnimeUnityBaseURL = "https://www.animeunity.so"
+
     private let defaults: UserDefaults
 
     var tmdbApiKey: String {
@@ -50,6 +55,12 @@ final class AppSettings {
     /// 'it' as in the web `PROVIDER_CATALOG_LOCALE`.
     var providerLocale: String {
         didSet { defaults.set(providerLocale, forKey: Keys.providerLocale) }
+    }
+
+    /// AnimeUnity catalog host (no trailing slash). Overridable in Advanced
+    /// settings when AnimeUnity rotates its domain.
+    var animeUnityBaseURL: String {
+        didSet { defaults.set(animeUnityBaseURL, forKey: Keys.animeUnityBaseURL) }
     }
 
     /// User-facing master switch for on-device WARP egress. When on (and an
@@ -140,6 +151,7 @@ final class AppSettings {
         self.tmdbApiKey = defaults.string(forKey: Keys.tmdbApiKey) ?? Self.defaultTmdbApiKey
         self.autoplayNext = defaults.object(forKey: Keys.autoplayNext) as? Bool ?? true
         self.providerLocale = defaults.string(forKey: Keys.providerLocale) ?? "it"
+        self.animeUnityBaseURL = defaults.string(forKey: Keys.animeUnityBaseURL) ?? Self.defaultAnimeUnityBaseURL
         self.warpEnabled = defaults.object(forKey: Keys.warpEnabled) as? Bool ?? false
         self.warpRegistered = defaults.object(forKey: Keys.warpRegistered) as? Bool ?? false
         self.autoDeleteWatchedDownloads = defaults.object(forKey: Keys.autoDeleteWatchedDownloads) as? Bool ?? false

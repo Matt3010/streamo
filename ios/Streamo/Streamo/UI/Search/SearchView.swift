@@ -85,7 +85,6 @@ struct SearchView: View {
             }
             Button("Annulla", role: .cancel) { pendingRemove = nil }
         }
-        .refreshable { await runSearch(query) }
         // Debounce: re-run 350ms after the query stops changing.
         .task(id: query) {
             let current = query

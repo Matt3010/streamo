@@ -6,10 +6,10 @@ Drop-in native libraries consumed via `fileTree("libs") { include("*.aar") }` in
 ## warpkit.aar
 
 Userspace WireGuard → Cloudflare WARP tunnel exposing a local HTTP proxy. Built
-from the shared Go source (`../../ios/wireproxykit`) by:
+from the shared Go source (`/wireproxykit` at repo root) by:
 
 ```sh
-../../wireproxykit/build.sh   # i.e. android/wireproxykit/build.sh
+cd ../../../../wireproxykit && ./build-android.sh   # or build-android.ps1 on Windows
 ```
 
 The app builds and runs **without** this `.aar` — `WarpEngine` reflects the

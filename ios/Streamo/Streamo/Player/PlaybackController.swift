@@ -5,7 +5,9 @@ import Observation
 /// What to play. Carries enough to resolve the provider source and (later)
 /// persist progress.
 struct PlaybackRequest: Equatable, Identifiable {
-    var id: String { "\(tmdbId)-\(mediaType.rawValue)-\(season)-\(episode)" }
+    var id: String { "\(source.rawValue)-\(tmdbId)-\(mediaType.rawValue)-\(season)-\(episode)" }
+    /// For `.animeUnity` this `tmdbId` actually holds the AnimeUnity entry id
+    /// (see `ContentSource`); season is 1 and episode is the AU episode number.
     let tmdbId: Int
     let mediaType: MediaType
     let title: String
@@ -20,6 +22,15 @@ struct PlaybackRequest: Equatable, Identifiable {
     /// loopback `http://127.0.0.1:<port>/.../master.m3u8` served by
     /// `LocalHLSServer` from a completed offline download.
     var offlineURL: URL? = nil
+    /// Which catalog resolves this request. `.tmdb` → StreamingCommunity (via
+    /// TMDB title), `.animeUnity` → AnimeUnity (native ids below).
+    var source: ContentSource = .tmdb
+    /// AnimeUnity entry slug (for the embed-url Referer). `.animeUnity` only.
+    var animeSlug: String? = nil
+    /// AnimeUnity episode id passed to `/embed-url/{id}`. `.animeUnity` only.
+    var animeEpisodeId: Int? = nil
+    /// Absolute artwork URL (AnimeUnity posters are full URLs, not TMDB paths).
+    var artworkURLString: String? = nil
 }
 
 /// Resolves a provider source and drives an AVPlayer. Headers (Referer/Origin)
@@ -65,6 +76,14 @@ final class PlaybackController {
     private var sourceIndex = 0
     /// Resume seek applied once the item reaches .readyToPlay (0 = none).
     private var pendingStartAt: Double = 0
+    /// Last good playback position seen by the time observer. Used to re-seek
+    /// when the in-flight item has to be rebuilt after the app was suspended
+    /// (the WARP tunnel / loopback connection dies under iOS suspension).
+    private var lastPosition: Double = 0
+    /// Whether the player was actively playing when the app last backgrounded.
+    /// Drives foreground recovery: we only nudge/rebuild a stream the user
+    /// hadn't deliberately paused.
+    private var wasPlayingBeforeBackground = false
     /// LAN-or-loopback retry state shared by offline playback and on-device
     /// proxy streaming (WARP and/or forced quality). Both serve from
     /// `LocalHLSServer`, so they prefer the device LAN IP (reachable by an
@@ -75,6 +94,11 @@ final class PlaybackController {
     private var loopbackForced = false
 
     private func resolve(_ request: PlaybackRequest) async -> ProviderResolver.PlaybackResolution {
+        if request.source == .animeUnity {
+            return await ProviderResolver.shared.animeSource(
+                animeId: request.tmdbId, slug: request.animeSlug,
+                episodeId: request.animeEpisodeId ?? 0, client: .player)
+        }
         if request.mediaType == .movie {
             return await ProviderResolver.shared.movieSource(tmdbId: request.tmdbId, title: request.title, releaseDate: request.releaseDate, client: .player)
         }
@@ -278,6 +302,9 @@ final class PlaybackController {
     func teardown() {
         flushProgress()
         teardownPlayer()
+        // Release the audio session back to the keep-alive's mixable policy
+        // (so a still-running background download doesn't stop the user's music).
+        BackgroundKeepAlive.shared.setPlayerActive(false)
         NowPlayingCenter.shared.clear()
         // Only resume if streaming actually paused them (offline never did).
         if activeRequest?.offlineURL == nil {
@@ -286,6 +313,47 @@ final class PlaybackController {
         activeRequest = nil
         viaProxy = nil
         state = .idle
+    }
+
+    // MARK: - App lifecycle
+
+    /// Record whether the stream was playing as the app backgrounds, so the
+    /// foreground recovery only resurrects a stream the user hadn't paused.
+    func prepareForBackground() {
+        wasPlayingBeforeBackground = (player?.timeControlStatus ?? .paused) != .paused
+    }
+
+    /// Recover an online stream when the app returns to the foreground. iOS can
+    /// kill the userspace WireGuard sockets (and the loopback connection) during
+    /// suspension, leaving the AVPlayer item stalled or `.failed` with no
+    /// retry of its own. Re-validate the tunnel first, then either rebuild the
+    /// item from the last position (if it died) or nudge it back into play.
+    /// Offline playback is local-only and needs none of this.
+    func handleForeground() {
+        guard activeRequest?.offlineURL == nil, case .ready = state,
+              let player, let request = activeRequest else { return }
+        Task { @MainActor in
+            // The tunnel was flagged stale on background; restart it (or join the
+            // restart RootTabView already kicked off) so reissued segment
+            // requests have a live egress before we nudge/rebuild the player.
+            if AppSettings.shared.providerProxyActive {
+                _ = try? await WarpTunnel.shared.start()
+            }
+            // The player may have been torn down while we awaited the tunnel.
+            guard case .ready = state, self.player === player else { return }
+            if player.currentItem?.status == .failed {
+                // The item gave up during suspension — rebuild the same mirror
+                // from where we left off.
+                pendingStartAt = lastPosition
+                teardownPlayer()
+                loadCurrentSource(request: request)
+            } else if wasPlayingBeforeBackground {
+                // Still alive but paused/stalled by the dead connection. Nudge
+                // it: the reissued segment fetch hits the now-live tunnel (and
+                // LocalHLSServer's own stale-tunnel retry as a backstop).
+                player.play()
+            }
+        }
     }
 
     // MARK: - Private
@@ -398,6 +466,7 @@ final class PlaybackController {
         let safeDuration = duration.isFinite ? duration : 0
         let position = didReachEnd && safeDuration > 0 ? safeDuration : player.currentTime().seconds
         guard position.isFinite, position > 0 else { return }
+        lastPosition = position
         NowPlayingCenter.shared.update(position: position, duration: safeDuration, rate: player.rate)
         onProgress?(position, safeDuration)
     }
@@ -466,8 +535,13 @@ final class PlaybackController {
     }
 
     private func configureAudioSession() {
+        // Claim audio for the player: a non-mixable `.playback` session is what
+        // makes PIP auto-start when the app is backgrounded. Tell the keep-alive
+        // the player owns audio now, so a concurrent download / LAN keep-alive
+        // can't leave a `.mixWithOthers` session that blocks PIP.
+        BackgroundKeepAlive.shared.setPlayerActive(true)
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .moviePlayback)
+        try? session.setCategory(.playback, mode: .moviePlayback, options: [])
         try? session.setActive(true)
     }
 }
