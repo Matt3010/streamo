@@ -121,7 +121,7 @@ dependencies {
     implementation(libs.nanohttpd)
 
     // WARP (Cloudflare) IP-masking: userspace WireGuard via gomobile .aar.
-    // Built by android/wireproxykit/build.sh into app/libs/warpkit.aar.
+    // Built by wireproxykit/build-android.sh (repo root) into app/libs/warpkit.aar.
     // fileTree (not files(...)) so the app still builds WITHOUT the .aar —
     // WarpEngine then reflects no class and degrades to "non disponibile".
     implementation(fileTree("libs") { include("*.aar") })

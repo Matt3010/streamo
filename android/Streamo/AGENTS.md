@@ -87,6 +87,6 @@ PR descriptions should:
 ## Security & Configuration Tips
 
 - The provider domain is resolved at runtime (not hardcoded) — it rotates frequently.
-- warpkit.aar (Cloudflare WARP tunnel) is built externally via android/wireproxykit/build.sh and placed in app/libs/.
+- warpkit.aar (Cloudflare WARP tunnel) is built externally via wireproxykit/build-android.sh (repo root) and placed in app/libs/.
 - The ndk block limits native libraries to arm64-v8a to keep APK size small.
 - Release builds use the debug signing key with minification disabled.

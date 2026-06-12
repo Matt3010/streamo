@@ -231,7 +231,7 @@ struct UnavailableWarpProxyEngine: WarpProxyEngine {
 #if canImport(WireProxyKit)
 import WireProxyKit
 
-/// Real engine backed by the gomobile build of `ios/wireproxykit` (wraps
+/// Real engine backed by the gomobile build of `wireproxykit` (repo root, wraps
 /// whyvl/wireproxy). gomobile names symbols `<Package><Func>`, so the Go
 /// package `wireproxykit` exporting `Start(string) error` / `Stop()` becomes
 /// `WireproxykitStart(_:)` (throws — Go's trailing `error` bridges to Swift
