@@ -29,8 +29,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +67,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.NetworkType
+import com.streamo.app.ui.common.GlassCard
 
 private fun hsvColor(h: Float, s: Float, v: Float): Color =
     Color(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))
@@ -264,10 +263,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Aspetto: colore + info card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Colore dell'app", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -476,10 +472,7 @@ fun SettingsScreen(
             }
 
             // Playback
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -501,10 +494,7 @@ fun SettingsScreen(
             }
 
             // Downloads
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -528,10 +518,7 @@ fun SettingsScreen(
             }
 
             // Download quality per network
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Qualità download", style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -554,10 +541,7 @@ fun SettingsScreen(
             }
 
             // Organization
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -581,10 +565,7 @@ fun SettingsScreen(
             }
 
             // Statistics
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Statistiche", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -593,10 +574,7 @@ fun SettingsScreen(
             }
 
             // Backup
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Backup", style = MaterialTheme.typography.titleMedium)
                     Button(
@@ -620,11 +598,10 @@ fun SettingsScreen(
             }
 
             // Advanced settings link
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onNavigateToAdvanced),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable(onClick = onNavigateToAdvanced)
             ) {
                 Row(
                     modifier = Modifier
@@ -650,10 +627,7 @@ fun SettingsScreen(
             }
 
             // App info
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -673,10 +647,7 @@ fun SettingsScreen(
             }
 
             // TMDB attribution
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Image(
                         painter = painterResource(id = com.streamo.app.R.drawable.tmdb_logo),

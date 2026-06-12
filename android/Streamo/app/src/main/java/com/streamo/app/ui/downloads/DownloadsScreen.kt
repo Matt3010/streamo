@@ -38,8 +38,6 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -72,6 +70,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.GlassCard
 import com.streamo.app.ui.common.ImagePlaceholder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -367,14 +366,13 @@ private fun DownloadManagerRow(
     val showProgress = isActive || isPaused
     val progress = entry.downloadPercentage
 
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = { if (selectionMode) onToggleSelection() },
                 onLongClick = onLongPress
-            ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            )
     ) {
         Column(
             modifier = Modifier
@@ -592,14 +590,13 @@ private fun SeriesDownloadGroupRow(
         } else 0f
     } else null
 
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = { if (selectionMode) onToggleSelection() else onClick() },
                 onLongClick = onLongPress
-            ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            )
     ) {
         Row(
             modifier = Modifier

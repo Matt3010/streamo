@@ -95,6 +95,7 @@ import com.streamo.app.ui.common.BrandSecondaryButton
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.ImagePlaceholder
+import com.streamo.app.util.Format
 import com.streamo.app.util.TVLogic
 import androidx.browser.customtabs.CustomTabsIntent
 import android.net.Uri
@@ -434,6 +435,46 @@ private fun DetailContent(
                     val needsPicker = viewModel.providerAvailability == ProviderAvailability.NEEDS_PICKER
                     val isResolving = viewModel.providerAvailability == ProviderAvailability.RESOLVING
                     val isUnavailable = viewModel.providerAvailability == ProviderAvailability.UNAVAILABLE
+
+                    // Movie progress bar + timestamp (iOS parity)
+                    val movieProgress = viewModel.movieResumeEntry
+                    if (!viewModel.isTV && movieProgress != null && movieProgress.durationSeconds > 0) {
+                        val pct = Format.percent(movieProgress.positionSeconds, movieProgress.durationSeconds)
+                        if (pct > 0) {
+                            LinearProgressIndicator(
+                                progress = { (pct / 100f).toFloat() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                                strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt,
+                                drawStopIndicator = {},
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${Format.time(movieProgress.positionSeconds)} / ${Format.time(movieProgress.durationSeconds)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                                TextButton(
+                                    onClick = { viewModel.resetMovieProgress() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        "Riparti dall'inizio",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -919,6 +960,7 @@ private fun formatClock(seconds: Double): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EpisodeCard(
     episode: TmdbEpisodeDetail,
@@ -1006,6 +1048,8 @@ private fun EpisodeCard(
                         .height(3.dp),
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = Color.Transparent,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt,
+                    drawStopIndicator = {},
                 )
             }
             // White play/replay arrow centered over the still.

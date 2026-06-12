@@ -1,6 +1,7 @@
 package com.streamo.app.data.remote
 
 import com.streamo.app.data.remote.dto.TmdbItem
+import com.streamo.app.data.remote.dto.TmdbGenreListResponse
 import com.streamo.app.data.remote.dto.TmdbListResponse
 import com.streamo.app.data.remote.dto.TmdbReview
 import com.streamo.app.data.remote.dto.TmdbSeasonDetails
@@ -61,5 +62,53 @@ interface TMDBApi {
         @Query("query") query: String,
         @Query("language") language: String = "it-IT",
         @Query("page") page: Int = 1
+    ): TmdbListResponse<TmdbItem>
+
+    @GET("search/movie")
+    suspend fun searchMovie(
+        @Query("api_key") apiKey: String,
+        @Query("query") query: String,
+        @Query("language") language: String = "it-IT",
+        @Query("page") page: Int = 1,
+        @Query("with_genres") withGenres: String? = null
+    ): TmdbListResponse<TmdbItem>
+
+    @GET("search/tv")
+    suspend fun searchTv(
+        @Query("api_key") apiKey: String,
+        @Query("query") query: String,
+        @Query("language") language: String = "it-IT",
+        @Query("page") page: Int = 1,
+        @Query("with_genres") withGenres: String? = null
+    ): TmdbListResponse<TmdbItem>
+
+    @GET("genre/movie/list")
+    suspend fun genreMovieList(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "it-IT"
+    ): TmdbGenreListResponse
+
+    @GET("genre/tv/list")
+    suspend fun genreTvList(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "it-IT"
+    ): TmdbGenreListResponse
+
+    @GET("discover/movie")
+    suspend fun discoverMovie(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "it-IT",
+        @Query("page") page: Int = 1,
+        @Query("with_genres") withGenres: String? = null,
+        @Query("sort_by") sortBy: String = "popularity.desc"
+    ): TmdbListResponse<TmdbItem>
+
+    @GET("discover/tv")
+    suspend fun discoverTv(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "it-IT",
+        @Query("page") page: Int = 1,
+        @Query("with_genres") withGenres: String? = null,
+        @Query("sort_by") sortBy: String = "popularity.desc"
     ): TmdbListResponse<TmdbItem>
 }

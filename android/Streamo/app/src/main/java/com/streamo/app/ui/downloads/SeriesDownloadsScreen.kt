@@ -39,8 +39,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
+import com.streamo.app.ui.common.GlassCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -632,7 +631,7 @@ internal fun EpisodeDownloadCard(
     val bytesTotal = entry?.bytesTotal ?: 0L
     val bytesPerSecond = entry?.bytesPerSecond ?: 0L
 
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
@@ -641,8 +640,7 @@ internal fun EpisodeDownloadCard(
                     else if (isCompleted) onPlay()
                 },
                 onLongClick = onLongPress
-            ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            )
     ) {
         Column(
             modifier = Modifier

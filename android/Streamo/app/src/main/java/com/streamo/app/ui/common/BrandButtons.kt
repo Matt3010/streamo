@@ -3,7 +3,6 @@ package com.streamo.app.ui.common
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -19,7 +18,7 @@ import androidx.compose.ui.unit.dp
  * `BrandButtonStyle` iOS: angoli arrotondati continui, non pill.
  */
 object BrandButtonDefaults {
-    val Shape = RoundedCornerShape(14.dp)
+    val Shape = GlassDefaults.Shape
     val ContentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp)
     val IconContentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp)
 }
@@ -30,6 +29,7 @@ fun BrandButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentColor: Color = MaterialTheme.colorScheme.onPrimary,
     content: @Composable RowScope.() -> Unit
 ) {
     Button(
@@ -38,7 +38,7 @@ fun BrandButton(
         shape = BrandButtonDefaults.Shape,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+            contentColor = contentColor
         ),
         contentPadding = BrandButtonDefaults.ContentPadding,
         modifier = modifier,
@@ -59,6 +59,7 @@ fun BrandSecondaryButton(
     active: Boolean = false,
     outlined: Boolean = false,
     enabled: Boolean = true,
+    activeContentColor: Color = MaterialTheme.colorScheme.onPrimary,
     content: @Composable RowScope.() -> Unit
 ) {
     Button(
@@ -68,7 +69,7 @@ fun BrandSecondaryButton(
         colors = if (active) {
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                contentColor = activeContentColor
             )
         } else if (outlined) {
             ButtonDefaults.buttonColors(
@@ -77,11 +78,11 @@ fun BrandSecondaryButton(
             )
         } else {
             ButtonDefaults.buttonColors(
-                containerColor = Color.White.copy(alpha = 0.08f),
+                containerColor = GlassDefaults.Container,
                 contentColor = Color.White
             )
         },
-        border = if (active) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        border = if (active) null else BorderStroke(1.dp, GlassDefaults.Border),
         contentPadding = BrandButtonDefaults.ContentPadding,
         modifier = modifier,
         content = content
@@ -99,7 +100,8 @@ fun BrandIconButton(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     active: Boolean = false,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    activeContentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
     Button(
         onClick = onClick,
@@ -108,15 +110,15 @@ fun BrandIconButton(
         colors = if (active) {
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                contentColor = activeContentColor
             )
         } else {
             ButtonDefaults.buttonColors(
-                containerColor = Color.White.copy(alpha = 0.08f),
+                containerColor = GlassDefaults.Container,
                 contentColor = Color.White
             )
         },
-        border = if (active) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        border = if (active) null else BorderStroke(1.dp, GlassDefaults.Border),
         contentPadding = BrandButtonDefaults.IconContentPadding,
         modifier = modifier
     ) {

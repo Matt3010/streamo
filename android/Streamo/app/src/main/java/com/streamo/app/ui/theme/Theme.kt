@@ -7,6 +7,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -38,8 +39,12 @@ fun AppTheme(
     accentColor: Color = BrandRed,
     content: @Composable () -> Unit
 ) {
+    // Con accenti chiari (giallo, ciano…) il testo bianco non è leggibile:
+    // scegliamo bianco o nero in base alla luminanza dell'accento.
+    val onAccent = if (accentColor.luminance() > 0.5f) Color.Black else Color.White
     val colorScheme = DarkColorScheme.copy(
         primary = accentColor,
+        onPrimary = onAccent,
         primaryContainer = accentColor.copy(alpha = 0.15f),
         onPrimaryContainer = accentColor.copy(alpha = 0.8f)
     )

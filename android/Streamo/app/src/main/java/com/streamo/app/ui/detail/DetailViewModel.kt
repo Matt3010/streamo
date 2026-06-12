@@ -403,6 +403,14 @@ class DetailViewModel @Inject constructor(
 
     // endregion
 
+    fun resetMovieProgress() {
+        viewModelScope.launch {
+            repository.deleteProgress(tmdbId)
+            movieResumeEntry = null
+            isWatched = false
+        }
+    }
+
     // region Smart resume
 
     private suspend fun computeResume() {
