@@ -79,7 +79,7 @@ struct AnimeCatalogView: View {
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(model.items) { anime in
                     NavigationLink(value: anime) {
-                        MediaCard(card: CardItem(anime: anime))
+                        MediaCard(card: CardItem(anime: anime), alwaysShowInfo: true)
                             .overlay(alignment: .topTrailing) { dubBadge(anime) }
                     }
                     .buttonStyle(.plain)

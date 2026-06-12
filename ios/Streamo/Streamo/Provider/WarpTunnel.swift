@@ -78,9 +78,13 @@ actor WarpTunnel {
         proxyPort = port
         cachedSession = nil
 
-        // Probe the proxy until it egresses (up to ~10s), then mark ready.
+        // Probe the proxy until it egresses (up to ~16s), then mark ready. A
+        // cold WireGuard handshake on cellular can take well over 10s; too
+        // short a window makes the first play after launch fail closed
+        // ("WARP attivo ma non raggiungibile") even though the tunnel was about
+        // to come up.
         let probeSession = Self.makeProxiedSession(host: proxyHost, port: port)
-        for attempt in 0..<20 {
+        for attempt in 0..<32 {
             if attempt > 0 { try? await Task.sleep(nanoseconds: 500_000_000) }
             if await Self.probeEgress(probeSession) {
                 running = true

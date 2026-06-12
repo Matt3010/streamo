@@ -76,6 +76,14 @@ final class PlaybackController {
     private var sourceIndex = 0
     /// Resume seek applied once the item reaches .readyToPlay (0 = none).
     private var pendingStartAt: Double = 0
+    /// Last good playback position seen by the time observer. Used to re-seek
+    /// when the in-flight item has to be rebuilt after the app was suspended
+    /// (the WARP tunnel / loopback connection dies under iOS suspension).
+    private var lastPosition: Double = 0
+    /// Whether the player was actively playing when the app last backgrounded.
+    /// Drives foreground recovery: we only nudge/rebuild a stream the user
+    /// hadn't deliberately paused.
+    private var wasPlayingBeforeBackground = false
     /// LAN-or-loopback retry state shared by offline playback and on-device
     /// proxy streaming (WARP and/or forced quality). Both serve from
     /// `LocalHLSServer`, so they prefer the device LAN IP (reachable by an
@@ -307,6 +315,47 @@ final class PlaybackController {
         state = .idle
     }
 
+    // MARK: - App lifecycle
+
+    /// Record whether the stream was playing as the app backgrounds, so the
+    /// foreground recovery only resurrects a stream the user hadn't paused.
+    func prepareForBackground() {
+        wasPlayingBeforeBackground = (player?.timeControlStatus ?? .paused) != .paused
+    }
+
+    /// Recover an online stream when the app returns to the foreground. iOS can
+    /// kill the userspace WireGuard sockets (and the loopback connection) during
+    /// suspension, leaving the AVPlayer item stalled or `.failed` with no
+    /// retry of its own. Re-validate the tunnel first, then either rebuild the
+    /// item from the last position (if it died) or nudge it back into play.
+    /// Offline playback is local-only and needs none of this.
+    func handleForeground() {
+        guard activeRequest?.offlineURL == nil, case .ready = state,
+              let player, let request = activeRequest else { return }
+        Task { @MainActor in
+            // The tunnel was flagged stale on background; restart it (or join the
+            // restart RootTabView already kicked off) so reissued segment
+            // requests have a live egress before we nudge/rebuild the player.
+            if AppSettings.shared.providerProxyActive {
+                _ = try? await WarpTunnel.shared.start()
+            }
+            // The player may have been torn down while we awaited the tunnel.
+            guard case .ready = state, self.player === player else { return }
+            if player.currentItem?.status == .failed {
+                // The item gave up during suspension — rebuild the same mirror
+                // from where we left off.
+                pendingStartAt = lastPosition
+                teardownPlayer()
+                loadCurrentSource(request: request)
+            } else if wasPlayingBeforeBackground {
+                // Still alive but paused/stalled by the dead connection. Nudge
+                // it: the reissued segment fetch hits the now-live tunnel (and
+                // LocalHLSServer's own stale-tunnel retry as a backstop).
+                player.play()
+            }
+        }
+    }
+
     // MARK: - Private
 
     private func installStatusObserver(for item: AVPlayerItem) {
@@ -417,6 +466,7 @@ final class PlaybackController {
         let safeDuration = duration.isFinite ? duration : 0
         let position = didReachEnd && safeDuration > 0 ? safeDuration : player.currentTime().seconds
         guard position.isFinite, position > 0 else { return }
+        lastPosition = position
         NowPlayingCenter.shared.update(position: position, duration: safeDuration, rate: player.rate)
         onProgress?(position, safeDuration)
     }

@@ -29,6 +29,7 @@ struct PlayerScreen: View {
 
     @State private var controller = PlaybackController()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(Library.self) private var library
 
     var body: some View {
@@ -100,6 +101,19 @@ struct PlayerScreen: View {
                 maybeAutoplayNext()
             }
             await controller.start(request)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
+                controller.prepareForBackground()
+            case .active:
+                // iOS may have killed the WARP tunnel / loopback connection
+                // during suspension; recover the stream instead of leaving it
+                // stalled (lock-screen → resume → playback frozen).
+                controller.handleForeground()
+            default:
+                break
+            }
         }
         .onDisappear {
             let req = controller.activeRequest
