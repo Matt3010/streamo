@@ -43,13 +43,6 @@ struct RootTabView: View {
         .toastOverlay()
         .task {
             DownloadManager.shared.configure(library: library)
-            let s = AppSettings.shared
-            LocalHLSServer.shared.setLANConfig(enabled: s.lanShareEnabled, token: s.lanToken, password: s.lanPassword)
-            if s.lanShareEnabled { BackgroundKeepAlive.shared.start() }
-            LANAutoShutoff.shared.reschedule()
-            // Honour a LAN toggle made from the Control Center control that
-            // launched (or returned to) the app, and seed the control's state.
-            LANShareCoordinator.applyPendingControlRequest()
             // Warm the WARP tunnel at launch so the first playback doesn't race
             // the WireGuard handshake (which can take seconds) and fail.
             if AppSettings.shared.providerProxyActive {
@@ -64,7 +57,6 @@ struct RootTabView: View {
                 // start() re-probes and restarts instead of reusing a dead session.
                 Task { await WarpTunnel.shared.invalidate() }
             case .active:
-                LANShareCoordinator.applyPendingControlRequest()
                 // Re-validate (and restart if dead) before the user taps play.
                 if AppSettings.shared.providerProxyActive {
                     Task { try? await WarpTunnel.shared.start() }

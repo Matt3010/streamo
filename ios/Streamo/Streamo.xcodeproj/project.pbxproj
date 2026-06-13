@@ -70,7 +70,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Widget/WidgetSnapshot.swift,
-				LANShare/ToggleLANShareIntent.swift,
 			);
 			target = B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */;
 		};
