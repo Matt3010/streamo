@@ -113,13 +113,6 @@ actor AnimeUnityClient {
         return parsed.absoluteString
     }
 
-    /// Raw `/embed-url` response — for verifying the shape on-device.
-    func debugEmbedResponse(episodeId: Int) async -> String? {
-        guard let url = URL(string: "\(baseURL)/embed-url/\(episodeId)") else { return nil }
-        let req = makeRequest(url)
-        return (try? await session.data(for: req)).map { String(decoding: $0.0, as: UTF8.self) }
-    }
-
     // MARK: - CSRF bootstrap
 
     /// Fetch (or reuse) the homepage CSRF token. The paired `animeunity_session`

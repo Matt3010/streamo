@@ -76,13 +76,6 @@ final class Library {
         return (try? context.fetch(d)) ?? []
     }
 
-    func setLastKnownAired(_ tmdbId: Int, _ type: MediaType, count: Int, season: Int) {
-        guard let e = watchlistEntry(tmdbId, type) else { return }
-        e.lastKnownAiredEpisodes = count
-        e.lastKnownAiredSeason = season
-        save()
-    }
-
     // MARK: - Progress
 
     func progress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int, source: ContentSource = .tmdb) -> ProgressEntry? {
@@ -158,24 +151,12 @@ final class Library {
         save()
     }
 
-    /// Delete every progress row for a series (reset "da vedere").
-    func clearSeriesProgress(_ tmdbId: Int) {
-        for e in seriesProgress(tmdbId) { context.delete(e) }
-        save()
-    }
-
     /// Mark an episode (and, via the resume pivot, everything before it) as
     /// watched without playing. Stores a tiny finished marker (position ==
     /// duration) so it counts as watched but never shows a progress bar or
     /// appears in "continua a guardare". Mirrors the web's manual mark.
     func markWatchedUpTo(tmdbId: Int, season: Int, episode: Int, title: String?, poster: String?) {
         saveProgress(tmdbId: tmdbId, type: .tv, season: season, episode: episode,
-                     position: 1, duration: 1, title: title, poster: poster, backdrop: nil)
-    }
-
-    /// Mark a movie watched without playing.
-    func markMovieWatched(tmdbId: Int, title: String?, poster: String?) {
-        saveProgress(tmdbId: tmdbId, type: .movie, season: 0, episode: 0,
                      position: 1, duration: 1, title: title, poster: poster, backdrop: nil)
     }
 
@@ -305,15 +286,6 @@ final class Library {
             }
         }
         return out
-    }
-
-    /// Number of distinct episodes watched ≥90% for a series (badge baseline).
-    func watchedEpisodeCount(_ tmdbId: Int) -> Int {
-        var seen = Set<String>()
-        for p in seriesProgress(tmdbId) where TVLogic.isWatched(position: p.position, duration: p.duration) {
-            seen.insert("\(p.season)-\(p.episode)")
-        }
-        return seen.count
     }
 
     /// Total watch time — port of the web's `watchTimeSecondsSql`. Driven by
@@ -463,48 +435,6 @@ final class Library {
 
         save()
         return inserted
-    }
-
-    /// Enqueue a download (no-op if one already exists for this coordinate).
-    @discardableResult
-    func addDownload(tmdbId: Int, type: MediaType, season: Int, episode: Int,
-                     title: String?, poster: String?, backdrop: String? = nil, releaseDate: String?,
-                     episodeTitle: String? = nil, episodeOverview: String? = nil,
-                     episodeStill: String? = nil, episodeRuntime: Int? = nil,
-                     itemJSON: String? = nil, source: ContentSource = .tmdb) -> DownloadEntry {
-        if let existing = download(tmdbId, type, season: season, episode: episode, source: source) {
-            if let title { existing.title = title }
-            if let poster { existing.poster = poster }
-            if let backdrop { existing.backdrop = backdrop }
-            if let releaseDate { existing.releaseDate = releaseDate }
-            if let episodeTitle { existing.episodeTitle = episodeTitle }
-            if let episodeOverview { existing.episodeOverview = episodeOverview }
-            if let episodeStill { existing.episodeStill = episodeStill }
-            if let episodeRuntime { existing.episodeRuntime = episodeRuntime }
-            if let itemJSON { existing.itemJSON = itemJSON }
-            save()
-            return existing
-        }
-
-        let entry = DownloadEntry(
-            tmdbId: tmdbId,
-            mediaType: type,
-            season: season,
-            episode: episode,
-            title: title,
-            poster: poster,
-            backdrop: backdrop,
-            releaseDate: releaseDate,
-            episodeTitle: episodeTitle,
-            episodeOverview: episodeOverview,
-            episodeStill: episodeStill,
-            episodeRuntime: episodeRuntime,
-            source: source
-        )
-        entry.itemJSON = itemJSON
-        context.insert(entry)
-        save()
-        return entry
     }
 
     /// Set a download's state (clears the error unless it's the failed state).

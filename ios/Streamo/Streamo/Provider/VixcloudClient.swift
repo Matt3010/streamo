@@ -58,11 +58,6 @@ actor VixcloudClient {
         return urls.map { PlaybackSource(playlistURL: $0, headers: Self.playbackHeaders) }
     }
 
-    /// Raw embed HTML — for verifying the page structure on-device.
-    func debugEmbedHTML(embedURL: String) async -> String? {
-        try? await fetchHTML(embedURL)
-    }
-
     private func fetchHTML(_ urlString: String) async throws -> String {
         guard let url = URL(string: urlString) else { throw VixError.fetchFailed }
         var request = URLRequest(url: url)
@@ -76,20 +71,6 @@ actor VixcloudClient {
     }
 
     // MARK: - Extraction
-
-    /// Build the HLS master playlist URL from the embed page HTML.
-    ///
-    /// Vixcloud embed pages expose a JS object roughly like:
-    /// ```
-    /// window.masterPlaylist = { params: { token: '…', expires: '…' }, url: 'https://vixcloud.co/playlist/<id>' }
-    /// window.canPlayFHD = true
-    /// ```
-    /// We extract `url`, `token`, `expires` (tolerant to quote style) and append
-    /// `&h=1` when FHD is allowed. Exposed as `static` so it's unit-testable
-    /// against a captured page without hitting the network.
-    static func buildPlaylistURL(fromEmbedHTML html: String) -> URL? {
-        buildPlaylistURLs(fromEmbedHTML: html).first
-    }
 
     private struct Stream: Decodable { let name: String?; let active: Bool?; let url: String? }
 

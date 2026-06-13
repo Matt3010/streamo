@@ -26,10 +26,6 @@ enum LANAddress {
         }
     }
 
-    static func currentWiFiIPv4() -> String? {
-        currentShareableIPv4()
-    }
-
     static func currentShareableIPv4() -> String? {
         shareableIPv4Candidates().first?.address
     }

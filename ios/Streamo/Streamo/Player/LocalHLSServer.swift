@@ -129,15 +129,6 @@ final class LocalHLSServer: @unchecked Sendable {
         }
     }
 
-    /// Loopback URL for a file under `Documents/Downloads/<relativePath>`.
-    func playbackURL(forRelativePath relativePath: String) async throws -> URL {
-        let port = try await ensureRunning()
-        guard let url = Self.url(port: port, relativePath: relativePath) else {
-            throw ServerError.invalidPath
-        }
-        return url
-    }
-
     /// Synchronously waits up to `timeout` for the server to be ready and
     /// returns the bound port (0 on timeout). Safe to call from `MainActor`:
     /// `configure(library:)` warms the server up at launch so this almost

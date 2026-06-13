@@ -81,12 +81,6 @@ enum TVLogic {
         return min(total, lea.episode)
     }
 
-    /// Episode count BEFORE (season, episode) — treats earlier episodes as watched.
-    static func episodesBefore(_ item: TmdbItem, season: Int, episode: Int) -> Int {
-        guard season > 0 else { return 0 }
-        return countEpisodesUpTo(item, season: season, episode: max(0, episode - 1))
-    }
-
     // MARK: - Navigation
 
     /// Seasons selectable in the UI (season_number > 0, capped at the last

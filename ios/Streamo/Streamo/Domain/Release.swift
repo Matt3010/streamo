@@ -50,10 +50,6 @@ enum Release {
         watchlistMeta(item, type).isUpcoming
     }
 
-    static func upcomingBadge(_ item: TmdbItem, _ type: MediaType) -> String? {
-        guard isUpcoming(item, type) else { return nil }
-        return type == .movie ? "Prossimamente" : "Nuova serie"
-    }
 
     /// Compact line for cards (`nextReleaseText`). Port of getCompactReleaseStatusText.
     static func compactStatus(_ item: TmdbItem, _ type: MediaType) -> String? {
