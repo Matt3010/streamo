@@ -30,6 +30,9 @@ actor WarpTunnel {
     /// instead of each booting a fresh engine (which would tear the others down
     /// mid-handshake — the Go side stops any running tunnel before starting).
     private var startTask: Task<Bool, Error>?
+    /// Foreground reconnect loop (see `reconnect()`), kept so a new foreground
+    /// can cancel a still-running prior attempt.
+    private var reconnectTask: Task<Void, Never>?
 
     init(engine: WarpProxyEngine = DefaultWarpProxyEngine.make()) {
         self.engine = engine
@@ -108,8 +111,35 @@ actor WarpTunnel {
     }
 
     func stop() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
         tearDown()
         needsRevalidation = false
+    }
+
+    /// Background retry loop that heals the tunnel after the app returns to the
+    /// foreground. Single `start()` failed too often after a long suspension —
+    /// the radio / WireGuard handshake is still cold, `performStart`'s probe
+    /// window elapses, the tunnel tears down, and (with the old fire-and-forget
+    /// `start()`) nothing retried: the next playback fail-closed with "WARP
+    /// attivo ma non raggiungibile" until a manual retry / relaunch. Here we
+    /// retry with backoff so a cold radio gets time to settle and the egress is
+    /// back before the user taps play. Cancels any prior loop so rapid
+    /// background/foreground cycles don't stack.
+    func reconnect() {
+        guard engine.isAvailable else { return }
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+            // 0s, 3s, 6s, 12s — ~21s total, covers a cold cellular handshake.
+            let backoffSeconds: [UInt64] = [0, 3, 6, 12]
+            for secs in backoffSeconds {
+                if Task.isCancelled { return }
+                if secs > 0 { try? await Task.sleep(nanoseconds: secs * 1_000_000_000) }
+                if Task.isCancelled { return }
+                if (try? await self.start()) == true { return }
+            }
+        }
     }
 
     /// Flag the tunnel for a liveness re-check on the next `start()`. Call when

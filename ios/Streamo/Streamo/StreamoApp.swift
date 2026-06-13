@@ -31,10 +31,10 @@ struct StreamoApp: App {
         _library = State(initialValue: Library(context: container.mainContext))
 
         // SwiftUI's pull-to-refresh spinner ignores `.tint`; color it via the
-        // UIKit appearance proxy so it shows the accent instead of grey.
-        let a = AppSettings.shared
+        // UIKit appearance proxy so it shows the brand accent instead of grey.
+        let a = AppSettings.defaultAccent
         UIRefreshControl.appearance().tintColor =
-            UIColor(red: a.accentR, green: a.accentG, blue: a.accentB, alpha: 1)
+            UIColor(red: a.r, green: a.g, blue: a.b, alpha: 1)
     }
 
     var body: some Scene {

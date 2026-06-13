@@ -78,17 +78,11 @@ struct DetailView: View {
         .toolbar {
             if model.item != nil {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if let rank = model.rankBadge {
-                        MediaRankBadge(value: rank)
-                    }
-                    Menu {
-                        Button { markWatched() } label: { Label("Segna come visto", systemImage: "checkmark.circle") }
-                        Button { markUnwatched() } label: { Label("Segna come da vedere", systemImage: "arrow.uturn.backward.circle") }
-                        if ref.mediaType == .movie, let item = model.item {
-                            Divider()
+                    if ref.mediaType == .movie, let item = model.item {
+                        Menu {
                             movieDownloadButton(item)
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                        } label: { Image(systemName: "ellipsis.circle") }
+                    }
                 }
             }
         }
@@ -277,37 +271,6 @@ struct DetailView: View {
         var s = model.releaseStatusText.trimmingCharacters(in: .whitespaces)
         if s.hasSuffix(".") { s.removeLast() }
         return s.isEmpty ? "Disponibile dopo l'uscita" : "Disponibile: \(s)"
-    }
-
-    // MARK: - Manual mark watched / unwatched
-
-    private func markWatched() {
-        guard let item = model.item else { return }
-        if ref.mediaType == .movie {
-            library.markMovieWatched(tmdbId: item.id, title: item.displayTitle, poster: item.posterPath)
-        } else if let last = TVLogic.effectiveLastEpisode(item) {
-            library.clearSeriesProgress(item.id)
-            library.markWatchedUpTo(tmdbId: item.id, season: last.season, episode: last.episode,
-                                    title: item.displayTitle, poster: item.posterPath)
-        }
-        if library.isInWatchlist(item.id, ref.mediaType) {
-            let aired = ref.mediaType == .tv ? TVLogic.airedEpisodesCount(item) : 0
-            library.setWatchlistStatus(item.id, ref.mediaType, .done, doneAiredEpisodes: aired)
-        }
-        ToastCenter.shared.show("Segnato come visto")
-    }
-
-    private func markUnwatched() {
-        guard let item = model.item else { return }
-        if ref.mediaType == .movie {
-            library.removeProgress(item.id, .movie, season: 0, episode: 0)
-        } else {
-            library.clearSeriesProgress(item.id)
-        }
-        if library.isInWatchlist(item.id, ref.mediaType) {
-            library.setWatchlistStatus(item.id, ref.mediaType, .todo)
-        }
-        ToastCenter.shared.show("Segnato come da vedere")
     }
 
     private func downloadStatusLabel(_ state: DownloadState, reconstructing: Bool = false) -> String {

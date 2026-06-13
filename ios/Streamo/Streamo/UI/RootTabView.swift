@@ -57,9 +57,12 @@ struct RootTabView: View {
                 // start() re-probes and restarts instead of reusing a dead session.
                 Task { await WarpTunnel.shared.invalidate() }
             case .active:
-                // Re-validate (and restart if dead) before the user taps play.
+                // Re-validate and restart the tunnel before the user taps play.
+                // Retries with backoff: a single start() often failed after a
+                // long suspension (cold radio/handshake), leaving WARP down with
+                // no retry until a manual play fail-closed.
                 if AppSettings.shared.providerProxyActive {
-                    Task { try? await WarpTunnel.shared.start() }
+                    Task { await WarpTunnel.shared.reconnect() }
                 }
             default:
                 break

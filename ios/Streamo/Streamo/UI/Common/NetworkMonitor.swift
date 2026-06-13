@@ -13,7 +13,7 @@ final class NetworkMonitor {
     /// Signature of the last path we acted on (status + interface identity).
     /// Only ever touched inside the path handler, which runs on the serial
     /// `monitor` queue — single-threaded, so the `unsafe` access is safe.
-    private nonisolated(unsafe) var lastPathSignature: String?
+    @ObservationIgnored private nonisolated(unsafe) var lastPathSignature: String?
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in

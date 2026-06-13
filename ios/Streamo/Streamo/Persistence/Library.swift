@@ -47,11 +47,6 @@ final class Library {
         watchlistEntry(tmdbId, type) != nil
     }
 
-    /// Current watchlist status for a title, or nil if it isn't in the list.
-    func watchlistStatus(_ tmdbId: Int, _ type: MediaType) -> WatchlistStatus? {
-        watchlistEntry(tmdbId, type)?.status
-    }
-
     private func watchlistEntry(_ tmdbId: Int, _ type: MediaType) -> WatchlistEntry? {
         let raw = type.rawValue
         var d = FetchDescriptor<WatchlistEntry>(predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw })
@@ -76,29 +71,9 @@ final class Library {
         if let e = watchlistEntry(tmdbId, type) { context.delete(e); save() }
     }
 
-    func setWatchlistStatus(_ tmdbId: Int, _ type: MediaType, _ status: WatchlistStatus, doneAiredEpisodes: Int? = nil) {
-        guard let e = watchlistEntry(tmdbId, type) else { return }
-        e.status = status
-        // Mirror the web PATCH: entering "done" stamps the aired baseline (when
-        // provided); leaving "done" must clear it so a stale count can't mask
-        // real progress as "Sei al passo".
-        if status == .done {
-            if let doneAiredEpisodes { e.doneAiredEpisodes = doneAiredEpisodes }
-        } else {
-            e.doneAiredEpisodes = 0
-        }
-        save()
-    }
-
     func watchlist() -> [WatchlistEntry] {
         let d = FetchDescriptor<WatchlistEntry>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)])
         return (try? context.fetch(d)) ?? []
-    }
-
-    /// The stored "aired episode count when marked done" baseline (0 if not in
-    /// the watchlist or never completed) — feeds the "Sei al passo" floor.
-    func doneAiredEpisodes(_ tmdbId: Int, _ type: MediaType) -> Int {
-        watchlistEntry(tmdbId, type)?.doneAiredEpisodes ?? 0
     }
 
     func setLastKnownAired(_ tmdbId: Int, _ type: MediaType, count: Int, season: Int) {
@@ -106,68 +81,6 @@ final class Library {
         e.lastKnownAiredEpisodes = count
         e.lastKnownAiredSeason = season
         save()
-    }
-
-    /// Guards against overlapping auto-flip sweeps (each does TMDB fetches).
-    private var isFlippingStatuses = false
-
-    /// Apply the on-read TV status auto-flip across the whole watchlist, without
-    /// needing "La mia lista" open. The watchlist read-path flip
-    /// (`WatchlistEnrichment`) only runs when that tab is shown, so a series
-    /// whose new season aired would otherwise stay `done` — excluded from
-    /// "Continua a guardare" — until the user happened to open the list. Running
-    /// this from the Home at launch flips it back to `in_progress` so it
-    /// re-enters the row on its own. Writes are batched into a single `save()`
-    /// (one `version` bump) to avoid churning the Home's continue task.
-    func autoFlipTvStatuses() async {
-        guard !isFlippingStatuses else { return }
-        isFlippingStatuses = true
-        defer { isFlippingStatuses = false }
-
-        let ids = watchlist().filter { $0.mediaType == .tv }.map(\.tmdbId)
-        guard !ids.isEmpty else { return }
-
-        // Same bounded-concurrency shape as WatchlistEnrichment: the only work
-        // in the task group is the TMDB fetch; the flip (which touches
-        // SwiftData) is applied back on the main actor as results arrive.
-        var changed = false
-        await withTaskGroup(of: (Int, TmdbItem?).self) { group in
-            let maxConcurrent = 6
-            var next = 0
-            func schedule() {
-                guard next < ids.count else { return }
-                let id = ids[next]; next += 1
-                group.addTask { (id, try? await TMDBClient.shared.details(id: id, type: .tv)) }
-            }
-            for _ in 0..<maxConcurrent { schedule() }
-            for await (id, item) in group {
-                if let item, applyFlip(tmdbId: id, item: item) { changed = true }
-                schedule()
-            }
-        }
-        if changed { save() }
-    }
-
-    /// Compute + apply the flip for one TV entry; returns whether it mutated.
-    /// Mutates the model directly so the caller can batch the single `save()`.
-    private func applyFlip(tmdbId: Int, item: TmdbItem) -> Bool {
-        guard let e = watchlistEntry(tmdbId, .tv) else { return false }
-        let aired = TVLogic.airedEpisodesCount(item)
-        let doneAired = e.doneAiredEpisodes ?? 0
-        let watched = watchedEpisodeCount(tmdbId)
-        let resume = nextUnwatched(item: item)
-        let implied = resume.map { TVLogic.episodesBefore(item, season: $0.season, episode: $0.episode) } ?? 0
-        let baseline = max(watched, doneAired, implied)
-        switch WatchStatus.flipDecision(status: e.status, aired: aired, baseline: baseline, doneAired: doneAired) {
-        case .none:
-            return false
-        case .backfillDoneBaseline(let n), .toDone(let n):
-            e.status = .done; e.doneAiredEpisodes = n
-            return true
-        case .toInProgress:
-            e.status = .inProgress; e.doneAiredEpisodes = 0
-            return true
-        }
     }
 
     // MARK: - Progress
@@ -202,16 +115,6 @@ final class Library {
             context.insert(ProgressEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
                                          position: position, duration: duration, title: title, poster: poster, backdrop: backdrop,
                                          source: source, providerEpisodeId: providerEpisodeId, providerSlug: providerSlug))
-        }
-        // Watchlist lifecycle on save — port of maybeAutoCompleteWatchlist.
-        // TMDB-only: anime has no TMDB watchlist row to auto-flip.
-        if source == .tmdb, let w = watchlistEntry(tmdbId, type), w.status != .done {
-            if type == .movie, duration > 0, position >= duration * TVLogic.watchedThreshold {
-                w.status = .done
-                w.doneAiredEpisodes = 0
-            } else if w.status == .todo, position > 15 {
-                w.status = .inProgress
-            }
         }
         save()
     }
@@ -321,12 +224,12 @@ final class Library {
     }
 
     /// Latest progress row per title, after the continue filters: actually
-    /// started (`position > 15`), not hidden, and not a watchlist item already
-    /// marked `done`. Mirrors the WHERE + ROW_NUMBER in GET /user/progress.
+    /// started (`position > 15`) and not manually hidden. A title leaves the row
+    /// once it's watched to the finished threshold (handled by the callers) or
+    /// is dismissed via `hideFromContinue`.
     private func continueCandidates(limit: Int) -> [ProgressEntry] {
         let d = FetchDescriptor<ProgressEntry>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
         let rows = (try? context.fetch(d)) ?? []
-        let doneKeys = Set(watchlist().filter { $0.status == .done }.map { "\($0.mediaTypeRaw)-\($0.tmdbId)" })
         var seen = Set<String>()
         var result: [ProgressEntry] = []
         for r in rows {
@@ -334,7 +237,7 @@ final class Library {
             // tab and isn't navigable via TMDB MediaRef.
             guard r.source == .tmdb else { continue }
             let key = "\(r.mediaTypeRaw)-\(r.tmdbId)"
-            guard r.position > 15, !r.hiddenFromContinue, !doneKeys.contains(key) else { continue }
+            guard r.position > 15, !r.hiddenFromContinue else { continue }
             if seen.insert(key).inserted {
                 result.append(r)
                 if result.count >= limit { break }

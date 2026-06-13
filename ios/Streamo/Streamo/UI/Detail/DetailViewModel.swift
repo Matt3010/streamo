@@ -296,12 +296,6 @@ final class DetailViewModel {
     var genresLine: String { (item?.genres ?? []).map(\.name).joined(separator: ", ") }
     var castLine: String { (item?.credits?.cast ?? []).prefix(6).map(\.name).joined(separator: ", ") }
 
-    /// Popularity badge value ("🔥 …"), nil when popularity is 0 — port of getMediaRankBadge.
-    var rankBadge: String? {
-        guard let p = item?.popularity, p > 0 else { return nil }
-        return Int(p.rounded()).formatted(.number.grouping(.automatic))
-    }
-
     /// "3 stagioni · 24/30 episodi usciti" — port of watch.component tvSummaryStr.
     var tvSummary: String {
         guard ref.mediaType == .tv, let it = item else { return "" }

@@ -51,43 +51,11 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section {
-            HStack(spacing: 12) {
-                ForEach(Array(Theme.accentPresets.enumerated()), id: \.offset) { _, color in
-                    Button { Theme.setAccent(color) } label: {
-                        Circle()
-                            .fill(color)
-                            .frame(width: 30, height: 30)
-                            .overlay(
-                                Circle().strokeBorder(
-                                    .white.opacity(isCurrentAccent(color) ? 0.95 : 0.15),
-                                    lineWidth: isCurrentAccent(color) ? 3 : 1
-                                )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer()
-            }
-            .padding(.vertical, 2)
-            ColorPicker(
-                "Colore personalizzato",
-                selection: Binding(get: { Theme.red }, set: { Theme.setAccent($0) }),
-                supportsOpacity: false
-            )
             Toggle("Mostra titolo, anno e voto", isOn: $settings.showCardInfo)
-            Button("Ripristina accent predefinito") {
-                Theme.setAccent(
-                    Color(
-                        red: AppSettings.defaultAccent.r,
-                        green: AppSettings.defaultAccent.g,
-                        blue: AppSettings.defaultAccent.b
-                    )
-                )
-            }
         } header: {
             Text("Aspetto")
         } footer: {
-            Text("Il colore si applica subito. Le copertine in \"Continua a guardare\" mantengono sempre titolo e avanzamento.")
+            Text("Le copertine in \"Continua a guardare\" mantengono sempre titolo e avanzamento.")
         }
     }
 
@@ -173,13 +141,6 @@ struct SettingsView: View {
         } else {
             restoreError = "Il file non sembra un backup di Project Obsidian valido."
         }
-    }
-
-    private func isCurrentAccent(_ color: Color) -> Bool {
-        let resolved = color.resolve(in: EnvironmentValues())
-        return abs(Double(resolved.red) - settings.accentR) < 0.02
-            && abs(Double(resolved.green) - settings.accentG) < 0.02
-            && abs(Double(resolved.blue) - settings.accentB) < 0.02
     }
 
     private var appVersion: String {

@@ -11,7 +11,6 @@ struct HomeView: View {
     @State private var pendingAction: (() -> Void)?
     @State private var continueItems: [Library.ContinueRow] = []
     @State private var continueLoaded = false
-    @State private var didAutoFlip = false
 
     private func askConfirm(_ message: String, _ actionLabel: String, _ action: @escaping () -> Void) {
         confirmMessage = message
@@ -60,15 +59,6 @@ struct HomeView: View {
         // No full-page spinner: the section rows render skeleton cards while
         // loading (web is skeleton-first, never a centered spinner).
         .task { await model.loadIfNeeded() }
-        // Once per session: sweep the watchlist so a finished series whose new
-        // season has aired flips back to "in_progress" and re-enters Continua a
-        // guardare — without having to open "La mia lista". The flip bumps
-        // library.version, which re-runs the continue-watching task below.
-        .task {
-            guard !didAutoFlip else { return }
-            didAutoFlip = true
-            await library.autoFlipTvStatuses()
-        }
         .task(id: library.version) { continueItems = await library.continueRows(); continueLoaded = true }
         .confirmationDialog(confirmMessage,
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),

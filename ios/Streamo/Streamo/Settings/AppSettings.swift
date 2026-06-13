@@ -21,9 +21,6 @@ final class AppSettings {
         static let showCardInfo = "showCardInfo"
         static let streamingMaxHeight = "streamingMaxHeight"
         static let downloadMaxHeight = "downloadMaxHeight"
-        static let accentR = "accentR"
-        static let accentG = "accentG"
-        static let accentB = "accentB"
     }
 
     /// Default accent — the web brand red #E50914.
@@ -97,12 +94,6 @@ final class AppSettings {
         didSet { defaults.set(downloadMaxHeight, forKey: Keys.downloadMaxHeight) }
     }
 
-    /// User-chosen accent colour, stored as RGB components (0…1). `Theme.red`
-    /// reads these, so changing them re-tints the whole app.
-    var accentR: Double { didSet { defaults.set(accentR, forKey: Keys.accentR) } }
-    var accentG: Double { didSet { defaults.set(accentG, forKey: Keys.accentG) } }
-    var accentB: Double { didSet { defaults.set(accentB, forKey: Keys.accentB) } }
-
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.tmdbApiKey = defaults.string(forKey: Keys.tmdbApiKey) ?? Self.defaultTmdbApiKey
@@ -115,9 +106,6 @@ final class AppSettings {
         self.showCardInfo = defaults.object(forKey: Keys.showCardInfo) as? Bool ?? true
         self.streamingMaxHeight = defaults.object(forKey: Keys.streamingMaxHeight) as? Int ?? 0       // Auto
         self.downloadMaxHeight = defaults.object(forKey: Keys.downloadMaxHeight) as? Int ?? 1080
-        self.accentR = defaults.object(forKey: Keys.accentR) as? Double ?? Self.defaultAccent.r
-        self.accentG = defaults.object(forKey: Keys.accentG) as? Double ?? Self.defaultAccent.g
-        self.accentB = defaults.object(forKey: Keys.accentB) as? Double ?? Self.defaultAccent.b
     }
 
     var hasTmdbKey: Bool { !tmdbApiKey.trimmingCharacters(in: .whitespaces).isEmpty }

@@ -33,9 +33,6 @@ struct LibraryBackupPayload: Codable {
         var showCardInfo: Bool?
         var streamingMaxHeight: Int?
         var downloadMaxHeight: Int?
-        var accentR: Double
-        var accentG: Double
-        var accentB: Double
     }
 
     struct WatchlistDTO: Codable {
@@ -145,8 +142,7 @@ extension Library {
             warpEnabled: s.warpEnabled,
             autoDeleteWatchedDownloads: s.autoDeleteWatchedDownloads,
             showCardInfo: s.showCardInfo,
-            streamingMaxHeight: s.streamingMaxHeight, downloadMaxHeight: s.downloadMaxHeight,
-            accentR: s.accentR, accentG: s.accentG, accentB: s.accentB
+            streamingMaxHeight: s.streamingMaxHeight, downloadMaxHeight: s.downloadMaxHeight
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -237,9 +233,6 @@ extension Library {
             if let showCardInfo = snap.showCardInfo { s.showCardInfo = showCardInfo }
             if let h = snap.streamingMaxHeight { s.streamingMaxHeight = h }
             if let h = snap.downloadMaxHeight { s.downloadMaxHeight = h }
-            s.accentR = snap.accentR
-            s.accentG = snap.accentG
-            s.accentB = snap.accentB
         }
 
         save()
