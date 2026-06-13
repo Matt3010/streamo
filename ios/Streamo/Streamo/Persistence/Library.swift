@@ -34,7 +34,7 @@ final class Library {
             WidgetShared.ContinueItem(
                 tmdbId: p.tmdbId, mediaTypeRaw: p.mediaType.rawValue, title: p.title ?? "—",
                 poster: p.poster ?? p.backdrop, season: p.season, episode: p.episode,
-                percent: p.duration > 0 ? min(100, max(0, p.position / p.duration * 100)) : 0
+                percent: Format.percent(position: p.position, duration: p.duration)
             )
         }
         WidgetShared.saveContinue(items)
@@ -203,7 +203,7 @@ final class Library {
     /// "Where to play next" for a TV show — port of resolveNextPlayable.
     func nextUnwatched(item: TmdbItem) -> (season: Int, episode: Int)? {
         guard let last = latestTvProgress(item.id) else { return nil }
-        let ended = last.duration > 0 && last.position >= last.duration * TVLogic.watchedThreshold
+        let ended = TVLogic.isWatched(position: last.position, duration: last.duration)
         if !ended { return (last.season, last.episode) }
         return TVLogic.nextEpisode(item, season: last.season, episode: last.episode) ?? (last.season, last.episode)
     }
@@ -250,7 +250,7 @@ final class Library {
     /// snapshot. The Home UI uses the richer async `continueRows`.
     func continueWatching(limit: Int = 30) -> [ProgressEntry] {
         continueCandidates(limit: limit).filter {
-            !($0.duration > 0 && $0.position >= $0.duration * TVLogic.watchedThreshold)
+            !TVLogic.isWatched(position: $0.position, duration: $0.duration)
         }
     }
 
@@ -269,7 +269,7 @@ final class Library {
         var seen = Set<Int>()
         var result: [ProgressEntry] = []
         for r in rows {
-            let finished = r.duration > 0 && r.position >= r.duration * TVLogic.watchedThreshold
+            let finished = TVLogic.isWatched(position: r.position, duration: r.duration)
             guard r.position > 15, !r.hiddenFromContinue, !finished else { continue }
             if seen.insert(r.tmdbId).inserted {
                 result.append(r)
@@ -286,7 +286,7 @@ final class Library {
     func continueRows(limit: Int = 30) async -> [ContinueRow] {
         var out: [ContinueRow] = []
         for p in continueCandidates(limit: limit) {
-            let finished = p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold
+            let finished = TVLogic.isWatched(position: p.position, duration: p.duration)
             if p.mediaType == .movie {
                 if finished { continue }
                 out.append(ContinueRow(tmdbId: p.tmdbId, mediaType: .movie, title: p.title, poster: p.poster,
@@ -310,7 +310,7 @@ final class Library {
     /// Number of distinct episodes watched ≥90% for a series (badge baseline).
     func watchedEpisodeCount(_ tmdbId: Int) -> Int {
         var seen = Set<String>()
-        for p in seriesProgress(tmdbId) where p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold {
+        for p in seriesProgress(tmdbId) where TVLogic.isWatched(position: p.position, duration: p.duration) {
             seen.insert("\(p.season)-\(p.episode)")
         }
         return seen.count
@@ -340,7 +340,7 @@ final class Library {
 
     /// Per-row watch time, matching the web CASE expression exactly.
     static func watchTimeSeconds(position: Double, duration: Double) -> Double {
-        if duration > 0 && position >= duration * TVLogic.watchedThreshold { return duration }
+        if TVLogic.isWatched(position: position, duration: duration) { return duration }
         if position > 0 && duration > 0 { return min(position, duration) }
         if position > 0 { return position }
         return 0

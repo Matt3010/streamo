@@ -61,7 +61,7 @@ struct HomeView: View {
         .task { await model.loadIfNeeded() }
         .task(id: library.version) { continueItems = await library.continueRows(); continueLoaded = true }
         .confirmationDialog(confirmMessage,
-                            isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
+                            isPresented: .isPresent($pendingAction),
                             titleVisibility: .visible) {
             Button(confirmActionLabel, role: .destructive) { pendingAction?(); pendingAction = nil }
             Button("Annulla", role: .cancel) { pendingAction = nil }
@@ -128,10 +128,7 @@ struct HomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background {
-                LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 14, style: .continuous), tint: Theme.red.opacity(0.06))
-            }
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.10)))
+            .glassPanel(cornerRadius: 14)
             .padding(.horizontal)
         }
     }

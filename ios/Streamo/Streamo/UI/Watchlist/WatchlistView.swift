@@ -8,8 +8,7 @@ struct WatchlistView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
 
-    private enum TypeFilter: String { case all, tv, movie }
-    private var typeFilter: TypeFilter { TypeFilter(rawValue: typeFilterRaw) ?? .all }
+    private var typeFilter: MediaTypeFilter { MediaTypeFilter(rawValue: typeFilterRaw) ?? .all }
 
     var body: some View {
         let _ = library.version
@@ -40,7 +39,7 @@ struct WatchlistView: View {
         .task { await enrichment.refresh(all, library: library) }
         .refreshable { await enrichment.refresh(library.watchlist(), library: library, force: true) }
         .confirmationDialog("Rimuovere \(pendingRemove?.title ?? "questo titolo") dalla lista?",
-                            isPresented: Binding(get: { pendingRemove != nil }, set: { if !$0 { pendingRemove = nil } }),
+                            isPresented: .isPresent($pendingRemove),
                             titleVisibility: .visible) {
             Button("Rimuovi", role: .destructive) {
                 if let e = pendingRemove {
@@ -56,16 +55,8 @@ struct WatchlistView: View {
     // MARK: - Filters
 
     private var filters: some View {
-        FlowLayout(spacing: 8) {
-            typeChip("Tutti", .all)
-            typeChip("TV", .tv)
-            typeChip("Film", .movie)
-        }
-        .padding(.horizontal)
-    }
-
-    private func typeChip(_ label: String, _ value: TypeFilter) -> some View {
-        FilterChip(label: label, selected: typeFilter == value, compact: true) { typeFilterRaw = value.rawValue }
+        MediaTypeFilterChips(rawValue: $typeFilterRaw, compact: true)
+            .padding(.horizontal)
     }
 
     private func applyFilters(_ items: [WatchlistEntry]) -> [WatchlistEntry] {
@@ -117,7 +108,7 @@ struct WatchlistView: View {
     private func menu(for entry: WatchlistEntry) -> some View {
         Button(role: .destructive) {
             pendingRemove = entry
-        } label: { Label("Rimuovi dalla lista", systemImage: "trash") }
+        } label: { Label(UIText.removeFromList, systemImage: "trash") }
     }
 
     private func empty(_ title: String, _ hint: String) -> some View {

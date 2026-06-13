@@ -263,6 +263,11 @@ final class PlaybackController {
 
     private func advanceToNextSource() {
         sourceIndex += 1
+        // `loopbackForced` is a per-source flag set when THIS source's LAN
+        // attempt failed. A fresh mirror deserves its own LAN attempt (AirPlay
+        // reach), so clear it — otherwise the first source's LAN failure
+        // silently pins every later mirror to loopback-only.
+        loopbackForced = false
         guard sourceIndex < sources.count, let request = activeRequest else {
             // No mirror left. If we were streaming through the WARP proxy, the
             // outage is the likely cause — surface the same message shown when

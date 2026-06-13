@@ -185,7 +185,7 @@ private struct HeroCaption: View {
 
     private var title: String {
         let t = hero.item.displayTitle
-        return t.isEmpty ? "Senza titolo" : t
+        return t.isEmpty ? UIText.untitled : t
     }
 
     private var categoryLabel: String {
@@ -226,7 +226,7 @@ private struct HeroCaption: View {
                     Image(systemName: inList ? "bookmark.fill" : "bookmark")
                 }
                 .buttonStyle(BrandButtonStyle(kind: inList ? .primary : .secondary, fullWidth: false))
-                .accessibilityLabel(inList ? "Rimuovi dalla lista" : "Aggiungi alla lista")
+                .accessibilityLabel(inList ? UIText.removeFromList : UIText.addToList)
             }
         }
         .padding(.horizontal, 24)

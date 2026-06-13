@@ -128,7 +128,7 @@ struct PlayerScreen: View {
     private func autoDeleteIfWatched(_ req: PlaybackRequest?) {
         guard AppSettings.shared.autoDeleteWatchedDownloads, let r = req,
               let p = library.progress(r.tmdbId, r.mediaType, season: r.season, episode: r.episode, source: r.source),
-              p.duration > 0, p.position >= p.duration * TVLogic.watchedThreshold,
+              TVLogic.isWatched(position: p.position, duration: p.duration),
               let dl = library.download(r.tmdbId, r.mediaType, season: r.season, episode: r.episode, source: r.source),
               dl.state == .completed else { return }
         DownloadManager.shared.delete(dl)

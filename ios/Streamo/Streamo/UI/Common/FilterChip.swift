@@ -39,6 +39,30 @@ struct FilterChip: View {
     }
 }
 
+/// The Tutti/TV/Film second-level filter, shared by Watchlist and History.
+enum MediaTypeFilter: String { case all, tv, movie }
+
+/// The standard Tutti/TV/Film chip row, bound to a persisted raw value
+/// (`@AppStorage`). Single source for the filter shared across screens.
+struct MediaTypeFilterChips: View {
+    @Binding var rawValue: String
+    var compact = false
+
+    private var selected: MediaTypeFilter { MediaTypeFilter(rawValue: rawValue) ?? .all }
+
+    var body: some View {
+        FlowLayout(spacing: 8) {
+            chip("Tutti", .all)
+            chip("TV", .tv)
+            chip("Film", .movie)
+        }
+    }
+
+    private func chip(_ label: String, _ value: MediaTypeFilter) -> some View {
+        FilterChip(label: label, selected: selected == value, compact: compact) { rawValue = value.rawValue }
+    }
+}
+
 /// Simple wrapping layout — lays children left-to-right, wrapping to new rows.
 /// Used for the filter-chip bars so they flow like the web pills.
 struct FlowLayout: Layout {

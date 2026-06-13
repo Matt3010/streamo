@@ -74,7 +74,7 @@ struct SearchView: View {
         }
         .onSubmit(of: .search) { addRecent(query) }
         .confirmationDialog("Rimuovere \(pendingRemove?.displayTitle ?? "questo titolo") dalla lista?",
-                            isPresented: Binding(get: { pendingRemove != nil }, set: { if !$0 { pendingRemove = nil } }),
+                            isPresented: .isPresent($pendingRemove),
                             titleVisibility: .visible) {
             Button("Rimuovi", role: .destructive) {
                 if let it = pendingRemove {
@@ -136,10 +136,7 @@ struct SearchView: View {
                 }
             }
         }
-        .background {
-            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), tint: Theme.red.opacity(0.06))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.10)))
+        .glassPanel(cornerRadius: 16)
         .padding(.horizontal)
         .padding(.top, 8)
     }
@@ -161,7 +158,7 @@ struct SearchView: View {
                     ToastCenter.shared.show("Aggiunto alla lista")
                 }
             } label: {
-                Label(inList ? "Rimuovi dalla lista" : "Aggiungi alla lista",
+                Label(inList ? UIText.removeFromList : UIText.addToList,
                       systemImage: inList ? "bookmark.slash" : "bookmark")
             }
         }

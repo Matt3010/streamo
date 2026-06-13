@@ -101,7 +101,7 @@ struct DetailView: View {
             Button("Annulla", role: .cancel) {}
         }
         .confirmationDialog("Eliminare questo download?",
-                            isPresented: Binding(get: { pendingDeleteDownload != nil }, set: { if !$0 { pendingDeleteDownload = nil } }),
+                            isPresented: .isPresent($pendingDeleteDownload),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 if let dl = pendingDeleteDownload {
@@ -259,11 +259,11 @@ struct DetailView: View {
                 ToastCenter.shared.show("Aggiunto alla lista")
             }
         } label: {
-            Label(inList ? "Nella lista" : "Aggiungi alla lista",
+            Label(inList ? "Nella lista" : UIText.addToList,
                   systemImage: inList ? "bookmark.fill" : "bookmark")
         }
         .buttonStyle(BrandButtonStyle(kind: inList ? .primary : .secondary))
-        .accessibilityLabel(inList ? "Rimuovi dalla lista" : "Aggiungi alla lista")
+        .accessibilityLabel(inList ? UIText.removeFromList : UIText.addToList)
     }
 
     /// "Disponibile: Esce il …" note for upcoming titles (port of upcomingAvailabilityStr).
@@ -760,7 +760,7 @@ private struct EpisodeCard: View {
     }
     private var watchedSeconds: Double { max(0, progress?.position ?? 0) }
     private var pct: Double { Format.percent(position: watchedSeconds, duration: totalSeconds) }
-    private var isWatched: Bool { totalSeconds > 0 && watchedSeconds >= totalSeconds * TVLogic.watchedThreshold }
+    private var isWatched: Bool { TVLogic.isWatched(position: watchedSeconds, duration: totalSeconds) }
     private var downloadPct: Double {
         guard let download else { return 0 }
         return min(100, max(0, (downloads?.progress(for: download) ?? download.progress) * 100))
@@ -938,10 +938,7 @@ private struct ReviewCard: View {
         }
         .padding()
         .frame(width: width, height: height, alignment: .topLeading)
-        .background {
-            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 12, style: .continuous), tint: Theme.red.opacity(0.06))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.10)))
+        .glassPanel(cornerRadius: 12)
     }
 
     private var author: String {

@@ -45,6 +45,9 @@ struct LibraryBackupPayload: Codable {
         var doneAiredEpisodes: Int?
         var lastKnownAiredEpisodes: Int?
         var lastKnownAiredSeason: Int?
+        /// Optional for backward compatibility (added with multi-source/AnimeUnity).
+        /// Absent in older backups → restore falls back to `tmdb`.
+        var sourceRaw: String?
     }
 
     struct ProgressDTO: Codable {
@@ -59,6 +62,11 @@ struct LibraryBackupPayload: Codable {
         var poster: String?
         var backdrop: String?
         var hiddenFromContinue: Bool
+        /// Optional (multi-source). Carries the AnimeUnity source + the provider
+        /// ids needed to resume an anime straight from a continue card.
+        var sourceRaw: String?
+        var providerEpisodeId: Int?
+        var providerSlug: String?
     }
 
     struct HistoryDTO: Codable {
@@ -69,6 +77,11 @@ struct LibraryBackupPayload: Codable {
         var watchedAt: Date
         var title: String?
         var poster: String?
+        /// Optional (added later). Source + the per-day watch snapshots that
+        /// drive the history card's "Completato" / "Visti N min" line.
+        var sourceRaw: String?
+        var progressSeconds: Double?
+        var durationSeconds: Double?
     }
 
     struct ProviderMappingDTO: Codable {
@@ -98,11 +111,21 @@ struct LibraryBackupPayload: Codable {
         var episodeStill: String?
         var episodeRuntime: Int?
         var addedAt: Date
+        /// Optional (multi-source). Source routes re-download (AnimeUnity vs
+        /// TMDB); `itemJSON` restores the offline detail snapshot.
+        var sourceRaw: String?
+        var itemJSON: String?
     }
 }
 
 @MainActor
 extension Library {
+    /// Decode a backed-up source string, defaulting to `.tmdb` for older
+    /// backups (predating multi-source) that omit the field entirely.
+    private static func contentSource(_ raw: String?) -> ContentSource {
+        raw.flatMap { ContentSource(rawValue: $0) } ?? .tmdb
+    }
+
     /// Serialize the entire library to JSON. Returns `nil` only if encoding
     /// fails (which shouldn't happen with these plain Codable DTOs).
     func exportBackup() -> Data? {
@@ -111,17 +134,19 @@ extension Library {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, title: $0.title, poster: $0.poster,
                   status: $0.statusRaw, addedAt: $0.addedAt, doneAiredEpisodes: $0.doneAiredEpisodes,
                   lastKnownAiredEpisodes: $0.lastKnownAiredEpisodes,
-                  lastKnownAiredSeason: $0.lastKnownAiredSeason)
+                  lastKnownAiredSeason: $0.lastKnownAiredSeason, sourceRaw: $0.sourceRaw)
         }
         payload.progress = (try? context.fetch(FetchDescriptor<ProgressEntry>()))?.map {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, season: $0.season, episode: $0.episode,
                   position: $0.position, duration: $0.duration, updatedAt: $0.updatedAt,
                   title: $0.title, poster: $0.poster, backdrop: $0.backdrop,
-                  hiddenFromContinue: $0.hiddenFromContinue)
+                  hiddenFromContinue: $0.hiddenFromContinue, sourceRaw: $0.sourceRaw,
+                  providerEpisodeId: $0.providerEpisodeId, providerSlug: $0.providerSlug)
         } ?? []
         payload.history = history().map {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, season: $0.season, episode: $0.episode,
-                  watchedAt: $0.watchedAt, title: $0.title, poster: $0.poster)
+                  watchedAt: $0.watchedAt, title: $0.title, poster: $0.poster, sourceRaw: $0.sourceRaw,
+                  progressSeconds: $0.progressSeconds, durationSeconds: $0.durationSeconds)
         }
         payload.providerMappings = (try? context.fetch(FetchDescriptor<ProviderMapping>()))?.map {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, providerId: $0.providerId,
@@ -134,7 +159,8 @@ extension Library {
             .init(tmdbId: $0.tmdbId, mediaType: $0.mediaTypeRaw, season: $0.season, episode: $0.episode,
                   title: $0.title, poster: $0.poster, backdrop: $0.backdrop, releaseDate: $0.releaseDate,
                   episodeTitle: $0.episodeTitle, episodeOverview: $0.episodeOverview,
-                  episodeStill: $0.episodeStill, episodeRuntime: $0.episodeRuntime, addedAt: $0.addedAt)
+                  episodeStill: $0.episodeStill, episodeRuntime: $0.episodeRuntime, addedAt: $0.addedAt,
+                  sourceRaw: $0.sourceRaw, itemJSON: $0.itemJSON)
         }
         let s = AppSettings.shared
         payload.settings = .init(
@@ -181,7 +207,8 @@ extension Library {
                 status: WatchlistStatus(rawValue: d.status) ?? .todo,
                 addedAt: d.addedAt, doneAiredEpisodes: d.doneAiredEpisodes,
                 lastKnownAiredEpisodes: d.lastKnownAiredEpisodes,
-                lastKnownAiredSeason: d.lastKnownAiredSeason
+                lastKnownAiredSeason: d.lastKnownAiredSeason,
+                source: Self.contentSource(d.sourceRaw)
             ))
         }
         for d in payload.progress {
@@ -190,14 +217,18 @@ extension Library {
                 season: d.season, episode: d.episode,
                 position: d.position, duration: d.duration, updatedAt: d.updatedAt,
                 title: d.title, poster: d.poster, backdrop: d.backdrop,
-                hiddenFromContinue: d.hiddenFromContinue
+                hiddenFromContinue: d.hiddenFromContinue,
+                source: Self.contentSource(d.sourceRaw),
+                providerEpisodeId: d.providerEpisodeId, providerSlug: d.providerSlug
             ))
         }
         for d in payload.history {
             context.insert(HistoryEntry(
                 tmdbId: d.tmdbId, mediaType: MediaType(rawValue: d.mediaType) ?? .movie,
                 season: d.season, episode: d.episode, watchedAt: d.watchedAt,
-                title: d.title, poster: d.poster
+                title: d.title, poster: d.poster,
+                progressSeconds: d.progressSeconds ?? 0, durationSeconds: d.durationSeconds ?? 0,
+                source: Self.contentSource(d.sourceRaw)
             ))
         }
         for d in payload.providerMappings {
@@ -212,14 +243,19 @@ extension Library {
         for d in payload.downloads {
             // Restored downloads come back as fresh queue entries — DownloadManager
             // will reattempt the transfer on its serial queue.
-            context.insert(DownloadEntry(
+            let entry = DownloadEntry(
                 tmdbId: d.tmdbId, mediaType: MediaType(rawValue: d.mediaType) ?? .movie,
                 season: d.season, episode: d.episode,
                 title: d.title, poster: d.poster, backdrop: d.backdrop, releaseDate: d.releaseDate,
                 episodeTitle: d.episodeTitle, episodeOverview: d.episodeOverview,
                 episodeStill: d.episodeStill, episodeRuntime: d.episodeRuntime,
-                state: .queued, progress: 0, localPath: nil, addedAt: d.addedAt
-            ))
+                state: .queued, progress: 0, localPath: nil, addedAt: d.addedAt,
+                source: Self.contentSource(d.sourceRaw)
+            )
+            // Restore the offline-detail snapshot so the detail page renders
+            // before the re-download finishes. (Set post-init: not an init arg.)
+            entry.itemJSON = d.itemJSON
+            context.insert(entry)
         }
 
         if let snap = payload.settings {

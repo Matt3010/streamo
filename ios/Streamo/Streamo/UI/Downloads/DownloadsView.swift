@@ -81,7 +81,7 @@ struct DownloadsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
         .confirmationDialog("Eliminare questo download?",
-                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            isPresented: .isPresent($pendingDelete),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 if let e = pendingDelete { downloads.delete(e) }
@@ -90,7 +90,7 @@ struct DownloadsView: View {
             Button("Annulla", role: .cancel) { pendingDelete = nil }
         }
         .confirmationDialog("Eliminare tutti i download di \(pendingDeleteSeries?.title ?? "questa serie")?",
-                            isPresented: Binding(get: { pendingDeleteSeries != nil }, set: { if !$0 { pendingDeleteSeries = nil } }),
+                            isPresented: .isPresent($pendingDeleteSeries),
                             titleVisibility: .visible) {
             Button("Elimina tutti", role: .destructive) {
                 if let series = pendingDeleteSeries {
@@ -168,7 +168,7 @@ struct SeriesDownloadsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
         .confirmationDialog("Eliminare questo episodio?",
-                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            isPresented: .isPresent($pendingDelete),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 if let e = pendingDelete { deleteEpisode(e) }
@@ -215,9 +215,9 @@ private struct DownloadRow: View {
 
     private var watchPct: Double {
         guard displayState == .completed,
-              let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode),
-              p.duration > 0 else { return 0 }
-        return min(100, max(0, p.position / p.duration * 100))
+              let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode)
+        else { return 0 }
+        return Format.percent(position: p.position, duration: p.duration)
     }
 
     private var displayState: DownloadState {
@@ -232,7 +232,7 @@ private struct DownloadRow: View {
         HStack(spacing: 12) {
             if episodeLabel == nil { DownloadThumb(poster: entry.poster) }
             VStack(alignment: .leading, spacing: 4) {
-                Text(episodeLabel ?? (entry.title ?? "Senza titolo"))
+                Text(episodeLabel ?? (entry.title ?? UIText.untitled))
                     .font(.subheadline.weight(.semibold)).lineLimit(2)
                 HStack(spacing: 6) {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)

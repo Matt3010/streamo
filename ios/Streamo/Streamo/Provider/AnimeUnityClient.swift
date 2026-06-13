@@ -103,10 +103,7 @@ actor AnimeUnityClient {
     /// `GET /embed-url/{id}` response). Feed straight into `VixcloudClient`.
     func embedURL(episodeId: Int, animeId: Int, slug: String?) async throws -> String {
         guard let url = URL(string: "\(baseURL)/embed-url/\(episodeId)") else { throw AUError.network }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = requestTimeout
-        req.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-        if let slug { req.setValue("\(baseURL)/anime/\(animeId)-\(slug)", forHTTPHeaderField: "Referer") }
+        let req = makeRequest(url, referer: slug.map { "\(baseURL)/anime/\(animeId)-\($0)" })
         guard let (data, http) = try? await session.data(for: req), let h = http as? HTTPURLResponse,
               (200...299).contains(h.statusCode) else { throw AUError.network }
         let raw = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,8 +116,7 @@ actor AnimeUnityClient {
     /// Raw `/embed-url` response — for verifying the shape on-device.
     func debugEmbedResponse(episodeId: Int) async -> String? {
         guard let url = URL(string: "\(baseURL)/embed-url/\(episodeId)") else { return nil }
-        var req = URLRequest(url: url)
-        req.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        let req = makeRequest(url)
         return (try? await session.data(for: req)).map { String(decoding: $0.0, as: UTF8.self) }
     }
 
@@ -131,9 +127,7 @@ actor AnimeUnityClient {
     private func csrf() async throws -> String {
         if let t = csrfToken, let at = csrfFetchedAt, Date().timeIntervalSince(at) < csrfTTL { return t }
         guard let url = URL(string: "\(baseURL)/") else { throw AUError.network }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = requestTimeout
-        req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        let req = makeRequest(url, xhr: false)
         guard let (data, http) = try? await session.data(for: req), let h = http as? HTTPURLResponse,
               (200...299).contains(h.statusCode) else { throw AUError.network }
         let html = String(decoding: data, as: UTF8.self)
@@ -151,11 +145,21 @@ actor AnimeUnityClient {
 
     private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
-    private func get(_ url: URL, xhr: Bool) async throws -> (Data, HTTPURLResponse) {
+    /// Single place that stamps the shared request defaults (timeout, browser
+    /// User-Agent, optional XHR + Referer headers). Every endpoint builds on
+    /// this so header drift can't creep back in across methods.
+    private func makeRequest(_ url: URL, method: String = "GET", xhr: Bool = true, referer: String? = nil) -> URLRequest {
         var req = URLRequest(url: url)
+        req.httpMethod = method
         req.timeoutInterval = requestTimeout
         req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         if xhr { req.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With") }
+        if let referer { req.setValue(referer, forHTTPHeaderField: "Referer") }
+        return req
+    }
+
+    private func get(_ url: URL, xhr: Bool) async throws -> (Data, HTTPURLResponse) {
+        let req = makeRequest(url, xhr: xhr)
         guard let (data, http) = try? await session.data(for: req), let h = http as? HTTPURLResponse else {
             throw AUError.network
         }
@@ -178,15 +182,10 @@ actor AnimeUnityClient {
         func attempt() async throws -> (Data, Int) {
             let token = try await csrf()
             guard let url = URL(string: "\(baseURL)\(path)") else { throw AUError.network }
-            var req = URLRequest(url: url)
-            req.httpMethod = "POST"
+            var req = makeRequest(url, method: "POST", referer: "\(baseURL)/")
             req.httpBody = body
-            req.timeoutInterval = requestTimeout
             req.setValue(contentType, forHTTPHeaderField: "Content-Type")
             req.setValue(token, forHTTPHeaderField: "X-CSRF-TOKEN")
-            req.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-            req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-            req.setValue("\(baseURL)/", forHTTPHeaderField: "Referer")
             guard let (data, http) = try? await session.data(for: req), let h = http as? HTTPURLResponse else {
                 throw AUError.network
             }

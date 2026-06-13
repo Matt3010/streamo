@@ -8,8 +8,7 @@ struct HistoryView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
 
-    private enum TypeFilter: String { case all, tv, movie }
-    private var typeFilter: TypeFilter { TypeFilter(rawValue: typeFilterRaw) ?? .all }
+    private var typeFilter: MediaTypeFilter { MediaTypeFilter(rawValue: typeFilterRaw) ?? .all }
 
     private struct Section: Identifiable { let key: String; let title: String; let summary: String; let items: [HistoryEntry]; var id: String { key } }
 
@@ -30,11 +29,7 @@ struct HistoryView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     watchTimeCard
 
-                    FlowLayout(spacing: 8) {
-                        typeChip("Tutti", .all)
-                        typeChip("TV", .tv)
-                        typeChip("Film", .movie)
-                    }
+                    MediaTypeFilterChips(rawValue: $typeFilterRaw)
 
                     if items.isEmpty {
                         ContentUnavailableView("Niente in questa categoria",
@@ -53,7 +48,7 @@ struct HistoryView: View {
         .navigationTitle("Cronologia")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Rimuovere \(pendingRemove?.title ?? "questo titolo") dalla cronologia?",
-                            isPresented: Binding(get: { pendingRemove != nil }, set: { if !$0 { pendingRemove = nil } }),
+                            isPresented: .isPresent($pendingRemove),
                             titleVisibility: .visible) {
             Button("Rimuovi", role: .destructive) {
                 if let entry = pendingRemove {
@@ -81,19 +76,11 @@ struct HistoryView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
         .frame(maxWidth: .infinity)
-        .background {
-            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), tint: Theme.red.opacity(0.08))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.14)))
+        .glassPanel(cornerRadius: 16, tint: 0.08, stroke: 0.14)
         .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
     }
 
     // MARK: - Sections
-
-    @ViewBuilder
-    private func typeChip(_ label: String, _ value: TypeFilter) -> some View {
-        FilterChip(label: label, selected: typeFilter == value) { typeFilterRaw = value.rawValue }
-    }
 
     /// History card enriched with the saved progress (bar + %) plus the red
     /// status line — "Completato" / "Visti N min" (port of the web history row).
@@ -104,14 +91,14 @@ struct HistoryView: View {
             // THAT day (this snapshot − the cumulative reached on earlier days).
             card.position = entry.progressSeconds
             card.duration = entry.durationSeconds
-            let completed = entry.progressSeconds >= entry.durationSeconds * TVLogic.watchedThreshold
+            let completed = TVLogic.isWatched(position: entry.progressSeconds, duration: entry.durationSeconds)
             let watchedToday = max(0, entry.progressSeconds - (priorSnapshot[entry.persistentModelID] ?? 0))
             card.watchStatus = completed ? "Completato" : Format.viewedMinutes(watchedToday)
         } else if let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode) {
             // Legacy row (saved before snapshots): fall back to live cumulative.
             card.position = p.position
             card.duration = p.duration
-            let completed = p.duration > 0 && p.position >= p.duration * TVLogic.watchedThreshold
+            let completed = TVLogic.isWatched(position: p.position, duration: p.duration)
             card.watchStatus = completed ? "Completato" : Format.viewedMinutes(p.position)
         }
         return card
@@ -210,7 +197,7 @@ struct HistoryView: View {
         for e in items {
             let p = library.progress(e.tmdbId, e.mediaType, season: e.season, episode: e.episode)
             let pos = p?.position ?? 0, dur = p?.duration ?? 0
-            let completed = dur > 0 && pos >= dur * TVLogic.watchedThreshold
+            let completed = TVLogic.isWatched(position: pos, duration: dur)
             if e.mediaType == .tv {
                 if completed || pos > 15 { episodes += 1 }
             } else if completed {
