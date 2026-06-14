@@ -15,10 +15,10 @@ private struct FillingPill: View {
             let frac = fraction
             Button(action: action) {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 11)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                     .background(
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
@@ -54,10 +54,10 @@ private extension PlaybackController.SkipPrompt {
 private extension View {
     func netflixLabel(faint: Bool = false) -> some View {
         self
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(faint ? Color.white.opacity(0.7) : .white)
-            .padding(.horizontal, faint ? 16 : 20)
-            .padding(.vertical, 11)
+            .padding(.horizontal, faint ? 12 : 14)
+            .padding(.vertical, 8)
             .background(
                 faint ? nil :
                     RoundedRectangle(cornerRadius: 4)
@@ -146,7 +146,10 @@ private struct PlayerControlsOverlay: View {
         HStack(alignment: .center, spacing: 14) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
                 if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7)) }
@@ -212,7 +215,11 @@ private struct PlayerControlsOverlay: View {
                         resetHideTimer()
                     }
                     .onEnded { _ in
-                        if duration > 0 { controller.seek(to: scrubFraction * duration) }
+                        if duration > 0 {
+                            let target = scrubFraction * duration
+                            position = target          // avoid a stale-position flash before the next poll
+                            controller.seek(to: target)
+                        }
                         scrubbing = false
                     }
             )

@@ -48,6 +48,10 @@ final class PlaybackController {
 
     private(set) var state: State = .idle
     private(set) var player: AVPlayer?
+    /// Non-nil while a seek is in flight; UI reads this as currentTime so the
+    /// scrubber holds at the requested spot instead of snapping to the stale
+    /// buffering position.
+    private var seekTarget: Double?
 
     /// A skip affordance the player UI should surface at the current position,
     /// or nil when none applies. Driven by TheIntroDB segments.
@@ -336,7 +340,13 @@ final class PlaybackController {
     }
 
     private func seekPlayer(_ player: AVPlayer, to seconds: Double) {
-        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
+        // Hold the UI at the requested time until the seek actually lands —
+        // otherwise the poll reads the pre-seek (still-buffering) position and
+        // the scrubber snaps backwards before jumping to target.
+        seekTarget = seconds
+        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) { [weak self] _ in
+            Task { @MainActor in self?.seekTarget = nil }
+        }
     }
 
     // MARK: - Skip intro / credits
@@ -434,6 +444,7 @@ final class PlaybackController {
     /// Current playback position in seconds (0 when no player). Lets the fill
     /// animation read live time without an extra observer.
     func currentTime() -> Double {
+        if let target = seekTarget { return target }
         let t = player?.currentTime().seconds ?? 0
         return t.isFinite ? t : 0
     }
