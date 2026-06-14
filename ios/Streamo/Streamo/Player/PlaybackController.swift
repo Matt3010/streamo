@@ -49,6 +49,40 @@ final class PlaybackController {
     private(set) var state: State = .idle
     private(set) var player: AVPlayer?
 
+    /// A skip affordance the player UI should surface at the current position,
+    /// or nil when none applies. Driven by TheIntroDB segments.
+    enum SkipPrompt: Equatable {
+        case intro(end: Double)
+        case credits(start: Double)
+    }
+    private(set) var skipPrompt: SkipPrompt?
+    /// Time span [start, end] in seconds of the active skip segment, so the UI
+    /// can fill the button as playback advances through it. Nil when no prompt.
+    private(set) var skipSegment: ClosedRange<Double>?
+    /// Countdown (seconds) shown before auto-advancing to the next episode, or
+    /// nil when no auto-advance is armed.
+    private(set) var nextCountdown: Int?
+    /// The episode armed for auto-advance, surfaced so "Play now" can fire it.
+    private(set) var pendingNextRequest: PlaybackRequest?
+    /// Latched once the credits-driven next-episode flow has fired, so the
+    /// end-of-stream `onCompleted` fallback never double-advances.
+    private(set) var didTriggerNext = false
+    /// Fired once when playback first crosses into the credits segment, so the
+    /// view can resolve the next episode and arm the countdown.
+    var onCreditsReached: (() -> Void)?
+
+    private var segments: IntroSkipClient.Segments?
+    private var didFetchSegments = false
+    /// Latched once the user taps "Skip intro", so the pill can't flicker back
+    /// while the async seek is still in flight (live time briefly lags inside
+    /// the intro). Reset per item.
+    private var introDismissed = false
+    /// Same for "Skip credits": seeking to the end stays inside the credits
+    /// region, so without this the pill would re-appear and stick. Reset per item.
+    private var creditsDismissed = false
+    private var skipBoundaryObserver: Any?
+    private var countdownTask: Task<Void, Never>?
+
     /// Called ~every few seconds and on teardown with (position, duration).
     /// The watch page hooks progress persistence here.
     var onProgress: ((Double, Double) -> Void)?
@@ -154,6 +188,7 @@ final class PlaybackController {
         pendingStartAt = request.startAt
         didReachEnd = false
         loopbackForced = false
+        resetSkipState()
         loadCurrentSource(request: request)
     }
 
@@ -304,8 +339,177 @@ final class PlaybackController {
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
     }
 
+    // MARK: - Skip intro / credits
+
+    /// Clear all skip/next state for a fresh item. The single reset point,
+    /// reached via `beginPlayback` for start / startNext / offline. NOT called
+    /// on a mirror switch (same episode → state must survive).
+    private func resetSkipState() {
+        didTriggerNext = false
+        didFetchSegments = false
+        introDismissed = false
+        creditsDismissed = false
+        segments = nil
+        skipPrompt = nil
+        skipSegment = nil
+        nextCountdown = nil
+        pendingNextRequest = nil
+        countdownTask?.cancel()
+        countdownTask = nil
+    }
+
+    /// Fetch skip segments once for the active item. Guards keep it to a single
+    /// network call per item and skip cases TheIntroDB can't serve (offline,
+    /// or AnimeUnity whose `tmdbId` is not a real TMDB id).
+    private func maybeFetchSkipSegments() {
+        guard !didFetchSegments, let req = activeRequest, req.offlineURL == nil,
+              req.source == .tmdb, let item = player?.currentItem else { return }
+        didFetchSegments = true
+        let duration = item.duration.seconds
+        let durationMs = duration.isFinite && duration > 0 ? duration * 1000 : nil
+        Task { @MainActor in
+            let segs = await IntroSkipClient.shared.fetch(
+                tmdbId: req.tmdbId, isMovie: req.mediaType == .movie,
+                season: req.season, episode: req.episode, durationMs: durationMs)
+            // The item may have changed while the request was in flight.
+            guard self.activeRequest?.id == req.id else { return }
+            self.segments = segs
+            self.installSkipBoundaries()
+            self.updateSkipPrompt()
+        }
+    }
+
+    /// Fire `updateSkipPrompt` exactly at the segment edges — precise without
+    /// polling. Re-installable: replaces any prior observer (mirror reload).
+    private func installSkipBoundaries() {
+        if let skipBoundaryObserver, let player {
+            player.removeTimeObserver(skipBoundaryObserver)
+        }
+        skipBoundaryObserver = nil
+        guard let player, let s = segments else { return }
+        let times = [s.introStart, s.introEnd, s.creditsStart]
+            .compactMap { $0 }
+            .filter { $0 > 0 }
+            .map { NSValue(time: CMTime(seconds: $0, preferredTimescale: 600)) }
+        guard !times.isEmpty else { return }
+        skipBoundaryObserver = player.addBoundaryTimeObserver(forTimes: times, queue: .main) { [weak self] in
+            MainActor.assumeIsolated { self?.updateSkipPrompt() }
+        }
+    }
+
+    /// Recompute the skip affordance for the current position. Idempotent:
+    /// only publishes on an actual change. Latches the credits trigger so the
+    /// next-episode flow fires exactly once.
+    private func updateSkipPrompt() {
+        guard let player, let s = segments else {
+            if skipPrompt != nil { skipPrompt = nil }
+            return
+        }
+        let t = player.currentTime().seconds
+        guard t.isFinite else { return }
+        let new: SkipPrompt?
+        var newSegment: ClosedRange<Double>?
+        if !introDismissed, let end = s.introEnd, t >= (s.introStart ?? 0), t < end - 1 {
+            new = .intro(end: end)
+            let start = s.introStart ?? 0
+            newSegment = start...max(end, start + 0.001)
+        } else if !creditsDismissed, let start = s.creditsStart, t >= start {
+            new = .credits(start: start)
+            // Credits run to the end of the media; fill toward the finish.
+            let duration = player.currentItem?.duration.seconds ?? 0
+            let end = duration.isFinite && duration > start ? duration : start + 1
+            newSegment = start...end
+            if !didTriggerNext {
+                didTriggerNext = true
+                onCreditsReached?()
+            }
+        } else {
+            new = nil
+            newSegment = nil
+        }
+        if skipPrompt != new { skipPrompt = new }
+        if skipSegment != newSegment { skipSegment = newSegment }
+    }
+
+    /// Current playback position in seconds (0 when no player). Lets the fill
+    /// animation read live time without an extra observer.
+    func currentTime() -> Double {
+        let t = player?.currentTime().seconds ?? 0
+        return t.isFinite ? t : 0
+    }
+
+    /// Act on the visible skip button. Intro → seek past it. Credits → advance
+    /// to the armed next episode (TV) or seek to the end (movie / no next).
+    func performSkip() {
+        guard let player, let prompt = skipPrompt else { return }
+        switch prompt {
+        case .intro(let end):
+            introDismissed = true   // don't let the pill flicker back during the seek
+            seekPlayer(player, to: end)
+        case .credits:
+            creditsDismissed = true   // seeking to the end stays inside credits — don't let the pill stick
+            if pendingNextRequest != nil {
+                playNextNow()
+            } else if let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 1 {
+                seekPlayer(player, to: duration - 1)
+            }
+        }
+        skipPrompt = nil
+        skipSegment = nil
+    }
+
+    /// Arm an auto-advance countdown to `request`. Cancellable; counts down to
+    /// zero then hands off to `startNext`.
+    func armNextEpisode(_ request: PlaybackRequest, seconds: Int = 8) {
+        pendingNextRequest = request
+        countdownTask?.cancel()
+        countdownTask = Task { @MainActor in
+            for n in stride(from: seconds, through: 1, by: -1) {
+                // Abort if the user scrubbed back out of the credits region —
+                // unlatch so re-entering the credits re-arms the countdown.
+                guard isPastCreditsStart() else {
+                    nextCountdown = nil
+                    pendingNextRequest = nil
+                    didTriggerNext = false
+                    return
+                }
+                nextCountdown = n
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+            }
+            nextCountdown = nil
+            await startNext(request)
+        }
+    }
+
+    /// Whether playback is still at/after the credits start. With no credits
+    /// data (end-of-stream fallback path) there's nothing to leave, so true.
+    private func isPastCreditsStart() -> Bool {
+        guard let start = segments?.creditsStart else { return true }
+        return currentTime() >= start
+    }
+
+    /// Skip the countdown and advance immediately.
+    func playNextNow() {
+        guard let request = pendingNextRequest else { return }
+        countdownTask?.cancel()
+        countdownTask = nil
+        nextCountdown = nil
+        Task { await startNext(request) }
+    }
+
+    /// Dismiss the countdown without advancing. `didTriggerNext` stays latched,
+    /// so the end-of-stream fallback won't re-arm it for this episode.
+    func cancelNextEpisode() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        nextCountdown = nil
+    }
+
     func teardown() {
         flushProgress()
+        countdownTask?.cancel()
+        countdownTask = nil
         teardownPlayer()
         // Release the audio session back to the keep-alive's mixable policy
         // (so a still-running background download doesn't stop the user's music).
@@ -378,6 +582,15 @@ final class PlaybackController {
             if pendingStartAt > 1, let player {
                 seekPlayer(player, to: pendingStartAt)
                 pendingStartAt = 0
+            }
+            // Item is seekable and its duration is known here. Fetch skip
+            // segments once; on a mirror reload / foreground rebuild the data
+            // is already cached, so just reinstall the boundary observer.
+            if segments != nil {
+                installSkipBoundaries()
+                updateSkipPrompt()
+            } else {
+                maybeFetchSkipSegments()
             }
         case .failed:
             let isOffline = activeRequest?.offlineURL != nil
@@ -461,7 +674,12 @@ final class PlaybackController {
     private func installTimeObserver(on player: AVPlayer) {
         let interval = CMTime(seconds: 5, preferredTimescale: 1)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.flushProgress() }
+            MainActor.assumeIsolated {
+                self?.flushProgress()
+                // Backstop the precise boundary observer: catches manual seeks
+                // and any boundary the player skipped over.
+                self?.updateSkipPrompt()
+            }
         }
     }
 
@@ -504,6 +722,10 @@ final class PlaybackController {
         endObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        if let skipBoundaryObserver, let player {
+            player.removeTimeObserver(skipBoundaryObserver)
+        }
+        skipBoundaryObserver = nil
         player?.pause()
         player = nil
         didReachEnd = false
