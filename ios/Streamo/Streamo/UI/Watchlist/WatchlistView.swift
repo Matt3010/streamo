@@ -4,6 +4,7 @@ struct WatchlistView: View {
     @Environment(Library.self) private var library
     @State private var enrichment = WatchlistEnrichment()
     @State private var pendingRemove: WatchlistEntry?
+    @State private var searchText = ""
     @AppStorage("watchlistTypeFilter") private var typeFilterRaw = "all"
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
@@ -24,7 +25,11 @@ struct WatchlistView: View {
                 } else if !enrichment.isLoaded {
                     skeletonGrid
                 } else if filtered.isEmpty {
-                    empty("Nessun titolo", "Cambia filtro per vedere altri titoli.")
+                    if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        empty("Nessun titolo", "Cambia filtro per vedere altri titoli.")
+                    } else {
+                        empty("Nessun risultato", "Nessun titolo per \"\(searchText)\".")
+                    }
                 } else {
                     content(filtered)
                 }
@@ -33,6 +38,8 @@ struct WatchlistView: View {
         }
         .navigationTitle("La mia lista")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Cerca nella lista")
         // Enrich once on appear to derive year/rating/upcoming for the cards.
         // Skeletons cover this first pass; afterwards derived display values are
         // kept so the grid scrolls smoothly.
@@ -60,7 +67,11 @@ struct WatchlistView: View {
     }
 
     private func applyFilters(_ items: [WatchlistEntry]) -> [WatchlistEntry] {
-        items.filter { typeFilter == .all || $0.mediaTypeRaw == typeFilter.rawValue }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return items.filter { entry in
+            (typeFilter == .all || entry.mediaTypeRaw == typeFilter.rawValue)
+            && (query.isEmpty || (entry.title ?? "").localizedCaseInsensitiveContains(query))
+        }
     }
 
     /// Placeholder grid shown while the first enrichment pass runs, so the
