@@ -1,8 +1,7 @@
 import Foundation
 
 /// Talks to TMDB directly (the web app proxied this through nginx). Port of
-/// `tmdb.service.ts`. Mirrors its language/region defaults (it-IT, region IT)
-/// and the multi-URL reviews fallback.
+/// `tmdb.service.ts`. Mirrors its language/region defaults (it-IT, region IT).
 actor TMDBClient {
     static let shared = TMDBClient()
 
@@ -50,22 +49,6 @@ actor TMDBClient {
     func recommendations(id: Int, type: MediaType) async throws -> [TmdbItem] {
         let res: TmdbListResponse<TmdbItem> = try await get(path: "/\(type.rawValue)/\(id)/recommendations")
         return res.results ?? []
-    }
-
-    /// Reviews with the web app's it-IT → default → en-US fallback chain.
-    func reviews(id: Int, type: MediaType) async throws -> [TmdbReview] {
-        let attempts: [[String: String]] = [
-            ["language": "it-IT"],
-            [:],
-            ["language": "en-US"],
-        ]
-        for q in attempts {
-            let res: TmdbListResponse<TmdbReview> = try await get(
-                path: "/\(type.rawValue)/\(id)/reviews", query: q, includeDefaultLanguage: false
-            )
-            if let r = res.results, !r.isEmpty { return r }
-        }
-        return []
     }
 
     /// A home-row list endpoint (e.g. "/trending/movie/day"), sorted newest-first.

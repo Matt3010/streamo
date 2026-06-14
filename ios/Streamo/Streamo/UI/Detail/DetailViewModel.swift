@@ -8,9 +8,8 @@ final class DetailViewModel {
 
     private(set) var item: TmdbItem?
     private(set) var recommendations: [TmdbItem] = []
-    private(set) var reviews: [TmdbReview] = []
     private(set) var isLoading = true
-    /// Reviews + recommendations load after the main detail; drives skeletons.
+    /// Recommendations load after the main detail; drives skeletons.
     private(set) var extrasLoading = false
     private(set) var loadError: String?
 
@@ -69,10 +68,8 @@ final class DetailViewModel {
         isLoading = false
 
         extrasLoading = true
-        async let recs = try? await client.recommendations(id: ref.tmdbId, type: ref.mediaType)
-        async let revs = try? await client.reviews(id: ref.tmdbId, type: ref.mediaType)
-        recommendations = Array((await recs ?? []).prefix(20))
-        reviews = Array((await revs ?? []).prefix(10))
+        let recs = try? await client.recommendations(id: ref.tmdbId, type: ref.mediaType)
+        recommendations = Array((recs ?? []).prefix(20))
         extrasLoading = false
     }
 

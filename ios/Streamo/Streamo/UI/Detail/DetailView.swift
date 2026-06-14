@@ -63,7 +63,6 @@ struct DetailView: View {
                 if model.extrasLoading {
                     extrasSkeleton
                 } else {
-                    if !model.reviews.isEmpty { reviewsSection }
                     if !model.recommendations.isEmpty { recommendationsSection }
                 }
             }
@@ -698,19 +697,7 @@ struct DetailView: View {
         .ignoresSafeArea()
     }
 
-    private var reviewsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Recensioni", symbol: "text.bubble.fill")
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(model.reviews) { ReviewCard(review: $0) }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-
-    /// Placeholder shown while reviews/recommendations are still loading.
+    /// Placeholder shown while recommendations are still loading.
     private var extrasSkeleton: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Ti potrebbe piacere", symbol: "hand.thumbsup.fill")
@@ -903,64 +890,6 @@ private struct EpisodeCard: View {
                 Image(systemName: "tv").foregroundStyle(.secondary)
             }
         }
-    }
-}
-
-/// Review card — port of the web watch.component review card (author, date,
-/// ★ rating, 360-char excerpt, "Leggi su TMDB" link).
-private struct ReviewCard: View {
-    let review: TmdbReview
-    @Environment(\.openURL) private var openURL
-    private let width: CGFloat = 300
-    private let height: CGFloat = 220
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(author).font(.subheadline.bold())
-                    if let d = dateText { Text(d).font(.caption2).foregroundStyle(.secondary) }
-                }
-                Spacer()
-                if let r = ratingText {
-                    Text("★ \(r)").font(.caption.weight(.semibold)).foregroundStyle(Color(red: 1, green: 0.76, blue: 0.03))
-                }
-            }
-            Text(excerpt)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(8)
-            Spacer(minLength: 0)
-            if let url = review.url.flatMap(URL.init(string:)) {
-                Button("Leggi su TMDB") { openURL(url) }
-                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.red)
-            }
-        }
-        .padding()
-        .frame(width: width, height: height, alignment: .topLeading)
-        .glassPanel(cornerRadius: 12)
-    }
-
-    private var author: String {
-        review.authorDetails?.name?.nilIfEmpty
-            ?? review.authorDetails?.username?.nilIfEmpty
-            ?? review.author.nilIfEmpty ?? "Anonimo"
-    }
-
-    private var ratingText: String? {
-        guard let r = review.authorDetails?.rating else { return nil }
-        return String(format: "%.1f", r)
-    }
-
-    private var dateText: String? {
-        guard let raw = (review.updatedAt ?? review.createdAt), let d = Release.parseDate(raw) else { return nil }
-        return Release.longDate(d)
-    }
-
-    private var excerpt: String {
-        let t = review.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard t.count > 360 else { return t }
-        return String(t.prefix(357)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
     }
 }
 
