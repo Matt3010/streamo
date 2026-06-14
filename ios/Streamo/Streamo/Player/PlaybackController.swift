@@ -438,6 +438,35 @@ final class PlaybackController {
         return t.isFinite ? t : 0
     }
 
+    /// Item duration in seconds (0 until known / for live). For the scrubber.
+    func duration() -> Double {
+        let d = player?.currentItem?.duration.seconds ?? 0
+        return d.isFinite && d > 0 ? d : 0
+    }
+
+    /// Whether playback is currently advancing (drives the play/pause glyph).
+    var isPlaying: Bool { (player?.timeControlStatus ?? .paused) != .paused }
+
+    func togglePlayPause() {
+        guard let player else { return }
+        if player.timeControlStatus == .paused { player.play() } else { player.pause() }
+    }
+
+    /// Absolute seek (used by the scrubber).
+    func seek(to seconds: Double) {
+        guard let player else { return }
+        seekPlayer(player, to: max(0, seconds))
+    }
+
+    /// Relative seek (±10s buttons), clamped to [0, duration].
+    func skip(by delta: Double) {
+        guard let player else { return }
+        let target = player.currentTime().seconds + delta
+        let dur = duration()
+        let clamped = dur > 0 ? min(max(0, target), dur) : max(0, target)
+        seekPlayer(player, to: clamped)
+    }
+
     /// Act on the visible skip button. Intro → seek past it. Credits → advance
     /// to the armed next episode (TV) or seek to the end (movie / no next).
     func performSkip() {

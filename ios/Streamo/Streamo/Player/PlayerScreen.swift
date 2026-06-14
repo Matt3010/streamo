@@ -1,64 +1,6 @@
 import SwiftUI
 import AVKit
 
-/// Bridges AVPlayerViewController into SwiftUI — gives us native transport
-/// controls, PiP, AirPlay route picker and fullscreen for free.
-struct AVPlayerContainer: UIViewControllerRepresentable {
-    let player: AVPlayer
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let vc = AVPlayerViewController()
-        vc.player = player
-        vc.allowsPictureInPicturePlayback = true
-        vc.canStartPictureInPictureAutomaticallyFromInline = true
-        vc.videoGravity = .resizeAspect
-        return vc
-    }
-
-    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
-        if vc.player !== player { vc.player = player }
-    }
-}
-
-/// Netflix-style skip / next-episode bar shown *below* the player. The player
-/// shrinks to make room; the bar collapses to zero height when there's nothing
-/// to show. Only visible in the inline (non-fullscreen) layout — the OS
-/// fullscreen player renders in its own window with nothing beneath it.
-private struct SkipControlBar: View {
-    let skipPrompt: PlaybackController.SkipPrompt?
-    let skipSegment: ClosedRange<Double>?
-    let nextCountdown: Int?
-    let currentTime: () -> Double
-    let onSkip: () -> Void
-    let onPlayNext: () -> Void
-    let onCancelNext: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Spacer()
-            if let n = nextCountdown {
-                Button(action: onCancelNext) {
-                    Text("Annulla").netflixLabel(faint: true)
-                }
-                Button(action: onPlayNext) {
-                    Label("Prossimo episodio (\(n)s)", systemImage: "play.fill").netflixLabel()
-                }
-            } else if let prompt = skipPrompt, let seg = skipSegment {
-                // Pill fills as playback advances through the segment.
-                FillingPill(title: prompt.title, segment: seg, currentTime: currentTime, action: onSkip)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, hasContent ? 14 : 0)
-        .frame(maxWidth: .infinity)
-        .frame(height: hasContent ? nil : 0)
-        .background(Color.black)
-        .clipped()
-    }
-
-    private var hasContent: Bool { nextCountdown != nil || skipPrompt != nil }
-}
-
 /// Netflix-style skip pill whose interior fills left→right as playback moves
 /// through `segment` (full at the segment's end). Driven by `TimelineView`
 /// reading live playback time — pause- and seek-aware, no extra observer.
@@ -126,6 +68,186 @@ private extension View {
     }
 }
 
+/// Custom transport + skip controls drawn over the video. Replaces
+/// AVPlayerViewController's chrome so the skip pill is always reachable (no
+/// inline/fullscreen split) and there's an explicit close button. The transport
+/// auto-hides while playing; the skip pill / next-episode countdown stay visible
+/// regardless so they're never buried.
+private struct PlayerControlsOverlay: View {
+    let controller: PlaybackController
+    let pip: PiPProxy
+    let title: String
+    let subtitle: String?
+    let onClose: () -> Void
+
+    @State private var chromeVisible = true
+    @State private var hideTask: Task<Void, Never>?
+    @State private var scrubbing = false
+    @State private var scrubFraction = 0.0
+
+    var body: some View {
+        ZStack {
+            // Tap anywhere toggles the transport chrome.
+            Color.black.opacity(chromeVisible ? 0.35 : 0.001)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { toggleChrome() }
+
+            if chromeVisible { chrome }
+
+            // Skip pill / countdown — always on top, bottom-trailing.
+            skipOverlay
+        }
+        .animation(.easeInOut(duration: 0.2), value: chromeVisible)
+        .onAppear { scheduleHide() }
+        .onDisappear { hideTask?.cancel() }
+    }
+
+    // MARK: Chrome (auto-hiding transport)
+
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            topBar
+            Spacer()
+            centerControls
+            Spacer()
+            bottomBar
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .transition(.opacity)
+    }
+
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7)) }
+            }
+            Spacer()
+            AirPlayRoutePicker().frame(width: 40, height: 40)
+            if pip.isPossible {
+                Button { pip.toggle(); resetHideTimer() } label: {
+                    Image(systemName: "pip.enter").font(.system(size: 20)).foregroundStyle(.white)
+                }
+            }
+        }
+    }
+
+    private var centerControls: some View {
+        TimelineView(.animation) { _ in
+            HStack(spacing: 50) {
+                Button { controller.skip(by: -10); resetHideTimer() } label: {
+                    Image(systemName: "gobackward.10").font(.system(size: 30)).foregroundStyle(.white)
+                }
+                Button { controller.togglePlayPause(); resetHideTimer() } label: {
+                    Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 44)).foregroundStyle(.white)
+                }
+                Button { controller.skip(by: 10); resetHideTimer() } label: {
+                    Image(systemName: "goforward.10").font(.system(size: 30)).foregroundStyle(.white)
+                }
+            }
+        }
+    }
+
+    private var bottomBar: some View {
+        TimelineView(.animation) { _ in
+            let duration = controller.duration()
+            let current = scrubbing ? scrubFraction * duration : controller.currentTime()
+            VStack(spacing: 6) {
+                scrubber(duration: duration, current: current)
+                HStack {
+                    Text(Self.timecode(current)).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
+                    Spacer()
+                    Text(Self.timecode(duration)).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
+                }
+            }
+        }
+    }
+
+    private func scrubber(duration: Double, current: Double) -> some View {
+        GeometryReader { geo in
+            let frac = duration > 0 ? min(1, max(0, current / duration)) : 0
+            let w = geo.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.3)).frame(height: 4)
+                Capsule().fill(Color.white).frame(width: w * frac, height: 4)
+                Circle().fill(Color.white).frame(width: 14, height: 14)
+                    .offset(x: max(0, w * frac - 7))
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        scrubbing = true
+                        scrubFraction = min(1, max(0, v.location.x / w))
+                        resetHideTimer()
+                    }
+                    .onEnded { _ in
+                        if duration > 0 { controller.seek(to: scrubFraction * duration) }
+                        scrubbing = false
+                    }
+            )
+        }
+        .frame(height: 20)
+    }
+
+    // MARK: Skip pill / next-episode (always visible)
+
+    private var skipOverlay: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 12) {
+                Spacer()
+                if let n = controller.nextCountdown {
+                    Button { controller.cancelNextEpisode() } label: { Text("Annulla").netflixLabel(faint: true) }
+                    Button { controller.playNextNow() } label: {
+                        Label("Prossimo episodio (\(n)s)", systemImage: "play.fill").netflixLabel()
+                    }
+                } else if let prompt = controller.skipPrompt, let seg = controller.skipSegment {
+                    FillingPill(title: prompt.title, segment: seg, currentTime: { controller.currentTime() }, action: { controller.performSkip() })
+                }
+            }
+            .padding(.horizontal, 20)
+            // Sit above the scrubber when the chrome is up.
+            .padding(.bottom, chromeVisible ? 70 : 24)
+        }
+        .animation(.easeInOut(duration: 0.25), value: controller.skipPrompt)
+        .animation(.easeInOut(duration: 0.25), value: controller.nextCountdown)
+    }
+
+    // MARK: Chrome visibility
+
+    private func toggleChrome() {
+        chromeVisible.toggle()
+        if chromeVisible { scheduleHide() } else { hideTask?.cancel() }
+    }
+
+    private func resetHideTimer() { if chromeVisible { scheduleHide() } }
+
+    /// Auto-hide the chrome after a few seconds of no interaction (only while
+    /// playing — a paused player keeps its controls up).
+    private func scheduleHide() {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled, controller.isPlaying { chromeVisible = false }
+        }
+    }
+
+    private static func timecode(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        let s = Int(seconds)
+        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+}
+
 /// Full-screen playback surface. Shows a spinner while resolving the provider
 /// source, an error state if it fails, and the AVPlayer once ready.
 struct PlayerScreen: View {
@@ -134,6 +256,7 @@ struct PlayerScreen: View {
     var onProgress: ((Double, Double) -> Void)?
 
     @State private var controller = PlaybackController()
+    @State private var pip = PiPProxy()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(Library.self) private var library
@@ -160,22 +283,17 @@ struct PlayerScreen: View {
                 }
             case .ready:
                 if let player = controller.player {
-                    VStack(spacing: 0) {
-                        AVPlayerContainer(player: player)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        SkipControlBar(
-                            skipPrompt: controller.skipPrompt,
-                            skipSegment: controller.skipSegment,
-                            nextCountdown: controller.nextCountdown,
-                            currentTime: { controller.currentTime() },
-                            onSkip: { controller.performSkip() },
-                            onPlayNext: { controller.playNextNow() },
-                            onCancelNext: { controller.cancelNextEpisode() }
+                    ZStack {
+                        PlayerLayerView(player: player, pip: pip)
+                            .ignoresSafeArea()
+                        PlayerControlsOverlay(
+                            controller: controller,
+                            pip: pip,
+                            title: request.title,
+                            subtitle: request.mediaType == .tv ? "S\(request.season) · E\(request.episode)" : nil,
+                            onClose: { dismiss() }
                         )
                     }
-                    .ignoresSafeArea(edges: .top)
-                    .animation(.easeInOut(duration: 0.25), value: controller.skipPrompt)
-                    .animation(.easeInOut(duration: 0.25), value: controller.nextCountdown)
                 }
             case .failed(let message):
                 VStack(spacing: 16) {
