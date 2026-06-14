@@ -40,7 +40,9 @@ struct RootTabView: View {
             .toastOverlay()
         }
         .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
-        .toastOverlay()
+        // While a sheet is up it has its own overlay (above); suppress this one
+        // so a toast from Settings/History/Downloads doesn't render twice.
+        .toastOverlay(enabled: nav.presentedSheet == nil)
         .task {
             DownloadManager.shared.configure(library: library)
             // Warm the WARP tunnel at launch so the first playback doesn't race

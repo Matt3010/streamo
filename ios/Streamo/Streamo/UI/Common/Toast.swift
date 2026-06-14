@@ -25,10 +25,13 @@ final class ToastCenter {
 
 private struct ToastOverlay: ViewModifier {
     private var center = ToastCenter.shared
+    let enabled: Bool
+
+    init(enabled: Bool) { self.enabled = enabled }
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
-            if let msg = center.message {
+            if enabled, let msg = center.message {
                 Text(msg)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white)
@@ -44,6 +47,8 @@ private struct ToastOverlay: ViewModifier {
 }
 
 extension View {
-    /// Shows ToastCenter messages along the bottom edge.
-    func toastOverlay() -> some View { modifier(ToastOverlay()) }
+    /// Shows ToastCenter messages along the bottom edge. Pass `enabled: false`
+    /// to suppress this overlay when another (e.g. a sheet's own overlay) is
+    /// showing the same toast — otherwise the message renders twice.
+    func toastOverlay(enabled: Bool = true) -> some View { modifier(ToastOverlay(enabled: enabled)) }
 }
