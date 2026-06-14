@@ -84,6 +84,12 @@ private struct PlayerControlsOverlay: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var scrubbing = false
     @State private var scrubFraction = 0.0
+    // Polled ~3×/s while the chrome is up — drives the scrubber, timecodes and
+    // play/pause glyph without wrapping the drag gesture in a TimelineView
+    // (which would re-create the gesture every frame).
+    @State private var position = 0.0
+    @State private var videoDuration = 0.0
+    @State private var playing = false
 
     var body: some View {
         ZStack {
@@ -101,6 +107,24 @@ private struct PlayerControlsOverlay: View {
         .animation(.easeInOut(duration: 0.2), value: chromeVisible)
         .onAppear { scheduleHide() }
         .onDisappear { hideTask?.cancel() }
+        // Poll playback state only while the chrome is visible. `.task(id:)`
+        // auto-cancels when chromeVisible flips or the view disappears.
+        .task(id: chromeVisible) {
+            guard chromeVisible else { return }
+            while !Task.isCancelled && chromeVisible {
+                if !scrubbing {
+                    position = controller.currentTime()
+                    videoDuration = controller.duration()
+                }
+                playing = controller.isPlaying
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+        }
+        // Arm the auto-hide once playback actually starts (covers a delayed
+        // buffering start where the initial scheduleHide saw a paused player).
+        .onChange(of: playing) { _, isPlaying in
+            if isPlaying, chromeVisible { scheduleHide() }
+        }
     }
 
     // MARK: Chrome (auto-hiding transport)
@@ -138,33 +162,32 @@ private struct PlayerControlsOverlay: View {
     }
 
     private var centerControls: some View {
-        TimelineView(.animation) { _ in
-            HStack(spacing: 50) {
-                Button { controller.skip(by: -10); resetHideTimer() } label: {
-                    Image(systemName: "gobackward.10").font(.system(size: 30)).foregroundStyle(.white)
-                }
-                Button { controller.togglePlayPause(); resetHideTimer() } label: {
-                    Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 44)).foregroundStyle(.white)
-                }
-                Button { controller.skip(by: 10); resetHideTimer() } label: {
-                    Image(systemName: "goforward.10").font(.system(size: 30)).foregroundStyle(.white)
-                }
+        HStack(spacing: 50) {
+            Button { controller.skip(by: -10); resetHideTimer() } label: {
+                Image(systemName: "gobackward.10").font(.system(size: 30)).foregroundStyle(.white)
+            }
+            Button {
+                controller.togglePlayPause()
+                playing = controller.isPlaying   // immediate glyph update, don't wait for the poll
+                resetHideTimer()
+            } label: {
+                Image(systemName: playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 44)).foregroundStyle(.white)
+            }
+            Button { controller.skip(by: 10); resetHideTimer() } label: {
+                Image(systemName: "goforward.10").font(.system(size: 30)).foregroundStyle(.white)
             }
         }
     }
 
     private var bottomBar: some View {
-        TimelineView(.animation) { _ in
-            let duration = controller.duration()
-            let current = scrubbing ? scrubFraction * duration : controller.currentTime()
-            VStack(spacing: 6) {
-                scrubber(duration: duration, current: current)
-                HStack {
-                    Text(Self.timecode(current)).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
-                    Spacer()
-                    Text(Self.timecode(duration)).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
-                }
+        let current = scrubbing ? scrubFraction * videoDuration : position
+        return VStack(spacing: 6) {
+            scrubber(duration: videoDuration, current: current)
+            HStack {
+                Text(Self.timecode(current)).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Text(Self.timecode(videoDuration)).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
             }
         }
     }
