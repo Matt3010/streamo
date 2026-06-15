@@ -21,6 +21,15 @@ actor WarpTunnel {
     private var proxyPort: UInt16 = 0
     private var running = false
     private var cachedSession: URLSession?
+    /// Set when the tunnel may have gone stale under us (app returned to the
+    /// foreground after iOS suspended it — the userspace WireGuard sockets /
+    /// handshake can die while `isReady` still reads true). The next `start()`
+    /// probes the egress and restarts only if it's actually dead.
+    private var needsRevalidation = false
+    /// Single-flight guard: concurrent `start()` callers join this one task
+    /// instead of each booting a fresh engine (which would tear the others down
+    /// mid-handshake — the Go side stops any running tunnel before starting).
+    private var startTask: Task<Bool, Error>?
 
     init(engine: WarpProxyEngine = DefaultWarpProxyEngine.make()) {
         self.engine = engine
@@ -41,7 +50,25 @@ actor WarpTunnel {
     /// registering races the warm-up and fails until the app is relaunched.
     @discardableResult
     func start() async throws -> Bool {
-        if isReady { return true }
+        if isReady && !needsRevalidation { return true }
+        // Join an in-flight start instead of racing a second engine boot.
+        if let task = startTask { return try await task.value }
+        let task = Task { try await self.performStart() }
+        startTask = task
+        defer { startTask = nil }
+        return try await task.value
+    }
+
+    private func performStart() async throws -> Bool {
+        if isReady {
+            // `isReady` can read true while the underlying tunnel is dead (iOS
+            // suspended the app). When flagged stale, do one quick liveness
+            // probe through the live session; restart only if it actually fails.
+            if !needsRevalidation { return true }
+            needsRevalidation = false
+            if let s = cachedSession, await Self.probeEgress(s) { return true }
+            tearDown()
+        }
         let port = Self.randomLoopbackPort()
         let bind = "\(proxyHost):\(port)"
         guard let confText = await WarpAccount.shared.wireproxyConfig(httpBind: bind) else {
@@ -51,9 +78,13 @@ actor WarpTunnel {
         proxyPort = port
         cachedSession = nil
 
-        // Probe the proxy until it egresses (up to ~10s), then mark ready.
+        // Probe the proxy until it egresses (up to ~16s), then mark ready. A
+        // cold WireGuard handshake on cellular can take well over 10s; too
+        // short a window makes the first play after launch fail closed
+        // ("WARP attivo ma non raggiungibile") even though the tunnel was about
+        // to come up.
         let probeSession = Self.makeProxiedSession(host: proxyHost, port: port)
-        for attempt in 0..<20 {
+        for attempt in 0..<32 {
             if attempt > 0 { try? await Task.sleep(nanoseconds: 500_000_000) }
             if await Self.probeEgress(probeSession) {
                 running = true
@@ -77,6 +108,18 @@ actor WarpTunnel {
     }
 
     func stop() {
+        tearDown()
+        needsRevalidation = false
+    }
+
+    /// Flag the tunnel for a liveness re-check on the next `start()`. Call when
+    /// the app returns to the foreground: iOS may have killed the userspace
+    /// WireGuard sockets during suspension while `isReady` still reads true,
+    /// which otherwise leaves `warpSession()` handing back a dead session.
+    func invalidate() { if running { needsRevalidation = true } }
+
+    /// Tear the engine down without touching `needsRevalidation`.
+    private func tearDown() {
         engine.stop()
         running = false
         proxyPort = 0
@@ -188,7 +231,7 @@ struct UnavailableWarpProxyEngine: WarpProxyEngine {
 #if canImport(WireProxyKit)
 import WireProxyKit
 
-/// Real engine backed by the gomobile build of `ios/wireproxykit` (wraps
+/// Real engine backed by the gomobile build of `wireproxykit` (repo root, wraps
 /// whyvl/wireproxy). gomobile names symbols `<Package><Func>`, so the Go
 /// package `wireproxykit` exporting `Start(string) error` / `Stop()` becomes
 /// `WireproxykitStart(_:)` (throws — Go's trailing `error` bridges to Swift

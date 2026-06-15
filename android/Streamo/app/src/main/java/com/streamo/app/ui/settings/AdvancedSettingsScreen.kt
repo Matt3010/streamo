@@ -308,7 +308,7 @@ fun AdvancedSettingsScreen(
                     if (!viewModel.warpAvailable) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Motore WARP non incluso in questa build. Genera warpkit.aar (android/wireproxykit/build.sh) e ricompila.",
+                            "Motore WARP non incluso in questa build. Genera warpkit.aar (wireproxykit/build-android.sh) e ricompila.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )

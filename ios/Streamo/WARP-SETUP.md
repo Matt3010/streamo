@@ -12,7 +12,7 @@ WARP, port di `wgcf`, Keychain), `Provider/WarpTunnel.swift` (avvia il motore, e
 
 Manca **un solo pezzo nativo**: il motore WireGuard userspace, fornito come
 xcframework `WireProxyKit` (gomobile, wrappa `github.com/windtf/wireproxy`). I sorgenti
-Go sono già pronti in **`ios/wireproxykit/`** (`wireproxykit.go`, `go.mod`, `build.sh`).
+Go sono già pronti in **`wireproxykit/`** (root, condiviso con Android) (`wireproxykit.go`, `go.mod`, `build-ios.sh`).
 Finché l'xcframework non è collegato, `WarpTunnel.isAvailable == false` e l'app resta
 in **Diretto** (il toggle WARP è disabilitato con avviso in Impostazioni → Avanzate).
 
@@ -25,17 +25,20 @@ Prerequisiti: **Xcode completo** (non solo CLT) e **Go**.
 sudo xcode-select -s /Applications/Xcode.app
 brew install go            # se manca
 
-cd ios/wireproxykit
-./build.sh                 # installa gomobile, risolve deps, produce WireProxyKit.xcframework
+cd wireproxykit
+./build-ios.sh             # installa gomobile, risolve deps, produce l'xcframework in ios/Streamo/Frameworks/
 ```
+
+L'output va in **`ios/Streamo/Frameworks/WireProxyKit.xcframework`**, già referenziato
+dal progetto (Embed & Sign). È committato come Android committa `warpkit.aar`, quindi
+altre macchine/CI non hanno bisogno di Go + Xcode toolchain.
 
 ## Collega in Xcode
 
-1. Trascina `ios/wireproxykit/WireProxyKit.xcframework` nel progetto Streamo.
-2. Target Streamo → General → **Frameworks, Libraries, and Embedded Content** →
-   **Embed & Sign**.
-3. Rebuild. Ora `#if canImport(WireProxyKit)` attiva `WireProxyEngine` e il toggle WARP
-   si abilita.
+Già collegato: l'xcframework è in `ios/Streamo/Frameworks/` e referenziato in
+`Streamo.xcodeproj`. Basta **Rebuild** — `#if canImport(WireProxyKit)` attiva
+`WireProxyEngine` e il toggle WARP si abilita. (Se lo rigeneri e Xcode non lo vede,
+Product → Clean Build Folder.)
 
 ## Uso
 
@@ -49,7 +52,7 @@ AirPlay continua a funzionare perché il telefono fa da proxy sulla LAN.
 
 ## Note
 
-- `build.sh` esegue `go get github.com/windtf/wireproxy@latest` + `go mod tidy`: la
+- `build-ios.sh` esegue `go get github.com/windtf/wireproxy@latest` + `go mod tidy`: la
   versione esatta viene fissata al primo build (committa il `go.sum` generato).
 - gomobile nomina i simboli `<Package><Func>`: package Go `wireproxykit` →
   `WireproxykitStart(_:)` / `WireproxykitStop()`, modulo `WireProxyKit` (dal `-o`).

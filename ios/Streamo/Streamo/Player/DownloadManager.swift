@@ -633,6 +633,15 @@ final class DownloadManager {
             debugLog("runDownload error key=\(k) run=\(runID) retry=\(next) error=\(error.localizedDescription)")
             if next <= maxRetries {
                 activeTask = Task { [weak self] in
+                    // The tunnel may have gone stale without a lifecycle/path
+                    // event flagging it (Cloudflare-side rekey, idle drop) — in
+                    // which case start() on the re-resolve would hand back the
+                    // dead cached session. Flag it so the retry's prepareWARP
+                    // re-probes and restarts. Mirrors the streaming backstop in
+                    // LocalHLSServer.handleLiveProxy.
+                    if AppSettings.shared.providerProxyActive, await WarpTunnel.shared.isReady {
+                        await WarpTunnel.shared.invalidate()
+                    }
                     try? await Task.sleep(for: .seconds(2))
                     await self?.runDownload(key: k, runID: runID)
                 }

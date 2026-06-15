@@ -21,6 +21,10 @@ actor TMDBClient {
         }
     }
 
+    // TMDB is neutral metadata (not the streaming provider), so it always
+    // egresses directly — never through WARP. WARP hides the device IP from
+    // StreamingCommunity/vixcloud only; routing the catalog through it just
+    // coupled browsing to tunnel health for no privacy gain.
     init(session: URLSession = .shared) {
         self.session = session
     }

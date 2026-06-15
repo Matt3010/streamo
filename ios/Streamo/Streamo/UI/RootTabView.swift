@@ -50,10 +50,28 @@ struct RootTabView: View {
             // Honour a LAN toggle made from the Control Center control that
             // launched (or returned to) the app, and seed the control's state.
             LANShareCoordinator.applyPendingControlRequest()
+            // Warm the WARP tunnel at launch so the first playback doesn't race
+            // the WireGuard handshake (which can take seconds) and fail.
+            if AppSettings.shared.providerProxyActive {
+                Task { try? await WarpTunnel.shared.start() }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
-            if phase == .active { LANShareCoordinator.applyPendingControlRequest() }
+            switch phase {
+            case .background:
+                WidgetCenter.shared.reloadAllTimelines()
+                // The tunnel may not survive suspension — flag it so the next
+                // start() re-probes and restarts instead of reusing a dead session.
+                Task { await WarpTunnel.shared.invalidate() }
+            case .active:
+                LANShareCoordinator.applyPendingControlRequest()
+                // Re-validate (and restart if dead) before the user taps play.
+                if AppSettings.shared.providerProxyActive {
+                    Task { try? await WarpTunnel.shared.start() }
+                }
+            default:
+                break
+            }
         }
         .onOpenURL { url in handleDeepLink(url) }
     }
@@ -82,6 +100,15 @@ struct RootTabView: View {
             }
             .tabItem { Label("Cerca", systemImage: "magnifyingglass") }
             .tag(AppNavigation.Tab.search)
+
+            NavigationStack {
+                AnimeCatalogView()
+                    .navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
+                    .toolbarActions()
+                    .background { AmbientBackground() }
+            }
+            .tabItem { Label("Anime", systemImage: "sparkles.tv.fill") }
+            .tag(AppNavigation.Tab.anime)
 
             NavigationStack {
                 WatchlistView()

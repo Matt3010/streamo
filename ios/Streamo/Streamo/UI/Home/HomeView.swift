@@ -24,7 +24,7 @@ struct HomeView: View {
 
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                if let error = model.errorMessage, model.rows.isEmpty {
+                if let error = model.errorMessage, !model.rows.values.contains(where: { !$0.isEmpty }) {
                     ContentUnavailableView {
                         Label("Catalogo non disponibile", systemImage: "film.stack")
                     } description: {

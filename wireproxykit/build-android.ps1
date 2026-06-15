@@ -1,6 +1,6 @@
 # Build warpkit.aar (userspace WireGuard -> local HTTP proxy, Cloudflare WARP)
-# for the Streamo Android app, on Windows. PowerShell port of build.sh — reuses
-# the SAME Go source as iOS (..\..\ios\wireproxykit\wireproxykit.go).
+# for the Streamo Android app, on Windows. PowerShell port of build-android.sh — reuses
+# the SAME shared Go source as iOS (.\wireproxykit.go, this dir).
 #
 # Requires:
 #   - Go (https://go.dev/dl/)        -> `go version`
@@ -9,15 +9,15 @@
 # Point gomobile at your SDK/NDK before running (adjust paths/version):
 #   $env:ANDROID_HOME     = "$env:LOCALAPPDATA\Android\Sdk"
 #   $env:ANDROID_NDK_HOME = "$env:ANDROID_HOME\ndk\27.0.12077973"
-#   .\build.ps1
+#   .\build-android.ps1
 #
 # Output: android\Streamo\app\libs\warpkit.aar. Commit it like iOS commits
 # WireProxyKit.xcframework, so other machines/CI don't need Go + NDK.
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$src = Resolve-Path "..\..\ios\wireproxykit"
-$out = Join-Path (Resolve-Path "..\Streamo") "app\libs"
+$src = Resolve-Path "."
+$out = Join-Path (Resolve-Path "..\android\Streamo") "app\libs"
 
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) { throw "Go not installed (https://go.dev/dl/)" }
 if (-not (Test-Path (Join-Path $src "wireproxykit.go"))) { throw "Go source not found at $src" }

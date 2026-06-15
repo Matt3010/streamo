@@ -8,6 +8,16 @@ enum MediaType: String, Codable, Hashable, Sendable {
     case tv
 }
 
+/// Which catalog a library row belongs to. `tmdb` (StreamingCommunity, the
+/// default) keys on a TMDB id; `animeUnity` keys on an AnimeUnity entry id in
+/// the same `tmdbId` column. The discriminator keeps the two id spaces from
+/// colliding across progress/history/downloads/watchlist. Existing rows decode
+/// as `tmdb` via the stored default.
+enum ContentSource: String, Codable, Hashable, Sendable {
+    case tmdb
+    case animeUnity = "au"
+}
+
 /// Reason a provider resolve failed — same wire strings as the web app's
 /// `ProviderResolveFailureReason`.
 enum ProviderResolveFailureReason: String, Codable, Sendable {

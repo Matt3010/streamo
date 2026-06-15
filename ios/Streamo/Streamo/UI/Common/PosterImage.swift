@@ -61,6 +61,7 @@ struct DiskImageCache: Sendable {
     /// downloaded titles so they render in airplane mode.
     func prefetch(_ url: URL) async {
         if FileManager.default.fileExists(atPath: fileURL(for: url).path) { return }
+        // TMDB artwork is neutral metadata — always direct, never through WARP.
         guard let (data, response) = try? await URLSession.shared.data(from: url) else { return }
         let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? true
         guard ok, UIImage(data: data) != nil else { return }
@@ -130,6 +131,7 @@ struct PosterImage: View {
         }
         for attempt in 0..<3 {
             if Task.isCancelled { return false }
+            // TMDB artwork is neutral metadata — always direct, never through WARP.
             if let (data, response) = try? await URLSession.shared.data(from: url) {
                 let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? true
                 if ok, let img = UIImage(data: data) {

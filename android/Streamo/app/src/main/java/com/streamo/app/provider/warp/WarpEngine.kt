@@ -5,7 +5,7 @@ import java.lang.reflect.Method
 
 /**
  * Reflection wrapper around the gomobile-generated WARP engine
- * (`com.streamo.warp.wireproxykit.Wireproxykit`, built from `ios/wireproxykit`
+ * (`com.streamo.warp.wireproxykit.Wireproxykit`, built from `wireproxykit`
  * into `app/libs/warpkit.aar`).
  *
  * Reflection — not a direct call — so the app compiles and runs even when the

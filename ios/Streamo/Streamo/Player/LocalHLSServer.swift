@@ -794,7 +794,6 @@ final class LocalHLSServer: @unchecked Sendable {
 
         Task { [weak self] in
             guard let self else { connection.cancel(); return }
-            let session = await WarpTunnel.shared.warpSession()
             var request = URLRequest(url: url)
             request.timeoutInterval = 30
             request.setValue(acceptHeader, forHTTPHeaderField: "Accept")
@@ -805,8 +804,23 @@ final class LocalHLSServer: @unchecked Sendable {
                 request.setValue(rangeHeader, forHTTPHeaderField: "Range")
             }
 
-            guard let (data, response) = try? await session.data(for: request),
-                  let http = response as? HTTPURLResponse else {
+            func fetch() async -> (Data, HTTPURLResponse)? {
+                let session = await WarpTunnel.shared.warpSession()
+                guard let (data, response) = try? await session.data(for: request),
+                      let http = response as? HTTPURLResponse else { return nil }
+                return (data, http)
+            }
+
+            // First attempt; if it fails while WARP is meant to be up, the tunnel
+            // probably went stale (e.g. the app was suspended mid-stream) — flag
+            // it, let start() restart it, and retry once before giving up.
+            var result = await fetch()
+            if result == nil, await WarpTunnel.shared.isReady {
+                await WarpTunnel.shared.invalidate()
+                _ = try? await WarpTunnel.shared.start()
+                result = await fetch()
+            }
+            guard let (data, http) = result else {
                 self.queue.async { self.send(status: "502 Bad Gateway", on: connection, then: { connection.cancel() }) }
                 return
             }

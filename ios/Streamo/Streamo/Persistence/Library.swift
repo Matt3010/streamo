@@ -172,10 +172,11 @@ final class Library {
 
     // MARK: - Progress
 
-    func progress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) -> ProgressEntry? {
+    func progress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int, source: ContentSource = .tmdb) -> ProgressEntry? {
         let raw = type.rawValue
+        let srcRaw = source.rawValue
         var d = FetchDescriptor<ProgressEntry>(predicate: #Predicate {
-            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.season == season && $0.episode == episode
+            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw && $0.season == season && $0.episode == episode
         })
         d.fetchLimit = 1
         return try? context.fetch(d).first
@@ -184,8 +185,10 @@ final class Library {
     /// Upsert a progress row (mirrors the web's progress.save).
     func saveProgress(tmdbId: Int, type: MediaType, season: Int, episode: Int,
                       position: Double, duration: Double,
-                      title: String?, poster: String?, backdrop: String?) {
-        if let e = progress(tmdbId, type, season: season, episode: episode) {
+                      title: String?, poster: String?, backdrop: String?,
+                      source: ContentSource = .tmdb,
+                      providerEpisodeId: Int? = nil, providerSlug: String? = nil) {
+        if let e = progress(tmdbId, type, season: season, episode: episode, source: source) {
             e.position = position
             e.duration = duration
             e.updatedAt = .now
@@ -193,15 +196,16 @@ final class Library {
             if let title { e.title = title }
             if let poster { e.poster = poster }
             if let backdrop { e.backdrop = backdrop }
+            if let providerEpisodeId { e.providerEpisodeId = providerEpisodeId }
+            if let providerSlug { e.providerSlug = providerSlug }
         } else {
             context.insert(ProgressEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
-                                         position: position, duration: duration, title: title, poster: poster, backdrop: backdrop))
+                                         position: position, duration: duration, title: title, poster: poster, backdrop: backdrop,
+                                         source: source, providerEpisodeId: providerEpisodeId, providerSlug: providerSlug))
         }
         // Watchlist lifecycle on save — port of maybeAutoCompleteWatchlist.
-        // Movies need no TMDB lookup so we finish them here; series auto-flip
-        // to "done" happens on-read in WatchlistEnrichment (needs the aired
-        // count). Starting any title bumps "Da guardare" → "In corso".
-        if let w = watchlistEntry(tmdbId, type), w.status != .done {
+        // TMDB-only: anime has no TMDB watchlist row to auto-flip.
+        if source == .tmdb, let w = watchlistEntry(tmdbId, type), w.status != .done {
             if type == .movie, duration > 0, position >= duration * TVLogic.watchedThreshold {
                 w.status = .done
                 w.doneAiredEpisodes = 0
@@ -212,8 +216,8 @@ final class Library {
         save()
     }
 
-    func removeProgress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) {
-        if let e = progress(tmdbId, type, season: season, episode: episode) { context.delete(e); save() }
+    func removeProgress(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int, source: ContentSource = .tmdb) {
+        if let e = progress(tmdbId, type, season: season, episode: episode, source: source) { context.delete(e); save() }
     }
 
     /// Library maintenance ("Ricalcola"): drop progress rows for titles no
@@ -243,9 +247,10 @@ final class Library {
 
     /// Hide a title from "Continua a guardare" without deleting its progress
     /// (so smart-resume still works). Watching it again unhides it.
-    func hideFromContinue(_ tmdbId: Int, _ type: MediaType) {
+    func hideFromContinue(_ tmdbId: Int, _ type: MediaType, source: ContentSource = .tmdb) {
         let raw = type.rawValue
-        let d = FetchDescriptor<ProgressEntry>(predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw })
+        let srcRaw = source.rawValue
+        let d = FetchDescriptor<ProgressEntry>(predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw })
         for e in (try? context.fetch(d)) ?? [] { e.hiddenFromContinue = true }
         save()
     }
@@ -271,17 +276,19 @@ final class Library {
                      position: 1, duration: 1, title: title, poster: poster, backdrop: nil)
     }
 
-    /// All per-episode progress rows for a series.
-    func seriesProgress(_ tmdbId: Int) -> [ProgressEntry] {
+    /// All per-episode progress rows for a series (TMDB catalog).
+    func seriesProgress(_ tmdbId: Int, source: ContentSource = .tmdb) -> [ProgressEntry] {
         let raw = MediaType.tv.rawValue
-        let d = FetchDescriptor<ProgressEntry>(predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw })
+        let srcRaw = source.rawValue
+        let d = FetchDescriptor<ProgressEntry>(predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw })
         return (try? context.fetch(d)) ?? []
     }
 
     private func latestTvProgress(_ tmdbId: Int) -> ProgressEntry? {
         let raw = MediaType.tv.rawValue
+        let srcRaw = ContentSource.tmdb.rawValue
         var d = FetchDescriptor<ProgressEntry>(
-            predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw },
+            predicate: #Predicate { $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw },
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse),
                      SortDescriptor(\.season, order: .reverse),
                      SortDescriptor(\.episode, order: .reverse)]
@@ -323,6 +330,9 @@ final class Library {
         var seen = Set<String>()
         var result: [ProgressEntry] = []
         for r in rows {
+            // Home rails are TMDB-only; anime has its own "Continua" in the Anime
+            // tab and isn't navigable via TMDB MediaRef.
+            guard r.source == .tmdb else { continue }
             let key = "\(r.mediaTypeRaw)-\(r.tmdbId)"
             guard r.position > 15, !r.hiddenFromContinue, !doneKeys.contains(key) else { continue }
             if seen.insert(key).inserted {
@@ -339,6 +349,31 @@ final class Library {
         continueCandidates(limit: limit).filter {
             !($0.duration > 0 && $0.position >= $0.duration * TVLogic.watchedThreshold)
         }
+    }
+
+    /// AnimeUnity "Continua a guardare": latest in-flight episode per anime
+    /// entry (source `.animeUnity`), most-recent first, not finished, not hidden.
+    /// Used by the Anime tab's own continue row (anime stays out of the TMDB
+    /// Home rails). Each row carries the provider episode id/slug so playback
+    /// resumes without re-opening the detail page.
+    func animeContinueRows(limit: Int = 20) -> [ProgressEntry] {
+        let auRaw = ContentSource.animeUnity.rawValue
+        let d = FetchDescriptor<ProgressEntry>(
+            predicate: #Predicate { $0.sourceRaw == auRaw },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        let rows = (try? context.fetch(d)) ?? []
+        var seen = Set<Int>()
+        var result: [ProgressEntry] = []
+        for r in rows {
+            let finished = r.duration > 0 && r.position >= r.duration * TVLogic.watchedThreshold
+            guard r.position > 15, !r.hiddenFromContinue, !finished else { continue }
+            if seen.insert(r.tmdbId).inserted {
+                result.append(r)
+                if result.count >= limit { break }
+            }
+        }
+        return result
     }
 
     /// Home "Continua a guardare" — full port of GET /user/progress: finished
@@ -387,14 +422,14 @@ final class Library {
         let progressRows = (try? context.fetch(FetchDescriptor<ProgressEntry>())) ?? []
         var byCoordinate: [String: ProgressEntry] = [:]
         for p in progressRows {
-            byCoordinate["\(p.mediaTypeRaw)-\(p.tmdbId)-\(p.season)-\(p.episode)"] = p
+            byCoordinate["\(p.sourceRaw)-\(p.mediaTypeRaw)-\(p.tmdbId)-\(p.season)-\(p.episode)"] = p
         }
         // De-dupe by coordinate: iOS can keep one history row per day for the
         // same episode, but the web counts each coordinate once.
         let historyRows = (try? context.fetch(FetchDescriptor<HistoryEntry>())) ?? []
         var counted = Set<String>()
         return historyRows.reduce(0) { acc, h in
-            let key = "\(h.mediaTypeRaw)-\(h.tmdbId)-\(h.season)-\(h.episode)"
+            let key = "\(h.sourceRaw)-\(h.mediaTypeRaw)-\(h.tmdbId)-\(h.season)-\(h.episode)"
             guard counted.insert(key).inserted, let p = byCoordinate[key] else { return acc }
             return acc + Self.watchTimeSeconds(position: p.position, duration: p.duration)
         }
@@ -410,19 +445,21 @@ final class Library {
 
     // MARK: - History
 
-    func saveHistory(tmdbId: Int, type: MediaType, season: Int, episode: Int, title: String?, poster: String?) {
+    func saveHistory(tmdbId: Int, type: MediaType, season: Int, episode: Int, title: String?, poster: String?,
+                     source: ContentSource = .tmdb) {
         // De-dupe same episode within a short window so a pause+resume doesn't
         // spam rows: replace today's row for the same coordinate.
         let raw = type.rawValue
+        let srcRaw = source.rawValue
         let cal = Calendar.current
         let startOfDay = cal.startOfDay(for: .now)
         var d = FetchDescriptor<HistoryEntry>(predicate: #Predicate {
-            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.season == season && $0.episode == episode && $0.watchedAt >= startOfDay
+            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw && $0.season == season && $0.episode == episode && $0.watchedAt >= startOfDay
         })
         d.fetchLimit = 1
         // Snapshot the current cumulative position so the row can later show
         // how much was watched on this day (this snapshot − the previous day's).
-        let prog = progress(tmdbId, type, season: season, episode: episode)
+        let prog = progress(tmdbId, type, season: season, episode: episode, source: source)
         let pos = prog?.position ?? 0
         let dur = prog?.duration ?? 0
         if let existing = try? context.fetch(d).first {
@@ -432,7 +469,7 @@ final class Library {
         } else {
             context.insert(HistoryEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
                                         title: title, poster: poster,
-                                        progressSeconds: pos, durationSeconds: dur))
+                                        progressSeconds: pos, durationSeconds: dur, source: source))
         }
         save()
     }
@@ -470,10 +507,11 @@ final class Library {
         return (try? context.fetch(d)) ?? []
     }
 
-    func download(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int) -> DownloadEntry? {
+    func download(_ tmdbId: Int, _ type: MediaType, season: Int, episode: Int, source: ContentSource = .tmdb) -> DownloadEntry? {
         let raw = type.rawValue
+        let srcRaw = source.rawValue
         var d = FetchDescriptor<DownloadEntry>(predicate: #Predicate {
-            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.season == season && $0.episode == episode
+            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw && $0.season == season && $0.episode == episode
         })
         d.fetchLimit = 1
         return try? context.fetch(d).first
@@ -530,8 +568,8 @@ final class Library {
                      title: String?, poster: String?, backdrop: String? = nil, releaseDate: String?,
                      episodeTitle: String? = nil, episodeOverview: String? = nil,
                      episodeStill: String? = nil, episodeRuntime: Int? = nil,
-                     itemJSON: String? = nil) -> DownloadEntry {
-        if let existing = download(tmdbId, type, season: season, episode: episode) {
+                     itemJSON: String? = nil, source: ContentSource = .tmdb) -> DownloadEntry {
+        if let existing = download(tmdbId, type, season: season, episode: episode, source: source) {
             if let title { existing.title = title }
             if let poster { existing.poster = poster }
             if let backdrop { existing.backdrop = backdrop }
@@ -557,7 +595,8 @@ final class Library {
             episodeTitle: episodeTitle,
             episodeOverview: episodeOverview,
             episodeStill: episodeStill,
-            episodeRuntime: episodeRuntime
+            episodeRuntime: episodeRuntime,
+            source: source
         )
         entry.itemJSON = itemJSON
         context.insert(entry)

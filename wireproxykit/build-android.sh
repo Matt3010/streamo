@@ -1,21 +1,21 @@
 #!/usr/bin/env sh
 # Build warpkit.aar (userspace WireGuard -> local HTTP proxy, Cloudflare WARP)
-# for the Streamo Android app. Reuses the SAME Go source as iOS
-# (../../ios/wireproxykit/wireproxykit.go) — only the gomobile target differs.
+# for the Streamo Android app. Reuses the SAME shared Go source as iOS
+# (./wireproxykit.go, this dir) — only the gomobile target differs.
 #
 # Requires Go and the Android NDK. gomobile fetches its own NDK if ANDROID_NDK_HOME
 # is unset, but a local SDK/NDK is recommended:
 #   export ANDROID_HOME=$HOME/Android/Sdk
 #   export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/<version>
-#   ./build.sh
+#   ./build-android.sh
 #
 # Output: android/Streamo/app/libs/warpkit.aar. Commit the .aar like iOS commits
 # WireProxyKit.xcframework, so CI/other machines don't need the Go toolchain.
 set -e
 cd "$(dirname "$0")"
 
-SRC="../../ios/wireproxykit"           # shared Go module
-OUT="$(cd ../Streamo && pwd)/app/libs" # android/Streamo/app/libs
+SRC="."                                        # shared Go module (this dir)
+OUT="$(cd ../android/Streamo && pwd)/app/libs" # android/Streamo/app/libs
 
 command -v go >/dev/null 2>&1 || { echo "ERROR: Go not installed"; exit 1; }
 [ -f "$SRC/wireproxykit.go" ] || { echo "ERROR: Go source not found at $SRC"; exit 1; }
