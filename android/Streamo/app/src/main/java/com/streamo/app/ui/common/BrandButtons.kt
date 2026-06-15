@@ -3,6 +3,7 @@ package com.streamo.app.ui.common
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -18,7 +19,7 @@ import androidx.compose.ui.unit.dp
  * `BrandButtonStyle` iOS: angoli arrotondati continui, non pill.
  */
 object BrandButtonDefaults {
-    val Shape = GlassDefaults.Shape
+    val Shape = RoundedCornerShape(14.dp)
     val ContentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp)
     val IconContentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp)
 }
@@ -29,7 +30,6 @@ fun BrandButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    contentColor: Color = MaterialTheme.colorScheme.onPrimary,
     content: @Composable RowScope.() -> Unit
 ) {
     Button(
@@ -38,7 +38,7 @@ fun BrandButton(
         shape = BrandButtonDefaults.Shape,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = contentColor
+            contentColor = MaterialTheme.colorScheme.onPrimary
         ),
         contentPadding = BrandButtonDefaults.ContentPadding,
         modifier = modifier,
@@ -47,19 +47,16 @@ fun BrandButton(
 }
 
 /**
- * Bottone secondario "glass" scuro con bordo sottile; diventa primary quando
- * [active] (es. titolo già in watchlist). Quando [outlined] è true, lo stato
- * inattivo è trasparente (solo bordo bianco) invece del riempimento glass — port
- * del kind `.secondary` iOS.
+ * Bottone secondario "glass" chiaro semitrasparente con bordo sottile; diventa
+ * primary quando [active] (es. titolo già in watchlist) — port del kind
+ * `.secondary` iOS.
  */
 @Composable
 fun BrandSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     active: Boolean = false,
-    outlined: Boolean = false,
     enabled: Boolean = true,
-    activeContentColor: Color = MaterialTheme.colorScheme.onPrimary,
     content: @Composable RowScope.() -> Unit
 ) {
     Button(
@@ -69,20 +66,15 @@ fun BrandSecondaryButton(
         colors = if (active) {
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = activeContentColor
-            )
-        } else if (outlined) {
-            ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent,
-                contentColor = Color.White
+                contentColor = MaterialTheme.colorScheme.onPrimary
             )
         } else {
             ButtonDefaults.buttonColors(
-                containerColor = GlassDefaults.Container,
+                containerColor = Color.White.copy(alpha = 0.08f),
                 contentColor = Color.White
             )
         },
-        border = if (active) null else BorderStroke(1.dp, GlassDefaults.Border),
+        border = if (active) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         contentPadding = BrandButtonDefaults.ContentPadding,
         modifier = modifier,
         content = content
@@ -90,8 +82,9 @@ fun BrandSecondaryButton(
 }
 
 /**
- * Bottone icona secondario "glass" scuro con bordo sottile; diventa primary
- * quando [active] (es. titolo già in watchlist) — stile copertina hero.
+ * Bottone icona secondario "glass" chiaro semitrasparente con bordo sottile;
+ * diventa primary quando [active] (es. titolo già in watchlist) — stile
+ * copertina hero.
  */
 @Composable
 fun BrandIconButton(
@@ -100,8 +93,7 @@ fun BrandIconButton(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     active: Boolean = false,
-    enabled: Boolean = true,
-    activeContentColor: Color = MaterialTheme.colorScheme.onPrimary
+    enabled: Boolean = true
 ) {
     Button(
         onClick = onClick,
@@ -110,15 +102,15 @@ fun BrandIconButton(
         colors = if (active) {
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = activeContentColor
+                contentColor = MaterialTheme.colorScheme.onPrimary
             )
         } else {
             ButtonDefaults.buttonColors(
-                containerColor = GlassDefaults.Container,
+                containerColor = Color.White.copy(alpha = 0.08f),
                 contentColor = Color.White
             )
         },
-        border = if (active) null else BorderStroke(1.dp, GlassDefaults.Border),
+        border = if (active) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         contentPadding = BrandButtonDefaults.IconContentPadding,
         modifier = modifier
     ) {

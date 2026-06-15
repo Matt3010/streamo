@@ -18,8 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -79,8 +77,6 @@ private fun Top10Card(
     showInfo: Boolean,
     onClick: () -> Unit
 ) {
-    val strokeWidth = with(LocalDensity.current) { 2.dp.toPx() }
-
     // Sovrapposizione leggera: il poster copre solo il bordo destro del
     // numerale, così un "1" stretto resta quasi tutto visibile mentre un
     // "2"/"10" largo si estende più a sinistra e rimane intero.
@@ -95,14 +91,15 @@ private fun Top10Card(
                 .clipToBounds(),
             contentAlignment = Alignment.BottomStart
         ) {
-            // Numerale cavo, solo contorno: bianco ammorbidito (non grigio).
+            // Numerale pieno semi-trasparente: il poster gli si sovrappone
+            // da destra. Fill (non Stroke) evita linee interne antiestetiche
+            // su cifre come 8/0/6/9/4.
             Text(
                 text = rank.toString(),
                 style = TextStyle(
                     fontSize = 132.sp,
                     fontWeight = FontWeight.Black,
-                    color = Color.White.copy(alpha = 0.5f),
-                    drawStyle = Stroke(width = strokeWidth)
+                    color = Color.White.copy(alpha = 0.5f)
                 ),
                 maxLines = 1,
                 softWrap = false

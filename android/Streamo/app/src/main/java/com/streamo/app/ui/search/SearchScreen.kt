@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.remote.dto.TmdbGenre
 import com.streamo.app.data.remote.dto.TmdbItem
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.GlassDefaults
 import com.streamo.app.ui.common.GlassFilterChip
@@ -132,7 +133,7 @@ fun SearchScreen(
                 viewModel.isSearching && viewModel.results.isEmpty() -> {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 140.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
@@ -157,7 +158,7 @@ fun SearchScreen(
                     LazyVerticalGrid(
                         state = gridState,
                         columns = GridCells.Adaptive(minSize = 140.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {

@@ -303,7 +303,20 @@ class DetailViewModel @Inject constructor(
             warpEnabled = settings.warpEnabled.first()
         )
         val id = repository.addDownload(entry)
-        ResolveAndDownloadWorker.enqueue(app, id.toInt())
+        advanceQueue()
+    }
+
+    /** Start the next pending download if nothing is currently running. */
+    private fun advanceQueue() {
+        viewModelScope.launch {
+            val active = repository.getActiveDownloads()
+            if (active.any { it.status == "downloading" || it.status == "resolving" }) return@launch
+            val currentWarp = settings.warpEnabled.first()
+            val next = repository.pickNextPendingDownload(currentWarp) ?: return@launch
+            repository.resetRetryCount(next.id)
+            repository.updateDownloadStatusResetSpeed(next.id, "pending")
+            ResolveAndDownloadWorker.enqueue(app, next.id)
+        }
     }
 
     fun changeSeason(season: Int) {

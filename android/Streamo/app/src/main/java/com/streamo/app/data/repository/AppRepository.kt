@@ -12,6 +12,7 @@ import com.streamo.app.data.local.entity.ProgressEntry
 import com.streamo.app.data.local.entity.ProviderMappingEntity
 import com.streamo.app.data.local.entity.SearchHistoryEntry
 import com.streamo.app.data.local.entity.WatchlistEntry
+import com.streamo.app.download.ResolveAndDownloadWorker
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,7 +68,28 @@ class AppRepository @Inject constructor(
     suspend fun updateDownloadContentAndStatus(id: Int, contentId: String, streamUrl: String, status: String) =
         downloadDao.updateContentAndStatus(id, contentId, streamUrl, status)
 
+    suspend fun updateDownloadContentStatusAndWarp(id: Int, contentId: String, streamUrl: String, status: String, warpEnabled: Boolean) =
+        downloadDao.updateContentStatusAndWarp(id, contentId, streamUrl, status, warpEnabled)
+
+    suspend fun getPendingOrderedByCreation(): List<DownloadEntry> =
+        downloadDao.getPendingOrderedByCreation()
+
+    /**
+     * Sceglie il prossimo download pending in base a WARP mode.
+     * Dà priorità a download con warpEnabled == currentWarpEnabled;
+     * fallback al piú vecchio pending. Ignora entry con retryCount >= MAX_RETRIES.
+     */
+    suspend fun pickNextPendingDownload(currentWarpEnabled: Boolean): DownloadEntry? {
+        val pending = getPendingOrderedByCreation()
+            .filter { it.retryCount < ResolveAndDownloadWorker.MAX_RETRIES }
+        // Priority: matching WARP state, then any
+        val matching = pending.firstOrNull { it.warpEnabled == currentWarpEnabled }
+        return matching ?: pending.firstOrNull()
+    }
+
     suspend fun getActiveDownloads(): List<DownloadEntry> = downloadDao.getActiveDownloads()
+    fun observeActiveDownloads(): Flow<List<DownloadEntry>> = downloadDao.observeActiveDownloads()
+    fun observeFailedDownloadsCount(): Flow<Int> = downloadDao.observeFailedCount()
 
     suspend fun updateDownloadProgress(id: Int, percentage: Float, downloaded: Long, total: Long, speed: Long, status: String) =
         downloadDao.updateProgress(id, percentage, downloaded, total, speed, status)

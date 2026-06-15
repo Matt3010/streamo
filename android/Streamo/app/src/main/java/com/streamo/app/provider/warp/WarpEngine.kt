@@ -22,6 +22,10 @@ object WarpEngine {
     private const val CLASS_NAME = "com.streamo.warp.wireproxykit.Wireproxykit"
 
     private val engineClass: Class<*>? by lazy {
+        // Loading the gomobile class boots the Go runtime (System.loadLibrary).
+        // If the native lib for the current ABI isn't packaged (e.g. x86 emulator
+        // without x86 libs) this throws UnsatisfiedLinkError — caught below,
+        // same graceful degradation as a missing .aar.
         try {
             Class.forName(CLASS_NAME)
         } catch (_: Throwable) {

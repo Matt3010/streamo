@@ -149,29 +149,31 @@ private fun HeroPage(
             .background(Color(0xFF1E1E1E))
             .clickable(onClick = onOpen)
     ) {
-        AsyncImage(
-            model = TMDBImage.url(
-                path = item.backdropPath ?: item.posterPath,
-                size = TMDBImage.Size.W1280
-            ),
-            contentDescription = item.displayTitle,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = TMDBImage.url(
+                    path = item.backdropPath ?: item.posterPath,
+                    size = TMDBImage.Size.W1280
+                ),
+                contentDescription = item.displayTitle,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
 
-        // L'artwork si dissolve nel background della pagina, senza banda nera
-        // dura tra hero e righe sottostanti (come iOS).
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.5f to Color.Transparent,
-                        1f to pageBackground
+            // L'artwork si dissolve nel background della pagina, senza banda nera
+            // dura tra hero e righe sottostanti (come iOS).
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to Color.Transparent,
+                            1f to pageBackground
+                        )
                     )
-                )
-        )
+            )
+        }
 
         Column(
             modifier = Modifier

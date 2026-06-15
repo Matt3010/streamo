@@ -9,6 +9,8 @@ import com.streamo.app.data.backup.BackupManager
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadQualityPref
+import com.streamo.app.download.DownloadQueueManager
+import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.provider.warp.WarpTunnel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,6 +29,7 @@ class SettingsViewModel @Inject constructor(
     private val repository: AppRepository,
     private val settings: SettingsDataStore,
     private val warpTunnel: WarpTunnel,
+    private val queueManager: DownloadQueueManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -56,6 +59,9 @@ class SettingsViewModel @Inject constructor(
     private val _showCardInfo = MutableStateFlow(true)
     val showCardInfo: StateFlow<Boolean> = _showCardInfo.asStateFlow()
 
+    private val _reduceEffects = MutableStateFlow(false)
+    val reduceEffects: StateFlow<Boolean> = _reduceEffects.asStateFlow()
+
     private val _accentColor = MutableStateFlow(SettingsDataStore.defaultAccent)
     val accentColor: StateFlow<Triple<Float, Float, Float>> = _accentColor.asStateFlow()
 
@@ -65,9 +71,12 @@ class SettingsViewModel @Inject constructor(
     private val _downloadQualityMobile = MutableStateFlow<DownloadQualityPref>(DownloadQualityPref.Ask)
     val downloadQualityMobile: StateFlow<DownloadQualityPref> = _downloadQualityMobile.asStateFlow()
 
-    // Cap qualità streaming: token "auto"|"1080"|"720"|"480".
-    private val _streamingQuality = MutableStateFlow("auto")
-    val streamingQuality: StateFlow<String> = _streamingQuality.asStateFlow()
+    // Cap qualità streaming (split per rete). Token: "auto"|"max"|"1080"|"720"|"480".
+    private val _streamingQualityWifi = MutableStateFlow("auto")
+    val streamingQualityWifi: StateFlow<String> = _streamingQualityWifi.asStateFlow()
+
+    private val _streamingQualityMobile = MutableStateFlow("auto")
+    val streamingQualityMobile: StateFlow<String> = _streamingQualityMobile.asStateFlow()
 
     private val _confirmRecalc = MutableStateFlow(false)
     val confirmRecalc: StateFlow<Boolean> = _confirmRecalc.asStateFlow()
@@ -117,6 +126,9 @@ class SettingsViewModel @Inject constructor(
             settings.showCardInfo.collect { _showCardInfo.value = it }
         }
         viewModelScope.launch {
+            settings.reduceEffects.collect { _reduceEffects.value = it }
+        }
+        viewModelScope.launch {
             settings.accentColor.collect { _accentColor.value = it }
         }
         viewModelScope.launch {
@@ -130,7 +142,10 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            settings.streamingQuality.collect { _streamingQuality.value = it }
+            settings.streamingQualityWifi.collect { _streamingQualityWifi.value = it }
+        }
+        viewModelScope.launch {
+            settings.streamingQualityMobile.collect { _streamingQualityMobile.value = it }
         }
         viewModelScope.launch {
             settings.warpEnabled.collect { _warpEnabled.value = it }
@@ -192,6 +207,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setReduceEffects(value: Boolean) {
+        viewModelScope.launch {
+            settings.setReduceEffects(value)
+        }
+    }
+
     fun setDownloadQualityWifi(pref: DownloadQualityPref) {
         viewModelScope.launch { settings.setDownloadQualityWifi(pref.serialize()) }
     }
@@ -200,8 +221,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settings.setDownloadQualityMobile(pref.serialize()) }
     }
 
-    fun setStreamingQuality(token: String) {
-        viewModelScope.launch { settings.setStreamingQuality(token) }
+    fun setStreamingQualityWifi(token: String) {
+        viewModelScope.launch { settings.setStreamingQualityWifi(token) }
+    }
+
+    fun setStreamingQualityMobile(token: String) {
+        viewModelScope.launch { settings.setStreamingQualityMobile(token) }
     }
 
     // region WARP actions
@@ -213,6 +238,17 @@ class SettingsViewModel @Inject constructor(
                 warpTunnel.stop()
                 _warpStatus.value = null
             }
+            // Pause any active download whose WARP flag doesn't match the new setting,
+            // so it never runs under the wrong IP path. The queue manager then starts
+            // the oldest WARP-compatible pending download in its place.
+            val active = repository.getActiveDownloads()
+            active.filter { it.status == "downloading" || it.status == "resolving" }
+                .filter { it.warpEnabled != value }
+                .forEach { mismatch ->
+                    ResolveAndDownloadWorker.cancel(context, mismatch.id)
+                    repository.updateDownloadStatusResetSpeed(mismatch.id, "paused")
+                }
+            queueManager.advance()
         }
     }
 
@@ -238,6 +274,10 @@ class SettingsViewModel @Inject constructor(
     /** Bring the tunnel up and fetch the Cloudflare trace to confirm egress. */
     fun verifyEgress() {
         if (_warpBusy.value) return
+        if (!_warpEnabled.value) {
+            _warpStatus.value = "WARP disabilitato. Attiva WARP prima di verificare."
+            return
+        }
         viewModelScope.launch {
             _warpBusy.value = true
             _warpStatus.value = "Verifica egress in corso…"

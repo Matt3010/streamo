@@ -81,6 +81,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.navigation.LocalNavController
 import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.ui.detail.ProviderAvailability
@@ -91,8 +92,12 @@ import com.streamo.app.data.remote.dto.TmdbReview
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.BrandIconButton
+import com.streamo.app.ui.common.GlassTopBar
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import com.streamo.app.ui.common.BrandSecondaryButton
 import com.streamo.app.ui.common.MediaCard
+import com.streamo.app.ui.common.SeasonChip
 import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.ImagePlaceholder
 import com.streamo.app.util.Format
@@ -123,6 +128,9 @@ fun DetailScreen(onBack: () -> Unit = {}) {
     // Pinned: la barra resta ancorata. Serve geometria stabile per il titolo
     // "collassante" che migra dalla copertina alla navbar durante lo scroll.
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    // hazeSource locale: il contenuto (copertina + sezioni) sta dentro, la capsula
+    // vetro del back è disegnata dopo come fratello → il blur la riempie davvero.
+    val detailHaze = remember { HazeState() }
     val density = LocalDensity.current
     // Soglie in dp per il fade-in del titolo navbar:
     // - Il titolo in-content vive a metà del backdrop 430dp (offset ~215dp dall'inizio
@@ -151,48 +159,34 @@ fun DetailScreen(onBack: () -> Unit = {}) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (viewModel.isLoading) {
-            DetailSkeleton(modifier = Modifier.fillMaxSize())
-        } else if (viewModel.loadError != null) {
-            ErrorState(
-                message = viewModel.loadError!!,
-                onRetry = { viewModel.load() },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            viewModel.item?.let { item ->
-                DetailContent(
-                    item = item,
-                    viewModel = viewModel,
-                    scrollState = scrollState,
-                    scrollBehavior = scrollBehavior,
+        Box(modifier = Modifier.fillMaxSize().hazeSource(detailHaze)) {
+            if (viewModel.isLoading) {
+                DetailSkeleton(modifier = Modifier.fillMaxSize())
+            } else if (viewModel.loadError != null) {
+                ErrorState(
+                    message = viewModel.loadError!!,
+                    onRetry = { viewModel.load() },
                     modifier = Modifier.fillMaxSize()
                 )
+            } else {
+                viewModel.item?.let { item ->
+                    DetailContent(
+                        item = item,
+                        viewModel = viewModel,
+                        scrollState = scrollState,
+                        scrollBehavior = scrollBehavior,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
-        TopAppBar(
-            // Titolo gestito dall'overlay collassante sotto: qui resta vuoto.
-            title = {},
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Indietro",
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
-                titleContentColor = MaterialTheme.colorScheme.onBackground,
-                navigationIconContentColor = MaterialTheme.colorScheme.onBackground
-            ),
-            scrollBehavior = scrollBehavior,
-            modifier = Modifier
-                .background(barColor)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
+        // Solo il tasto indietro a capsula vetro (stile navbar). Il titolo resta
+        // gestito dall'overlay collassante sotto.
+        GlassTopBar(
+            modifier = Modifier.align(Alignment.TopStart),
+            onLeading = onBack,
+            hazeState = detailHaze
         )
 
         // Titolo collassante: un unico Text che parte grande sopra la copertina e
@@ -205,11 +199,15 @@ fun DetailScreen(onBack: () -> Unit = {}) {
             val topBarPx = with(density) { TopAppBarDefaults.TopAppBarExpandedHeight.toPx() }
             val coverTopPx = with(density) { statusBarPx + topBarPx + (16 + 120).dp.toPx() }
             val coverXPx = with(density) { 16.dp.toPx() }
-            // Allineato con il titolo standard M3 (dopo l'icona di navigazione).
-            val barXPx = with(density) { 56.dp.toPx() }
+            // Allineato col titolo a fianco della capsula vetro: dopo cerchio (48dp)
+            // + spacer (12dp) + padding riga (12dp).
+            val barXPx = with(density) { 72.dp.toPx() }
             val collapsedScale = 0.68f
-            // Centro verticale della barra = centro della freccia indietro.
-            val barCenterPx = statusBarPx + topBarPx / 2f
+            // Centro verticale della freccia = padding top barra (8dp) + mezzo cerchio (24dp).
+            val barCenterPx = statusBarPx + with(density) { 32.dp.toPx() }
+            // Oltre l'aggancio, continuando a scrollare il titolo sfuma via così non
+            // resta incollato sopra il contenuto.
+            val fadeAfterDockPx = with(density) { 130.dp.toPx() }
             // Altezza reale del testo dopo il layout (non stimata): così la centratura
             // è esatta su qualunque device/font/scala, niente nudge magico.
             var textHeightPx by remember { mutableStateOf(0f) }
@@ -252,6 +250,9 @@ fun DetailScreen(onBack: () -> Unit = {}) {
                         val s = lerp(1f, collapsedScale, p)
                         scaleX = s
                         scaleY = s
+                        // Dopo l'aggancio (p==1) sfuma proseguendo lo scroll.
+                        val extra = (scroll - dockScroll).coerceAtLeast(0f)
+                        alpha = (1f - extra / fadeAfterDockPx).coerceIn(0f, 1f)
                     }
             )
         }
@@ -687,6 +688,8 @@ private fun DetailContent(
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
+
+            Spacer(modifier = Modifier.height(LocalBottomBarPadding.current))
         }
 
         // Provider Picker
@@ -803,24 +806,11 @@ private fun EpisodesSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 viewModel.seasons.forEach { season ->
-                    val selected = season == viewModel.selectedSeason
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surfaceVariant
-                            )
-                            .clickable { viewModel.changeSeason(season) }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "S$season",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (selected) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    SeasonChip(
+                        season = season,
+                        selected = season == viewModel.selectedSeason,
+                        onClick = { viewModel.changeSeason(season) }
+                    )
                 }
             }
             if (showScrollHints) {

@@ -15,6 +15,7 @@ import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadQualityGate
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.DownloadQualityRequest
+import com.streamo.app.download.DownloadQueueManager
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.TVLogic
@@ -36,7 +37,8 @@ class SeriesDownloadsViewModel @Inject constructor(
     private val client: TMDBClient,
     private val qualityGate: DownloadQualityGate,
     private val settings: SettingsDataStore,
-    private val app: Application
+    private val app: Application,
+    private val queueManager: DownloadQueueManager
 ) : ViewModel() {
 
     val tmdbId: Int = checkNotNull(savedStateHandle["tmdbId"])
@@ -73,6 +75,15 @@ class SeriesDownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             dbEntries.collect { list ->
                 _downloadMap.value = list.associateBy { it.contentId }
+            }
+        }
+
+        // Auto-advance queue when active download completes or fails.
+        // advance() is idempotent; the DB pre-check just skips a WorkManager round-trip.
+        viewModelScope.launch {
+            repository.observeActiveDownloads().collect { active ->
+                val hasWorking = active.any { it.status == "downloading" || it.status == "resolving" }
+                if (!hasWorking) queueManager.advance()
             }
         }
     }
@@ -173,9 +184,10 @@ class SeriesDownloadsViewModel @Inject constructor(
             status = "pending",
             warpEnabled = settings.warpEnabled.first()
         )
-        val id = repository.addDownload(entry)
-        // Serial queue: one download at a time (see ResolveAndDownloadWorker.enqueue).
-        ResolveAndDownloadWorker.enqueue(app, id.toInt())
+        repository.addDownload(entry)
+        // Don't enqueue this entry directly — the queue manager picks the next
+        // pending download from the DB, respecting WARP mode and creation order.
+        queueManager.advance()
     }
 
     /**
@@ -267,6 +279,7 @@ class SeriesDownloadsViewModel @Inject constructor(
             ResolveAndDownloadWorker.removeCachedData(entry.streamUrl)
         }
         repository.removeDownload(entry.id)
+        queueManager.advance()
     }
 
     fun toggleEpisodeDownload(season: Int, episode: Int) {
@@ -285,6 +298,7 @@ class SeriesDownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             ResolveAndDownloadWorker.cancel(app, entry.id)
             repository.updateDownloadStatusResetSpeed(entry.id, "paused")
+            queueManager.advance()
         }
     }
 
@@ -309,8 +323,10 @@ class SeriesDownloadsViewModel @Inject constructor(
     fun clearWarpWarning() { _warpChangedEntry.value = null }
 
     private suspend fun doRestart(entry: DownloadEntry) {
+        // Mark pending and let the queue manager start it — don't enqueue directly,
+        // which (REPLACE) would cancel a different download already running.
         repository.resetRetryCount(entry.id)
         repository.updateDownloadStatusResetSpeed(entry.id, "pending")
-        ResolveAndDownloadWorker.enqueue(app, entry.id)
+        queueManager.advance()
     }
 }

@@ -35,7 +35,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.ProgressEntry
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import com.streamo.app.ui.common.GlassLargeTitle
+import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.ProgressMediaCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,45 +50,19 @@ fun ContinueWatchingScreen(
     onBack: () -> Unit = {},
     viewModel: ContinueWatchingViewModel = hiltViewModel()
 ) {
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val items by viewModel.items.collectAsState()
     var showRemoveDialog by remember { mutableStateOf(false) }
     var entryToRemove by remember { mutableStateOf<ProgressEntry?>(null) }
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Continua a guardare",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Torna indietro"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                ),
-                scrollBehavior = scrollBehavior
-            )
-        }
-    ) { paddingValues ->
+    GlassTopBarScaffold(
+        onLeading = onBack
+    ) { topPadding ->
         if (items.isEmpty()) {
             Text(
                 text = "Nessun elemento in corso.",
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .padding(top = topPadding)
                     .padding(24.dp),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyLarge,
@@ -94,12 +72,14 @@ fun ContinueWatchingScreen(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(16.dp),
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    GlassLargeTitle("Continua a guardare")
+                }
                 items(items) { entry ->
                     ProgressMediaCard(
                         title = entry.title.ifBlank { "${entry.tmdbId} S${entry.season}:E${entry.episode}" },

@@ -23,11 +23,11 @@ android {
         buildConfigField("String", "DEFAULT_TMDB_API_KEY", "\"42b62dc72918b626d8ea3e33c35e16a6\"")
 
         // Limit packaged native libs (warpkit.aar ships libgojni.so for 4 ABIs,
-        // ~15 MB each). Ship arm64-v8a + armeabi-v7a — drops x86/x86_64
-        // (emulator-only). armeabi-v7a is required: most Fire TV Sticks run a
-        // 32-bit Fire OS and reject an arm64-only APK with NO_MATCHING_ABIS.
+        // ~15 MB each). Ship arm64-v8a + armeabi-v7a + x86 + x86_64 so WARP
+        // works on both devices AND emulators. armeabi-v7a is required: most
+        // Fire TV Sticks run a 32-bit Fire OS and reject an arm64-only APK.
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
         }
     }
 
@@ -98,6 +98,9 @@ dependencies {
 
     // Images
     implementation(libs.coil.compose)
+
+    // Glass blur (backdrop)
+    implementation(libs.haze)
 
     // Networking
     implementation(libs.retrofit)

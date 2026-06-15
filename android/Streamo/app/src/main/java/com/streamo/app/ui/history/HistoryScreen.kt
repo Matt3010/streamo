@@ -38,60 +38,48 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.GlassDefaults
 import com.streamo.app.ui.common.GlassFilterChip
+import com.streamo.app.ui.common.GlassLargeTitle
+import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.ProgressMediaCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     onNavigateToDetail: (Int, String, Int, Int) -> Unit = { _, _, _, _ -> },
+    onBack: () -> Unit = {},
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val state by viewModel.state.collectAsState()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Cronologia",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                ),
-                scrollBehavior = scrollBehavior
-            )
-        }
-    ) { paddingValues ->
+    GlassTopBarScaffold(
+        onLeading = onBack
+    ) { topPadding ->
         if (state.isEmpty) {
             EmptyMessage(
                 text = "Nessuna cronologia. Quello che guardi compare qui.",
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .padding(top = topPadding)
             )
-            return@Scaffold
+            return@GlassTopBarScaffold
         }
 
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 140.dp),
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
+                .fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                GlassLargeTitle("Cronologia")
+            }
             // Total watch-time card.
             item(span = { GridItemSpan(maxLineSpan) }) {
                 WatchTimeCard(HistoryViewModel.formatWatchTime(state.totalWatchSeconds))

@@ -1,16 +1,22 @@
 package com.streamo.app.ui.settings
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,7 +48,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -49,8 +58,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.BuildConfig
+import com.streamo.app.navigation.LocalBottomBarPadding
+import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.GlassCard
 import com.streamo.app.ui.common.GlassDefaults
+import com.streamo.app.ui.common.GlassLargeTitle
+import com.streamo.app.ui.common.GlassTopBarScaffold
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,32 +137,27 @@ fun AdvancedSettingsScreen(
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text("Impostazioni avanzate", style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Torna indietro")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
-        }
-    ) { paddingValues ->
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { _ ->
+        GlassTopBarScaffold(
+            onLeading = onBack
+        ) { topPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(top = topPadding)
                 .padding(16.dp)
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // TMDB API Key
+            GlassLargeTitle("Impostazioni avanzate")
+
+            // ————————————————————————————
+            // 1. Catalogo e provider
+            // ————————————————————————————
+            SectionHeaderAdv("Catalogo e provider")
+
+            // Chiave TMDB
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Catalogo (TMDB)", style = MaterialTheme.typography.titleMedium)
@@ -176,19 +184,35 @@ fun AdvancedSettingsScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    TextButton(
-                        onClick = {
-                            localTmdbKey = BuildConfig.DEFAULT_TMDB_API_KEY
-                            viewModel.resetTmdbApiKey()
-                        },
-                        enabled = localTmdbKey != BuildConfig.DEFAULT_TMDB_API_KEY
+                    val isDefaultKey = localTmdbKey == BuildConfig.DEFAULT_TMDB_API_KEY
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isDefaultKey) Color.White.copy(alpha = 0.04f)
+                                else Color.White.copy(alpha = 0.08f)
+                            )
+                            .then(
+                                if (isDefaultKey) Modifier
+                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                            )
+                            .clickable(enabled = !isDefaultKey) {
+                                localTmdbKey = BuildConfig.DEFAULT_TMDB_API_KEY
+                                viewModel.resetTmdbApiKey()
+                            }
+                            .padding(horizontal = 18.dp, vertical = 13.dp)
                     ) {
-                        Text("Ripristina chiave predefinita")
+                        Text(
+                            "Ripristina chiave predefinita",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (isDefaultKey) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
 
-            // Provider locale
+            // Lingua provider
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Provider", style = MaterialTheme.typography.titleMedium)
@@ -213,19 +237,40 @@ fun AdvancedSettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    TextButton(
-                        onClick = {
-                            localLocale = "it"
-                            viewModel.resetProviderLocale()
-                        },
-                        enabled = localLocale != "it"
+                    val isDefaultLocale = localLocale == "it"
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isDefaultLocale) Color.White.copy(alpha = 0.04f)
+                                else Color.White.copy(alpha = 0.08f)
+                            )
+                            .then(
+                                if (isDefaultLocale) Modifier
+                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                            )
+                            .clickable(enabled = !isDefaultLocale) {
+                                localLocale = "it"
+                                viewModel.resetProviderLocale()
+                            }
+                            .padding(horizontal = 18.dp, vertical = 13.dp)
                     ) {
-                        Text("Ripristina \"it\"")
+                        Text(
+                            "Ripristina \"it\"",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (isDefaultLocale) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
 
-            // WARP (Cloudflare IP-masking)
+            // ————————————————————————————
+            // 2. Rete e privacy
+            // ————————————————————————————
+            SectionHeaderAdv("Rete e privacy")
+
+            // WARP
             GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -269,16 +314,27 @@ fun AdvancedSettingsScreen(
                         )
                     } else {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(
+                        BrandButton(
                             onClick = { viewModel.registerWarp() },
                             enabled = !warpBusy,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(if (warpRegistered) "Rigenera account WARP" else "Registra account WARP")
                         }
-                        TextButton(
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val egressEnabled = !warpBusy && warpRegistered && warpEnabled
+                        Button(
                             onClick = { viewModel.verifyEgress() },
-                            enabled = !warpBusy && warpRegistered,
+                            enabled = egressEnabled,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White.copy(alpha = 0.08f),
+                                contentColor = Color.White,
+                                disabledContainerColor = Color.White.copy(alpha = 0.04f),
+                                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            ),
+                            border = if (egressEnabled) BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)) else null,
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Verifica egress")
@@ -294,12 +350,16 @@ fun AdvancedSettingsScreen(
                 }
             }
 
-            // Maintenance
+            // ————————————————————————————
+            // 3. Manutenzione
+            // ————————————————————————————
+            SectionHeaderAdv("Manutenzione")
+
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Manutenzione", style = MaterialTheme.typography.titleMedium)
+                    Text("Ricalcola libreria", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.showRecalcDialog() }, modifier = Modifier.fillMaxWidth()) {
+                    BrandButton(onClick = { viewModel.showRecalcDialog() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Ricalcola libreria")
                     }
                     Text(
@@ -309,6 +369,19 @@ fun AdvancedSettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(LocalBottomBarPadding.current))
+        }
         }
     }
+}
+
+@Composable
+private fun SectionHeaderAdv(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+    )
 }

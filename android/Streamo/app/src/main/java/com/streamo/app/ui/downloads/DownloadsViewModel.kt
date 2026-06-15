@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
+import com.streamo.app.download.DownloadQueueManager
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.tmdb.TMDBClient
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,7 +30,8 @@ class DownloadsViewModel @Inject constructor(
     private val repository: AppRepository,
     private val settings: SettingsDataStore,
     private val app: Application,
-    private val tmdbClient: TMDBClient
+    private val tmdbClient: TMDBClient,
+    private val queueManager: DownloadQueueManager
 ) : ViewModel() {
 
     val entries: StateFlow<List<DownloadEntry>> = repository.downloads()
@@ -61,6 +63,16 @@ class DownloadsViewModel @Inject constructor(
                     }
                 }
         }
+
+        // Auto-advance queue when active download completes or fails in background.
+        // advance() is idempotent (mutex + WorkManager-busy guard), so the cheap DB
+        // pre-check just avoids a WorkManager round-trip on every emission.
+        viewModelScope.launch {
+            repository.observeActiveDownloads().collect { active ->
+                val hasWorking = active.any { it.status == "downloading" || it.status == "resolving" }
+                if (!hasWorking) queueManager.advance()
+            }
+        }
     }
 
     private suspend fun enrichPoster(entry: DownloadEntry) {
@@ -91,14 +103,13 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Stop an active download WITHOUT deleting cached data, so it can be resumed.
-     * Only the trash action ([remove]) wipes data.
-     */
+    /** Stop an active download WITHOUT deleting cached data, so it can be resumed.
+     * Only the trash action ([remove]) wipes data. */
     fun stop(entry: DownloadEntry) {
         viewModelScope.launch {
             ResolveAndDownloadWorker.cancel(app, entry.id)
             repository.updateDownloadStatusResetSpeed(entry.id, "paused")
+            queueManager.advance()
         }
     }
 
@@ -123,9 +134,11 @@ class DownloadsViewModel @Inject constructor(
     fun clearWarpWarning() { _warpChangedEntry.value = null }
 
     private suspend fun doRestart(entry: DownloadEntry) {
+        // Mark pending and let the queue manager start it — don't enqueue directly,
+        // which (REPLACE) would cancel a different download already running.
         repository.resetRetryCount(entry.id)
         repository.updateDownloadStatusResetSpeed(entry.id, "pending")
-        ResolveAndDownloadWorker.enqueue(app, entry.id)
+        queueManager.advance()
     }
 
     /** Trash: stop work, delete cached data from disk, then drop the DB row. */
@@ -148,5 +161,6 @@ class DownloadsViewModel @Inject constructor(
             ResolveAndDownloadWorker.removeCachedData(entry.streamUrl)
         }
         repository.removeDownload(entry.id)
+        queueManager.advance()
     }
 }

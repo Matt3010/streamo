@@ -129,6 +129,7 @@ fun TvSettingsScreen(
                 SettingsValueRow(
                     label = "Verifica egress",
                     value = if (warpBusy) "…" else "Premi per verificare",
+                    enabled = warpEnabled,
                     onClick = { viewModel.verifyEgress() }
                 )
             }
@@ -195,11 +196,13 @@ fun TvSettingsScreen(
 private fun SettingsValueRow(
     label: String,
     value: String,
+    enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
+    val alpha = if (enabled) 1f else 0.38f
     TvFocusable(
-        onClick = onClick,
+        onClick = { if (enabled) onClick() },
         focusRequester = focusRequester,
         modifier = Modifier.fillMaxWidth()
     ) { focused ->
@@ -207,13 +210,13 @@ private fun SettingsValueRow(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (focused) Color.White else MaterialTheme.colorScheme.onBackground
+                color = (if (focused) Color.White else MaterialTheme.colorScheme.onBackground).copy(alpha = alpha)
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (focused) Color.White.copy(alpha = 0.8f)
-                else MaterialTheme.colorScheme.onSurfaceVariant
+                color = (if (focused) Color.White.copy(alpha = 0.8f)
+                else MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = alpha)
             )
         }
     }

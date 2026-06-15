@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -71,11 +73,39 @@ class HomeViewModel @Inject constructor(
     private val _progress = MutableStateFlow<List<ProgressEntry>>(emptyList())
     val progress: StateFlow<List<ProgressEntry>> = _progress.asStateFlow()
 
+    /** Download attivi (pending/downloading/paused/resolving) — per badge top bar. */
+    val activeDownloads: StateFlow<List<com.streamo.app.data.local.entity.DownloadEntry>> =
+        repository.observeActiveDownloads()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Percentuale media di avanzamento dei download IN CORSO (status=downloading).
+     *  -1 se nessuno sta scaricando — l'icona non mostra nulla in quel caso. */
+    val activeDownloadsPercent: StateFlow<Int> = activeDownloads
+        .map { list ->
+            val downloading = list.filter { it.status == "downloading" }
+            if (downloading.isEmpty()) -1
+            else (downloading.map { it.downloadPercentage.coerceIn(0f, 100f) }.average()).toInt()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
+
+    /** Count download in stato failed — per warning triangolo sull'icona. */
+    val failedDownloadsCount: StateFlow<Int> = repository.observeFailedDownloadsCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     private var hasLoaded = false
     private val pages = mutableMapOf<String, Int>()
     private val loadingMore = mutableMapOf<String, Boolean>()
 
     init {
+        // Pulisci entry S0E0 spurie (salvate da errate navigazioni hero → Player
+        // per serie, dove season=0, episode=0 non è un progress valido).
+        viewModelScope.launch {
+            repository.progress().first().forEach { entry ->
+                if (entry.mediaType == "tv" && entry.season == 0 && entry.episode == 0) {
+                    repository.deleteProgress(entry.tmdbId)
+                }
+            }
+        }
         viewModelScope.launch {
             repository.watchlist().collect { _watchlist.value = it }
         }

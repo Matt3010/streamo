@@ -1,14 +1,16 @@
 package com.streamo.app.ui.player
 
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -45,7 +47,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -101,6 +102,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -123,9 +125,13 @@ import androidx.media3.ui.PlayerView
 import com.streamo.app.player.PipController
 import com.streamo.app.player.dlna.DlnaRenderer
 import com.streamo.app.player.lancast.LanRenderer
+import com.streamo.app.ui.common.GlassDefaults
+import com.streamo.app.ui.common.glassCapsule
 import com.streamo.app.ui.player.cast.CastDeviceGroup
 import com.streamo.app.ui.player.cast.CastPickerDialog
 import com.streamo.app.util.Format
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @UnstableApi
@@ -157,6 +163,7 @@ fun PlayerScreen(
     val selectedSubtitle by viewModel.selectedSubtitle.collectAsState()
     val videoTracks by viewModel.videoTracks.collectAsState()
     val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsState()
+    val streamingLimit by viewModel.streamingLimit.collectAsState()
     val playbackSpeed by viewModel.playbackSpeed.collectAsState()
     val currentSourceIndex by viewModel.currentSourceIndex.collectAsState()
     val currentSeason by viewModel.currentSeason.collectAsState()
@@ -184,18 +191,10 @@ fun PlayerScreen(
         else -> null
     }
 
-    var controlsVisible by remember { mutableStateOf(true) }
     var settingsMenu by remember { mutableStateOf(false) }
     // null = lista principale; "subtitles"/"audio"/"speed"/"aspect"/"server" = sotto-pannello
     var settingsPanel by remember { mutableStateOf<String?>(null) }
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
-
-    LaunchedEffect(controlsVisible, isPlaying, seekingManually, buffering, playbackEnded, settingsMenu) {
-        if (controlsVisible && isPlaying && !seekingManually && !buffering && !playbackEnded && !settingsMenu) {
-            delay(3000)
-            controlsVisible = false
-        }
-    }
 
     LaunchedEffect(settingsMenu) {
         if (settingsMenu) {
@@ -203,43 +202,40 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(playbackEnded) {
-        if (playbackEnded) {
-            controlsVisible = true
-        }
-    }
-    var showDebug by remember { mutableStateOf(false) }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     // Snapshot of the last frame, painted over the player while seeking/buffering so
     // the screen never goes black. Captured from the TextureView right before a seek.
     var frozenFrame by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-    // SurfaceView can't be read via getBitmap(); use PixelCopy (async) to grab the
-    // currently displayed frame — including the correct crop, so no green edge.
+    // HazeState locale del player: il video (TextureView) è la hazeSource; i controlli
+    // come fratelli fanno hazeEffect → blur LIVE del video, fluido e ad alta risoluzione.
+    val playerHazeState = remember { HazeState() }
+    // Modalità prestazioni: salta le animazioni dei controlli (thumb, bolla tempo).
+    val reducedEffects = com.streamo.app.ui.common.LocalReducedEffects.current
+    // Il video è una TextureView (necessaria perché Haze possa sfocarla — la SurfaceView
+    // non entra nel layer Compose). TextureView espone getBitmap() diretto.
     val captureFrame: () -> Unit = {
-        val sv = playerViewRef?.videoSurfaceView as? android.view.SurfaceView
-        if (sv != null && sv.width > 0 && sv.height > 0 && sv.holder.surface?.isValid == true) {
-            val bmp = android.graphics.Bitmap.createBitmap(
-                sv.width, sv.height, android.graphics.Bitmap.Config.ARGB_8888
-            )
+        val tv = playerViewRef?.videoSurfaceView as? android.view.TextureView
+        if (tv != null && tv.width > 0 && tv.height > 0 && tv.isAvailable) {
             try {
-                android.view.PixelCopy.request(
-                    sv, bmp,
-                    { result ->
-                        if (result == android.view.PixelCopy.SUCCESS) frozenFrame = bmp
-                    },
-                    android.os.Handler(android.os.Looper.getMainLooper())
-                )
-            } catch (_: Exception) { /* secure/invalid surface → black fallback */ }
+                frozenFrame = tv.getBitmap(tv.width, tv.height)
+            } catch (_: Exception) { /* surface non valida → fallback nero */ }
         }
     }
-    // Show the frozen frame whenever we'd otherwise see black: during a manual seek
-    // (decoder flush) or while buffering the target position.
-    val freezeVisible = (seekingManually || buffering) && !loading && error == null
+    // Stato della timeline issato qui (non dentro i bottom controls) così il
+    // freeze-frame può restare visibile per TUTTO lo scrub (drag + seek), mascherando
+    // il bordo verde del decoder-flush sulla destra.
+    var sliderValue by remember { mutableLongStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
+    LaunchedEffect(position) { if (!isSeeking) sliderValue = position }
+
+    // Show the frozen frame whenever we'd otherwise see black/green: while dragging the
+    // slider, during a manual seek (decoder flush), or while buffering.
+    val freezeVisible = (isSeeking || seekingManually || buffering) && !loading && error == null
 
     // Drop the frozen frame once playback is ready again (a fresh frame is rendered).
-    LaunchedEffect(buffering, seekingManually) {
-        if (!buffering && !seekingManually && frozenFrame != null) {
-            delay(80)
+    LaunchedEffect(buffering, seekingManually, isSeeking) {
+        if (!buffering && !seekingManually && !isSeeking && frozenFrame != null) {
+            delay(150)
             frozenFrame = null
         }
     }
@@ -316,13 +312,13 @@ fun PlayerScreen(
         }
     }
 
-    // Hide the playback controls while the window is in Picture-in-Picture.
     val inPipMode by PipController.inPipMode.collectAsState()
-    LaunchedEffect(inPipMode) {
-        if (inPipMode) controlsVisible = false
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // hazeSource locale: SOLO il video (TextureView) + freeze frame. I controlli
+        // sono fratelli e fanno hazeEffect → blur live. Se l'effetto fosse DENTRO la
+        // sorgente → SIGSEGV.
+        Box(modifier = Modifier.fillMaxSize().hazeSource(playerHazeState)) {
         AndroidView(
             factory = { ctx ->
                 val pv = android.view.LayoutInflater.from(ctx)
@@ -382,6 +378,7 @@ fun PlayerScreen(
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black))
             }
         }
+        } // chiusura hazeSource Box (video + freeze)
 
         if (loading) {
             Box(
@@ -399,68 +396,6 @@ fun PlayerScreen(
                         strokeWidth = 3.dp,
                         modifier = Modifier.size(48.dp)
                     )
-                    if (warpEnabled) {
-                        WarpBadge()
-                    }
-                }
-            }
-        }
-
-        error?.let { msg ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = msg,
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    TextButton(onClick = { viewModel.load() }) {
-                        Text("Riprova", color = MaterialTheme.colorScheme.primary)
-                    }
-                    if (debugLogs.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { showDebug = !showDebug }) {
-                            Text(
-                                if (showDebug) "Nascondi log" else "Mostra log di debug",
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                        if (showDebug) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val scroll = rememberScrollState()
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 240.dp)
-                                    .background(Color(0xFF1E1E1E), MaterialTheme.shapes.medium)
-                                    .padding(12.dp)
-                            ) {
-                                SelectionContainer {
-                                    Text(
-                                        text = debugLogs,
-                                        color = Color(0xFFB0B0B0),
-                                        fontSize = 11.sp,
-                                        lineHeight = 14.sp,
-                                        modifier = Modifier.verticalScroll(scroll)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val clipboard = LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            TextButton(onClick = {
-                                clipboard.setPrimaryClip(ClipData.newPlainText("Provider debug logs", debugLogs))
-                            }) {
-                                Text("Copia log negli appunti", color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -514,20 +449,7 @@ fun PlayerScreen(
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { controlsVisible = !controlsVisible }
-        )
-
-        AnimatedVisibility(
-            visible = controlsVisible && error == null && !inPipMode,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
+        if (!inPipMode) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // Overlay scuro uniforme su tutto lo schermo
                 Box(
@@ -535,6 +457,7 @@ fun PlayerScreen(
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.45f))
                 )
+                val hasError = error != null
 
                 val horizontalSafePadding = with(LocalDensity.current) {
                     val horizontalInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
@@ -552,59 +475,72 @@ fun PlayerScreen(
                         .padding(horizontal = horizontalSafePadding, vertical = 16.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            if (isCastActive) showExitCastDialog = true else onBack()
-                        }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Indietro",
-                                tint = Color.White
-                            )
-                        }
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            IconButton(onClick = enterPip) {
+                        Box(
+                            modifier = Modifier.glassCapsule(playerHazeState, CircleShape)
+                        ) {
+                            IconButton(onClick = {
+                                if (isCastActive) showExitCastDialog = true else onBack()
+                            }) {
                                 Icon(
-                                    imageVector = Icons.Filled.PictureInPictureAlt,
-                                    contentDescription = "Picture in picture",
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Indietro",
                                     tint = Color.White
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.weight(1f))
-                        // Durante la trasmissione su TV sottotitoli e impostazioni
-                        // agiscono solo sul player locale (in pausa): nascondili.
-                        if (!isCastActive && subtitleTracks.isNotEmpty()) {
-                            val subtitlesOn = selectedSubtitle != null
-                            IconButton(onClick = { viewModel.toggleSubtitles() }) {
+                        // Azioni a destra raggruppate in un'unica pillola glass (blur),
+                        // coerente con la top bar della Home (GlassTopBar).
+                        Row(
+                            modifier = Modifier
+                                .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                IconButton(onClick = enterPip) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PictureInPictureAlt,
+                                        contentDescription = "Picture in picture",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            // Durante la trasmissione su TV sottotitoli e impostazioni
+                            // agiscono solo sul player locale (in pausa): nascondili.
+                            if (!isCastActive && subtitleTracks.isNotEmpty()) {
+                                val subtitlesOn = selectedSubtitle != null
+                                IconButton(onClick = { viewModel.toggleSubtitles() }) {
+                                    Icon(
+                                        imageVector = if (subtitlesOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionOff,
+                                        contentDescription = if (subtitlesOn) "Disabilita sottotitoli" else "Abilita sottotitoli",
+                                        tint = if (subtitlesOn) Color.White else Color.White.copy(alpha = 0.55f)
+                                    )
+                                }
+                            }
+                            // Trasmissione su TV (DLNA o Obsidian).
+                            IconButton(onClick = {
+                                // All'apertura della modale metti in pausa il video locale.
+                                if (!isCastActive) {
+                                    viewModel.pausePlayback()
+                                    viewModel.discoverDlna()
+                                }
+                                showCastDialog = true
+                            }) {
                                 Icon(
-                                    imageVector = if (subtitlesOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionOff,
-                                    contentDescription = if (subtitlesOn) "Disabilita sottotitoli" else "Abilita sottotitoli",
-                                    tint = if (subtitlesOn) Color.White else Color.White.copy(alpha = 0.55f)
+                                    imageVector = Icons.Filled.Cast,
+                                    contentDescription = "Trasmetti su TV",
+                                    tint = if (isCastActive) MaterialTheme.colorScheme.primary else Color.White
                                 )
                             }
-                        }
-                        // Trasmissione su TV (DLNA o Obsidian).
-                        IconButton(onClick = {
-                            // All'apertura della modale metti in pausa il video locale.
                             if (!isCastActive) {
-                                viewModel.pausePlayback()
-                                viewModel.discoverDlna()
-                            }
-                            showCastDialog = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Filled.Cast,
-                                contentDescription = "Trasmetti su TV",
-                                tint = if (isCastActive) MaterialTheme.colorScheme.primary else Color.White
-                            )
-                        }
-                        if (!isCastActive) {
-                            IconButton(onClick = { settingsPanel = null; settingsMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Settings,
-                                    contentDescription = "Impostazioni",
-                                    tint = Color.White
-                                )
+                                IconButton(onClick = { settingsPanel = null; settingsMenu = true }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "Impostazioni",
+                                        tint = Color.White
+                                    )
+                                }
                             }
                         }
                     }
@@ -633,16 +569,43 @@ fun PlayerScreen(
                     }
                 }
 
-                // Center play/pause or replay. While buffering the middle slot
-                // holds the spinner instead of the play button (drawn below), so
-                // they never overlap.
-                if (playbackEnded) {
+                // Center: errore mostra messaggio + restart, altrimenti play/pause o replay.
+                if (hasError) {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = error!!,
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 15.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .glassCapsule(playerHazeState, CircleShape)
+                                .clickable { viewModel.load() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Replay,
+                                contentDescription = "Riprova",
+                                tint = Color.White,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+                } else if (playbackEnded) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .size(68.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
+                            .glassCapsule(playerHazeState, CircleShape)
                             .clickable { viewModel.replay() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -662,8 +625,7 @@ fun PlayerScreen(
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.55f))
+                                .glassCapsule(playerHazeState, CircleShape)
                                 .clickable { captureFrame(); viewModel.seekBack() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -685,8 +647,7 @@ fun PlayerScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(68.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.Black.copy(alpha = 0.55f))
+                                        .glassCapsule(playerHazeState, CircleShape)
                                         .clickable { viewModel.togglePlayPause() },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -702,8 +663,7 @@ fun PlayerScreen(
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.55f))
+                                .glassCapsule(playerHazeState, CircleShape)
                                 .clickable { captureFrame(); viewModel.seekForward() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -717,17 +677,16 @@ fun PlayerScreen(
                     }
                 }
 
-                // Bottom controls
+                // Bottom controls — barra glass: blur del video dietro (stesso
+                // playerHazeState dei pulsanti). Se errore, timeline solo display.
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                         .padding(horizontal = horizontalSafePadding, vertical = 16.dp)
+                        .glassCapsule(playerHazeState, RoundedCornerShape(24.dp))
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
                 ) {
-                    var sliderValue by remember { mutableLongStateOf(0L) }
-                    var isSeeking by remember { mutableStateOf(false) }
-                    LaunchedEffect(position) { if (!isSeeking) sliderValue = position }
-
                     val sliderInteractionSource = remember { MutableInteractionSource() }
                     val sliderColors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,
@@ -735,105 +694,16 @@ fun PlayerScreen(
                         inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                     )
                     val primaryColor = MaterialTheme.colorScheme.primary
+                    val sliderEnabled = !hasError
 
-                    val thumbWidth = 14.dp
-                    val density = LocalDensity.current
+                    // Thumb cresce durante il drag (14 → 20dp) con alone bianco.
+                    val thumbSize by animateDpAsState(
+                        targetValue = if (isSeeking) 20.dp else 14.dp,
+                        animationSpec = if (reducedEffects) snap() else tween(150),
+                        label = "thumbSize"
+                    )
 
-                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        val fraction = (sliderValue.toFloat() / (duration.coerceAtLeast(1)).toFloat()).coerceIn(0f, 1f)
-                        val trackWidth = maxWidth - thumbWidth
-                        val thumbCenterPx = with(density) { (thumbWidth / 2 + trackWidth * fraction).toPx() }
-
-                        if (isSeeking) {
-                            Layout(
-                                content = {
-                                    Text(
-                                        text = Format.time(sliderValue / 1000.0),
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier
-                                            .background(
-                                                color = Color.Black.copy(alpha = 0.85f),
-                                                shape = RoundedCornerShape(4.dp)
-                                            )
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            ) { measurables, constraints ->
-                                val placeable = measurables.first().measure(constraints.copy(minWidth = 0))
-                                val x = (thumbCenterPx - placeable.width / 2f)
-                                    .toInt()
-                                    .coerceIn(0, constraints.maxWidth - placeable.width)
-                                val y = with(density) { (-36).dp.roundToPx() }
-                                layout(constraints.maxWidth, 0) {
-                                    placeable.placeRelative(x, y)
-                                }
-                            }
-                        }
-
-                        Slider(
-                            value = sliderValue.toFloat(),
-                            onValueChange = {
-                                sliderValue = it.toLong()
-                                isSeeking = true
-                            },
-                            onValueChangeFinished = {
-                                captureFrame()
-                                viewModel.seekTo(sliderValue)
-                                isSeeking = false
-                            },
-                            valueRange = 0f..(duration.coerceAtLeast(1)).toFloat(),
-                            interactionSource = sliderInteractionSource,
-                            thumb = {
-                                Box(
-                                    modifier = Modifier
-                                        .size(thumbWidth)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                )
-                            },
-                            track = {
-                                val bufferedFraction = (bufferedPosition.toFloat() /
-                                    duration.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
-                                Canvas(modifier = Modifier.fillMaxWidth().height(3.dp)) {
-                                    val y = size.height / 2f
-                                    val w = size.width
-                                    val cap = StrokeCap.Round
-                                    // remaining (faint background)
-                                    drawLine(
-                                        color = Color.White.copy(alpha = 0.3f),
-                                        start = Offset(0f, y),
-                                        end = Offset(w, y),
-                                        strokeWidth = size.height,
-                                        cap = cap
-                                    )
-                                    // buffered (grey, how much downloaded)
-                                    if (bufferedFraction > 0f) {
-                                        drawLine(
-                                            color = Color.White.copy(alpha = 0.55f),
-                                            start = Offset(0f, y),
-                                            end = Offset(w * bufferedFraction, y),
-                                            strokeWidth = size.height,
-                                            cap = cap
-                                        )
-                                    }
-                                    // played (primary)
-                                    if (fraction > 0f) {
-                                        drawLine(
-                                            color = primaryColor,
-                                            start = Offset(0f, y),
-                                            end = Offset(w * fraction, y),
-                                            strokeWidth = size.height,
-                                            cap = cap
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    // Tempi sopra la barra.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -849,9 +719,107 @@ fun PlayerScreen(
                             fontSize = 12.sp
                         )
                     }
+                    // Altezza ridotta: comprime il padding interno dello Slider Material
+                    // (~48dp) avvicinando la barra ai tempi.
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(24.dp)) {
+                        val fraction = (sliderValue.toFloat() / (duration.coerceAtLeast(1)).toFloat()).coerceIn(0f, 1f)
+                        val trackWidth = maxWidth
+                        val density = LocalDensity.current
+                        var bubbleWidth by remember { mutableStateOf(0.dp) }
 
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = isSeeking && sliderEnabled,
+                            enter = if (reducedEffects) EnterTransition.None else fadeIn(),
+                            exit = if (reducedEffects) ExitTransition.None else fadeOut(),
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .offset(
+                                    x = (trackWidth * fraction - bubbleWidth / 2)
+                                        .coerceIn(0.dp, (trackWidth - bubbleWidth).coerceAtLeast(0.dp)),
+                                    y = (-64).dp
+                                )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .onSizeChanged { bubbleWidth = with(density) { it.width.toDp() } }
+                                    .glassCapsule(playerHazeState, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = Format.time(sliderValue / 1000.0),
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        if (sliderEnabled) {
+                            Slider(
+                                value = sliderValue.toFloat(),
+                                onValueChange = {
+                                    if (!isSeeking) captureFrame()
+                                    sliderValue = it.toLong()
+                                    isSeeking = true
+                                },
+                                onValueChangeFinished = {
+                                    captureFrame()
+                                    viewModel.seekTo(sliderValue)
+                                    isSeeking = false
+                                },
+                                valueRange = 0f..(duration.coerceAtLeast(1)).toFloat(),
+                                interactionSource = sliderInteractionSource,
+                                thumb = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(thumbSize)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                },
+                                track = {
+                                    val bufferedFraction = (bufferedPosition.toFloat() /
+                                        duration.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+                                    Canvas(modifier = Modifier.fillMaxWidth().height(4.dp)) {
+                                        val y = size.height / 2f
+                                        val w = size.width
+                                        val cap = StrokeCap.Round
+                                        drawLine(color = Color.White.copy(alpha = 0.25f), start = Offset(0f, y), end = Offset(w, y), strokeWidth = size.height, cap = cap)
+                                        if (bufferedFraction > 0f) {
+                                            drawLine(color = Color.White.copy(alpha = 0.5f), start = Offset(0f, y), end = Offset(w * bufferedFraction, y), strokeWidth = size.height, cap = cap)
+                                        }
+                                        if (fraction > 0f) {
+                                            drawLine(color = primaryColor, start = Offset(0f, y), end = Offset(w * fraction, y), strokeWidth = size.height, cap = cap)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Canvas(
+                                modifier = Modifier.fillMaxWidth().height(4.dp).alpha(0.5f)
+                            ) {
+                                val w = size.width
+                                drawLine(color = Color.White.copy(alpha = 0.25f), start = Offset(0f, size.height / 2f), end = Offset(w, size.height / 2f), strokeWidth = size.height, cap = StrokeCap.Round)
+                                if (fraction > 0f) {
+                                    drawLine(color = primaryColor, start = Offset(0f, size.height / 2f), end = Offset(w * fraction, size.height / 2f), strokeWidth = size.height, cap = StrokeCap.Round)
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+
+        // Badge WARP — poco sotto i pulsanti centrali (play/skip).
+        // Fuori dall'AnimatedVisibility dei controlli ma dentro la Box principale.
+        // Disegnato dopo i controlli per stare sopra in z-order.
+        if (warpEnabled && error == null && !inPipMode) {
+            WarpBadge(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = 64.dp)
+            )
         }
 
         // Buffering spinner: single source of truth, centered, drawn above the
@@ -1088,8 +1056,17 @@ fun PlayerScreen(
                                     }
                                 }
                                 "quality" -> {
-                                    PlayerOptionRow("Auto", selectedVideoQuality == null) {
-                                        viewModel.setAutoVideoQuality(); settingsPanel = null
+                                    PlayerOptionRow("Auto", selectedVideoQuality == null && streamingLimit == "auto") {
+                                        viewModel.setAutoVideoQuality()
+                                        viewModel.setStreamingLimit("auto")
+                                        settingsPanel = null
+                                    }
+                                    PlayerOptionRow("Massima", streamingLimit == "max") {
+                                        viewModel.setStreamingLimit("max")
+                                        settingsPanel = null
+                                    }
+                                    if (videoTracks.size > 1) {
+                                        Spacer(modifier = Modifier.height(4.dp))
                                     }
                                     videoTracks.forEach { track ->
                                         PlayerOptionRow(
@@ -1129,8 +1106,12 @@ fun PlayerScreen(
                                     ) { settingsPanel = "speed" }
                                     PlayerSettingsRow(
                                         Icons.Filled.HighQuality, "Qualità video",
-                                        selectedVideoQuality?.label ?: "Auto",
-                                        videoTracks.size > 1
+                                        when {
+                                            streamingLimit == "max" -> "Massima"
+                                            selectedVideoQuality != null -> selectedVideoQuality!!.label
+                                            else -> "Auto"
+                                        },
+                                        videoTracks.size > 1 || streamingLimit != "auto"
                                     ) { settingsPanel = "quality" }
                                     PlayerSettingsRow(
                                         Icons.Filled.AspectRatio, "Formato video",
@@ -1264,23 +1245,21 @@ private fun PlayerOptionRow(label: String, selected: Boolean, onClick: () -> Uni
     }
 }
 
-/** Badge "maschera IP" mostrato durante il caricamento quando WARP è attivo. */
+/** Badge "maschera IP" mostrato quando WARP è attivo. */
 @Composable
-private fun WarpBadge() {
+private fun WarpBadge(modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.55f))
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
+        val muted = Color.White.copy(alpha = 0.55f)
         Icon(
             imageVector = androidx.compose.material.icons.Icons.Filled.Lock,
             contentDescription = null,
-            tint = Color.White,
+            tint = muted,
             modifier = Modifier.size(14.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
-        Text(text = "Maschera IP attiva (WARP)", color = Color.White, fontSize = 12.sp)
+        Text(text = "Maschera IP attiva (WARP)", color = muted, fontSize = 12.sp)
     }
 }

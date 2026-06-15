@@ -12,8 +12,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.logging.HttpLoggingInterceptor
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
@@ -165,6 +167,21 @@ class WarpTunnel @Inject constructor(
     private fun buildProxiedClient(port: Int): OkHttpClient =
         baseClient.newBuilder()
             .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", port)))
+            // This client also fetches HLS segments for playback/download through
+            // the tunnel. Two things in the base (TMDB-tuned) client break streaming:
+            //  1. The BODY HttpLoggingInterceptor buffers every whole segment into
+            //     memory to log it → a stall on each segment → periodic rebuffer.
+            //  2. The 15s read timeout is too short for a large segment over a slow
+            //     tunnel → the fetch times out and ExoPlayer reloads (buffering loop).
+            // Strip the logging (whether registered as an application or network
+            // interceptor) and give segments a generous read timeout.
+            .apply {
+                interceptors().removeAll { it is HttpLoggingInterceptor }
+                networkInterceptors().removeAll { it is HttpLoggingInterceptor }
+            }
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
 
     private suspend fun probeEgress(client: OkHttpClient): Boolean = withContext(Dispatchers.IO) {

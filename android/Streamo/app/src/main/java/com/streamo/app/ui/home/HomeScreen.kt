@@ -6,31 +6,32 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -43,26 +44,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.ProgressEntry
 import com.streamo.app.data.local.entity.WatchlistEntry
 import com.streamo.app.data.remote.dto.TmdbItem
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.navigation.LocalNavController
 import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.SkeletonCard
@@ -80,49 +94,47 @@ fun HomeScreen(
     val navController = LocalNavController.current
     var showRemoveDialog by remember { mutableStateOf(false) }
     var entryToRemove by remember { mutableStateOf<ProgressEntry?>(null) }
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
 
     LaunchedEffect(Unit) {
         viewModel.loadIfNeeded()
     }
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                title = {},
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                ),
-                actions = {
-                    IconButton(onClick = { navController.navigate(NavRoutes.Settings) }) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Impostazioni")
-                    }
-                    IconButton(onClick = { navController.navigate(NavRoutes.History) }) {
-                        Icon(Icons.Outlined.History, contentDescription = "Cronologia")
-                    }
-                    IconButton(onClick = { navController.navigate(NavRoutes.Downloads) }) {
-                        Icon(Icons.Outlined.Download, contentDescription = "Download")
-                    }
-                },
-                scrollBehavior = scrollBehavior
+    GlassTopBarScaffold(
+        onLeading = null,
+        actions = {
+            AnimatedActionIcon(
+                icon = Icons.Outlined.Settings,
+                contentDescription = "Impostazioni",
+                onClick = { navController.navigate(NavRoutes.Settings) }
+            )
+            AnimatedActionIcon(
+                icon = Icons.Outlined.History,
+                contentDescription = "Cronologia",
+                onClick = { navController.navigate(NavRoutes.History) }
+            )
+            AnimatedActionIcon(
+                icon = Icons.Outlined.Download,
+                contentDescription = "Download",
+                onClick = { navController.navigate(NavRoutes.Downloads) },
+                badgeCount = viewModel.activeDownloads.collectAsState().value.size,
+                activePercent = viewModel.activeDownloadsPercent.collectAsState().value,
+                failedCount = viewModel.failedDownloadsCount.collectAsState().value
             )
         }
-    ) { paddingValues ->
+    ) { topPadding ->
         PullToRefreshBox(
             isRefreshing = viewModel.isLoading,
             onRefresh = { viewModel.reload() },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentPadding = PaddingValues(bottom = 12.dp),
+                    .fillMaxSize(),
+                // topPadding saltato: l'hero copre full-bleed partendo da y=0.
+                // La sua altezza naturale (450-560dp) spinge il resto sotto la
+                // barra flottante; il padding lo gestisce il primo elemento.
+                contentPadding = PaddingValues(bottom = 12.dp + LocalBottomBarPadding.current),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 if (viewModel.errorMessage != null && viewModel.rows.isEmpty()) {
@@ -133,25 +145,49 @@ fun HomeScreen(
                         )
                     }
                 } else {
-                    // Hero carousel (trending merge) — full-bleed in cima.
+                    // Hero carousel (trending merge) — full-bleed, parte da y=0
+                    // dietro la GlassTopBar. Se non c'è hero, uno spacer impedisce
+                    // al primo contenuto di finire sotto la barra.
                     if (viewModel.heroItems.isNotEmpty()) {
                         item {
                             HomeHero(
                                 items = viewModel.heroItems,
                                 isInWatchlist = { item -> watchlist.any { it.tmdbId == item.id } },
                                 onPlay = { item ->
-                                    navController.navigate(
-                                        NavRoutes.Player(
-                                            tmdbId = item.id,
-                                            mediaType = item.mediaType ?: "movie",
-                                            title = item.displayTitle,
-                                            poster = item.posterPath,
-                                            releaseDate = item.primaryDate
+                                    val mediaType = item.mediaType ?: "movie"
+                                    if (mediaType == "tv") {
+                                        // Serie → Detail cosí utente sceglie stagione/episodio
+                                        onNavigateToDetail(item.id, mediaType, 0, 0)
+                                    } else {
+                                        // Film → Player diretto
+                                        navController.navigate(
+                                            NavRoutes.Player(
+                                                tmdbId = item.id,
+                                                mediaType = mediaType,
+                                                title = item.displayTitle,
+                                                poster = item.posterPath,
+                                                releaseDate = item.primaryDate
+                                            )
                                         )
-                                    )
+                                    }
                                 },
                                 onToggleWatchlist = { viewModel.toggleWatchlist(it) },
                                 onOpen = { item ->
+                                    onNavigateToDetail(item.id, item.mediaType ?: "movie", 0, 0)
+                                }
+                            )
+                        }
+                    } else {
+                        item { Spacer(modifier = Modifier.height(topPadding)) }
+                    }
+
+                    // Top 10 oggi — subito dopo l'hero
+                    if (viewModel.top10.isNotEmpty()) {
+                        item {
+                            Top10Row(
+                                items = viewModel.top10,
+                                showInfo = showCardInfo,
+                                onItemClick = { item ->
                                     onNavigateToDetail(item.id, item.mediaType ?: "movie", 0, 0)
                                 }
                             )
@@ -181,19 +217,6 @@ fun HomeScreen(
                                 showInfo = showCardInfo,
                                 onNavigateToDetail = onNavigateToDetail,
                                 onHeaderClick = { navController.navigate(NavRoutes.Watchlist) }
-                            )
-                        }
-                    }
-
-                    // Top 10
-                    if (viewModel.top10.isNotEmpty()) {
-                        item {
-                            Top10Row(
-                                items = viewModel.top10,
-                                showInfo = showCardInfo,
-                                onItemClick = { item ->
-                                    onNavigateToDetail(item.id, item.mediaType ?: "movie", 0, 0)
-                                }
                             )
                         }
                     }
@@ -287,7 +310,7 @@ private fun ErrorState(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 40.dp)
         )
-        Button(onClick = onRetry) {
+        BrandButton(onClick = onRetry) {
             Text("Riprova")
         }
     }
@@ -422,6 +445,110 @@ private fun SectionRow(
                         onClick = { onItemClick(item) }
                     )
                 }
+            }
+        }
+    }
+}
+
+// ── Glass action icon with scale-on-press spring ──
+
+@Composable
+private fun AnimatedActionIcon(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    /** Count numerico in capsule rossa top-end (null/0 = niente badge). */
+    badgeCount: Int = 0,
+    /** Percentuale media 0..100 mostrata a destra dell'icona (-1 = niente). */
+    activePercent: Int = -1,
+    /** Count failed → warning triangolo sopra l'icona. */
+    failedCount: Int = 0
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.82f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 300f)
+    )
+
+    // Box esterno: ospita icona (+ eventuale % a destra) e, in overlay assoluto,
+    // il badge count. Padding laterale sul click target, non sul Box interno, così
+    // il badge non viene clippato dal bordo.
+    Box(
+        modifier = Modifier
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Box wrapper sull'icona: serve come anchor per i badge (count +
+            // warning), che devono stare sopra la SOLA icona, non sull'intera
+            // capsula. Box 24dp = icona; i badge 12-16dp ci stanno dentro.
+            Box(modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = Color.White,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (badgeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-8).dp)
+                            .size(14.dp)
+                            .background(
+                                color = Color(0xFFFF3B30),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when {
+                                badgeCount > 99 -> "99+"
+                                badgeCount > 9 -> "9+"
+                                else -> "$badgeCount"
+                            },
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            style = TextStyle(
+                                baselineShift = BaselineShift(-0.15f)
+                            )
+                        )
+                    }
+                }
+                if (failedCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .background(
+                                color = Color.Black.copy(alpha = 0.55f),
+                                shape = CircleShape
+                            )
+                            .padding(1.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = "$failedCount download falliti",
+                            tint = Color(0xFFFF9500),
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                }
+            }
+            if (activePercent >= 0) {
+                Text(
+                    text = "$activePercent%",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }

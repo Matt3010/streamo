@@ -30,13 +30,15 @@ class SettingsDataStore @Inject constructor(
         private val PROVIDER_LOCALE = stringPreferencesKey("provider_locale")
         private val FOLDERS_ENABLED = booleanPreferencesKey("folders_enabled")
         private val SHOW_CARD_INFO = booleanPreferencesKey("show_card_info")
+        private val REDUCE_EFFECTS = booleanPreferencesKey("reduce_effects")
         private val AUTO_DELETE_WATCHED = booleanPreferencesKey("auto_delete_watched_downloads")
         private val ACCENT_R = floatPreferencesKey("accent_r")
         private val ACCENT_G = floatPreferencesKey("accent_g")
         private val ACCENT_B = floatPreferencesKey("accent_b")
         private val DL_QUALITY_WIFI = stringPreferencesKey("download_quality_wifi")
         private val DL_QUALITY_MOBILE = stringPreferencesKey("download_quality_mobile")
-        private val STREAMING_QUALITY = stringPreferencesKey("streaming_quality")
+        private val STREAMING_QUALITY_WIFI = stringPreferencesKey("streaming_quality_wifi")
+        private val STREAMING_QUALITY_MOBILE = stringPreferencesKey("streaming_quality_mobile")
         private val RENDERER_PROTOCOL_PREFS = stringPreferencesKey("renderer_protocol_prefs")
         private val WARP_ENABLED = booleanPreferencesKey("warp_enabled")
         private val WARP_REGISTERED = booleanPreferencesKey("warp_registered")
@@ -84,6 +86,19 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setShowCardInfo(value: Boolean) {
         context.dataStore.edit { it[SHOW_CARD_INFO] = value }
+    }
+
+    /**
+     * Modalità prestazioni: disabilita blur (Haze) e animazioni della UI glass,
+     * sostituendo il vetro con una tinta piatta semitrasparente. Utile su device
+     * lenti. Default false (effetti attivi).
+     */
+    val reduceEffects: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[REDUCE_EFFECTS] ?: false
+    }
+
+    suspend fun setReduceEffects(value: Boolean) {
+        context.dataStore.edit { it[REDUCE_EFFECTS] = value }
     }
 
     // region WARP (Cloudflare IP-masking)
@@ -165,13 +180,21 @@ class SettingsDataStore @Inject constructor(
         context.dataStore.edit { it[DL_QUALITY_MOBILE] = value }
     }
 
-    // Cap risoluzione streaming. Token: "auto" | "1080" | "720" | "480". Default "auto".
-    val streamingQuality: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[STREAMING_QUALITY] ?: "auto"
+    // Cap risoluzione streaming per tipo rete. Token: "auto" | "max" | "1080" | "720" | "480". Default "auto".
+    val streamingQualityWifi: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[STREAMING_QUALITY_WIFI] ?: "auto"
     }
 
-    suspend fun setStreamingQuality(value: String) {
-        context.dataStore.edit { it[STREAMING_QUALITY] = value }
+    suspend fun setStreamingQualityWifi(value: String) {
+        context.dataStore.edit { it[STREAMING_QUALITY_WIFI] = value }
+    }
+
+    val streamingQualityMobile: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[STREAMING_QUALITY_MOBILE] ?: "auto"
+    }
+
+    suspend fun setStreamingQualityMobile(value: String) {
+        context.dataStore.edit { it[STREAMING_QUALITY_MOBILE] = value }
     }
 
     // --- Preferenze protocollo cast per dispositivo ---

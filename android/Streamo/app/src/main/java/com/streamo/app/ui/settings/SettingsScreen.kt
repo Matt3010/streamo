@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.Image
@@ -28,12 +29,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -65,9 +64,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.OutlinedTextField
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.NetworkType
+import com.streamo.app.navigation.LocalBottomBarPadding
+import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassLargeTitle
+import com.streamo.app.ui.common.GlassTopBarScaffold
 
 private fun hsvColor(h: Float, s: Float, v: Float): Color =
     Color(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))
@@ -86,6 +90,7 @@ private fun rgbToHsv(r: Float, g: Float, b: Float): Triple<Float, Float, Float> 
 @Composable
 fun SettingsScreen(
     onNavigateToAdvanced: () -> Unit = {},
+    onBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -95,13 +100,14 @@ fun SettingsScreen(
     val autoDelete by viewModel.autoDeleteWatched.collectAsState()
     val folders by viewModel.foldersEnabled.collectAsState()
     val showCardInfo by viewModel.showCardInfo.collectAsState()
+    val reduceEffects by viewModel.reduceEffects.collectAsState()
     val accent by viewModel.accentColor.collectAsState()
     val dlQualityWifi by viewModel.downloadQualityWifi.collectAsState()
     val dlQualityMobile by viewModel.downloadQualityMobile.collectAsState()
-    val streamingQuality by viewModel.streamingQuality.collectAsState()
-    // Rete di cui si sta scegliendo la qualità (null = nessun picker aperto).
+    val streamingQualityWifi by viewModel.streamingQualityWifi.collectAsState()
+    val streamingQualityMobile by viewModel.streamingQualityMobile.collectAsState()
     var qualityPickerFor by remember { mutableStateOf<NetworkType?>(null) }
-    var showStreamingQualityPicker by remember { mutableStateOf(false) }
+    var streamingPickerFor by remember { mutableStateOf<NetworkType?>(null) }
     val confirmRestore1 by viewModel.confirmRestoreStep1.collectAsState()
     val confirmRestore2 by viewModel.confirmRestoreStep2.collectAsState()
 
@@ -167,11 +173,13 @@ fun SettingsScreen(
         )
     }
 
-    if (showStreamingQualityPicker) {
-        val options = listOf("auto" to "Auto", "1080" to "1080p", "720" to "720p", "480" to "480p")
+    streamingPickerFor?.let { net ->
+        val current = if (net == NetworkType.WIFI) streamingQualityWifi else streamingQualityMobile
+        val netLabel = if (net == NetworkType.WIFI) "Wi-Fi" else "rete mobile"
+        val options = listOf("auto" to "Auto", "max" to "Massima", "1080" to "1080p", "720" to "720p", "480" to "480p")
         AlertDialog(
-            onDismissRequest = { showStreamingQualityPicker = false },
-            title = { Text("Qualità streaming") },
+            onDismissRequest = { streamingPickerFor = null },
+            title = { Text("Qualità streaming · $netLabel") },
             text = {
                 Column {
                     options.forEach { (token, label) ->
@@ -179,17 +187,19 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    viewModel.setStreamingQuality(token)
-                                    showStreamingQualityPicker = false
+                                    if (net == NetworkType.WIFI) viewModel.setStreamingQualityWifi(token)
+                                    else viewModel.setStreamingQualityMobile(token)
+                                    streamingPickerFor = null
                                 }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
-                                selected = streamingQuality == token,
+                                selected = current == token,
                                 onClick = {
-                                    viewModel.setStreamingQuality(token)
-                                    showStreamingQualityPicker = false
+                                    if (net == NetworkType.WIFI) viewModel.setStreamingQualityWifi(token)
+                                    else viewModel.setStreamingQualityMobile(token)
+                                    streamingPickerFor = null
                                 }
                             )
                             Spacer(modifier = Modifier.size(4.dp))
@@ -200,7 +210,7 @@ fun SettingsScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showStreamingQualityPicker = false }) {
+                TextButton(onClick = { streamingPickerFor = null }) {
                     Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -235,34 +245,26 @@ fun SettingsScreen(
         )
     }
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Impostazioni",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
-        }
-    ) { paddingValues ->
+    GlassTopBarScaffold(
+        onLeading = onBack
+    ) { topPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Aspetto: colore + info card
+            Spacer(modifier = Modifier.height(topPadding))
+            GlassLargeTitle("Impostazioni")
+
+            // ————————————————————————————
+            // 1. Aspetto
+            // ————————————————————————————
+            SectionHeader("Aspetto")
+
+            // Accent color
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Colore dell'app", style = MaterialTheme.typography.titleMedium)
@@ -317,9 +319,28 @@ fun SettingsScreen(
                             }
                         }
                     }
+                    val isDefaultAccent = accent == SettingsDataStore.defaultAccent
                     Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(onClick = { viewModel.resetAccentColor() }) {
-                        Text("Ripristina rosso predefinito")
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isDefaultAccent) Color.White.copy(alpha = 0.04f)
+                                else Color.White.copy(alpha = 0.08f)
+                            )
+                            .then(
+                                if (isDefaultAccent) Modifier
+                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                            )
+                            .clickable(enabled = !isDefaultAccent) { viewModel.resetAccentColor() }
+                            .padding(horizontal = 18.dp, vertical = 13.dp)
+                    ) {
+                        Text(
+                            "Ripristina rosso predefinito",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (isDefaultAccent) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.error
+                        )
                     }
 
                     // Color picker dialog — palette saturazione/luminosità + hue + RGB
@@ -327,23 +348,19 @@ fun SettingsScreen(
                         var hue by remember { mutableFloatStateOf(0f) }
                         var sat by remember { mutableFloatStateOf(1f) }
                         var value by remember { mutableFloatStateOf(1f) }
-                        // Init from current colour
                         LaunchedEffect(Unit) {
                             val (h, s, v) = rgbToHsv(currentColor.red, currentColor.green, currentColor.blue)
                             hue = h; sat = s; value = v
                         }
                         val pickerColor = remember(hue, sat, value) { hsvColor(hue, sat, value) }
-                        // Stato testo RGB per input manuale
                         var rText by remember { mutableStateOf("") }
                         var gText by remember { mutableStateOf("") }
                         var bText by remember { mutableStateOf("") }
-                        // Init da colore corrente
                         LaunchedEffect(Unit) {
                             rText = (currentColor.red * 255).toInt().toString()
                             gText = (currentColor.green * 255).toInt().toString()
                             bText = (currentColor.blue * 255).toInt().toString()
                         }
-                        // Sync palette → text quando l'utente trascina
                         LaunchedEffect(pickerColor) {
                             rText = (pickerColor.red * 255).toInt().toString()
                             gText = (pickerColor.green * 255).toInt().toString()
@@ -354,7 +371,6 @@ fun SettingsScreen(
                             title = { Text("Scegli colore") },
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    // 2D palette — saturation × value at fixed hue using gradient brushes
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -370,14 +386,12 @@ fun SettingsScreen(
                                             }
                                         }
                                     ) {
-                                        // Crosshair indicator
                                         Canvas(modifier = Modifier.fillMaxSize()) {
                                             val cx = sat * size.width; val cy = (1f - value) * size.height
                                             drawCircle(Color.White, radius = 6f, center = Offset(cx, cy))
                                             drawCircle(Color.Black.copy(alpha = 0.5f), radius = 6f, center = Offset(cx, cy), style = Stroke(width = 2f))
                                         }
                                     }
-                                    // Hue slider with gradient strip
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -400,7 +414,6 @@ fun SettingsScreen(
                                         }
                                     }
 
-                                    // Preview + RGB input fields (0-255)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
                                             modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(pickerColor)
@@ -412,12 +425,10 @@ fun SettingsScreen(
                                                 value = text,
                                                 onValueChange = { newVal ->
                                                     val filtered = newVal.filter { it.isDigit() }.take(3)
-                                                    // Aggiorna lo stato del campo corretto
                                                     val r = if (i == 0) filtered else rText
                                                     val g = if (i == 1) filtered else gText
                                                     val b = if (i == 2) filtered else bText
                                                     rText = r; gText = g; bText = b
-                                                    // Se tutti e tre hanno valori validi, aggiorna palette
                                                     val ri = r.toIntOrNull()?.coerceIn(0, 255)
                                                     val gi = g.toIntOrNull()?.coerceIn(0, 255)
                                                     val bi = b.toIntOrNull()?.coerceIn(0, 255)
@@ -448,52 +459,10 @@ fun SettingsScreen(
                             }
                         )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Mostra titolo, anno e voto", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "Mostra le informazioni sotto le copertine. \"Continua a guardare\" le mostra comunque.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(modifier = Modifier.size(12.dp))
-                        Switch(
-                            checked = showCardInfo,
-                            onCheckedChange = { viewModel.setShowCardInfo(it) }
-                        )
-                    }
                 }
             }
 
-            // Playback
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Riproduci episodio successivo", style = MaterialTheme.typography.bodyLarge)
-                        Switch(
-                            checked = autoplay,
-                            onCheckedChange = { viewModel.setAutoplayNext(it) }
-                        )
-                    }
-                    QualityPickerRow(
-                        label = "Qualità streaming",
-                        value = streamingQualityLabel(streamingQuality),
-                        onClick = { showStreamingQualityPicker = true }
-                    )
-                }
-            }
-
-            // Downloads
+            // Mostra info card
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
@@ -503,44 +472,22 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Elimina dopo la visione", style = MaterialTheme.typography.bodyLarge)
+                        Text("Mostra titolo, anno e voto", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Cancella automaticamente un download quando lo hai finito di guardare (≥90%).",
+                            "Mostra le informazioni sotto le copertine. \"Continua a guardare\" le mostra comunque.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(modifier = Modifier.size(12.dp))
                     Switch(
-                        checked = autoDelete,
-                        onCheckedChange = { viewModel.setAutoDeleteWatched(it) }
+                        checked = showCardInfo,
+                        onCheckedChange = { viewModel.setShowCardInfo(it) }
                     )
                 }
             }
 
-            // Download quality per network
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Qualità download", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Risoluzione massima per il download in base alla rete. \"Chiedi\" mostra una scelta a ogni download.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    QualityPickerRow(
-                        label = "Wi-Fi",
-                        value = dlQualityWifi.label(),
-                        onClick = { qualityPickerFor = NetworkType.WIFI }
-                    )
-                    QualityPickerRow(
-                        label = "Rete mobile",
-                        value = dlQualityMobile.label(),
-                        onClick = { qualityPickerFor = NetworkType.MOBILE }
-                    )
-                }
-            }
-
-            // Organization
+            // Folder nella watchlist
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
@@ -564,7 +511,129 @@ fun SettingsScreen(
                 }
             }
 
-            // Statistics
+            // Prestazioni — disabilita blur/animazioni della UI glass
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Modalità prestazioni", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Disattiva sfocature e animazioni della UI, usando sfondi semitrasparenti. Migliora la fluidità sui dispositivi meno potenti.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(12.dp))
+                    Switch(
+                        checked = reduceEffects,
+                        onCheckedChange = { viewModel.setReduceEffects(it) }
+                    )
+                }
+            }
+
+            // ————————————————————————————
+            // 2. Riproduzione
+            // ————————————————————————————
+            SectionHeader("Riproduzione")
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Riproduci episodio successivo", style = MaterialTheme.typography.bodyLarge)
+                    Switch(
+                        checked = autoplay,
+                        onCheckedChange = { viewModel.setAutoplayNext(it) }
+                    )
+                }
+            }
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Qualità streaming", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Risoluzione massima per lo streaming in base alla rete.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    QualityPickerRow(
+                        label = "Wi-Fi",
+                        value = streamingQualityLabel(streamingQualityWifi),
+                        onClick = { streamingPickerFor = NetworkType.WIFI }
+                    )
+                    QualityPickerRow(
+                        label = "Rete mobile",
+                        value = streamingQualityLabel(streamingQualityMobile),
+                        onClick = { streamingPickerFor = NetworkType.MOBILE }
+                    )
+                }
+            }
+
+            // ————————————————————————————
+            // 3. Download
+            // ————————————————————————————
+            SectionHeader("Download")
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Elimina dopo la visione", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Cancella automaticamente un download quando lo hai finito di guardare (≥90%).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoDelete,
+                        onCheckedChange = { viewModel.setAutoDeleteWatched(it) }
+                    )
+                }
+            }
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Qualità download", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Risoluzione massima per il download in base alla rete. \"Chiedi\" mostra una scelta a ogni download.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    QualityPickerRow(
+                        label = "Wi-Fi",
+                        value = dlQualityWifi.label(),
+                        onClick = { qualityPickerFor = NetworkType.WIFI }
+                    )
+                    QualityPickerRow(
+                        label = "Rete mobile",
+                        value = dlQualityMobile.label(),
+                        onClick = { qualityPickerFor = NetworkType.MOBILE }
+                    )
+                }
+            }
+
+            // ————————————————————————————
+            // 4. Dati
+            // ————————————————————————————
+            SectionHeader("Dati")
+
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Statistiche", style = MaterialTheme.typography.titleMedium)
@@ -573,17 +642,16 @@ fun SettingsScreen(
                 }
             }
 
-            // Backup
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Backup", style = MaterialTheme.typography.titleMedium)
-                    Button(
+                    BrandButton(
                         onClick = { exportLauncher.launch("project-obsidian-backup.json") },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Esporta backup JSON")
                     }
-                    Button(
+                    BrandButton(
                         onClick = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -597,7 +665,11 @@ fun SettingsScreen(
                 }
             }
 
-            // Advanced settings link
+            // ————————————————————————————
+            // 5. Impostazioni avanzate (link)
+            // ————————————————————————————
+            SectionHeader("Avanzate")
+
             GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -626,7 +698,11 @@ fun SettingsScreen(
                 }
             }
 
-            // App info
+            // ————————————————————————————
+            // 6. Informazioni
+            // ————————————————————————————
+            SectionHeader("Informazioni")
+
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -646,7 +722,6 @@ fun SettingsScreen(
                 }
             }
 
-            // TMDB attribution
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Image(
@@ -663,18 +738,27 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(LocalBottomBarPadding.current))
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = LocalBottomBarPadding.current)
+        )
         }
     }
 }
 
 private fun streamingQualityLabel(token: String): String = when (token) {
+    "max" -> "Massima"
     "1080" -> "1080p"
     "720" -> "720p"
     "480" -> "480p"
     else -> "Auto"
 }
 
-/** Riga impostazione qualità: etichetta a sinistra, valore corrente (cliccabile) a destra. */
 @Composable
 private fun QualityPickerRow(
     label: String,
@@ -696,4 +780,14 @@ private fun QualityPickerRow(
             color = MaterialTheme.colorScheme.primary
         )
     }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+    )
 }

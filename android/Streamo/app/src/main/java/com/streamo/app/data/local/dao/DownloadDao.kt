@@ -30,6 +30,17 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE status IN ('pending', 'downloading', 'paused', 'resolving') ORDER BY createdAt ASC")
     suspend fun getActiveDownloads(): List<DownloadEntry>
 
+    @Query("SELECT * FROM downloads WHERE status = 'pending' ORDER BY createdAt ASC")
+    suspend fun getPendingOrderedByCreation(): List<DownloadEntry>
+
+    /** Versione reattiva di [getActiveDownloads] per badge/percentuale in tempo reale nella top bar. */
+    @Query("SELECT * FROM downloads WHERE status IN ('pending', 'downloading', 'paused', 'resolving') ORDER BY createdAt ASC")
+    fun observeActiveDownloads(): Flow<List<DownloadEntry>>
+
+    /** Quanti download sono in stato failed — per il warning nell'icona download. */
+    @Query("SELECT COUNT(*) FROM downloads WHERE status = 'failed'")
+    fun observeFailedCount(): Flow<Int>
+
     @Query("UPDATE downloads SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Int, status: String)
 
@@ -39,6 +50,16 @@ interface DownloadDao {
 
     @Query("UPDATE downloads SET contentId = :contentId, streamUrl = :streamUrl, status = :status WHERE id = :id")
     suspend fun updateContentAndStatus(id: Int, contentId: String, streamUrl: String, status: String)
+
+    /**
+     * Come [updateContentAndStatus] ma persiste anche il WARP state sotto cui lo
+     * streamUrl è stato risolto. Tenere allineata la colonna è essenziale: il worker
+     * riusa lo streamUrl in cache solo se warpEnabled == warp attuale, e
+     * [pickNextPendingDownload] dà priorità per WARP. Senza questo, un download
+     * risolto sotto un WARP diverso da quello salvato ri-risolverebbe ad ogni resume.
+     */
+    @Query("UPDATE downloads SET contentId = :contentId, streamUrl = :streamUrl, status = :status, warpEnabled = :warpEnabled WHERE id = :id")
+    suspend fun updateContentStatusAndWarp(id: Int, contentId: String, streamUrl: String, status: String, warpEnabled: Boolean)
 
     @Query("UPDATE downloads SET downloadPercentage = :percentage, bytesDownloaded = :downloaded, bytesTotal = :total, bytesPerSecond = :speed, status = :status WHERE id = :id")
     suspend fun updateProgress(id: Int, percentage: Float, downloaded: Long, total: Long, speed: Long, status: String)

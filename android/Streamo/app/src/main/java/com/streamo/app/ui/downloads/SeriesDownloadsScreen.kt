@@ -70,7 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassLargeTitle
+import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.SeasonChip
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -118,105 +122,87 @@ fun SeriesDownloadsScreen(
         selectedKeys.filter { downloadMap[contentIdFor(it)] == null }
     } else emptyList()
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = if (selectionMode) "${selectedKeys.size} selezionati"
-                            else "Download (${viewModel.title})",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { if (selectionMode) exitSelection() else onBack() }) {
-                        Icon(
-                            imageVector = if (selectionMode) Icons.Filled.Close
-                                else Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = if (selectionMode) "Annulla selezione" else "Indietro"
-                        )
-                    }
-                },
-                actions = {
-                    if (selectionMode) {
-                        val allKeys = if (viewModel.showAllEpisodes) {
-                            viewModel.allEpisodes.map { it.episodeNumber }
-                        } else {
-                            dbEntries.map { it.id }
-                        }
-                        val allSelected = allKeys.isNotEmpty() && allKeys.all { it in selectedKeys }
-                        Text(
-                            "Tutti",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Checkbox(
-                            checked = allSelected,
-                            onCheckedChange = {
-                                selectedKeys.clear()
-                                if (!allSelected) selectedKeys.addAll(allKeys)
-                            }
-                        )
-                        if (viewModel.showAllEpisodes && selectedDownloadable.isNotEmpty()) {
-                            IconButton(onClick = {
-                                viewModel.downloadEpisodes(viewModel.selectedSeason, selectedDownloadable)
-                                exitSelection()
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Download,
-                                    contentDescription = "Scarica selezionati",
-                                    tint = Color.White
-                                )
-                            }
-                        }
-                        IconButton(
-                            onClick = { confirmBulkDelete = true },
-                            enabled = selectedDeletable.isNotEmpty()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = "Elimina selezionati",
-                                tint = if (selectedDeletable.isNotEmpty()) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else if (viewModel.showAllEpisodes) {
-                        val hasDownloads = downloadMap.isNotEmpty()
-                        IconButton(onClick = { viewModel.downloadAll() }) {
-                            Icon(
-                                imageVector = Icons.Filled.Download,
-                                contentDescription = "Scarica tutte",
-                                tint = Color.White
-                            )
-                        }
-                        IconButton(
-                            onClick = { confirmDeleteAll = true },
-                            enabled = hasDownloads
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.DeleteSweep,
-                                contentDescription = "Elimina tutto",
-                                tint = if (hasDownloads) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+    GlassTopBarScaffold(
+        onLeading = { if (selectionMode) exitSelection() else onBack() },
+        leadingIcon = if (selectionMode) Icons.Filled.Close
+            else Icons.AutoMirrored.Filled.ArrowBack,
+        leadingDesc = if (selectionMode) "Annulla selezione" else "Indietro",
+        actions = if (selectionMode) {
+            {
+                val allKeys = if (viewModel.showAllEpisodes) {
+                    viewModel.allEpisodes.map { it.episodeNumber }
+                } else {
+                    dbEntries.map { it.id }
+                }
+                val allSelected = allKeys.isNotEmpty() && allKeys.all { it in selectedKeys }
+                Text(
+                    "Tutti",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            )
-        }
-    ) { paddingValues ->
+                Checkbox(
+                    checked = allSelected,
+                    onCheckedChange = {
+                        selectedKeys.clear()
+                        if (!allSelected) selectedKeys.addAll(allKeys)
+                    }
+                )
+                if (viewModel.showAllEpisodes && selectedDownloadable.isNotEmpty()) {
+                    IconButton(onClick = {
+                        viewModel.downloadEpisodes(viewModel.selectedSeason, selectedDownloadable)
+                        exitSelection()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Download,
+                            contentDescription = "Scarica selezionati",
+                            tint = Color.White
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = { confirmBulkDelete = true },
+                    enabled = selectedDeletable.isNotEmpty()
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Elimina selezionati",
+                        tint = if (selectedDeletable.isNotEmpty()) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else if (viewModel.showAllEpisodes) {
+            {
+                val hasDownloads = downloadMap.isNotEmpty()
+                IconButton(onClick = { viewModel.downloadAll() }) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = "Scarica tutte",
+                        tint = Color.White
+                    )
+                }
+                IconButton(
+                    onClick = { confirmDeleteAll = true },
+                    enabled = hasDownloads
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DeleteSweep,
+                        contentDescription = "Elimina tutto",
+                        tint = if (hasDownloads) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else null
+    ) { topPadding ->
         if (viewModel.showAllEpisodes) {
             // Mode: coming from DetailScreen → show ALL episodes grouped by season
             AllEpisodesContent(
                 viewModel = viewModel,
                 downloadMap = downloadMap,
-                paddingValues = paddingValues,
+                title = if (selectionMode) "${selectedKeys.size} selezionati"
+                    else "Download (${viewModel.title})",
+                topPadding = topPadding,
                 selectionMode = selectionMode,
                 isSelected = { ep -> ep in selectedKeys },
                 onToggleSelection = { ep ->
@@ -242,7 +228,9 @@ fun SeriesDownloadsScreen(
             DownloadedOnlyContent(
                 viewModel = viewModel,
                 entries = dbEntries,
-                paddingValues = paddingValues,
+                title = if (selectionMode) "${selectedKeys.size} selezionati"
+                    else "Download (${viewModel.title})",
+                topPadding = topPadding,
                 selectionMode = selectionMode,
                 isSelected = { id -> id in selectedKeys },
                 onToggleSelection = { id ->
@@ -426,7 +414,8 @@ fun SeriesDownloadsScreen(
 private fun AllEpisodesContent(
     viewModel: SeriesDownloadsViewModel,
     downloadMap: Map<String, DownloadEntry>,
-    paddingValues: PaddingValues,
+    title: String,
+    topPadding: androidx.compose.ui.unit.Dp,
     selectionMode: Boolean,
     isSelected: (Int) -> Boolean,
     onToggleSelection: (Int) -> Unit,
@@ -439,7 +428,7 @@ private fun AllEpisodesContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(paddingValues)
+            .padding(top = topPadding)
     ) {
         // Season picker with scroll arrows
         if (viewModel.seasons.size > 1) {
@@ -461,24 +450,11 @@ private fun AllEpisodesContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     viewModel.seasons.forEach { season ->
-                        val selected = season == viewModel.selectedSeason
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant
-                                )
-                                .clickable { viewModel.changeSeason(season) }
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = "S$season",
-                                color = if (selected) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        }
+                        SeasonChip(
+                            season = season,
+                            selected = season == viewModel.selectedSeason,
+                            onClick = { viewModel.changeSeason(season) }
+                        )
                     }
                 }
                 if (showScrollHints) {
@@ -549,9 +525,12 @@ private fun AllEpisodesContent(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item {
+                    GlassLargeTitle(title)
+                }
                 items(viewModel.allEpisodes, key = { it.episodeNumber }) { ep ->
                     val contentId = "${viewModel.tmdbId}_tv_${viewModel.selectedSeason}_${ep.episodeNumber}"
                     val entry = downloadMap[contentId]
@@ -823,7 +802,8 @@ internal fun EpisodeDownloadCard(
 private fun DownloadedOnlyContent(
     viewModel: SeriesDownloadsViewModel,
     entries: List<DownloadEntry>,
-    paddingValues: PaddingValues,
+    title: String,
+    topPadding: androidx.compose.ui.unit.Dp,
     selectionMode: Boolean,
     isSelected: (Int) -> Boolean,
     onToggleSelection: (Int) -> Unit,
@@ -836,7 +816,7 @@ private fun DownloadedOnlyContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(top = topPadding)
                 .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -849,11 +829,13 @@ private fun DownloadedOnlyContent(
     } else {
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
+                .fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                GlassLargeTitle(title)
+            }
             items(entries.sortedBy { it.season * 1000 + it.episode }, key = { it.id }) { entry ->
                 val epDetail = viewModel.episodeDetails[Pair(entry.season, entry.episode)]
                 EpisodeDownloadCard(

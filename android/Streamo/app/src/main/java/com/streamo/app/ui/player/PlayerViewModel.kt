@@ -38,12 +38,14 @@ import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.download.DownloadGate
 import com.streamo.app.download.DownloadInfrastructure
 import com.streamo.app.download.ResolveAndDownloadWorker
+import com.streamo.app.download.NetworkType
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.provider.PlaybackSource
 import com.streamo.app.provider.ProviderDebugLogger
 import com.streamo.app.provider.ProviderResolver
 import com.streamo.app.provider.warp.WarpTunnel
 import com.streamo.app.tmdb.TMDBClient
+import com.streamo.app.util.ConnectivityHelper
 import com.streamo.app.util.TVLogic
 import kotlinx.coroutines.flow.first
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -67,7 +69,8 @@ class PlayerViewModel @Inject constructor(
     private val settings: SettingsDataStore,
     private val client: TMDBClient,
     private val castController: CastController,
-    private val warpTunnel: WarpTunnel
+    private val warpTunnel: WarpTunnel,
+    private val connectivityHelper: ConnectivityHelper
 ) : ViewModel() {
 
     val tmdbId: Int = savedStateHandle["tmdbId"] ?: 0
@@ -308,6 +311,10 @@ class PlayerViewModel @Inject constructor(
     private val _selectedVideoQuality = MutableStateFlow<TrackInfo?>(null)
     val selectedVideoQuality: StateFlow<TrackInfo?> = _selectedVideoQuality.asStateFlow()
 
+    /** Pref qualità streaming corrente (letto al init, aggiornabile dal menu). */
+    private val _streamingLimit = MutableStateFlow("auto")
+    val streamingLimit: StateFlow<String> = _streamingLimit.asStateFlow()
+
     private val _playbackSpeed = MutableStateFlow(1f)
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
 
@@ -378,22 +385,26 @@ class PlayerViewModel @Inject constructor(
 
     private var tmdbItem: TmdbItem? = null
 
+    private fun applyStreamingLimit(pref: String) {
+        val params = trackSelector.buildUponParameters()
+        when (pref) {
+            "max" -> params.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+            "1080" -> params.setMaxVideoSize(Int.MAX_VALUE, 1080)
+            "720" -> params.setMaxVideoSize(Int.MAX_VALUE, 720)
+            "480" -> params.setMaxVideoSize(Int.MAX_VALUE, 480)
+            // "auto" = adaptive normale, lascia i parametri di default.
+        }
+        trackSelector.setParameters(params.build())
+    }
+
     init {
-        // Applica il cap qualità streaming scelto nelle impostazioni (Auto = nessun limite).
+        // Applica il cap qualità streaming in base alla rete attuale.
         viewModelScope.launch {
-            val maxHeight = when (settings.streamingQuality.first()) {
-                "1080" -> 1080
-                "720" -> 720
-                "480" -> 480
-                else -> Int.MAX_VALUE
-            }
-            if (maxHeight != Int.MAX_VALUE) {
-                trackSelector.setParameters(
-                    trackSelector.buildUponParameters()
-                        .setMaxVideoSize(Int.MAX_VALUE, maxHeight)
-                        .build()
-                )
-            }
+            val netType = connectivityHelper.currentNetworkType()
+            val pref = if (netType == NetworkType.WIFI) settings.streamingQualityWifi.first()
+            else settings.streamingQualityMobile.first()
+            _streamingLimit.value = pref
+            applyStreamingLimit(pref)
         }
 
         player.addListener(object : Player.Listener {
@@ -616,7 +627,7 @@ class PlayerViewModel @Inject constructor(
                     ))
                 }
             } catch (e: Exception) {
-                _error.value = e.localizedMessage ?: "Errore sconosciuto"
+                _error.value = e.localizedMessage ?: "Titolo non disponibile"
                 _debugLogs.value = ProviderDebugLogger.getLogs()
                 _loading.value = false
             }
@@ -625,7 +636,8 @@ class PlayerViewModel @Inject constructor(
 
     private fun loadCurrentSource() {
         if (sourceIndex >= playbackSources.size) {
-            _error.value = "Riproduzione non disponibile"
+            _error.value = "Titolo non disponibile"
+            _debugLogs.value = ProviderDebugLogger.getLogs()
             _loading.value = false
             return
         }
@@ -721,14 +733,40 @@ class PlayerViewModel @Inject constructor(
 
     private var isSeeking = false
 
+    private var seekRenderJob: Job? = null
+
+    /**
+     * Tiene attivo il freeze-frame finché il decoder non ha davvero renderizzato un
+     * frame nuovo e pulito dopo il seek. I primi frame post-seek possono avere una
+     * colonna verde (padding del decoder che la TextureView non croppa subito); un
+     * delay fisso non basta sui primi seek di sessione (decoder freddo, buffering
+     * lungo). Qui aspettiamo STATE_READY (adattivo) + un margine di qualche frame.
+     */
+    private fun awaitSeekRendered(wasPlaying: Boolean) {
+        seekRenderJob?.cancel()
+        seekRenderJob = viewModelScope.launch {
+            var waited = 0
+            while (player.playbackState != Player.STATE_READY && waited < 4000) {
+                delay(16); waited += 16
+            }
+            if (wasPlaying) player.play()
+            // Margine: lascia scorrere qualche frame pulito prima di togliere il freeze.
+            delay(220)
+            _seekingManually.value = false
+            isSeeking = false
+        }
+    }
+
     private fun performSeek(action: () -> Unit) {
         if (isSeeking) return
         isSeeking = true
+        // Mostra il freeze-frame anche per i salti ±10s: maschera il bordo verde.
+        _seekingManually.value = true
+        // playWhenReady (intento), non isPlaying: al primo seek post-load lo stato può
+        // non essere ancora READY (isPlaying=false) pur volendo riprodurre.
+        val wasPlaying = player.playWhenReady
         action()
-        viewModelScope.launch {
-            delay(200)
-            isSeeking = false
-        }
+        awaitSeekRendered(wasPlaying)
     }
 
     /** Pausa il player locale (es. all'apertura della modale di trasmissione). */
@@ -769,15 +807,11 @@ class PlayerViewModel @Inject constructor(
         if (isSeeking) return
         isSeeking = true
         _seekingManually.value = true
-        val wasPlaying = player.isPlaying
+        // Cattura l'intento PRIMA di pause() (che azzera playWhenReady).
+        val wasPlaying = player.playWhenReady
         player.pause()
         player.seekTo(positionMs)
-        viewModelScope.launch {
-            delay(250)
-            _seekingManually.value = false
-            isSeeking = false
-            if (wasPlaying) player.play()
-        }
+        awaitSeekRendered(wasPlaying)
     }
 
     fun playNextEpisode() {
@@ -1065,6 +1099,21 @@ class PlayerViewModel @Inject constructor(
         _selectedVideoQuality.value = null
     }
 
+    /** Modifica il limite qualità streaming dal menu del player. */
+    fun setStreamingLimit(pref: String) {
+        _streamingLimit.value = pref
+        // Resetta override qualità manuale se attivo
+        if (_selectedVideoQuality.value != null) {
+            setAutoVideoQuality()
+        }
+        applyStreamingLimit(pref)
+        viewModelScope.launch {
+            val netType = connectivityHelper.currentNetworkType()
+            if (netType == NetworkType.WIFI) settings.setStreamingQualityWifi(pref)
+            else settings.setStreamingQualityMobile(pref)
+        }
+    }
+
     fun disableSubtitles() {
         val disabled = player.trackSelectionParameters.disabledTrackTypes + C.TRACK_TYPE_TEXT
         player.trackSelectionParameters = player.trackSelectionParameters
@@ -1108,12 +1157,17 @@ class PlayerViewModel @Inject constructor(
         }
         player.release()
 
-        // Resume the downloads we paused for streaming. enqueue() is synchronous, so it
-        // is safe here even though viewModelScope is already cancelled. The worker resets
-        // its own status when it runs.
+        // Resume the downloads we paused for streaming. Reset all to "pending" in DB
+        // so the queue observer picks them up. Only enqueue the first one via WorkManager
+        // (REPLACE policy means only one worker at a time); advanceQueue handles the rest.
         if (didPauseForStreaming) {
             DownloadGate.streamingActive.set(false)
-            pausedForStreamingIds.forEach { ResolveAndDownloadWorker.enqueue(appContext, it) }
+            kotlinx.coroutines.runBlocking {
+                pausedForStreamingIds.forEach { id ->
+                    repository.updateDownloadStatus(id, "pending")
+                }
+            }
+            pausedForStreamingIds.firstOrNull()?.let { ResolveAndDownloadWorker.enqueue(appContext, it) }
         }
 
         super.onCleared()

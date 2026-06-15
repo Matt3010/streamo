@@ -127,10 +127,14 @@ class ResolveAndDownloadWorker(
             Log.w(TAG, "setForeground failed", e)
         }
 
+        // Legge una volta il warp attuale, serve sia per il tunnel che per decidere
+        // se riusare lo streamUrl salvato (stesso warp → stesso token vixcloud).
+        val warpEnabled = settings.warpEnabled.first()
+
         // Build upstream DataSource.Factory with vixcloud headers (Referer, Origin).
         // When WARP is enabled, start the tunnel and route through its proxied client
         // so the IP matches what vixcloud saw during resolution (token IP-binding).
-        val proxiedClient = if (settings.warpEnabled.first() && warpTunnel.isAvailable) {
+        val proxiedClient = if (warpEnabled && warpTunnel.isAvailable) {
             if (warpTunnel.start()) warpTunnel.proxiedClient() else null
         } else null
 
@@ -155,26 +159,33 @@ class ResolveAndDownloadWorker(
         try {
             val contentId = "${entry.tmdbId}_${entry.mediaType}_${entry.season}_${entry.episode}"
 
-            // Always resolve a fresh streamUrl so the vixcloud token matches the
-            // current network path (WARP on/off). Reusing a stored URL whose token
-            // was minted under a different IP (e.g. WARP was toggled between runs)
-            // gets a 403 because vixcloud binds tokens to the requesting IP.
-            // The downside is that cached segments from a previous attempt won't
-            // be found under the new token — but correctness beats resume speed.
-            val resolution = if (entry.mediaType == "tv" && entry.season > 0) {
-                resolver.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
+            // Se abbiamo giá uno streamUrl salvato E il warp non é cambiato,
+            // riusa l'URL esistente. Cosí i segmenti giá in cache sotto la stessa
+            // cache key vengono ripresi invece di ricominciare da zero.
+            // Solo quando il warp cambia (o non c'é URL salvato) rifacciamo la
+            // risoluzione dal provider, perché vixcloud lega il token all'IP.
+            val streamUrl = if (entry.streamUrl.isNotBlank() && entry.warpEnabled == warpEnabled) {
+                Log.d(TAG, "Reusing existing streamUrl (warp unchanged), contentId=${entry.contentId}")
+                entry.streamUrl
             } else {
-                resolver.movieSource(entry.tmdbId, entry.title, null)
-            }
-            Log.d(TAG, "Resolver returned ${resolution.sources.size} source(s). Message=${resolution.message}")
+                val resolution = if (entry.mediaType == "tv" && entry.season > 0) {
+                    resolver.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
+                } else {
+                    resolver.movieSource(entry.tmdbId, entry.title, null)
+                }
+                Log.d(TAG, "Resolver returned ${resolution.sources.size} source(s). Message=${resolution.message}")
 
-            if (resolution.sources.isEmpty()) {
-                throw IllegalStateException(resolution.message ?: "Nessuno stream disponibile")
+                if (resolution.sources.isEmpty()) {
+                    throw IllegalStateException(resolution.message ?: "Nessuno stream disponibile")
+                }
+                resolution.sources.first().playlistUrl
             }
-            val streamUrl = resolution.sources.first().playlistUrl
             Log.d(TAG, "streamUrl=$streamUrl, contentId=$contentId")
 
-            repository.updateDownloadContentAndStatus(downloadId, contentId, streamUrl, "downloading")
+            // Persist the WARP state this streamUrl was resolved under, so the
+            // reuse check above and pickNextPendingDownload prioritization stay
+            // accurate when the entry was picked under a different WARP than saved.
+            repository.updateDownloadContentStatusAndWarp(downloadId, contentId, streamUrl, "downloading", warpEnabled)
             Log.d(TAG, "Room updated to downloading")
 
             // Resolve stream keys for a SINGLE video rendition (+ default audio).
@@ -467,9 +478,9 @@ class ResolveAndDownloadWorker(
         private const val ACTIVE_NOTIF_ID = 2002
 
         /**
-         * Single unique chain for ALL downloads: WorkManager runs the chain one item at a
-         * time, so providers never see parallel requests (avoids rate-limit / ban / "too
-         * many requests"). APPEND_OR_REPLACE keeps the queue alive even if an item fails.
+         * Unique name for all downloads: REPLACE enforces a single worker at a time.
+         * [DownloadQueueManager] picks the next pending download and enqueues it when
+         * the current one finishes, gets paused, or fails — no chain needed.
          */
         const val DOWNLOAD_QUEUE = "streamo_download_queue"
 
@@ -486,7 +497,7 @@ class ResolveAndDownloadWorker(
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 DOWNLOAD_QUEUE,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ExistingWorkPolicy.REPLACE,
                 request
             )
         }

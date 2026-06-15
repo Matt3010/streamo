@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -69,8 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.streamo.app.data.local.entity.DownloadEntry
+import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassLargeTitle
+import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.ImagePlaceholder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,6 +84,7 @@ fun DownloadsScreen(
     onNavigateToPlayer: (Int, String, Int, Int, String, String?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
     onNavigateToSeriesDownloads: (Int, String) -> Unit = { _, _ -> },
     onNavigateToAdvanced: () -> Unit = {},
+    onBack: () -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState(initial = emptyList())
@@ -103,75 +108,40 @@ fun DownloadsScreen(
 
     BackHandler(enabled = selectionMode) { exitSelection() }
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        topBar = {
-            if (selectionMode) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "${selectedIds.size} selezionati",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { exitSelection() }) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Annulla selezione"
-                            )
-                        }
-                    },
-                    actions = {
-                        val allIds = entries.map { it.id }
-                        val allSelected = allIds.isNotEmpty() && allIds.all { it in selectedIds }
-                        Text(
-                            "Tutti",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Checkbox(
-                            checked = allSelected,
-                            onCheckedChange = {
-                                selectedIds.clear()
-                                if (!allSelected) selectedIds.addAll(allIds)
-                            }
-                        )
-                        IconButton(
-                            onClick = { confirmBulkDelete = true },
-                            enabled = selectedIds.isNotEmpty()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = "Elimina selezionati",
-                                tint = if (selectedIds.isNotEmpty()) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        scrolledContainerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground
-                    )
+    GlassTopBarScaffold(
+        onLeading = if (selectionMode) { { exitSelection() } } else onBack,
+        leadingIcon = if (selectionMode) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+        leadingDesc = if (selectionMode) "Annulla selezione" else "Indietro",
+        actions = if (selectionMode) {
+            {
+                val allIds = entries.map { it.id }
+                val allSelected = allIds.isNotEmpty() && allIds.all { it in selectedIds }
+                Text(
+                    "Tutti",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "Download",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        scrolledContainerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground
-                    )
+                Checkbox(
+                    checked = allSelected,
+                    onCheckedChange = {
+                        selectedIds.clear()
+                        if (!allSelected) selectedIds.addAll(allIds)
+                    }
                 )
+                IconButton(
+                    onClick = { confirmBulkDelete = true },
+                    enabled = selectedIds.isNotEmpty()
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Elimina selezionati",
+                        tint = if (selectedIds.isNotEmpty()) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-        }
-    ) { paddingValues ->
+        } else null
+    ) { topPadding ->
         var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
 
         if (entries.isEmpty()) {
@@ -179,7 +149,7 @@ fun DownloadsScreen(
                 text = "Nessun download.",
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .padding(top = topPadding)
                     .padding(24.dp),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyLarge,
@@ -198,11 +168,13 @@ fun DownloadsScreen(
             }
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(16.dp),
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item {
+                    GlassLargeTitle(if (selectionMode) "${selectedIds.size} selezionati" else "Download")
+                }
                 items(movies, key = { it.id }) { entry ->
                     DownloadManagerRow(
                         entry = entry,
