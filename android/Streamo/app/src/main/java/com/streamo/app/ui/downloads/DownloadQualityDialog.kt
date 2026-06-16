@@ -10,12 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,8 +23,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.streamo.app.download.DownloadQualityPref
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialogNeutralButton
+import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.download.DownloadQualityRequest
 import com.streamo.app.download.NetworkType
+import dev.chrisbanes.haze.HazeState
 
 /**
  * Modale di scelta qualità download (preferenza "Chiedi"). Elenca le risoluzioni rilevate
@@ -37,7 +39,8 @@ import com.streamo.app.download.NetworkType
 fun DownloadQualityDialog(
     request: DownloadQualityRequest,
     onConfirm: (pref: DownloadQualityPref, savePreference: Boolean) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    hazeState: HazeState? = null
 ) {
     // Opzioni: risoluzioni reali (se rilevate) + "Massima"; fallback su set standard.
     val options: List<DownloadQualityPref> = remember(request.heights) {
@@ -57,9 +60,10 @@ fun DownloadQualityDialog(
         NetworkType.MOBILE -> "rete mobile"
     }
 
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Qualità download") },
+        hazeState = hazeState,
+        title = "Qualità download",
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
@@ -118,13 +122,13 @@ fun DownloadQualityDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(selected, savePref) }) {
+            GlassDialogPrimaryButton(onClick = { onConfirm(selected, savePref) }) {
                 Text("Scarica")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            GlassDialogNeutralButton(onClick = onDismiss) {
+                Text("Annulla")
             }
         }
     )

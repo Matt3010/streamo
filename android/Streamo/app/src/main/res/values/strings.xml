@@ -50,7 +50,6 @@
     <string name="tmdb_api_key">Chiave API TMDB</string>
     <string name="autoplay_next">Riproduci episodio successivo</string>
     <string name="auto_delete_downloads">Elimina dopo la visione</string>
-    <string name="folders_enabled">Folder nella mia lista</string>
     <string name="recalculate_library">Ricalcola libreria</string>
     <string name="backup">Backup</string>
     <string name="create_backup">Crea backup</string>

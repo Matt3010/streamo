@@ -23,7 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -44,7 +43,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamo.app.player.dlna.DlnaRenderer
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
+import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.player.lancast.LanRenderer
+import dev.chrisbanes.haze.HazeState
 
 /**
  * Dialog di selezione dispositivo cast. Raggruppa i dispositivi per IP:
@@ -78,7 +82,8 @@ fun CastPickerDialog(
     onStopCast: () -> Unit,
     onRefresh: () -> Unit,
     onRemember: (String, String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    hazeState: HazeState? = null
 ) {
     val scanning = dlnaScanning || lanScanning
 
@@ -90,10 +95,10 @@ fun CastPickerDialog(
         if (connectedName != null) detailGroup = null
     }
 
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1E1E20),
-        title = { Text("Trasmetti su TV", color = Color.White) },
+        hazeState = hazeState,
+        title = "Trasmetti su TV",
         text = {
             Column {
                 if (connectedName != null) {
@@ -185,18 +190,18 @@ fun CastPickerDialog(
         },
         confirmButton = {
             if (connectedName != null) {
-                TextButton(onClick = onStopCast) {
-                    Text("Interrompi", color = MaterialTheme.colorScheme.error)
+                GlassDialogDestructiveButton(onClick = onStopCast) {
+                    Text("Interrompi")
                 }
             } else {
-                TextButton(onClick = onRefresh, enabled = !scanning) {
+                GlassDialogPrimaryButton(onClick = onRefresh, enabled = !scanning) {
                     Text("Aggiorna")
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Chiudi", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            GlassDialogNeutralButton(onClick = onDismiss) {
+                Text("Chiudi")
             }
         }
     )

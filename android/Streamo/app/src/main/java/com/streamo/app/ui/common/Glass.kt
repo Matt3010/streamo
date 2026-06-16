@@ -51,6 +51,13 @@ object GlassDefaults {
      */
     val SolidFill = Color.Black.copy(alpha = 0.86f)
 
+    /**
+     * Riempimento per modali e dialog: deve essere sufficientemente opaco da
+     * garantire la leggibilità del testo bianco anche su sfondi colorati, ma
+     * rimanere riconoscibile come glass con il bordo sottile sopra.
+     */
+    val DialogFill = Color.Black.copy(alpha = 0.78f)
+
     /** Bordo sottile, appena percettibile. */
     val Border = Color.White.copy(alpha = 0.12f)
 
@@ -66,15 +73,16 @@ object GlassDefaults {
 fun GlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = GlassDefaults.Shape,
+    colors: androidx.compose.material3.CardColors = CardDefaults.cardColors(
+        containerColor = GlassDefaults.Container,
+        contentColor = Color.White
+    ),
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = modifier,
         shape = shape,
-        colors = CardDefaults.cardColors(
-            containerColor = GlassDefaults.Container,
-            contentColor = Color.White
-        ),
+        colors = colors,
         border = BorderStroke(1.dp, GlassDefaults.Border),
         content = content
     )

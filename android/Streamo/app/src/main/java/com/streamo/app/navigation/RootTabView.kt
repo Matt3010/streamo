@@ -71,7 +71,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.streamo.app.player.cast.CastBannerViewModel
 import com.streamo.app.ui.common.AmbientBackground
+import com.streamo.app.ui.common.DialogHostState
 import com.streamo.app.ui.common.GlassDefaults
+import com.streamo.app.ui.common.LocalDialogHost
 import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.LocalReducedEffects
 import com.streamo.app.ui.common.glassCapsule
@@ -114,6 +116,7 @@ fun RootTabView() {
     val density = LocalDensity.current
     val bottomInset = if (bottomBarVisible) with(density) { barHeightPx.toDp() } else 0.dp
     val hazeState = remember { HazeState() }
+    val dialogHost = remember { DialogHostState() }
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
@@ -128,13 +131,20 @@ fun RootTabView() {
                 // scrolling così l'ultimo elemento non resta coperto.
                 CompositionLocalProvider(
                     LocalBottomBarPadding provides bottomInset,
-                    LocalHazeState provides hazeState
+                    LocalHazeState provides hazeState,
+                    LocalDialogHost provides dialogHost
                 ) {
                     AppNavHost(
                         navController = navController,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+            }
+
+            // Modali glass: renderizzate fuori dalla hazeSource root così la loro
+            // superficie può sfocare l'app sottostante come la navbar.
+            dialogHost.dialogs.forEach { dialog ->
+                dialog.content(hazeState)
             }
 
             // Banner trasmissione: visibile mentre si naviga l'app (non sul player),

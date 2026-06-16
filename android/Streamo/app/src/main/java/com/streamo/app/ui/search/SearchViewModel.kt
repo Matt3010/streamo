@@ -50,7 +50,8 @@ class SearchViewModel @Inject constructor(
     var mediaTypeFilter by mutableStateOf("all")
         private set
 
-    var selectedGenreId by mutableStateOf<Int?>(null)
+    /** Generi selezionati (multi-selezione). */
+    var selectedGenreIds = mutableStateListOf<Int>()
         private set
 
     var availableGenres = mutableStateListOf<TmdbGenre>()
@@ -62,6 +63,12 @@ class SearchViewModel @Inject constructor(
     private var currentPage = 1
     private var searchJob: Job? = null
 
+    /** Nomi dei generi attualmente selezionati, nella lingua dell’API. */
+    val selectedGenreNames: List<String>
+        get() = selectedGenreIds.mapNotNull { id ->
+            availableGenres.firstOrNull { it.id == id }?.name
+        }
+
     init {
         viewModelScope.launch {
             repository.searchHistory().collect { entries ->
@@ -71,7 +78,9 @@ class SearchViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                availableGenres.addAll(client.genres())
+                val genres = client.genres()
+                availableGenres.clear()
+                availableGenres.addAll(genres)
             } catch (_: Exception) { }
         }
     }
@@ -119,18 +128,35 @@ class SearchViewModel @Inject constructor(
     fun onMediaTypeFilterChange(type: String) {
         if (mediaTypeFilter == type) return
         mediaTypeFilter = type
-        selectedGenreId = null
+        selectedGenreIds.clear()
         reSearch()
     }
 
-    fun onGenreFilterChange(genreId: Int?) {
-        if (selectedGenreId == genreId) return
-        selectedGenreId = genreId
+    fun toggleGenre(genreId: Int) {
+        if (selectedGenreIds.contains(genreId)) {
+            selectedGenreIds.remove(genreId)
+        } else {
+            selectedGenreIds.add(genreId)
+        }
+        reSearch()
+    }
+
+    fun setSelectedGenres(ids: Collection<Int>) {
+        val newSet = ids.toSet()
+        if (selectedGenreIds.toSet() == newSet) return
+        selectedGenreIds.clear()
+        selectedGenreIds.addAll(newSet)
+        reSearch()
+    }
+
+    fun clearGenreFilters() {
+        if (selectedGenreIds.isEmpty()) return
+        selectedGenreIds.clear()
         reSearch()
     }
 
     private fun hasActiveFilters(): Boolean {
-        return mediaTypeFilter != "all" || selectedGenreId != null
+        return mediaTypeFilter != "all" || selectedGenreIds.isNotEmpty()
     }
 
     private fun reSearch() {
@@ -206,16 +232,19 @@ class SearchViewModel @Inject constructor(
     }
 
     private suspend fun browse(page: Int): List<TmdbItem> {
+        val genreFilter = selectedGenreIds.toSet().takeIf { it.isNotEmpty() }
         return when (mediaTypeFilter) {
-            "movie" -> client.browseMovies(page = page, genreId = selectedGenreId)
-            "tv" -> client.browseTv(page = page, genreId = selectedGenreId)
+            "movie" -> client.browseMovies(page = page, genreIds = genreFilter)
+            "tv" -> client.browseTv(page = page, genreIds = genreFilter)
             else -> {
                 // "all": discover entrambi e merge
-                val movies = client.browseMovies(page = page, genreId = selectedGenreId)
-                val tv = client.browseTv(page = page, genreId = selectedGenreId)
+                val movies = client.browseMovies(page = page, genreIds = genreFilter)
+                val tv = client.browseTv(page = page, genreIds = genreFilter)
                 val merged = movies + tv
-                if (selectedGenreId != null) {
-                    merged.filter { it.genreIds?.contains(selectedGenreId) == true }
+                if (genreFilter != null) {
+                    merged.filter { item ->
+                        item.genreIds?.any { it in genreFilter } == true
+                    }
                 } else {
                     merged
                 }.shuffled()
@@ -224,13 +253,16 @@ class SearchViewModel @Inject constructor(
     }
 
     private suspend fun search(query: String, page: Int): List<TmdbItem> {
+        val genreFilter = selectedGenreIds.toSet().takeIf { it.isNotEmpty() }
         return when (mediaTypeFilter) {
-            "movie" -> client.searchMovie(query, page = page, genreId = selectedGenreId)
-            "tv" -> client.searchTv(query, page = page, genreId = selectedGenreId)
+            "movie" -> client.searchMovie(query, page = page, genreIds = genreFilter)
+            "tv" -> client.searchTv(query, page = page, genreIds = genreFilter)
             else -> {
                 val results = client.searchMulti(query, page = page)
-                if (selectedGenreId != null) {
-                    results.filter { it.genreIds?.contains(selectedGenreId) == true }
+                if (genreFilter != null) {
+                    results.filter { item ->
+                        item.genreIds?.any { it in genreFilter } == true
+                    }
                 } else {
                     results
                 }

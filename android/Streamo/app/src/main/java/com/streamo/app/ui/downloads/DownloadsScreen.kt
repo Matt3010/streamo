@@ -45,7 +45,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,9 +71,13 @@ import coil.compose.AsyncImage
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ImagePlaceholder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +110,8 @@ fun DownloadsScreen(
     }
 
     BackHandler(enabled = selectionMode) { exitSelection() }
+
+    var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
 
     GlassTopBarScaffold(
         onLeading = if (selectionMode) { { exitSelection() } } else onBack,
@@ -142,8 +147,6 @@ fun DownloadsScreen(
             }
         } else null
     ) { topPadding ->
-        var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
-
         if (entries.isEmpty()) {
             Text(
                 text = "Nessun download.",
@@ -220,90 +223,94 @@ fun DownloadsScreen(
             }
         }
 
-        // Confirm delete dialog
-        entryToDelete?.let { entry ->
-            AlertDialog(
-                onDismissRequest = { entryToDelete = null },
-                title = { Text("Elimina download") },
-                text = { Text("Vuoi eliminare il download di \"${entry.title}\"?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.remove(entry)
-                            entryToDelete = null
-                        }
-                    ) {
-                        Text("Elimina", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { entryToDelete = null }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
-
-        // Confirm bulk delete dialog (multi-select)
-        if (confirmBulkDelete) {
-            val count = selectedIds.size
-            AlertDialog(
-                onDismissRequest = { confirmBulkDelete = false },
-                title = { Text("Elimina download") },
-                text = { Text("Vuoi eliminare $count download selezionati?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.removeMany(selectedIds.toList())
-                            confirmBulkDelete = false
-                            exitSelection()
-                        }
-                    ) {
-                        Text("Elimina", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmBulkDelete = false }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
-
-        // WARP state changed warning dialog
-        warpChangedEntry?.let { (entry, currentWarp) ->
-            AlertDialog(
-                onDismissRequest = { viewModel.clearWarpWarning() },
-                title = { Text("WARP cambiato") },
-                text = {
-                    Column {
-                        Text(
-                            if (currentWarp)
-                                "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
-                            else
-                                "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
-                            Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Impostazioni WARP")
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.restartAnyway(entry) }) {
-                        Text("Scarica di nuovo")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.clearWarpWarning() }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
     }
+
+// Confirm delete dialog
+entryToDelete?.let { entry ->
+    GlassAlertDialog(
+        onDismissRequest = { entryToDelete = null },
+        hazeState = LocalHazeState.current,
+        title = "Elimina download",
+        text = { Text("Vuoi eliminare il download di \"${entry.title}\"?") },
+        confirmButton = {
+            GlassDialogDestructiveButton(
+                onClick = {
+                    viewModel.remove(entry)
+                    entryToDelete = null
+                }
+            ) {
+                Text("Elimina")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { entryToDelete = null }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
+
+// Confirm bulk delete dialog (multi-select)
+if (confirmBulkDelete) {
+    val count = selectedIds.size
+    GlassAlertDialog(
+        onDismissRequest = { confirmBulkDelete = false },
+        hazeState = LocalHazeState.current,
+        title = "Elimina download",
+        text = { Text("Vuoi eliminare $count download selezionati?") },
+        confirmButton = {
+            GlassDialogDestructiveButton(
+                onClick = {
+                    viewModel.removeMany(selectedIds.toList())
+                    confirmBulkDelete = false
+                    exitSelection()
+                }
+            ) {
+                Text("Elimina")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { confirmBulkDelete = false }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
+
+// WARP state changed warning dialog
+warpChangedEntry?.let { (entry, currentWarp) ->
+    GlassAlertDialog(
+        onDismissRequest = { viewModel.clearWarpWarning() },
+        hazeState = LocalHazeState.current,
+        title = "WARP cambiato",
+        text = {
+            Column {
+                Text(
+                    if (currentWarp)
+                        "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
+                    else
+                        "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
+                )
+                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
+                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Impostazioni WARP")
+                }
+            }
+        },
+        confirmButton = {
+            GlassDialogDestructiveButton(onClick = { viewModel.restartAnyway(entry) }) {
+                Text("Scarica di nuovo")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { viewModel.clearWarpWarning() }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
 }
 
 /** Etichetta piatta: "S1 Episodio 3 - Titolo" per le serie, solo titolo per i film. */

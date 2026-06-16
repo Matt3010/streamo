@@ -27,19 +27,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,9 +68,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.remote.dto.TmdbEpisodeDetail
 import com.streamo.app.navigation.LocalBottomBarPadding
+import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.SeasonChip
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -250,164 +251,172 @@ fun SeriesDownloadsScreen(
             )
         }
 
-        // Confirm delete dialog for single episode (AllEpisodes mode)
-        episodeToDelete?.let { epNum ->
-            AlertDialog(
-                onDismissRequest = { episodeToDelete = null },
-                title = { Text("Elimina download") },
-                text = { Text("Vuoi eliminare il download dell'episodio $epNum?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.toggleEpisodeDownload(viewModel.selectedSeason, epNum)
-                            episodeToDelete = null
-                        }
-                    ) {
-                        Text("Elimina", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { episodeToDelete = null }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
-
-        // Confirm delete dialog for downloaded entry (DownloadedOnly mode)
-        entryToDelete?.let { entry ->
-            AlertDialog(
-                onDismissRequest = { entryToDelete = null },
-                title = { Text("Elimina download") },
-                text = { Text("Vuoi eliminare il download di \"${entry.title}\"?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.removeDownload(entry)
-                            entryToDelete = null
-                        }
-                    ) {
-                        Text("Elimina", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { entryToDelete = null }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
-
-        // Rilevamento risoluzioni in corso (prima della modale "Chiedi").
-        if (viewModel.qualityResolving) {
-            AlertDialog(
-                onDismissRequest = {},
-                confirmButton = {},
-                title = { Text("Qualità download") },
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.size(12.dp))
-                        Text("Rilevo le risoluzioni disponibili…")
-                    }
-                }
-            )
-        }
-
-        // Scelta qualità download (preferenza "Chiedi").
-        viewModel.qualityRequest?.let { req ->
-            DownloadQualityDialog(
-                request = req,
-                onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
-                onDismiss = { viewModel.dismissQuality() }
-            )
-        }
-
-        // Confirm delete-all dialog
-        if (confirmDeleteAll) {
-            AlertDialog(
-                onDismissRequest = { confirmDeleteAll = false },
-                title = { Text("Elimina tutto") },
-                text = { Text("Vuoi eliminare tutti i download di questa serie?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.removeAll()
-                            confirmDeleteAll = false
-                        }
-                    ) {
-                        Text("Elimina tutto", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmDeleteAll = false }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
-
-        // Confirm bulk delete dialog (multi-select)
-        if (confirmBulkDelete) {
-            val count = selectedDeletable.size
-            val toDelete = selectedDeletable.toList()
-            AlertDialog(
-                onDismissRequest = { confirmBulkDelete = false },
-                title = { Text("Elimina download") },
-                text = { Text("Vuoi eliminare $count download selezionati?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.removeMany(toDelete)
-                            confirmBulkDelete = false
-                            exitSelection()
-                        }
-                    ) {
-                        Text("Elimina", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmBulkDelete = false }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
-
-        // WARP state changed warning dialog
-        warpChangedEntry?.let { (entry, currentWarp) ->
-            AlertDialog(
-                onDismissRequest = { viewModel.clearWarpWarning() },
-                title = { Text("WARP cambiato") },
-                text = {
-                    Column {
-                        Text(
-                            if (currentWarp)
-                                "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
-                            else
-                                "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
-                            Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Impostazioni WARP")
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.restartAnyway(entry) }) {
-                        Text("Scarica di nuovo")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.clearWarpWarning() }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
     }
+
+// Confirm delete dialog for single episode (AllEpisodes mode)
+episodeToDelete?.let { epNum ->
+    GlassAlertDialog(
+        onDismissRequest = { episodeToDelete = null },
+        hazeState = LocalHazeState.current,
+        title = "Elimina download",
+        text = { Text("Vuoi eliminare il download dell'episodio $epNum?") },
+        confirmButton = {
+            GlassDialogDestructiveButton(
+                onClick = {
+                    viewModel.toggleEpisodeDownload(viewModel.selectedSeason, epNum)
+                    episodeToDelete = null
+                }
+            ) {
+                Text("Elimina")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { episodeToDelete = null }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
+
+// Confirm delete dialog for downloaded entry (DownloadedOnly mode)
+entryToDelete?.let { entry ->
+    GlassAlertDialog(
+        onDismissRequest = { entryToDelete = null },
+        hazeState = LocalHazeState.current,
+        title = "Elimina download",
+        text = { Text("Vuoi eliminare il download di \"${entry.title}\"?") },
+        confirmButton = {
+            GlassDialogDestructiveButton(
+                onClick = {
+                    viewModel.removeDownload(entry)
+                    entryToDelete = null
+                }
+            ) {
+                Text("Elimina")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { entryToDelete = null }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
+
+// Rilevamento risoluzioni in corso (prima della modale "Chiedi").
+if (viewModel.qualityResolving) {
+    GlassAlertDialog(
+        onDismissRequest = {},
+        confirmButton = {},
+        hazeState = LocalHazeState.current,
+        title = "Qualità download",
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.size(12.dp))
+                Text("Rilevo le risoluzioni disponibili…")
+            }
+        }
+    )
+}
+
+// Scelta qualità download (preferenza "Chiedi").
+viewModel.qualityRequest?.let { req ->
+    DownloadQualityDialog(
+        request = req,
+        onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
+        onDismiss = { viewModel.dismissQuality() },
+        hazeState = LocalHazeState.current
+    )
+}
+
+// Confirm delete-all dialog
+if (confirmDeleteAll) {
+    GlassAlertDialog(
+        onDismissRequest = { confirmDeleteAll = false },
+        hazeState = LocalHazeState.current,
+        title = "Elimina tutto",
+        text = { Text("Vuoi eliminare tutti i download di questa serie?") },
+        confirmButton = {
+            GlassDialogDestructiveButton(
+                onClick = {
+                    viewModel.removeAll()
+                    confirmDeleteAll = false
+                }
+            ) {
+                Text("Elimina tutto")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { confirmDeleteAll = false }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
+
+// Confirm bulk delete dialog (multi-select)
+if (confirmBulkDelete) {
+    val count = selectedDeletable.size
+    val toDelete = selectedDeletable.toList()
+    GlassAlertDialog(
+        onDismissRequest = { confirmBulkDelete = false },
+        hazeState = LocalHazeState.current,
+        title = "Elimina download",
+        text = { Text("Vuoi eliminare $count download selezionati?") },
+        confirmButton = {
+            GlassDialogDestructiveButton(
+                onClick = {
+                    viewModel.removeMany(toDelete)
+                    confirmBulkDelete = false
+                    exitSelection()
+                }
+            ) {
+                Text("Elimina")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { confirmBulkDelete = false }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
+
+// WARP state changed warning dialog
+warpChangedEntry?.let { (entry, currentWarp) ->
+    GlassAlertDialog(
+        onDismissRequest = { viewModel.clearWarpWarning() },
+        hazeState = LocalHazeState.current,
+        title = "WARP cambiato",
+        text = {
+            Column {
+                Text(
+                    if (currentWarp)
+                        "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
+                    else
+                        "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
+                )
+                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
+                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Impostazioni WARP")
+                }
+            }
+        },
+        confirmButton = {
+            GlassDialogDestructiveButton(onClick = { viewModel.restartAnyway(entry) }) {
+                Text("Scarica di nuovo")
+            }
+        },
+        dismissButton = {
+            GlassDialogNeutralButton(onClick = { viewModel.clearWarpWarning() }) {
+                Text("Annulla")
+            }
+        }
+    )
+}
 }
 
 @Composable
@@ -430,13 +439,14 @@ private fun AllEpisodesContent(
             .fillMaxSize()
             .padding(top = topPadding)
     ) {
-        // Season picker with scroll arrows
+        // Season picker with scroll fade
         if (viewModel.seasons.size > 1) {
             val scrollState = rememberScrollState()
             val canScrollLeft = scrollState.value > 0
             val canScrollRight = scrollState.value < scrollState.maxValue
             val showScrollHints = viewModel.seasons.size > 8
             val fadeBg = MaterialTheme.colorScheme.background.copy(alpha = 0.95f)
+            val hintWidth = 56.dp
             Box(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 Row(
                     modifier = Modifier
@@ -458,10 +468,11 @@ private fun AllEpisodesContent(
                     }
                 }
                 if (showScrollHints) {
+                    // Fade sinistro
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .width(28.dp)
+                            .width(hintWidth)
                             .fillMaxHeight()
                             .then(
                                 if (canScrollLeft) Modifier.background(
@@ -469,20 +480,13 @@ private fun AllEpisodesContent(
                                         colors = listOf(fadeBg, Color.Transparent)
                                     )
                                 ) else Modifier
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = "Scorri a sinistra",
-                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (canScrollLeft) 0.7f else 0f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                            )
+                    )
+                    // Fade destro
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .width(28.dp)
+                            .width(hintWidth)
                             .fillMaxHeight()
                             .then(
                                 if (canScrollRight) Modifier.background(
@@ -490,16 +494,8 @@ private fun AllEpisodesContent(
                                         colors = listOf(Color.Transparent, fadeBg)
                                     )
                                 ) else Modifier
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = "Scorri a destra",
-                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (canScrollRight) 0.7f else 0f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                            )
+                    )
                 }
             }
         }

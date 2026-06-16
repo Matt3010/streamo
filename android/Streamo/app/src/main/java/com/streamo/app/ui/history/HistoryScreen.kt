@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -30,6 +29,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,12 +40,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.streamo.app.data.local.entity.HistoryEntry
 import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassDefaults
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassFilterChip
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ProgressMediaCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +62,7 @@ fun HistoryScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
+    var entryToRemove by remember { mutableStateOf<HistoryEntry?>(null) }
 
     GlassTopBarScaffold(
         onLeading = onBack
@@ -107,22 +115,56 @@ fun HistoryScreen(
                 item(span = { GridItemSpan(maxLineSpan) }, key = "header-${section.key}") {
                     SectionTitle(section.title, section.summary)
                 }
-                items(section.items, key = { "${it.entry.mediaType}-${it.entry.tmdbId}" }) { item ->
+                items(
+                    section.items,
+                    key = { "${it.entry.mediaType}-${it.entry.tmdbId}-${it.entry.season}-${it.entry.episode}-${it.entry.watchedDay}" }
+                ) { item ->
                     val entry = item.entry
                     ProgressMediaCard(
                         title = entry.title,
                         posterUrl = entry.posterPath?.let { TMDBImage.url(it, TMDBImage.Size.W500) },
                         season = entry.season.takeIf { entry.mediaType == "tv" && it > 0 },
                         episode = entry.episode.takeIf { entry.mediaType == "tv" && it > 0 },
-                        positionSeconds = item.progress?.positionSeconds ?: 0.0,
-                        durationSeconds = item.progress?.durationSeconds ?: 0.0,
+                        positionSeconds = item.snapshotPosition,
+                        durationSeconds = item.snapshotDuration,
                         statusText = item.statusText,
                         onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, entry.season, entry.episode) },
-                        onRemove = { viewModel.remove(entry.tmdbId) }
+                        onRemove = { entryToRemove = entry }
                     )
                 }
             }
         }
+    }
+
+    entryToRemove?.let { entry ->
+        val subtitle = if (entry.mediaType == "tv" && entry.season > 0) {
+            "S${entry.season}E${entry.episode}"
+        } else null
+        GlassAlertDialog(
+            onDismissRequest = { entryToRemove = null },
+            hazeState = LocalHazeState.current,
+            title = "Rimuovi dalla cronologia",
+            text = {
+                Text(
+                    "Rimuovere \"${entry.title}\" ${subtitle?.let { "($it) " } ?: ""}dalla cronologia?"
+                )
+            },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.remove(entry)
+                        entryToRemove = null
+                    }
+                ) {
+                    Text("Rimuovi")
+                }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(onClick = { entryToRemove = null }) {
+                    Text("Annulla")
+                }
+            }
+        )
     }
 }
 

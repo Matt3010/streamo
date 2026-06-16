@@ -203,7 +203,9 @@ class DetailViewModel @Inject constructor(
                     title = title,
                     posterPath = current.posterPath,
                     season = markedSeason,
-                    episode = markedEpisode
+                    episode = markedEpisode,
+                    progressSeconds = 1.0,
+                    durationSeconds = 1.0
                 )
             )
             computeResume()

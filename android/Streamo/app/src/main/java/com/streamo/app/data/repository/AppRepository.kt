@@ -48,7 +48,11 @@ class AppRepository @Inject constructor(
     // History
     fun history(): Flow<List<HistoryEntry>> = historyDao.getAll()
     suspend fun addToHistory(entry: HistoryEntry) = historyDao.insert(entry)
-    suspend fun removeFromHistory(id: Int) = historyDao.deleteById(id)
+    suspend fun removeFromHistory(entry: HistoryEntry) =
+        historyDao.deleteByCoordinate(entry.tmdbId, entry.mediaType, entry.season, entry.episode, entry.watchedDay)
+
+    suspend fun removeHistoryByTitle(tmdbId: Int, mediaType: String) =
+        historyDao.deleteByTitle(tmdbId, mediaType)
 
     // Provider mapping
     suspend fun getProviderMapping(id: Int) = providerMappingDao.getById(id)

@@ -60,27 +60,32 @@ fun MediaCard(
             }
         }
         if (showInfo) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-            val meta = buildList {
-                year?.let { add(it.toString()) }
-                rating?.takeIf { it > 0.0 }?.let { add("★ ${"%.1f".format(it)}") }
-            }.joinToString("  ·  ")
-            if (meta.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .height(48.dp)
+            ) {
                 Text(
-                    text = meta,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp)
+                    overflow = TextOverflow.Ellipsis
                 )
+                val meta = buildList {
+                    year?.let { add(it.toString()) }
+                    rating?.takeIf { it > 0.0 }?.let { add("★ ${"%.1f".format(it)}") }
+                }.joinToString("  ·  ")
+                if (meta.isNotEmpty()) {
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
             }
         }
     }
@@ -101,13 +106,26 @@ fun SkeletonCard(
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF1E1E1E))
         )
-        Box(
+        Column(
             modifier = Modifier
                 .padding(top = 6.dp)
-                .fillMaxWidth(0.7f)
-                .height(12.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF1E1E1E))
-        )
+                .height(48.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF1E1E1E))
+            )
+            Box(
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .fillMaxWidth(0.4f)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xFF1E1E1E))
+            )
+        }
     }
 }

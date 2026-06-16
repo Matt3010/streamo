@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,7 +35,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -75,7 +73,11 @@ import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.navigation.LocalNavController
 import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
@@ -247,42 +249,44 @@ fun HomeScreen(
             }
         }
 
-        if (showRemoveDialog && entryToRemove != null) {
-            val entry = entryToRemove!!
-            AlertDialog(
-                onDismissRequest = {
-                    showRemoveDialog = false
-                    entryToRemove = null
-                },
-                title = { Text("Rimuovi") },
-                text = {
-                    Text(
-                        "Rimuovere \"${entry.title.ifBlank { "${entry.tmdbId}" }}\" dalla lista?"
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.removeProgress(entry.tmdbId)
-                            showRemoveDialog = false
-                            entryToRemove = null
-                        }
-                    ) {
-                        Text("Rimuovi", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showRemoveDialog = false
-                            entryToRemove = null
-                        }
-                    ) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
         }
+
+    if (showRemoveDialog && entryToRemove != null) {
+        val entry = entryToRemove!!
+        GlassAlertDialog(
+            onDismissRequest = {
+                showRemoveDialog = false
+                entryToRemove = null
+            },
+            hazeState = LocalHazeState.current,
+            title = "Rimuovi",
+            text = {
+                Text(
+                    "Rimuovere \"${entry.title.ifBlank { "${entry.tmdbId}" }}\" dalla lista?"
+                )
+            },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.removeProgress(entry.tmdbId)
+                        showRemoveDialog = false
+                        entryToRemove = null
+                    }
+                ) {
+                    Text("Rimuovi")
+                }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(
+                    onClick = {
+                        showRemoveDialog = false
+                        entryToRemove = null
+                    }
+                ) {
+                    Text("Annulla")
+                }
+            }
+        )
     }
 }
 

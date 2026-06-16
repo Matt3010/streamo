@@ -69,7 +69,6 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,9 +77,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -114,7 +111,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -125,6 +121,11 @@ import androidx.media3.ui.PlayerView
 import com.streamo.app.player.PipController
 import com.streamo.app.player.dlna.DlnaRenderer
 import com.streamo.app.player.lancast.LanRenderer
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialog
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
+import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.ui.common.GlassDefaults
 import com.streamo.app.ui.common.glassCapsule
 import com.streamo.app.ui.player.cast.CastDeviceGroup
@@ -177,6 +178,8 @@ fun PlayerScreen(
     val lanScanning by viewModel.lanScanning.collectAsState()
     val castProtocolPrefs by viewModel.castProtocolPrefs.collectAsState()
     val lanConnected by viewModel.lanConnected.collectAsState()
+    val skipPrompt by viewModel.skipPrompt.collectAsState()
+    val nextCountdown by viewModel.nextCountdown.collectAsState()
     var showCastDialog by remember { mutableStateOf(false) }
     var showExitCastDialog by remember { mutableStateOf(false) }
     var showOfflineCastWarning by remember { mutableStateOf(false) }
@@ -195,6 +198,12 @@ fun PlayerScreen(
     // null = lista principale; "subtitles"/"audio"/"speed"/"aspect"/"server" = sotto-pannello
     var settingsPanel by remember { mutableStateOf<String?>(null) }
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsPulse by remember { mutableIntStateOf(0) }
+    val resetControls = {
+        controlsVisible = true
+        controlsPulse += 1
+    }
 
     LaunchedEffect(settingsMenu) {
         if (settingsMenu) {
@@ -226,7 +235,9 @@ fun PlayerScreen(
     // il bordo verde del decoder-flush sulla destra.
     var sliderValue by remember { mutableLongStateOf(0L) }
     var isSeeking by remember { mutableStateOf(false) }
-    LaunchedEffect(position) { if (!isSeeking) sliderValue = position }
+    // Non sincronizzare la posizione mentre la durata è ancora sconosciuta: il resume
+    // position (es. 20 min) diviso per duration=0 faceva apparire la barra piena.
+    LaunchedEffect(position, duration) { if (!isSeeking && duration > 0) sliderValue = position }
 
     // Show the frozen frame whenever we'd otherwise see black/green: while dragging the
     // slider, during a manual seek (decoder flush), or while buffering.
@@ -237,6 +248,15 @@ fun PlayerScreen(
         if (!buffering && !seekingManually && !isSeeking && frozenFrame != null) {
             delay(150)
             frozenFrame = null
+        }
+    }
+
+    // Auto-hide dei controlli: dopo 3.5s di inattività spariscono quando si sta
+    // riproducendo (o trasmettendo in cast), a meno che non ci sia un dialog aperto.
+    LaunchedEffect(controlsVisible, controlsPulse, isPlaying, isCastActive, settingsMenu, showCastDialog, showExitCastDialog, showOfflineCastWarning) {
+        if (controlsVisible && (isPlaying || isCastActive) && !settingsMenu && !showCastDialog && !showExitCastDialog && !showOfflineCastWarning) {
+            delay(3500)
+            controlsVisible = false
         }
     }
 
@@ -449,23 +469,45 @@ fun PlayerScreen(
             }
         }
 
+        val horizontalSafePadding = with(LocalDensity.current) {
+            val horizontalInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+            maxOf(
+                horizontalInsets.getLeft(this, LocalLayoutDirection.current),
+                horizontalInsets.getRight(this, LocalLayoutDirection.current)
+            ).toDp()
+        } + 16.dp
+
         if (!inPipMode) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Overlay scuro uniforme su tutto lo schermo
+                // Area tappabile per mostrare/nascondere i controlli.
+                // Sta dietro a tutti i controlli in z-order; i pulsanti intercettano
+                // il tocco prima, quindi il toggle scatta solo su aree vuote.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            controlsVisible = !controlsVisible
+                            if (controlsVisible) controlsPulse += 1
+                        }
                 )
+
                 val hasError = error != null
 
-                val horizontalSafePadding = with(LocalDensity.current) {
-                    val horizontalInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
-                    maxOf(
-                        horizontalInsets.getLeft(this, LocalLayoutDirection.current),
-                        horizontalInsets.getRight(this, LocalLayoutDirection.current)
-                    ).toDp()
-                } + 16.dp
+                AnimatedVisibility(
+                    visible = controlsVisible,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Overlay scuro uniforme su tutto lo schermo
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.45f))
+                        )
 
                 // Top bar
                 Column(
@@ -479,6 +521,7 @@ fun PlayerScreen(
                             modifier = Modifier.glassCapsule(playerHazeState, CircleShape)
                         ) {
                             IconButton(onClick = {
+                                resetControls()
                                 if (isCastActive) showExitCastDialog = true else onBack()
                             }) {
                                 Icon(
@@ -498,7 +541,7 @@ fun PlayerScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                IconButton(onClick = enterPip) {
+                                IconButton(onClick = { resetControls(); enterPip() }) {
                                     Icon(
                                         imageVector = Icons.Filled.PictureInPictureAlt,
                                         contentDescription = "Picture in picture",
@@ -510,7 +553,7 @@ fun PlayerScreen(
                             // agiscono solo sul player locale (in pausa): nascondili.
                             if (!isCastActive && subtitleTracks.isNotEmpty()) {
                                 val subtitlesOn = selectedSubtitle != null
-                                IconButton(onClick = { viewModel.toggleSubtitles() }) {
+                                IconButton(onClick = { resetControls(); viewModel.toggleSubtitles() }) {
                                     Icon(
                                         imageVector = if (subtitlesOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionOff,
                                         contentDescription = if (subtitlesOn) "Disabilita sottotitoli" else "Abilita sottotitoli",
@@ -520,6 +563,7 @@ fun PlayerScreen(
                             }
                             // Trasmissione su TV (DLNA o Obsidian).
                             IconButton(onClick = {
+                                resetControls()
                                 // All'apertura della modale metti in pausa il video locale.
                                 if (!isCastActive) {
                                     viewModel.pausePlayback()
@@ -534,7 +578,7 @@ fun PlayerScreen(
                                 )
                             }
                             if (!isCastActive) {
-                                IconButton(onClick = { settingsPanel = null; settingsMenu = true }) {
+                                IconButton(onClick = { resetControls(); settingsPanel = null; settingsMenu = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.Settings,
                                         contentDescription = "Impostazioni",
@@ -589,7 +633,7 @@ fun PlayerScreen(
                             modifier = Modifier
                                 .size(52.dp)
                                 .glassCapsule(playerHazeState, CircleShape)
-                                .clickable { viewModel.load() },
+                                .clickable { resetControls(); viewModel.load() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -606,7 +650,7 @@ fun PlayerScreen(
                             .align(Alignment.Center)
                             .size(68.dp)
                             .glassCapsule(playerHazeState, CircleShape)
-                            .clickable { viewModel.replay() },
+                            .clickable { resetControls(); viewModel.replay() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -626,7 +670,7 @@ fun PlayerScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .glassCapsule(playerHazeState, CircleShape)
-                                .clickable { captureFrame(); viewModel.seekBack() },
+                                .clickable { resetControls(); captureFrame(); viewModel.seekBack() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -648,7 +692,7 @@ fun PlayerScreen(
                                     modifier = Modifier
                                         .size(68.dp)
                                         .glassCapsule(playerHazeState, CircleShape)
-                                        .clickable { viewModel.togglePlayPause() },
+                                        .clickable { resetControls(); viewModel.togglePlayPause() },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -664,7 +708,7 @@ fun PlayerScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .glassCapsule(playerHazeState, CircleShape)
-                                .clickable { captureFrame(); viewModel.seekForward() },
+                                .clickable { resetControls(); captureFrame(); viewModel.seekForward() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -722,7 +766,9 @@ fun PlayerScreen(
                     // Altezza ridotta: comprime il padding interno dello Slider Material
                     // (~48dp) avvicinando la barra ai tempi.
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(24.dp)) {
-                        val fraction = (sliderValue.toFloat() / (duration.coerceAtLeast(1)).toFloat()).coerceIn(0f, 1f)
+                        // Frazioni a 0 finché la durata non è nota, altrimenti con
+                        // resume position > 0 e duration = 0 la barra risultava piena.
+                        val fraction = if (duration > 0) (sliderValue.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
                         val trackWidth = maxWidth
                         val density = LocalDensity.current
                         var bubbleWidth by remember { mutableStateOf(0.dp) }
@@ -758,11 +804,13 @@ fun PlayerScreen(
                             Slider(
                                 value = sliderValue.toFloat(),
                                 onValueChange = {
+                                    resetControls()
                                     if (!isSeeking) captureFrame()
                                     sliderValue = it.toLong()
                                     isSeeking = true
                                 },
                                 onValueChangeFinished = {
+                                    resetControls()
                                     captureFrame()
                                     viewModel.seekTo(sliderValue)
                                     isSeeking = false
@@ -778,8 +826,8 @@ fun PlayerScreen(
                                     )
                                 },
                                 track = {
-                                    val bufferedFraction = (bufferedPosition.toFloat() /
-                                        duration.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+                                    val bufferedFraction = if (duration > 0) (bufferedPosition.toFloat() /
+                                        duration.toFloat()).coerceIn(0f, 1f) else 0f
                                     Canvas(modifier = Modifier.fillMaxWidth().height(4.dp)) {
                                         val y = size.height / 2f
                                         val w = size.width
@@ -808,6 +856,8 @@ fun PlayerScreen(
                         }
                     }
                 }
+                    }
+                }
             }
         }
 
@@ -815,11 +865,16 @@ fun PlayerScreen(
         // Fuori dall'AnimatedVisibility dei controlli ma dentro la Box principale.
         // Disegnato dopo i controlli per stare sopra in z-order.
         if (warpEnabled && error == null && !inPipMode) {
-            WarpBadge(
+            AnimatedVisibility(
+                visible = controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
                 modifier = Modifier
                     .align(Alignment.Center)
                     .offset(y = 64.dp)
-            )
+            ) {
+                WarpBadge()
+            }
         }
 
         // Buffering spinner: single source of truth, centered, drawn above the
@@ -842,65 +897,149 @@ fun PlayerScreen(
         // doesn't linger for minutes.
         val showNextEpisodeButton = nextAvailable && (playbackEnded || progressFraction >= 0.95f)
         val safeBottom = with(LocalDensity.current) { WindowInsets.safeDrawing.getBottom(this).toDp() }
-        val safeRight = with(LocalDensity.current) { WindowInsets.safeDrawing.getRight(this, LocalLayoutDirection.current).toDp() }
+
+        // Skip intro / credits + prossimo episodio. Galleggiano sopra la barra
+        // glass dei controlli, allineati orizzontalmente con la timeline (padding
+        // interno della capsula = 24.dp) e con lo stesso background blur della barra.
+        val skipVisible = skipPrompt != null
+        val countdownVisible = nextCountdown != null
         AnimatedVisibility(
-            visible = showNextEpisodeButton,
+            visible = skipVisible || countdownVisible || showNextEpisodeButton,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(
                     bottom = safeBottom + 100.dp,
-                    end = safeRight + 16.dp
+                    end = horizontalSafePadding + 24.dp
                 )
         ) {
-            // Pill coerente con i controlli del player: sfondo scuro semi-trasparente,
-            // bordo sottile, contenuto bianco con icona skip-next.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(50)
-                    )
-                    .clickable {
-                        viewModel.playNextEpisode()
-                        onNextEpisode()
+            if (countdownVisible) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .height(44.dp)
+                            .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
+                            .clickable {
+                                resetControls()
+                                viewModel.cancelNextEpisode()
+                            }
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text(
+                            text = "Annulla",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text = "Prossimo episodio",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Icon(
-                    imageVector = Icons.Filled.SkipNext,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .height(44.dp)
+                            .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
+                            .clickable {
+                                resetControls()
+                                viewModel.playNextNow()
+                                onNextEpisode()
+                            }
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text(
+                            text = "Prossimo episodio (${nextCountdown}s)",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.SkipNext,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            } else if (skipVisible) {
+                val skipLabel = when (skipPrompt) {
+                    PlayerViewModel.SkipPrompt.INTRO -> "Salta intro"
+                    PlayerViewModel.SkipPrompt.CREDITS -> "Salta crediti"
+                    null -> ""
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .height(44.dp)
+                        .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
+                        .clickable {
+                            resetControls()
+                            viewModel.performSkip()
+                        }
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = skipLabel,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.SkipNext,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else if (showNextEpisodeButton) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .height(44.dp)
+                        .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
+                        .clickable {
+                            resetControls()
+                            viewModel.playNextEpisode()
+                            onNextEpisode()
+                        }
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = "Prossimo episodio",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.SkipNext,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
+
         if (showExitCastDialog) {
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = { showExitCastDialog = false },
-                containerColor = Color(0xFF1E1E20),
-                title = { Text("Trasmissione in corso", color = Color.White) },
+                hazeState = playerHazeState,
+                title = "Trasmissione in corso",
                 text = {
                     Text(
-                        "Vuoi interrompere la trasmissione o lasciarla attiva in background?",
-                        color = Color.White.copy(alpha = 0.8f)
+                        "Vuoi interrompere la trasmissione o lasciarla attiva in background?"
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = {
+                    GlassDialogPrimaryButton(onClick = {
                         showExitCastDialog = false
                         onBack()
                     }) {
@@ -908,12 +1047,12 @@ fun PlayerScreen(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = {
+                    GlassDialogDestructiveButton(onClick = {
                         showExitCastDialog = false
                         viewModel.stopCast()
                         onBack()
                     }) {
-                        Text("Interrompi", color = MaterialTheme.colorScheme.error)
+                        Text("Interrompi")
                     }
                 }
             )
@@ -924,6 +1063,7 @@ fun PlayerScreen(
                 buildCastDeviceGroups(dlnaRenderers, lanRenderers)
             }
             CastPickerDialog(
+                hazeState = playerHazeState,
                 groups = groups,
                 dlnaScanning = dlnaScanning,
                 lanScanning = lanScanning,
@@ -955,18 +1095,17 @@ fun PlayerScreen(
         }
 
         if (showOfflineCastWarning) {
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = { showOfflineCastWarning = false },
-                containerColor = Color(0xFF1E1E20),
-                title = { Text("Cast da offline", color = Color.White) },
+                hazeState = playerHazeState,
+                title = "Cast da offline",
                 text = {
                     Text(
-                        "Il contenuto è scaricato offline. La TV lo riprodurrà in streaming via internet, consumando dati di rete. Continuare?",
-                        color = Color.White.copy(alpha = 0.8f)
+                        "Il contenuto è scaricato offline. La TV lo riprodurrà in streaming via internet, consumando dati di rete. Continuare?"
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = {
+                    GlassDialogPrimaryButton(onClick = {
                         showOfflineCastWarning = false
                         showCastDialog = false
                         pendingOfflineRenderer?.let { viewModel.castToDlna(it, forceStreaming = true) }
@@ -976,11 +1115,11 @@ fun PlayerScreen(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = {
+                    GlassDialogNeutralButton(onClick = {
                         showOfflineCastWarning = false
                         pendingOfflineRenderer = null
                     }) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Annulla")
                     }
                 }
             )
@@ -1000,16 +1139,16 @@ fun PlayerScreen(
             fun aspectLabel(mode: Int): String =
                 if (mode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) "Riempi schermo" else "Adatta"
 
-            Dialog(onDismissRequest = { settingsMenu = false }) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF1E1E20)
+            GlassDialog(
+                onDismissRequest = { settingsMenu = false },
+                hazeState = playerHazeState,
+                modifier = Modifier.width(360.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .width(360.dp)
-                            .padding(vertical = 12.dp)
-                    ) {
                         // Header fisso (solo nei sotto-pannelli): non scorre con la lista.
                         val panelTitle = when (settingsPanel) {
                             "subtitles" -> "Sottotitoli"
@@ -1126,7 +1265,6 @@ fun PlayerScreen(
                         }
                     }
                 }
-            }
         }
     }
 }

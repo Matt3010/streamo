@@ -2,7 +2,6 @@ package com.streamo.app.ui.detail
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -40,9 +40,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -73,6 +71,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,7 +91,13 @@ import com.streamo.app.data.remote.dto.TmdbReview
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.BrandIconButton
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialog
+import com.streamo.app.ui.common.GlassDialogNeutralButton
+import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.ui.common.GlassTopBar
+import com.streamo.app.ui.common.LocalHazeState
+import androidx.compose.material3.TextButton
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.streamo.app.ui.common.BrandSecondaryButton
@@ -694,9 +699,10 @@ private fun DetailContent(
 
         // Provider Picker
         if (viewModel.showProviderPicker) {
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = { viewModel.showProviderPicker = false },
-                title = { Text("Scegli la versione") },
+                hazeState = LocalHazeState.current,
+                title = "Scegli la versione",
                 text = {
                     Column {
                         Text("Quale di questi è il titolo giusto?")
@@ -721,13 +727,13 @@ private fun DetailContent(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.refreshProvider() }) {
+                    GlassDialogPrimaryButton(onClick = { viewModel.refreshProvider() }) {
                         Text("Aggiorna")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.showProviderPicker = false }) {
-                        Text("Chiudi", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    GlassDialogNeutralButton(onClick = { viewModel.showProviderPicker = false }) {
+                        Text("Chiudi")
                     }
                 }
             )
@@ -735,10 +741,11 @@ private fun DetailContent(
 
         // Rilevamento risoluzioni in corso (prima della modale "Chiedi").
         if (viewModel.qualityResolving) {
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = {},
                 confirmButton = {},
-                title = { Text("Qualità download") },
+                hazeState = LocalHazeState.current,
+                title = "Qualità download",
                 text = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -754,7 +761,8 @@ private fun DetailContent(
             DownloadQualityDialog(
                 request = req,
                 onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
-                onDismiss = { viewModel.dismissQuality() }
+                onDismiss = { viewModel.dismissQuality() },
+                hazeState = LocalHazeState.current
             )
         }
 
@@ -793,6 +801,7 @@ private fun EpisodesSection(
         val canScrollRight = seasonsScrollState.value < seasonsScrollState.maxValue
         val showScrollHints = viewModel.seasons.size > 8
         val fadeBg = MaterialTheme.colorScheme.background.copy(alpha = 0.95f)
+        val hintWidth = 56.dp
         Box(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Row(
                 modifier = Modifier
@@ -814,10 +823,11 @@ private fun EpisodesSection(
                 }
             }
             if (showScrollHints) {
+                // Fade sinistro
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .width(28.dp)
+                        .width(hintWidth)
                         .fillMaxHeight()
                         .then(
                             if (canScrollLeft) Modifier.background(
@@ -825,20 +835,13 @@ private fun EpisodesSection(
                                     colors = listOf(fadeBg, Color.Transparent)
                                 )
                             ) else Modifier
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Scorri a sinistra",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (canScrollLeft) 0.7f else 0f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        )
+                )
+                // Fade destro
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .width(28.dp)
+                        .width(hintWidth)
                         .fillMaxHeight()
                         .then(
                             if (canScrollRight) Modifier.background(
@@ -846,16 +849,8 @@ private fun EpisodesSection(
                                     colors = listOf(Color.Transparent, fadeBg)
                                 )
                             ) else Modifier
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Scorri a destra",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (canScrollRight) 0.7f else 0f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        )
+                )
             }
         }
 
@@ -1087,6 +1082,8 @@ private val EPISODE_META_HEIGHT = 58.dp
 
 @Composable
 private fun ReviewsSection(reviews: List<TmdbReview>) {
+    var selectedReview by remember { mutableStateOf<TmdbReview?>(null) }
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader(
             title = "Recensioni",
@@ -1097,35 +1094,105 @@ private fun ReviewsSection(reviews: List<TmdbReview>) {
             contentPadding = PaddingValues(horizontal = 4.dp)
         ) {
             items(reviews) { review ->
-                ReviewCard(review = review)
+                ReviewCard(
+                    review = review,
+                    onShowFull = { selectedReview = review }
+                )
+            }
+        }
+    }
+
+    selectedReview?.let { review ->
+        ReviewDetailDialog(
+            review = review,
+            onDismiss = { selectedReview = null }
+        )
+    }
+}
+
+@Composable
+private fun ReviewDetailDialog(
+    review: TmdbReview,
+    onDismiss: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+
+    GlassDialog(
+        onDismissRequest = onDismiss,
+        hazeState = LocalHazeState.current,
+        modifier = Modifier
+            .widthIn(min = 280.dp, max = 560.dp)
+            .padding(horizontal = 24.dp)
+            .heightIn(max = 420.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp, 20.dp)
+        ) {
+            Text(
+                text = review.authorDetails?.name?.takeIf { it.isNotBlank() }
+                    ?: review.authorDetails?.username?.takeIf { it.isNotBlank() }
+                    ?: review.author.takeIf { it.isNotBlank() }
+                    ?: "Anonimo",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(scrollState)
+            ) {
+                Text(
+                    text = review.content.trim(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlassDialogNeutralButton(onClick = onDismiss) {
+                    Text("Chiudi")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ReviewCard(review: TmdbReview) {
+private fun ReviewCard(review: TmdbReview, onShowFull: () -> Unit) {
+    var isOverflowing by remember { mutableStateOf(false) }
+    val fullText = review.content.trim()
+
     Column(
         modifier = Modifier
             .width(300.dp)
+            .height(170.dp)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(12.dp)
             )
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = review.authorDetails?.name?.takeIf { it.isNotBlank() }
-                        ?: review.authorDetails?.username?.takeIf { it.isNotBlank() }
-                        ?: review.author.takeIf { it.isNotBlank() }
-                        ?: "Anonimo",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
+            Text(
+                text = review.authorDetails?.name?.takeIf { it.isNotBlank() }
+                    ?: review.authorDetails?.username?.takeIf { it.isNotBlank() }
+                    ?: review.author.takeIf { it.isNotBlank() }
+                    ?: "Anonimo",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
             review.authorDetails?.rating?.let {
                 Text(
                     text = "★ ${String.format("%.1f", it)}",
@@ -1135,12 +1202,26 @@ private fun ReviewCard(review: TmdbReview) {
             }
         }
         Text(
-            text = review.content.trim().take(360).let {
-                if (review.content.length > 360) "$it..." else it
-            },
+            text = fullText,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 6,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { isOverflowing = it.hasVisualOverflow }
         )
+        if (isOverflowing) {
+            TextButton(
+                onClick = onShowFull,
+                modifier = Modifier.padding(0.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text(
+                    text = "Leggi tutto",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
     }
 }
 

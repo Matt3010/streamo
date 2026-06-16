@@ -74,30 +74,32 @@ class TMDBClient @Inject constructor(
         return filtered
     }
 
-    suspend fun searchMovie(query: String, page: Int = 1, genreId: Int? = null): List<TmdbItem> {
+    suspend fun searchMovie(query: String, page: Int = 1, genreIds: Collection<Int>? = null): List<TmdbItem> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
+        val withGenres = genreIds?.joinToString(",")?.takeIf { it.isNotEmpty() }
         val res = api.searchMovie(
             apiKey = apiKey(), query = trimmed, page = page,
-            withGenres = genreId?.toString()
+            withGenres = withGenres
         )
         var results = res.results.orEmpty().filter { it.genreIds?.contains(99) != true }
-        if (genreId != null) {
-            results = results.filter { it.genreIds?.contains(genreId) == true }
+        if (!genreIds.isNullOrEmpty()) {
+            results = results.filter { item -> item.genreIds?.any { it in genreIds } == true }
         }
         return results.map { it.copy(mediaType = "movie") }
     }
 
-    suspend fun searchTv(query: String, page: Int = 1, genreId: Int? = null): List<TmdbItem> {
+    suspend fun searchTv(query: String, page: Int = 1, genreIds: Collection<Int>? = null): List<TmdbItem> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
+        val withGenres = genreIds?.joinToString(",")?.takeIf { it.isNotEmpty() }
         val res = api.searchTv(
             apiKey = apiKey(), query = trimmed, page = page,
-            withGenres = genreId?.toString()
+            withGenres = withGenres
         )
         var results = res.results.orEmpty().filter { it.genreIds?.contains(99) != true }
-        if (genreId != null) {
-            results = results.filter { it.genreIds?.contains(genreId) == true }
+        if (!genreIds.isNullOrEmpty()) {
+            results = results.filter { item -> item.genreIds?.any { it in genreIds } == true }
         }
         return results.map { it.copy(mediaType = "tv") }
     }
@@ -113,15 +115,17 @@ class TMDBClient @Inject constructor(
         return merged
     }
 
-    suspend fun browseMovies(page: Int = 1, genreId: Int? = null): List<TmdbItem> {
-        return api.discoverMovie(apiKey = apiKey(), page = page, withGenres = genreId?.toString())
+    suspend fun browseMovies(page: Int = 1, genreIds: Collection<Int>? = null): List<TmdbItem> {
+        val withGenres = genreIds?.joinToString(",")?.takeIf { it.isNotEmpty() }
+        return api.discoverMovie(apiKey = apiKey(), page = page, withGenres = withGenres)
             .results.orEmpty()
             .filter { it.genreIds?.contains(99) != true }
             .map { it.copy(mediaType = "movie") }
     }
 
-    suspend fun browseTv(page: Int = 1, genreId: Int? = null): List<TmdbItem> {
-        return api.discoverTv(apiKey = apiKey(), page = page, withGenres = genreId?.toString())
+    suspend fun browseTv(page: Int = 1, genreIds: Collection<Int>? = null): List<TmdbItem> {
+        val withGenres = genreIds?.joinToString(",")?.takeIf { it.isNotEmpty() }
+        return api.discoverTv(apiKey = apiKey(), page = page, withGenres = withGenres)
             .results.orEmpty()
             .filter { it.genreIds?.contains(99) != true }
             .map { it.copy(mediaType = "tv") }

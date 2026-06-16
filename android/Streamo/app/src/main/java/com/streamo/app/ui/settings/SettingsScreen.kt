@@ -28,7 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +36,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.res.painterResource
@@ -69,7 +67,11 @@ import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.NetworkType
 import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.ui.common.BrandButton
+import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassCard
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
+import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
 
@@ -98,7 +100,6 @@ fun SettingsScreen(
     val stats by viewModel.stats.collectAsState()
     val autoplay by viewModel.autoplayNext.collectAsState()
     val autoDelete by viewModel.autoDeleteWatched.collectAsState()
-    val folders by viewModel.foldersEnabled.collectAsState()
     val showCardInfo by viewModel.showCardInfo.collectAsState()
     val reduceEffects by viewModel.reduceEffects.collectAsState()
     val accent by viewModel.accentColor.collectAsState()
@@ -133,9 +134,9 @@ fun SettingsScreen(
     qualityPickerFor?.let { net ->
         val current = if (net == NetworkType.WIFI) dlQualityWifi else dlQualityMobile
         val netLabel = if (net == NetworkType.WIFI) "Wi-Fi" else "rete mobile"
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { qualityPickerFor = null },
-            title = { Text("Qualità download · $netLabel") },
+            title = "Qualità download · $netLabel",
             text = {
                 Column {
                     DownloadQualityPref.SETTINGS_OPTIONS.forEach { opt ->
@@ -166,9 +167,7 @@ fun SettingsScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { qualityPickerFor = null }) {
-                    Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                GlassDialogNeutralButton(onClick = { qualityPickerFor = null }) { Text("Annulla") }
             }
         )
     }
@@ -177,9 +176,9 @@ fun SettingsScreen(
         val current = if (net == NetworkType.WIFI) streamingQualityWifi else streamingQualityMobile
         val netLabel = if (net == NetworkType.WIFI) "Wi-Fi" else "rete mobile"
         val options = listOf("auto" to "Auto", "max" to "Massima", "1080" to "1080p", "720" to "720p", "480" to "480p")
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { streamingPickerFor = null },
-            title = { Text("Qualità streaming · $netLabel") },
+            title = "Qualità streaming · $netLabel",
             text = {
                 Column {
                     options.forEach { (token, label) ->
@@ -210,37 +209,35 @@ fun SettingsScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { streamingPickerFor = null }) {
-                    Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                GlassDialogNeutralButton(onClick = { streamingPickerFor = null }) { Text("Annulla") }
             }
         )
     }
 
     if (confirmRestore1) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { viewModel.cancelRestore() },
-            title = { Text("Ripristinare dal backup?") },
+            title = "Ripristinare dal backup?",
             text = { Text("Tutti i dati attuali (lista, cronologia, progressi, download) verranno sostituiti con quelli del backup. L'operazione non è reversibile.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.proceedToRestoreStep2() }) { Text("Continua") }
+                GlassDialogPrimaryButton(onClick = { viewModel.proceedToRestoreStep2() }) { Text("Continua") }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.cancelRestore() }) { Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                GlassDialogNeutralButton(onClick = { viewModel.cancelRestore() }) { Text("Annulla") }
             }
         )
     }
 
     if (confirmRestore2) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { viewModel.cancelRestore() },
-            title = { Text("Confermi il ripristino?") },
+            title = "Confermi il ripristino?",
             text = { Text("Sei sicuro? I dati attuali andranno persi definitivamente.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmRestore() }) { Text("Ripristina") }
+                GlassDialogDestructiveButton(onClick = { viewModel.confirmRestore() }) { Text("Ripristina") }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.cancelRestore() }) { Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                GlassDialogNeutralButton(onClick = { viewModel.cancelRestore() }) { Text("Annulla") }
             }
         )
     }
@@ -366,9 +363,9 @@ fun SettingsScreen(
                             gText = (pickerColor.green * 255).toInt().toString()
                             bText = (pickerColor.blue * 255).toInt().toString()
                         }
-                        AlertDialog(
+                        GlassAlertDialog(
                             onDismissRequest = { showPicker = false },
-                            title = { Text("Scegli colore") },
+                            title = "Scegli colore",
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Box(
@@ -449,13 +446,13 @@ fun SettingsScreen(
                                 }
                             },
                             confirmButton = {
-                                TextButton(onClick = {
+                                GlassDialogPrimaryButton(onClick = {
                                     viewModel.setAccentColor(pickerColor.red, pickerColor.green, pickerColor.blue)
                                     showPicker = false
                                 }) { Text("Applica") }
                             },
                             dismissButton = {
-                                TextButton(onClick = { showPicker = false }) { Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                GlassDialogNeutralButton(onClick = { showPicker = false }) { Text("Annulla") }
                             }
                         )
                     }
@@ -483,30 +480,6 @@ fun SettingsScreen(
                     Switch(
                         checked = showCardInfo,
                         onCheckedChange = { viewModel.setShowCardInfo(it) }
-                    )
-                }
-            }
-
-            // Folder nella watchlist
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Folder nella mia lista", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "Raggruppa film e serie in cartelle nella tua lista.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = folders,
-                        onCheckedChange = { viewModel.setFoldersEnabled(it) }
                     )
                 }
             }

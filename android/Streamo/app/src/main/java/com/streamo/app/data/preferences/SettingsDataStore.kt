@@ -28,7 +28,6 @@ class SettingsDataStore @Inject constructor(
         private val TMDB_API_KEY = stringPreferencesKey("tmdb_api_key")
         private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
         private val PROVIDER_LOCALE = stringPreferencesKey("provider_locale")
-        private val FOLDERS_ENABLED = booleanPreferencesKey("folders_enabled")
         private val SHOW_CARD_INFO = booleanPreferencesKey("show_card_info")
         private val REDUCE_EFFECTS = booleanPreferencesKey("reduce_effects")
         private val AUTO_DELETE_WATCHED = booleanPreferencesKey("auto_delete_watched_downloads")
@@ -69,14 +68,6 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setProviderLocale(value: String) {
         context.dataStore.edit { it[PROVIDER_LOCALE] = value }
-    }
-
-    val foldersEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[FOLDERS_ENABLED] ?: true
-    }
-
-    suspend fun setFoldersEnabled(value: Boolean) {
-        context.dataStore.edit { it[FOLDERS_ENABLED] = value }
     }
 
     /** Mostra titolo/anno/voto sotto le card (Continua a guardare le mostra sempre). */

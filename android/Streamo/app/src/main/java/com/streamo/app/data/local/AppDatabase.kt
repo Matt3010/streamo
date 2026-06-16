@@ -26,12 +26,50 @@ import com.streamo.app.data.local.entity.WatchlistEntry
         DownloadEntry::class,
         SearchHistoryEntry::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE history_new (
+                        tmdbId INTEGER NOT NULL,
+                        mediaType TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        posterPath TEXT,
+                        season INTEGER NOT NULL DEFAULT 0,
+                        episode INTEGER NOT NULL DEFAULT 0,
+                        watchedAt INTEGER NOT NULL DEFAULT 0,
+                        watchedDay INTEGER NOT NULL DEFAULT 0,
+                        progressSeconds REAL NOT NULL DEFAULT 0.0,
+                        durationSeconds REAL NOT NULL DEFAULT 0.0,
+                        PRIMARY KEY(tmdbId, mediaType, season, episode, watchedDay)
+                    )""".trimIndent()
+                )
+                db.execSQL(
+                    """INSERT INTO history_new (
+                        tmdbId, mediaType, title, posterPath, season, episode,
+                        watchedAt, watchedDay, progressSeconds, durationSeconds
+                    ) SELECT
+                        h.tmdbId, h.mediaType, h.title, h.posterPath, h.season, h.episode,
+                        h.watchedAt,
+                        (h.watchedAt / 86400000) * 86400000,
+                        COALESCE(p.positionSeconds, 0.0),
+                        COALESCE(p.durationSeconds, 0.0)
+                    FROM history h
+                    LEFT JOIN progress p ON h.tmdbId = p.tmdbId
+                        AND h.mediaType = p.mediaType
+                        AND h.season = p.season
+                        AND h.episode = p.episode""".trimIndent()
+                )
+                db.execSQL("DROP TABLE history")
+                db.execSQL("ALTER TABLE history_new RENAME TO history")
+            }
+        }
+
         val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE downloads ADD COLUMN warpEnabled INTEGER NOT NULL DEFAULT 0")

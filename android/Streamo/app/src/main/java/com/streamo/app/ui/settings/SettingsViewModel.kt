@@ -53,9 +53,6 @@ class SettingsViewModel @Inject constructor(
     private val _autoDeleteWatched = MutableStateFlow(false)
     val autoDeleteWatched: StateFlow<Boolean> = _autoDeleteWatched.asStateFlow()
 
-    private val _foldersEnabled = MutableStateFlow(true)
-    val foldersEnabled: StateFlow<Boolean> = _foldersEnabled.asStateFlow()
-
     private val _showCardInfo = MutableStateFlow(true)
     val showCardInfo: StateFlow<Boolean> = _showCardInfo.asStateFlow()
 
@@ -118,9 +115,6 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             settings.autoDeleteWatched.collect { _autoDeleteWatched.value = it }
-        }
-        viewModelScope.launch {
-            settings.foldersEnabled.collect { _foldersEnabled.value = it }
         }
         viewModelScope.launch {
             settings.showCardInfo.collect { _showCardInfo.value = it }
@@ -192,12 +186,6 @@ class SettingsViewModel @Inject constructor(
     fun setAutoDeleteWatched(value: Boolean) {
         viewModelScope.launch {
             settings.setAutoDeleteWatched(value)
-        }
-    }
-
-    fun setFoldersEnabled(value: Boolean) {
-        viewModelScope.launch {
-            settings.setFoldersEnabled(value)
         }
     }
 

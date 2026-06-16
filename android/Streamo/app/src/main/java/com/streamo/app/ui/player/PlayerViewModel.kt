@@ -40,6 +40,7 @@ import com.streamo.app.download.DownloadInfrastructure
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.download.NetworkType
 import com.streamo.app.data.remote.dto.TmdbItem
+import com.streamo.app.provider.IntroSkipClient
 import com.streamo.app.provider.PlaybackSource
 import com.streamo.app.provider.ProviderDebugLogger
 import com.streamo.app.provider.ProviderResolver
@@ -70,7 +71,8 @@ class PlayerViewModel @Inject constructor(
     private val client: TMDBClient,
     private val castController: CastController,
     private val warpTunnel: WarpTunnel,
-    private val connectivityHelper: ConnectivityHelper
+    private val connectivityHelper: ConnectivityHelper,
+    private val introSkipClient: IntroSkipClient
 ) : ViewModel() {
 
     val tmdbId: Int = savedStateHandle["tmdbId"] ?: 0
@@ -378,6 +380,39 @@ class PlayerViewModel @Inject constructor(
     private val _episodeTitle = MutableStateFlow<String?>(null)
     val episodeTitle: StateFlow<String?> = _episodeTitle.asStateFlow()
 
+    // --- Skip intro / credits (TheIntroDB) ---
+
+    /** Affordance visibile alla posizione corrente, o null quando non applicabile. */
+    enum class SkipPrompt {
+        INTRO,
+        CREDITS
+    }
+
+    data class SkipSegment(
+        val startMs: Long,
+        val endMs: Long
+    )
+
+    private val _skipPrompt = MutableStateFlow<SkipPrompt?>(null)
+    val skipPrompt: StateFlow<SkipPrompt?> = _skipPrompt.asStateFlow()
+
+    private val _skipSegment = MutableStateFlow<SkipSegment?>(null)
+    val skipSegment: StateFlow<SkipSegment?> = _skipSegment.asStateFlow()
+
+    /** Countdown (secondi) mostrato prima dell'avanzamento automatico al prossimo episodio. */
+    private val _nextCountdown = MutableStateFlow<Int?>(null)
+    val nextCountdown: StateFlow<Int?> = _nextCountdown.asStateFlow()
+
+    private var skipSegments: IntroSkipClient.Segments? = null
+    private var didFetchSkipSegments = false
+    private var introDismissed = false
+    private var creditsDismissed = false
+    private var countdownJob: Job? = null
+    private var didTriggerNext = false
+    private var pendingNextEpisode: Pair<Int, Int>? = null
+
+    // ---
+
     /** Ordered CDN mirrors of the same vixcloud embed; we fall through them on failure. */
     private var playbackSources: List<PlaybackSource> = emptyList()
     private var sourceIndex = 0
@@ -414,17 +449,14 @@ class PlayerViewModel @Inject constructor(
                     _duration.value = player.duration.coerceAtLeast(0L)
                     _loading.value = false
                     refreshAvailableTracks()
-                    // Resume from saved position
-                    if (pendingResumePositionMs > 0) {
-                        player.seekTo(pendingResumePositionMs)
-                        pendingResumePositionMs = 0
-                    }
                     // Resume playback after manual seek once decoder is ready
                     // (Overlay is cleared by the fixed delay in seekTo, not here,
                     // to avoid showing the first decoded frame which can be corrupted.)
                     if (!_seekingManually.value && !player.isPlaying) {
                         player.play()
                     }
+                    // Fetch skip segments once the item is seekable and duration is known.
+                    maybeFetchSkipSegments()
                 }
                 if (state == Player.STATE_ENDED) {
                     _playbackEnded.value = true
@@ -454,6 +486,7 @@ class PlayerViewModel @Inject constructor(
                     _currentPosition.value = player.currentPosition.coerceAtLeast(0L)
                     _bufferedPosition.value = player.bufferedPosition.coerceAtLeast(0L)
                 }
+                updateSkipPrompt()
                 delay(1000)
             }
         }
@@ -549,6 +582,7 @@ class PlayerViewModel @Inject constructor(
     fun load() {
         _playbackEnded.value = false
         ProviderDebugLogger.clear()
+        resetSkipState()
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
@@ -588,7 +622,9 @@ class PlayerViewModel @Inject constructor(
                 val downloadEntry = repository.getDownloadByContentId(contentId)
                 if (downloadEntry != null && downloadEntry.status == "completed" && downloadEntry.streamUrl.isNotBlank()) {
                     // Offline playback: leave the download queue running.
-                    playStreamFromUrl(downloadEntry.streamUrl, emptyMap(), forceOffline = true)
+                    val resumePos = pendingResumePositionMs
+                    pendingResumePositionMs = 0
+                    playStreamFromUrl(downloadEntry.streamUrl, emptyMap(), forceOffline = true, startPositionMs = resumePos)
                     checkNextEpisode()
                     return@launch
                 }
@@ -643,7 +679,9 @@ class PlayerViewModel @Inject constructor(
         }
         val source = playbackSources[sourceIndex]
         _currentSourceIndex.value = sourceIndex
-        playStreamFromUrl(source.playlistUrl, source.headers)
+        val resumePos = pendingResumePositionMs
+        pendingResumePositionMs = 0
+        playStreamFromUrl(source.playlistUrl, source.headers, startPositionMs = resumePos)
     }
 
     private fun advanceToNextSource() {
@@ -656,7 +694,12 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun playStreamFromUrl(url: String, headers: Map<String, String>, forceOffline: Boolean = false) {
+    private fun playStreamFromUrl(
+        url: String,
+        headers: Map<String, String>,
+        forceOffline: Boolean = false,
+        startPositionMs: Long = 0
+    ) {
         currentStreamUrl = url
         currentHeaders = headers
         currentIsOffline = forceOffline
@@ -710,7 +753,10 @@ class PlayerViewModel @Inject constructor(
 
         val mediaSource = HlsMediaSource.Factory(factory)
             .createMediaSource(mediaItem)
-        player.setMediaSource(mediaSource)
+        // Pass the resume position before prepare so ExoPlayer starts loading the
+        // target segment directly. Seeking after STATE_READY caused resumed playback
+        // to hang/black-screen because the player first buffered from time 0.
+        player.setMediaSource(mediaSource, startPositionMs.coerceAtLeast(0L))
         player.prepare()
         player.playWhenReady = true
     }
@@ -722,8 +768,7 @@ class PlayerViewModel @Inject constructor(
             sourceIndex = idx
             _currentSourceIndex.value = idx
         }
-        playStreamFromUrl(source.playlistUrl, source.headers)
-        player.seekTo(pos)
+        playStreamFromUrl(source.playlistUrl, source.headers, startPositionMs = pos)
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -814,9 +859,165 @@ class PlayerViewModel @Inject constructor(
         awaitSeekRendered(wasPlaying)
     }
 
+    // MARK: - Skip intro / credits
+
+    private fun resetSkipState() {
+        didFetchSkipSegments = false
+        introDismissed = false
+        creditsDismissed = false
+        didTriggerNext = false
+        skipSegments = null
+        _skipPrompt.value = null
+        _skipSegment.value = null
+        _nextCountdown.value = null
+        pendingNextEpisode = null
+        countdownJob?.cancel()
+        countdownJob = null
+    }
+
+    private fun maybeFetchSkipSegments() {
+        // Skip per offline o TMDB id assente.
+        if (didFetchSkipSegments || _isOfflinePlayback.value || tmdbId <= 0) return
+        didFetchSkipSegments = true
+        val durationMs = _duration.value.takeIf { it > 0 }
+        viewModelScope.launch {
+            val segs = introSkipClient.fetch(
+                tmdbId = tmdbId,
+                isMovie = mediaType == "movie",
+                season = season,
+                episode = episode,
+                durationMs = durationMs
+            )
+            // L'episodio potrebbe essere cambiato durante la richiesta.
+            if (didFetchSkipSegments) {
+                skipSegments = segs
+                updateSkipPrompt()
+            }
+        }
+    }
+
+    private fun updateSkipPrompt() {
+        val segs = skipSegments ?: run {
+            if (_skipPrompt.value != null) _skipPrompt.value = null
+            if (_skipSegment.value != null) _skipSegment.value = null
+            return
+        }
+        val t = _currentPosition.value / 1000.0
+        if (!t.isFinite()) {
+            return
+        }
+        val newPrompt: SkipPrompt?
+        val newSegment: SkipSegment?
+        val introStartSec = segs.introStartMs?.let { it / 1000.0 } ?: 0.0
+        val introEndSec = segs.introEndMs?.let { it / 1000.0 }
+        val creditsStartSec = segs.creditsStartMs?.let { it / 1000.0 }
+
+        if (!introDismissed && introEndSec != null && t >= introStartSec && t < introEndSec - 1) {
+            newPrompt = SkipPrompt.INTRO
+            newSegment = SkipSegment(
+                startMs = segs.introStartMs ?: 0L,
+                endMs = segs.introEndMs ?: 0L
+            )
+        } else if (!creditsDismissed && creditsStartSec != null && t >= creditsStartSec) {
+            newPrompt = SkipPrompt.CREDITS
+            val durSec = _duration.value / 1000.0
+            val endSec = if (durSec.isFinite() && durSec > creditsStartSec) durSec else creditsStartSec + 1
+            newSegment = SkipSegment(
+                startMs = segs.creditsStartMs ?: 0L,
+                endMs = (endSec * 1000).toLong()
+            )
+            if (!didTriggerNext) {
+                didTriggerNext = true
+                onCreditsReached()
+            }
+        } else {
+            newPrompt = null
+            newSegment = null
+        }
+        if (_skipPrompt.value != newPrompt) _skipPrompt.value = newPrompt
+        if (_skipSegment.value != newSegment) _skipSegment.value = newSegment
+    }
+
+    /** Chiamato quando la riproduzione entra nei crediti. */
+    private fun onCreditsReached() {
+        viewModelScope.launch {
+            val autoplay = settings.autoplayNext.first()
+            if (!autoplay || mediaType != "tv" || season == 0) return@launch
+            val item = tmdbItem ?: client.details(tmdbId, "tv") ?: return@launch
+            val next = TVLogic.nextEpisode(item, season, episode) ?: return@launch
+            pendingNextEpisode = next
+            armNextEpisode(seconds = 8)
+        }
+    }
+
+    /** Arm a cancellable countdown before auto-advancing to the next episode. */
+    private fun armNextEpisode(seconds: Int = 8) {
+        _nextCountdown.value = seconds
+        countdownJob?.cancel()
+        countdownJob = viewModelScope.launch {
+            for (n in seconds downTo 1) {
+                if (!isPastCreditsStart()) {
+                    _nextCountdown.value = null
+                    didTriggerNext = false
+                    pendingNextEpisode = null
+                    return@launch
+                }
+                _nextCountdown.value = n
+                delay(1000)
+            }
+            _nextCountdown.value = null
+            playNextEpisode()
+        }
+    }
+
+    private fun isPastCreditsStart(): Boolean {
+        val startMs = skipSegments?.creditsStartMs ?: return true
+        return _currentPosition.value >= startMs
+    }
+
+    /** Esegue l'azione del bottone skip visibile (intro o credits). */
+    fun performSkip() {
+        val prompt = _skipPrompt.value ?: return
+        when (prompt) {
+            SkipPrompt.INTRO -> {
+                introDismissed = true
+                val endMs = _skipSegment.value?.endMs ?: skipSegments?.introEndMs ?: return
+                seekTo(endMs)
+            }
+            SkipPrompt.CREDITS -> {
+                creditsDismissed = true
+                if (pendingNextEpisode != null) {
+                    playNextNow()
+                } else {
+                    // Film o nessun prossimo episodio: salta alla fine.
+                    val dur = _duration.value
+                    val target = if (dur > 0L) (dur - 1000L).coerceAtLeast(0L) else 0L
+                    seekTo(target)
+                }
+            }
+        }
+        _skipPrompt.value = null
+        _skipSegment.value = null
+    }
+
+    /** Avanza subito al prossimo episodio armato dal countdown. */
+    fun playNextNow() {
+        countdownJob?.cancel()
+        countdownJob = null
+        _nextCountdown.value = null
+        playNextEpisode()
+    }
+
+    /** Dismissa il countdown senza avanzare. */
+    fun cancelNextEpisode() {
+        countdownJob?.cancel()
+        countdownJob = null
+        _nextCountdown.value = null
+    }
+
     fun playNextEpisode() {
         if (mediaType != "tv" || season == 0) return
-        val next = TVLogic.nextEpisode(tmdbItem ?: return, season, episode) ?: return
+        val next = pendingNextEpisode ?: TVLogic.nextEpisode(tmdbItem ?: return, season, episode) ?: return
         saveCurrentProgress()
         season = next.first
         episode = next.second
@@ -854,7 +1055,9 @@ class PlayerViewModel @Inject constructor(
                     title = title,
                     posterPath = poster,
                     season = season,
-                    episode = episode
+                    episode = episode,
+                    progressSeconds = durationSec,
+                    durationSeconds = durationSec
                 )
             )
 
@@ -877,8 +1080,10 @@ class PlayerViewModel @Inject constructor(
                 }
             }
 
+            // Auto-advance fallback: se il percorso crediti/countdown non ha già
+            // scattato, passa al prossimo episodio solo alla fine reale del video.
             val autoplay = settings.autoplayNext.first()
-            if (autoplay && _nextEpisodeAvailable.value) {
+            if (autoplay && _nextEpisodeAvailable.value && !didTriggerNext) {
                 playNextEpisode()
             }
         }
@@ -910,7 +1115,9 @@ class PlayerViewModel @Inject constructor(
                         title = title,
                         posterPath = poster,
                         season = season,
-                        episode = episode
+                        episode = episode,
+                        progressSeconds = posSec,
+                        durationSeconds = durSec
                     )
                 )
             }

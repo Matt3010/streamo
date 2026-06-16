@@ -13,14 +13,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -38,8 +36,12 @@ import com.streamo.app.data.local.entity.ProgressEntry
 import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ProgressMediaCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,41 +112,43 @@ fun ContinueWatchingScreen(
             }
         }
 
-        if (showRemoveDialog && entryToRemove != null) {
-            val entry = entryToRemove!!
-            AlertDialog(
-                onDismissRequest = {
-                    showRemoveDialog = false
-                    entryToRemove = null
-                },
-                title = { Text("Rimuovi") },
-                text = {
-                    Text(
-                        "Rimuovere \"${entry.title.ifBlank { "${entry.tmdbId}" }}\" dalla lista?"
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.remove(entry.tmdbId)
-                            showRemoveDialog = false
-                            entryToRemove = null
-                        }
-                    ) {
-                        Text("Rimuovi", color = MaterialTheme.colorScheme.error)
+    }
+
+    if (showRemoveDialog && entryToRemove != null) {
+        val entry = entryToRemove!!
+        GlassAlertDialog(
+            onDismissRequest = {
+                showRemoveDialog = false
+                entryToRemove = null
+            },
+            hazeState = LocalHazeState.current,
+            title = "Rimuovi",
+            text = {
+                Text(
+                    "Rimuovere \"${entry.title.ifBlank { "${entry.tmdbId}" }}\" dalla lista?"
+                )
+            },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.remove(entry.tmdbId)
+                        showRemoveDialog = false
+                        entryToRemove = null
                     }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showRemoveDialog = false
-                            entryToRemove = null
-                        }
-                    ) {
-                        Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                ) {
+                    Text("Rimuovi")
                 }
-            )
-        }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(
+                    onClick = {
+                        showRemoveDialog = false
+                        entryToRemove = null
+                    }
+                ) {
+                    Text("Annulla")
+                }
+            }
+        )
     }
 }

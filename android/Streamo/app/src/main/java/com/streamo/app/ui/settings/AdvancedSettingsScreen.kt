@@ -20,24 +20,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,9 +50,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.BuildConfig
 import com.streamo.app.navigation.LocalBottomBarPadding
+import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.GlassCard
 import com.streamo.app.ui.common.GlassDefaults
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
 import kotlinx.coroutines.delay
@@ -120,36 +114,31 @@ fun AdvancedSettingsScreen(
     }
 
     if (confirmRecalc) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { viewModel.dismissRecalcDialog() },
-            title = { Text("Ricalcolare la libreria?") },
+            title = "Ricalcolare la libreria?",
             text = { Text("Elimina i progressi dei titoli non più in cronologia né in lista. La cronologia e la lista non vengono toccate.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.recalculateLibrary() }) { Text("Ricalcola") }
+                GlassDialogDestructiveButton(onClick = { viewModel.recalculateLibrary() }) { Text("Ricalcola") }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissRecalcDialog() }) {
-                    Text("Annulla", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                GlassDialogNeutralButton(onClick = { viewModel.dismissRecalcDialog() }) { Text("Annulla") }
             }
         )
     }
 
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { _ ->
-        GlassTopBarScaffold(
-            onLeading = onBack
-        ) { topPadding ->
+    GlassTopBarScaffold(
+        onLeading = onBack
+    ) { topPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = topPadding)
-                .padding(16.dp)
-                .verticalScroll(scrollState),
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Spacer(modifier = Modifier.height(topPadding))
             GlassLargeTitle("Impostazioni avanzate")
 
             // ————————————————————————————
@@ -339,6 +328,7 @@ fun AdvancedSettingsScreen(
                         ) {
                             Text("Verifica egress")
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
                         warpStatus?.let { status ->
                             Text(
                                 status,
@@ -362,6 +352,7 @@ fun AdvancedSettingsScreen(
                     BrandButton(onClick = { viewModel.showRecalcDialog() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Ricalcola libreria")
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla cronologia e dalla lista, e aggiorna le statistiche e \"Continua a guardare\".",
                         style = MaterialTheme.typography.bodySmall,
@@ -372,8 +363,14 @@ fun AdvancedSettingsScreen(
 
             Spacer(modifier = Modifier.height(LocalBottomBarPadding.current))
         }
-        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = LocalBottomBarPadding.current)
+        )
     }
+}
 }
 
 @Composable

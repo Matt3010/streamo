@@ -159,30 +159,38 @@ fun ProgressMediaCard(
                 }
             }
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-        val timeText = statusText ?: if (durationSeconds > 0) {
-            val remainingSec = (durationSeconds - positionSeconds).toInt().coerceAtLeast(0)
-            val h = remainingSec / 3600
-            val m = (remainingSec % 3600) / 60
-            when {
-                h > 0 -> "${h}h ${m}min rimasti"
-                m > 0 -> "${m} min rimasti"
-                else -> "pochi secondi"
-            }
-        } else null
-        timeText?.let {
+        Column(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .height(48.dp)
+        ) {
             Text(
-                text = it,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+            val timeText = statusText ?: if (durationSeconds > 0) {
+                val remainingSec = (durationSeconds - positionSeconds).toInt().coerceAtLeast(0)
+                val h = remainingSec / 3600
+                val m = (remainingSec % 3600) / 60
+                when {
+                    h > 0 -> "${h}h ${m}min rimasti"
+                    m > 0 -> "${m} min rimasti"
+                    else -> "pochi secondi"
+                }
+            } else null
+            timeText?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
     }
 }

@@ -23,7 +23,11 @@ data class HistoryItem(
     val entry: HistoryEntry,
     val progress: ProgressEntry?,
     /** "Completato" / null — the grey status line under the card. */
-    val statusText: String?
+    val statusText: String?,
+    /** Seconds to use for the frozen progress bar on this history row. */
+    val snapshotPosition: Double,
+    /** Duration to use for the frozen progress bar on this history row. */
+    val snapshotDuration: Double
 )
 
 data class HistorySection(
@@ -60,7 +64,11 @@ class HistoryViewModel @Inject constructor(
         fun progressFor(e: HistoryEntry): ProgressEntry? =
             progressByKey[coordinate(e.tmdbId, e.mediaType, e.season, e.episode)]
 
+        // Count each watched coordinate once, matching iOS totalWatchSeconds.
+        val countedCoordinates = mutableSetOf<String>()
         val totalWatch = entries.sumOf { e ->
+            val key = coordinate(e.tmdbId, e.mediaType, e.season, e.episode)
+            if (!countedCoordinates.add(key)) return@sumOf 0.0
             val p = progressFor(e) ?: return@sumOf 0.0
             watchTimeSeconds(p.positionSeconds, p.durationSeconds)
         }
@@ -85,9 +93,9 @@ class HistoryViewModel @Inject constructor(
         filter.value = value
     }
 
-    fun remove(id: Int) {
+    fun remove(entry: HistoryEntry) {
         viewModelScope.launch {
-            repository.removeFromHistory(id)
+            repository.removeFromHistory(entry)
         }
     }
 
@@ -106,12 +114,16 @@ class HistoryViewModel @Inject constructor(
         return order.map { key ->
             val items = grouped[key].orEmpty().map { entry ->
                 val p = progressFor(entry)
-                val completed = p != null && p.durationSeconds > 0 &&
-                    p.positionSeconds >= p.durationSeconds * TVLogic.WATCHED_THRESHOLD
+                // Prefer the row's own snapshot for the card, fall back to live progress for legacy rows.
+                val snapshotPosition = if (entry.durationSeconds > 0) entry.progressSeconds else p?.positionSeconds ?: 0.0
+                val snapshotDuration = if (entry.durationSeconds > 0) entry.durationSeconds else p?.durationSeconds ?: 0.0
+                val completed = snapshotDuration > 0 && snapshotPosition >= snapshotDuration * TVLogic.WATCHED_THRESHOLD
                 HistoryItem(
                     entry = entry,
                     progress = p,
-                    statusText = if (completed) "Completato" else null
+                    statusText = if (completed) "Completato" else null,
+                    snapshotPosition = snapshotPosition,
+                    snapshotDuration = snapshotDuration
                 )
             }
             HistorySection(
@@ -163,12 +175,11 @@ class HistoryViewModel @Inject constructor(
         var episodes = 0
         var movies = 0
         for (item in items) {
-            val p = item.progress
-            val pos = p?.positionSeconds ?: 0.0
-            val dur = p?.durationSeconds ?: 0.0
+            val pos = item.snapshotPosition
+            val dur = item.snapshotDuration
             val completed = dur > 0 && pos >= dur * TVLogic.WATCHED_THRESHOLD
             if (item.entry.mediaType == "tv") {
-                if (completed || pos > 10) episodes++
+                if (completed || pos > 15) episodes++
             } else if (completed) {
                 movies++
             }

@@ -18,16 +18,24 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.streamo.app.data.local.entity.WatchlistEntry
 import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.tmdb.TMDBImage
+import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassDialogDestructiveButton
+import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassFilterChip
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ProgressMediaCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +47,7 @@ fun WatchlistScreen(
     val items by viewModel.items.collectAsState()
     val selectedType by viewModel.selectedType.collectAsState()
     val selectedStatus by viewModel.selectedStatus.collectAsState()
+    var entryToRemove by remember { mutableStateOf<WatchlistEntry?>(null) }
 
     GlassTopBarScaffold(
         onLeading = null
@@ -97,11 +106,35 @@ fun WatchlistScreen(
                         positionSeconds = p?.positionSeconds ?: 0.0,
                         durationSeconds = p?.durationSeconds ?: 0.0,
                         onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, p?.season ?: 0, p?.episode ?: 0) },
-                        onRemove = { viewModel.remove(entry.tmdbId) }
+                        onRemove = { entryToRemove = entry }
                     )
                 }
             }
         }
+    }
+
+    entryToRemove?.let { entry ->
+        GlassAlertDialog(
+            onDismissRequest = { entryToRemove = null },
+            hazeState = LocalHazeState.current,
+            title = "Rimuovi dalla lista",
+            text = { Text("Rimuovere \"${entry.title}\" dalla lista?") },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.remove(entry.tmdbId)
+                        entryToRemove = null
+                    }
+                ) {
+                    Text("Rimuovi")
+                }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(onClick = { entryToRemove = null }) {
+                    Text("Annulla")
+                }
+            }
+        )
     }
 }
 
