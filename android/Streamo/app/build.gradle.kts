@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,12 @@ plugins {
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+}
+
+// Load .env file for secrets (excluded from git and Claude context)
+val envFile = rootProject.file(".env")
+val envProps = Properties().apply {
+    if (envFile.exists()) envFile.inputStream().use { load(it) }
 }
 
 android {
@@ -20,7 +28,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "DEFAULT_TMDB_API_KEY", "\"42b62dc72918b626d8ea3e33c35e16a6\"")
+        buildConfigField("String", "DEFAULT_TMDB_API_KEY", "\"${envProps.getProperty("TMDB_API_KEY", "")}\"")
 
         // Limit packaged native libs (warpkit.aar ships libgojni.so for 4 ABIs,
         // ~15 MB each). Ship arm64-v8a + armeabi-v7a + x86 + x86_64 so WARP

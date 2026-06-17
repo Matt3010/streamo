@@ -26,6 +26,7 @@ import com.streamo.app.ui.player.PlayerScreen
 import com.streamo.app.ui.search.SearchScreen
 import com.streamo.app.ui.sectionlist.SectionListScreen
 import com.streamo.app.ui.settings.AdvancedSettingsScreen
+import com.streamo.app.ui.settings.LogViewerScreen
 import com.streamo.app.ui.settings.SettingsScreen
 import com.streamo.app.ui.watchlist.WatchlistScreen
 
@@ -118,6 +119,12 @@ fun AppNavHost(
         composable<NavRoutes.Settings> {
             SettingsScreen(
                 onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings()) },
+                onNavigateToDebugLogs = { navController.navigate(NavRoutes.DebugLogs) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable<NavRoutes.DebugLogs> {
+            LogViewerScreen(
                 onBack = { navController.popBackStack() }
             )
         }

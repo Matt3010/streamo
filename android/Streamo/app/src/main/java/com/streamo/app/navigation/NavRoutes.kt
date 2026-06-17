@@ -64,4 +64,7 @@ sealed class NavRoutes {
         val poster: String? = null,
         val releaseDate: String? = null
     ) : NavRoutes()
+
+    @Serializable
+    data object DebugLogs : NavRoutes()
 }

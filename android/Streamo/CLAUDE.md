@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Security & Privacy
+
+**NEVER read, access, or reference:**
+- SSH keys or config (`~/.ssh/`, `%USERPROFILE%\.ssh\`)
+- Credentials, tokens, secrets outside this repo
+- Home directory contents (`~`, `%USERPROFILE%`, `C:\Users\*`) except this project path
+- `.env` files (including this repo's `.env`), credential stores, keychain/vault data
+
+**NEVER include in output, tool calls, or code:**
+- Full home directory paths — use `~` or relative paths
+- Usernames from filesystem paths
+- Contents of any file matching `id_rsa*`, `*.pem`, `*.key`, `known_hosts`, `authorized_keys`
+- API keys, passwords, tokens found anywhere
+
+When paths must be shown, redact username: `C:\Users\<user>\...` or `~\...`
+
 Streamo Android is a Kotlin/Jetpack Compose port of the iOS app, whose Swift source lives in the same repo at [`../../ios/Streamo`](../../ios/Streamo) — useful as a behavioral reference when porting or reconciling features. It browses a TMDB catalog and plays movies/TV via an external scraping provider, with offline downloads, casting, watchlist, history and JSON backup.
 
 ## Build & test commands

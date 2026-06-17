@@ -21,8 +21,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -101,6 +105,20 @@ fun TvRootView() {
         currentDestination?.hierarchy?.any { it.hasRoute(item.route::class) } == true
     }.takeIf { it >= 0 } ?: 0
 
+    val contentFocusRequester = remember { FocusRequester() }
+
+    // Close drawer on nav — prevents auto-open when focus shifts to drawer area.
+    // Skip focus request for Detail/SectionList — they manage their own initial focus.
+    val isDetailOrList = currentDestination?.hierarchy?.any {
+        it.hasRoute(NavRoutes.Detail::class) || it.hasRoute(NavRoutes.SectionList::class)
+    } == true
+    LaunchedEffect(currentDestination) {
+        drawerState.setValue(DrawerValue.Closed)
+        if (!isDetailOrList) {
+            runCatching { contentFocusRequester.requestFocus() }
+        }
+    }
+
     if (!showDrawer) {
         Box(modifier = Modifier.fillMaxSize()) {
             AmbientBackground()
@@ -145,7 +163,12 @@ fun TvRootView() {
             }
         }
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .focusRequester(contentFocusRequester)
+                .focusable()
+        ) {
             AmbientBackground()
             TvAppNavHost(navController = navController, modifier = Modifier.fillMaxSize())
         }

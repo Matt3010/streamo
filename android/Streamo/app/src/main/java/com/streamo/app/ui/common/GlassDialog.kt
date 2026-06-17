@@ -105,7 +105,7 @@ fun GlassAlertDialog(
         onDismissRequest = onDismissRequest,
         hazeState = hazeState,
         modifier = modifier
-            .widthIn(min = 280.dp, max = 560.dp)
+            .widthIn(min = 320.dp, max = 600.dp)
             .padding(horizontal = 24.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp, 20.dp)) {

@@ -1,0 +1,22 @@
+# Secrets
+.env
+*.env
+*.env.*
+local.properties
+
+# Keys & certs
+*.keystore
+*.jks
+*.pem
+*.key
+*.p12
+
+# IDE/build noise
+.idea/
+.gradle/
+build/
+*.iml
+.cxx/
+
+# Google services (contains API keys)
+google-services.json

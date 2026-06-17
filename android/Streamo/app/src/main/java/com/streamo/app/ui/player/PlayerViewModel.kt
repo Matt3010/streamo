@@ -897,33 +897,33 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun updateSkipPrompt() {
-        val segs = skipSegments ?: run {
-            if (_skipPrompt.value != null) _skipPrompt.value = null
-            if (_skipSegment.value != null) _skipSegment.value = null
-            return
-        }
         val t = _currentPosition.value / 1000.0
-        if (!t.isFinite()) {
-            return
-        }
+        if (!t.isFinite()) return
+        val durSec = _duration.value / 1000.0
+
+        val segs = skipSegments
+        val introStartSec = segs?.introStartMs?.let { it / 1000.0 } ?: 0.0
+        val introEndSec = segs?.introEndMs?.let { it / 1000.0 }
+        val creditsStartSec = segs?.creditsStartMs?.let { it / 1000.0 }
+
+        // Fallback al 90% se TheIntroDB non ha credits data
+        val effectiveCreditsStart = creditsStartSec
+            ?: if (durSec.isFinite() && durSec > 0) durSec * TVLogic.WATCHED_THRESHOLD else null
+
         val newPrompt: SkipPrompt?
         val newSegment: SkipSegment?
-        val introStartSec = segs.introStartMs?.let { it / 1000.0 } ?: 0.0
-        val introEndSec = segs.introEndMs?.let { it / 1000.0 }
-        val creditsStartSec = segs.creditsStartMs?.let { it / 1000.0 }
 
         if (!introDismissed && introEndSec != null && t >= introStartSec && t < introEndSec - 1) {
             newPrompt = SkipPrompt.INTRO
             newSegment = SkipSegment(
-                startMs = segs.introStartMs ?: 0L,
-                endMs = segs.introEndMs ?: 0L
+                startMs = segs?.introStartMs ?: 0L,
+                endMs = segs?.introEndMs ?: 0L
             )
-        } else if (!creditsDismissed && creditsStartSec != null && t >= creditsStartSec) {
+        } else if (!creditsDismissed && effectiveCreditsStart != null && t >= effectiveCreditsStart) {
             newPrompt = SkipPrompt.CREDITS
-            val durSec = _duration.value / 1000.0
-            val endSec = if (durSec.isFinite() && durSec > creditsStartSec) durSec else creditsStartSec + 1
+            val endSec = if (durSec.isFinite() && durSec > effectiveCreditsStart) durSec else effectiveCreditsStart + 1
             newSegment = SkipSegment(
-                startMs = segs.creditsStartMs ?: 0L,
+                startMs = (effectiveCreditsStart * 1000).toLong(),
                 endMs = (endSec * 1000).toLong()
             )
             if (!didTriggerNext) {
@@ -971,7 +971,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun isPastCreditsStart(): Boolean {
-        val startMs = skipSegments?.creditsStartMs ?: return true
+        val startMs = skipSegments?.creditsStartMs
+            ?: _duration.value.takeIf { it > 0 }?.let { (it * TVLogic.WATCHED_THRESHOLD).toLong() }
+            ?: return true
         return _currentPosition.value >= startMs
     }
 

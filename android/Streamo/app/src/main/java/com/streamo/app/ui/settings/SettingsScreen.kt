@@ -62,6 +62,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.OutlinedTextField
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.streamo.app.BuildConfig
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.NetworkType
@@ -92,6 +93,7 @@ private fun rgbToHsv(r: Float, g: Float, b: Float): Triple<Float, Float, Float> 
 @Composable
 fun SettingsScreen(
     onNavigateToAdvanced: () -> Unit = {},
+    onNavigateToDebugLogs: () -> Unit = {},
     onBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -676,7 +678,14 @@ fun SettingsScreen(
             // ————————————————————————————
             SectionHeader("Informazioni")
 
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (BuildConfig.DEBUG) Modifier.clickable { onNavigateToDebugLogs() }
+                        else Modifier
+                    )
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -684,7 +693,19 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Versione", style = MaterialTheme.typography.bodyLarge)
-                        Text(viewModel.appVersion, style = MaterialTheme.typography.bodyLarge)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(viewModel.appVersion, style = MaterialTheme.typography.bodyLarge)
+                            if (BuildConfig.DEBUG) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = "Log di debug",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(

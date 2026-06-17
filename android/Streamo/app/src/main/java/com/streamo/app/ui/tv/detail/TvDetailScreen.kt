@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -96,10 +97,12 @@ fun TvDetailScreen(
     val contentReady = !viewModel.isLoading && viewModel.item != null
     LaunchedEffect(contentReady) {
         if (contentReady) {
-            repeat(10) {
+            // Initial delay to let Compose settle the layout after content appears
+            delay(100)
+            repeat(15) {
                 if (playFocused) return@LaunchedEffect
                 runCatching { playFocusRequester.requestFocus() }
-                delay(50)
+                delay(60)
             }
         }
     }
@@ -577,7 +580,7 @@ private fun TvProviderPicker(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.5f)
+                .widthIn(min = 400.dp, max = 600.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF181818))
                 .padding(24.dp)
