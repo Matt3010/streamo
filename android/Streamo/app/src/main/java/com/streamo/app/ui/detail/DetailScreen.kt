@@ -76,6 +76,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -107,7 +108,11 @@ import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.ImagePlaceholder
 import com.streamo.app.util.Format
 import com.streamo.app.util.TVLogic
+import com.streamo.app.ui.common.LocalWindowSizeClass
+import com.streamo.app.ui.common.contentPadding
+import com.streamo.app.ui.common.isLandscapeTablet
 import androidx.browser.customtabs.CustomTabsIntent
+import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import java.text.SimpleDateFormat
@@ -273,129 +278,238 @@ private fun DetailContent(
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
     modifier: Modifier = Modifier
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
+    val configuration = LocalConfiguration.current
+    val isLandscapeTablet = windowSizeClass.isLandscapeTablet(configuration.orientation)
+    val horizontalPadding = windowSizeClass.contentPadding
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+        // Hero più alto su tablet landscape per un look cinematografico stile TV;
+        // su telefono / tablet portrait resta 430dp.
+        val heroHeight = if (isLandscapeTablet) 500.dp else 430.dp
         // px dell'area copertina, usato per legare scroll → parallax/darkening.
-        val backdropPx = with(LocalDensity.current) { 430.dp.toPx() }
-        // Backdrop (mostriamo sempre l'area 430dp; placeholder se manca).
+        val backdropPx = with(LocalDensity.current) { heroHeight.toPx() }
+        // Backdrop (mostriamo sempre l'area hero; placeholder se manca).
         val backdropUrl = item.backdropPath?.takeIf { it.isNotBlank() }
             ?: item.posterPath?.takeIf { it.isNotBlank() }
-        if (backdropUrl != null) {
-            AsyncImage(
-                model = TMDBImage.url(backdropUrl, TMDBImage.Size.W1280),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+
+        // Layout unico full-bleed (stile TV): copertina a tutta larghezza in alto,
+        // contenuto sovrapposto sul terzo inferiore. Su tablet landscape il testo e i
+        // bottoni restano vincolati alla metà sinistra così non si stirano sullo
+        // schermo largo, mentre le sezioni a scorrimento (episodi/consigliati) usano
+        // tutta la larghezza come sulla TV.
+        run {
+            // Backdrop full-width at top
+            if (backdropUrl != null) {
+                AsyncImage(
+                    model = TMDBImage.url(backdropUrl, TMDBImage.Size.W1280),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(heroHeight)
+                        .graphicsLayer {
+                            val scroll = scrollState.value.toFloat()
+                            val frac = (scroll / backdropPx).coerceIn(0f, 1f)
+                            translationY = -scroll * 0.2f
+                            val s = 1f + frac * 0.06f
+                            scaleX = s
+                            scaleY = s
+                        }
+                )
+            } else {
+                ImagePlaceholder(
+                    label = "Copertina non disponibile",
+                    iconSizeDp = 64.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(heroHeight)
+                )
+            }
+
+            // Static darkening overlay
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(430.dp)
-                    // Parallax + leggero zoom: la copertina scorre più lenta del
-                    // contenuto e ingrandisce un filo → effetto 3D. Letture dentro
-                    // graphicsLayer (draw phase) per evitare ricomposizioni a ogni px.
+                    .height(heroHeight)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.55f),
+                                Color.Black.copy(alpha = 0.25f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+
+            // Scroll-driven darkening
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(heroHeight)
                     .graphicsLayer {
-                        val scroll = scrollState.value.toFloat()
-                        val frac = (scroll / backdropPx).coerceIn(0f, 1f)
-                        translationY = -scroll * 0.2f
-                        val s = 1f + frac * 0.06f
-                        scaleX = s
-                        scaleY = s
+                        alpha = (scrollState.value.toFloat() / backdropPx).coerceIn(0f, 1f)
                     }
-            )
-        } else {
-            ImagePlaceholder(
-                label = "Copertina non disponibile",
-                iconSizeDp = 64.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(430.dp)
-            )
-        }
-
-        // Static darkening overlay so text is readable even on bright backdrops
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(430.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.55f),
-                            Color.Black.copy(alpha = 0.25f),
-                            Color.Transparent
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.45f),
+                                Color.Black.copy(alpha = 0.8f),
+                                Color.Black
+                            )
                         )
                     )
-                )
-        )
+            )
 
-        // Scroll-driven darkening: man mano che si scrolla, questo gradient si opacizza
-        // fino a coprire del tutto la copertina. Risolve il contrasto testo-bianco su
-        // backdrop chiari (la copertina è fissa, il contenuto bianco le scorre sopra).
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(430.dp)
-                .graphicsLayer {
-                    alpha = (scrollState.value.toFloat() / backdropPx).coerceIn(0f, 1f)
-                }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.45f),
-                            Color.Black.copy(alpha = 0.8f),
-                            Color.Black
-                        )
-                    )
-                )
-        )
-
-        // Bottom fade-out: unisce la copertina alle sezioni nere sottostanti, eliminando
-        // la divisione netta a 430dp. Altezza estesa a 480dp così l'ultimo pixel è
-        // nero pieno e copre sempre la giunzione durante lo scroll.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(480.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.2f),
-                            Color.Black.copy(alpha = 0.6f),
-                            Color.Black.copy(alpha = 0.95f),
-                            Color.Black
-                        ),
-                        startY = 0f,
-                        endY = Float.POSITIVE_INFINITY
-                    )
-                )
-        )
-
-        val statusBarPadding = androidx.compose.foundation.layout.WindowInsets.statusBars
-            .asPaddingValues()
-            .calculateTopPadding()
-        // Track TopAppBar height + its current scroll offset so the content
-        // reclaims the space when the bar slides away. heightOffset is in px
-        // (negative when collapsed) and is converted to dp here.
-        val topBarHeight = TopAppBarDefaults.TopAppBarExpandedHeight
-        val topBarOffsetDp = with(LocalDensity.current) { scrollBehavior.state.heightOffset.toDp() }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(scrollState)
-                .padding(top = statusBarPadding + topBarHeight + topBarOffsetDp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            // Scrolling overlay: il contenuto si posiziona sopra il backdrop 430dp.
-            // Niente min-height / weight per evitare buchi quando i metadati sono scarsi.
-            Column(
+            // Bottom fade-out
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .height(heroHeight + 50.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.2f),
+                                Color.Black.copy(alpha = 0.6f),
+                                Color.Black.copy(alpha = 0.95f),
+                                Color.Black
+                            ),
+                            startY = 0f,
+                            endY = Float.POSITIVE_INFINITY
+                        )
+                    )
+            )
+
+            // Scrollable content + dialogs (all inside outer Box so dialogs overlay properly)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
             ) {
-                // Spacer per spingere i metadati a metà del backdrop 430dp (look poster-style).
-                Spacer(modifier = Modifier.height(120.dp))
+                val statusBarPadding = androidx.compose.foundation.layout.WindowInsets.statusBars
+                    .asPaddingValues()
+                    .calculateTopPadding()
+                val topBarHeight = TopAppBarDefaults.TopAppBarExpandedHeight
+                val topBarOffsetDp = with(LocalDensity.current) { scrollBehavior.state.heightOffset.toDp() }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .verticalScroll(scrollState)
+                        .padding(top = statusBarPadding + topBarHeight + topBarOffsetDp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    DetailScrollContent(
+                        item = item,
+                        viewModel = viewModel,
+                        scrollState = scrollState,
+                        horizontalPadding = horizontalPadding,
+                        isLandscapeTablet = isLandscapeTablet,
+                        backdropPx = backdropPx
+                    )
+                }
+            }
+
+            // Dialogs (inside outer Box, outside if/else so they show on both layouts)
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Provider Picker
+                if (viewModel.showProviderPicker) {
+                    GlassAlertDialog(
+                        onDismissRequest = { viewModel.showProviderPicker = false },
+                        hazeState = LocalHazeState.current,
+                        title = "Scegli la versione",
+                        text = {
+                            Column {
+                                Text("Quale di questi è il titolo giusto?")
+                                Spacer(modifier = Modifier.height(8.dp))
+                                viewModel.providerCandidates.forEach { candidate ->
+                                    TextButton(
+                                        onClick = { viewModel.confirmProviderCandidate(candidate) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.Start) {
+                                            Text(candidate.title)
+                                            candidate.year?.let {
+                                                Text(
+                                                    text = it.toString(),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            GlassDialogPrimaryButton(onClick = { viewModel.refreshProvider() }) {
+                                Text("Aggiorna")
+                            }
+                        },
+                        dismissButton = {
+                            GlassDialogNeutralButton(onClick = { viewModel.showProviderPicker = false }) {
+                                Text("Chiudi")
+                            }
+                        }
+                    )
+                }
+
+                // Rilevamento risoluzioni in corso (prima della modale "Chiedi").
+                if (viewModel.qualityResolving) {
+                    GlassAlertDialog(
+                        onDismissRequest = {},
+                        confirmButton = {},
+                        hazeState = LocalHazeState.current,
+                        title = "Qualità download",
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Rilevo le risoluzioni disponibili…")
+                            }
+                        }
+                    )
+                }
+
+                // Scelta qualità download (preferenza "Chiedi").
+                viewModel.qualityRequest?.let { req ->
+                    DownloadQualityDialog(
+                        request = req,
+                        onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
+                        onDismiss = { viewModel.dismissQuality() },
+                        hazeState = LocalHazeState.current
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Shared scrollable content for both phone (stacked) and tablet landscape (side-by-side) layouts. */
+@Composable
+private fun DetailScrollContent(
+    item: TmdbItem,
+    viewModel: DetailViewModel,
+    scrollState: androidx.compose.foundation.ScrollState,
+    horizontalPadding: androidx.compose.ui.unit.Dp,
+    isLandscapeTablet: Boolean,
+    backdropPx: Float
+) {
+    // Spazio sopra i metadati così cadono sul terzo inferiore della copertina.
+    // Su tablet landscape l'hero è più alto (500dp) → serve più spinta verso il basso.
+    val topSpacer = if (isLandscapeTablet) 170.dp else 120.dp
+    Column(
+        modifier = Modifier
+            // Stile TV: su tablet landscape testo + bottoni occupano la metà sinistra,
+            // niente stiramento sullo schermo largo.
+            .then(if (isLandscapeTablet) Modifier.fillMaxWidth(0.62f) else Modifier.fillMaxWidth())
+            .padding(horizontal = horizontalPadding, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Spacer per spingere i metadati a metà del backdrop 430dp (look poster-style).
+        Spacer(modifier = Modifier.height(topSpacer))
 
                 // Slot riservato al titolo: il testo vero è l'overlay collassante,
                 // disegnato sopra la barra. Qui teniamo solo lo spazio così i metadati
@@ -694,80 +808,8 @@ private fun DetailContent(
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            Spacer(modifier = Modifier.height(LocalBottomBarPadding.current))
-        }
-
-        // Provider Picker
-        if (viewModel.showProviderPicker) {
-            GlassAlertDialog(
-                onDismissRequest = { viewModel.showProviderPicker = false },
-                hazeState = LocalHazeState.current,
-                title = "Scegli la versione",
-                text = {
-                    Column {
-                        Text("Quale di questi è il titolo giusto?")
-                        Spacer(modifier = Modifier.height(8.dp))
-                        viewModel.providerCandidates.forEach { candidate ->
-                            TextButton(
-                                onClick = { viewModel.confirmProviderCandidate(candidate) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(horizontalAlignment = Alignment.Start) {
-                                    Text(candidate.title)
-                                    candidate.year?.let {
-                                        Text(
-                                            text = it.toString(),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    GlassDialogPrimaryButton(onClick = { viewModel.refreshProvider() }) {
-                        Text("Aggiorna")
-                    }
-                },
-                dismissButton = {
-                    GlassDialogNeutralButton(onClick = { viewModel.showProviderPicker = false }) {
-                        Text("Chiudi")
-                    }
-                }
-            )
-        }
-
-        // Rilevamento risoluzioni in corso (prima della modale "Chiedi").
-        if (viewModel.qualityResolving) {
-            GlassAlertDialog(
-                onDismissRequest = {},
-                confirmButton = {},
-                hazeState = LocalHazeState.current,
-                title = "Qualità download",
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Rilevo le risoluzioni disponibili…")
-                    }
-                }
-            )
-        }
-
-        // Scelta qualità download (preferenza "Chiedi").
-        viewModel.qualityRequest?.let { req ->
-            DownloadQualityDialog(
-                request = req,
-                onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
-                onDismiss = { viewModel.dismissQuality() },
-                hazeState = LocalHazeState.current
-            )
-        }
-
+        Spacer(modifier = Modifier.height(LocalBottomBarPadding.current))
     }
-}
 
 @Composable
 private fun EpisodesUnavailable(message: String?) {

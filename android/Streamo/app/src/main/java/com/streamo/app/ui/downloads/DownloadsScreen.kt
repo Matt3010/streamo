@@ -79,6 +79,8 @@ import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ImagePlaceholder
+import com.streamo.app.ui.common.LocalWindowSizeClass
+import com.streamo.app.ui.common.contentPadding
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +92,7 @@ fun DownloadsScreen(
     onBack: () -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     val entries by viewModel.entries.collectAsState(initial = emptyList())
     val warpChangedEntry by viewModel.warpChangedEntry.collectAsState()
 
@@ -172,7 +175,7 @@ fun DownloadsScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
+                contentPadding = PaddingValues(start = windowSizeClass.contentPadding, top = 16.dp + topPadding, end = windowSizeClass.contentPadding, bottom = 16.dp + LocalBottomBarPadding.current),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {

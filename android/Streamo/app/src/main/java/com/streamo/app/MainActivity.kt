@@ -13,28 +13,34 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.media3.common.util.UnstableApi
-import com.streamo.app.player.PipController
-import com.streamo.app.player.PlaybackSessionHolder
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.lifecycle.Lifecycle
+import androidx.media3.common.util.UnstableApi
+import dagger.hilt.android.AndroidEntryPoint
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.navigation.RootTabView
+import com.streamo.app.navigation.TabletRootView
 import com.streamo.app.ui.common.LocalReducedEffects
+import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.theme.AppTheme
 import com.streamo.app.ui.tv.TvRootView
+import com.streamo.app.util.isTabletDevice
 import com.streamo.app.util.isTvDevice
-import dagger.hilt.android.AndroidEntryPoint
+import com.streamo.app.player.PipController
+import com.streamo.app.player.PlaybackSessionHolder
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -46,10 +52,10 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    @OptIn(ExperimentalFoundationApi::class)
+    @kotlin.OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3WindowSizeClassApi::class)
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Android 13+: notifications (media playback + download status) need runtime grant.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -57,32 +63,72 @@ class MainActivity : ComponentActivity() {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         enableEdgeToEdge()
+        // Barra di navigazione di sistema SEMPRE opaca (nera fissa), non
+        // semitrasparente. enableEdgeToEdge la rende trasparente (contenuto sotto):
+        // qui la riportiamo a nero solido così resta una barra fissa fin dall'avvio,
+        // identica allo stato che prima compariva solo dopo la prima riproduzione.
+        // La status bar in alto resta trasparente per il bleed dell'hero.
+        window.navigationBarColor = android.graphics.Color.BLACK
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            @Suppress("DEPRECATION")
+            window.navigationBarDividerColor = android.graphics.Color.BLACK
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        // API < 30: il primo dispatch delle window insets può arrivare PRIMA che
+        // la ComposeView abbia agganciato il suo OnApplyWindowInsetsListener, così
+        // le insets risultano 0 (la navbar glass resta incollata sopra la barra di
+        // sistema) finché un relayout non le rinvia — cosa che oggi accade solo per
+        // caso quando il player forza la rotazione. Forziamo un nuovo dispatch a
+        // layout avvenuto, così la navbar si solleva correttamente fin dall'avvio.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            window.decorView.post {
+                ViewCompat.requestApplyInsets(window.decorView)
+            }
+        }
         val isTv = isTvDevice()
-        // Orientamento per form factor: telefono bloccato in portrait, TV in landscape
-        // (il lock portrait nel manifest stirerebbe la UI TV). Il player phone cambia
-        // requestedOrientation a runtime, sovrascrivendo questo default quando serve.
-        requestedOrientation = if (isTv) {
-            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        val deviceIsTablet = isTabletDevice()
+        // TV: landscape locked. Tablet: free rotation (all directions).
+        // Phone: portrait locked.
+        requestedOrientation = when {
+            isTv -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            deviceIsTablet -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
         setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
             val accent by settings.accentColor.collectAsState(initial = SettingsDataStore.defaultAccent)
             val accentColor = Color(accent.first, accent.second, accent.third)
-            val reduceEffects by settings.reduceEffects.collectAsState(initial = false)
-            // In modalità prestazioni togliamo anche l'effetto overscroll (lo
-            // stretch/glow animato dello scroll), oltre a blur e animazioni glass.
+            val reduceEffectsPref by settings.reduceEffects.collectAsState(initial = false)
+            // Su device senza blur (API < 32) la modalità prestazioni è forzata: il
+            // vetro sfocato non è disponibile, quindi si usa sempre la tinta piatta.
+            val reduceEffects = reduceEffectsPref || !com.streamo.app.ui.common.isBlurSupported
             val provided = buildList {
                 add(LocalReducedEffects provides reduceEffects)
                 if (reduceEffects) add(LocalOverscrollFactory provides null)
             }.toTypedArray()
+            // Tablet vs phone deve dipendere dal DEVICE (smallestScreenWidthDp,
+            // stabile), NON da windowSizeClass.isTablet che riflette la larghezza
+            // CORRENTE: su un telefono grande il player forza il landscape →
+            // larghezza Expanded → isTablet diventerebbe true → si passerebbe da
+            // RootTabView a TabletRootView, distruggendo il NavHost che ospita il
+            // PlayerScreen (playback orfano nel service, UI che torna alla Home).
+            val isTablet = deviceIsTablet
             AppTheme(accentColor = accentColor) {
-                CompositionLocalProvider(*provided) {
+                CompositionLocalProvider(
+                    LocalWindowSizeClass provides windowSizeClass,
+                    *provided
+                ) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        if (isTv) TvRootView() else RootTabView()
+                        when {
+                            isTv -> TvRootView()
+                            isTablet -> TabletRootView(windowSizeClass)
+                            else -> RootTabView()
+                        }
                     }
                 }
             }

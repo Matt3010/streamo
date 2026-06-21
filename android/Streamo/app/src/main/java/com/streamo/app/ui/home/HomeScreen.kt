@@ -82,6 +82,10 @@ import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.SkeletonCard
+import com.streamo.app.ui.common.LocalWindowSizeClass
+import com.streamo.app.ui.common.cardWidth
+import com.streamo.app.ui.common.contentPadding
+import com.streamo.app.ui.common.itemSpacing
 import com.streamo.app.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,6 +94,7 @@ fun HomeScreen(
     onNavigateToDetail: (Int, String, Int, Int) -> Unit = { _, _, _, _ -> },
     viewModel: HomeViewModel = hiltViewModel()
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     val watchlist by viewModel.watchlist.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val showCardInfo by viewModel.showCardInfo.collectAsState()
@@ -328,6 +333,7 @@ private fun ContinueWatchingRow(
     onRemove: (ProgressEntry) -> Unit = {}
 ) {
     val navController = LocalNavController.current
+    val windowSizeClass = LocalWindowSizeClass.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader(
             title = "Continua a guardare",
@@ -335,8 +341,8 @@ private fun ContinueWatchingRow(
             onClick = onHeaderClick
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(horizontal = windowSizeClass.contentPadding),
+            horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
         ) {
             items(entries) { entry ->
                 com.streamo.app.ui.common.ProgressMediaCard(
@@ -375,6 +381,7 @@ private fun MyListRow(
     onNavigateToDetail: (Int, String, Int, Int) -> Unit,
     onHeaderClick: () -> Unit
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader(
             title = "La mia lista",
@@ -382,8 +389,8 @@ private fun MyListRow(
             onClick = onHeaderClick
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(horizontal = windowSizeClass.contentPadding),
+            horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
         ) {
             items(entries) { entry ->
                 MediaCard(
@@ -423,6 +430,7 @@ private fun SectionRow(
             }
     }
 
+    val windowSizeClass = LocalWindowSizeClass.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader(
             title = section.title,
@@ -431,8 +439,8 @@ private fun SectionRow(
         )
         LazyRow(
             state = rowState,
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(horizontal = windowSizeClass.contentPadding),
+            horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
         ) {
             if (items.isEmpty()) {
                 items(6) {

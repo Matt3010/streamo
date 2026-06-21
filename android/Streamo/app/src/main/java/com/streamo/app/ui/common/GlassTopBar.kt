@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import android.os.Build
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -67,6 +68,15 @@ val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
  * preferenza utente, fornita alla radice (vedi MainActivity). Default false.
  */
 val LocalReducedEffects = staticCompositionLocalOf { false }
+
+/**
+ * Il blur reale (Haze → RenderEffect) è affidabile solo da Android 12L (API 32);
+ * sotto fa un fallback software lento/brutto. Su questi device la modalità
+ * prestazioni è forzata sempre attiva e il relativo toggle in Impostazioni è
+ * nascosto (non avrebbe effetto utile).
+ */
+val isBlurSupported: Boolean
+    get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2
 
 /**
  * Applica l'effetto vetro alla capsula: blur reale del contenuto sotto (Haze,

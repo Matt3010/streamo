@@ -210,12 +210,13 @@ class ResolveAndDownloadWorker(
                 .setStreamKeys(streamKeys)
                 .build()
 
-            // 6 parallel threads: sweet spot between speed and not triggering
-            // vixcloud rate-limits. More than 8 risks HTTP 429 / IP bans.
+            // 12 parallel threads: matches iOS (maxConcurrentSegmentDownloads = 12),
+            // which sustains this segment concurrency on the same provider without
+            // bans. If HTTP 429 / IP bans appear, lower this.
             val downloader = HlsDownloader(
                 mediaItem,
                 proxiedCacheFactory,
-                Executors.newFixedThreadPool(6)
+                Executors.newFixedThreadPool(12)
             )
 
             var lastUpdateTime = 0L

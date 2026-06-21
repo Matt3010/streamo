@@ -1,6 +1,8 @@
 package com.streamo.app.ui.common
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,10 +11,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 
 /**
  * Stile bottoni "brand" condiviso (hero, Detail, …) — port di
@@ -32,6 +39,13 @@ fun BrandButton(
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f)
+    )
+
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -41,7 +55,8 @@ fun BrandButton(
             contentColor = MaterialTheme.colorScheme.onPrimary
         ),
         contentPadding = BrandButtonDefaults.ContentPadding,
-        modifier = modifier,
+        modifier = modifier.scale(scale),
+        interactionSource = interactionSource,
         content = content
     )
 }
@@ -59,6 +74,13 @@ fun BrandSecondaryButton(
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f)
+    )
+
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -76,7 +98,8 @@ fun BrandSecondaryButton(
         },
         border = if (active) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         contentPadding = BrandButtonDefaults.ContentPadding,
-        modifier = modifier,
+        modifier = modifier.scale(scale),
+        interactionSource = interactionSource,
         content = content
     )
 }
@@ -95,6 +118,13 @@ fun BrandIconButton(
     active: Boolean = false,
     enabled: Boolean = true
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f)
+    )
+
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -112,7 +142,8 @@ fun BrandIconButton(
         },
         border = if (active) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         contentPadding = BrandButtonDefaults.IconContentPadding,
-        modifier = modifier
+        modifier = modifier.scale(scale),
+        interactionSource = interactionSource
     ) {
         Icon(
             imageVector = icon,

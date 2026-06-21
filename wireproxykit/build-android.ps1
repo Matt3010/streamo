@@ -41,7 +41,7 @@ try {
 Write-Host "==> gomobile init"
 & gomobile init
 
-Write-Host "==> Building warpkit.aar (min API 26)"
+Write-Host "==> Building warpkit.aar (min API 24)"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $aar = Join-Path $out "warpkit.aar"
 # Pass args as an array (splat). Writing `-javapkg=com.streamo.warp` inline gets
@@ -51,7 +51,7 @@ $aar = Join-Path $out "warpkit.aar"
 $bindArgs = @(
     "bind",
     "-target=android",
-    "-androidapi", "26",
+    "-androidapi", "24",
     "-javapkg=com.streamo.warp",
     "-o", $aar,
     "."

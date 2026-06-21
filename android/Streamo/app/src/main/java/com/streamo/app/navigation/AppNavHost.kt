@@ -3,8 +3,11 @@ package com.streamo.app.navigation
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
@@ -13,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
@@ -101,7 +105,12 @@ fun AppNavHost(
                 }
             )
         }
-        composable<NavRoutes.Detail> {
+        composable<NavRoutes.Detail>(
+            enterTransition = { detailEnterTransition() },
+            exitTransition = { detailExitTransition() },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = { fadeOut(tween(200)) }
+        ) {
             DetailScreen(
                 onBack = { navController.popBackStack() }
             )
@@ -225,4 +234,28 @@ private fun tabDirection(from: NavBackStackEntry, to: NavBackStackEntry): Int {
     val a = tabIndex(from); val b = tabIndex(to)
     if (a < 0 || b < 0 || a == b) return 0
     return if (b > a) 1 else -1
+}
+
+private fun isDetailRoute(entry: NavBackStackEntry): Boolean =
+    entry.destination.hasRoute(NavRoutes.Detail::class)
+
+/** Scale + Fade transition for Detail screen */
+private fun detailEnterTransition(): EnterTransition {
+    return scaleIn(
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        initialScale = 0.92f
+    ) + fadeIn(
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        initialAlpha = 0.3f
+    )
+}
+
+private fun detailExitTransition(): ExitTransition {
+    return scaleOut(
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        targetScale = 0.95f
+    ) + fadeOut(
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        targetAlpha = 0f
+    )
 }

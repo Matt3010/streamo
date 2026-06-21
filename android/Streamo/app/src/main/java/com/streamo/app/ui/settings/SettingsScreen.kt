@@ -486,28 +486,31 @@ fun SettingsScreen(
                 }
             }
 
-            // Prestazioni — disabilita blur/animazioni della UI glass
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Modalità prestazioni", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "Disattiva sfocature e animazioni della UI, usando sfondi semitrasparenti. Migliora la fluidità sui dispositivi meno potenti.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            // Prestazioni — disabilita blur/animazioni della UI glass. Nascosto sui
+            // device senza blur (API < 32): lì la modalità è forzata sempre attiva.
+            if (com.streamo.app.ui.common.isBlurSupported) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Modalità prestazioni", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Disattiva sfocature e animazioni della UI, usando sfondi semitrasparenti. Migliora la fluidità sui dispositivi meno potenti.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Switch(
+                            checked = reduceEffects,
+                            onCheckedChange = { viewModel.setReduceEffects(it) }
                         )
                     }
-                    Spacer(modifier = Modifier.size(12.dp))
-                    Switch(
-                        checked = reduceEffects,
-                        onCheckedChange = { viewModel.setReduceEffects(it) }
-                    )
                 }
             }
 

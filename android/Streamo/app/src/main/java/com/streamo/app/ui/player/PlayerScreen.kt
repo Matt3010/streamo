@@ -131,6 +131,8 @@ import com.streamo.app.ui.common.glassCapsule
 import com.streamo.app.ui.player.cast.CastDeviceGroup
 import com.streamo.app.ui.player.cast.CastPickerDialog
 import com.streamo.app.util.Format
+import com.streamo.app.util.isTabletDevice
+import com.streamo.app.util.isTvDevice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
@@ -301,11 +303,34 @@ fun PlayerScreen(
             val window = (context as? Activity)?.window
             val decorView = window?.decorView
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            WindowCompat.setDecorFitsSystemWindows(window ?: return@onDispose, true)
+            // Restore the device's normal orientation policy: TV stays landscape,
+            // tablet returns to free rotation, phone re-locks to portrait. Hardcoding
+            // portrait here would trap a tablet in portrait after leaving the player.
+            (context as? Activity)?.requestedOrientation = when {
+                context.isTvDevice() -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                context.isTabletDevice() -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            // Ripristina il baseline dell'app: edge-to-edge (decorFits = false, come
+            // enableEdgeToEdge in MainActivity), NON true. Mettere true qui lasciava
+            // la finestra in modalità "fit" dopo il player, desincronizzando il
+            // dispatch delle insets (su API < 30 era proprio questo flip a far
+            // "saltare su" la navbar di sistema dopo la prima riproduzione).
+            WindowCompat.setDecorFitsSystemWindows(window ?: return@onDispose, false)
             WindowInsetsControllerCompat(window ?: return@onDispose, decorView ?: return@onDispose).show(WindowInsetsCompat.Type.systemBars())
+            // NON azzerare a SYSTEM_UI_FLAG_VISIBLE (0): cancellerebbe i flag LAYOUT_*
+            // che su API < 30 tengono il contenuto edge-to-edge (disegnato DIETRO le
+            // barre). Senza quei flag il decor torna in "fit" e si restringe di
+            // nav-bar, MA Compose continua a riportare navigationBars=144 → la navbar
+            // glass si solleva del doppio (288) dopo la prima riproduzione. Ripristina
+            // invece esattamente il baseline edge-to-edge (stessi flag di
+            // enableEdgeToEdge): così le barre tornano visibili ma l'inset resta 144.
             @Suppress("DEPRECATION")
-            decorView?.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            decorView?.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            )
         }
     }
 
@@ -726,7 +751,18 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        // Player immersivo: le barre di sistema sono nascoste, quindi
+                        // i controlli vanno al bordo reale. Su API 30+ nascondere le
+                        // barre azzera già l'inset (safeDrawing → 0). Su API < 30 il
+                        // controller usa i flag legacy: le barre spariscono a video ma
+                        // l'inset di sistema NON viene azzerato, restando ~nav-bar e
+                        // sollevando la timeline "come se ci fosse la navbar". Lì lo
+                        // forziamo a 0.
+                        .windowInsetsPadding(
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R)
+                                WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)
+                            else androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
+                        )
                         .padding(horizontal = horizontalSafePadding, vertical = 16.dp)
                         .glassCapsule(playerHazeState, RoundedCornerShape(24.dp))
                         .padding(horizontal = 24.dp, vertical = 8.dp)

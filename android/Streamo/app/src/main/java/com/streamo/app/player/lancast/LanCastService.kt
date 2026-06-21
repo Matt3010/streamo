@@ -16,6 +16,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.streamo.app.MainActivity
 import com.streamo.app.R
 import kotlinx.coroutines.CoroutineScope
@@ -238,7 +239,7 @@ class LanCastService : Service() {
 
         /** Avvia il servizio solo su dispositivi TV. */
         fun startIfTv(context: Context) {
-            context.startForegroundService(Intent(context, LanCastService::class.java))
+            ContextCompat.startForegroundService(context, Intent(context, LanCastService::class.java))
         }
     }
 }

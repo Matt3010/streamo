@@ -150,7 +150,12 @@ class PlayerViewModel @Inject constructor(
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+        // ID univoco per istanza: se il player viene riaperto mentre la vecchia
+        // sessione non è ancora stata rilasciata (overlap di transizione), l'ID di
+        // default "" collide e Media3 (più severo sulle versioni nuove di Android)
+        // lancia "Session ID must be unique".
         MediaSession.Builder(context, player)
+            .setId("streamo_player_" + java.util.UUID.randomUUID().toString())
             .setSessionActivity(sessionActivity)
             .build()
             .also {

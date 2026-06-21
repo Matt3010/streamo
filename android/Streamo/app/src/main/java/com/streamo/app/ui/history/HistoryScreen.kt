@@ -52,6 +52,10 @@ import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ProgressMediaCard
+import com.streamo.app.ui.common.LocalWindowSizeClass
+import com.streamo.app.ui.common.cardWidth
+import com.streamo.app.ui.common.contentPadding
+import com.streamo.app.ui.common.itemSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +64,7 @@ fun HistoryScreen(
     onBack: () -> Unit = {},
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     val state by viewModel.state.collectAsState()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
     var entryToRemove by remember { mutableStateOf<HistoryEntry?>(null) }
@@ -78,12 +83,12 @@ fun HistoryScreen(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 140.dp),
+            columns = GridCells.Adaptive(minSize = windowSizeClass.cardWidth),
             modifier = Modifier
                 .fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            contentPadding = PaddingValues(start = windowSizeClass.contentPadding, top = 16.dp + topPadding, end = windowSizeClass.contentPadding, bottom = 16.dp + LocalBottomBarPadding.current),
+            horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing),
+            verticalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 GlassLargeTitle("Cronologia")

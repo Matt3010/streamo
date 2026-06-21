@@ -27,3 +27,12 @@ fun Context.isTvDevice(): Boolean {
     if (!pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) return true
     return false
 }
+
+/**
+ * True when running on a tablet-class device (smallest width ≥ 600dp).
+ * Uses smallestScreenWidthDp so it's stable across rotation, unlike
+ * WindowSizeClass which reflects the current (rotation-dependent) width.
+ * Drives orientation policy: tablets rotate freely, phones stay portrait.
+ */
+fun Context.isTabletDevice(): Boolean =
+    resources.configuration.smallestScreenWidthDp >= 600

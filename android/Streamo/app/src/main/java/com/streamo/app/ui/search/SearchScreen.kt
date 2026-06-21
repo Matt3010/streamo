@@ -75,12 +75,17 @@ import com.streamo.app.ui.common.GlassFilterChip
 import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SkeletonCard
+import com.streamo.app.ui.common.LocalWindowSizeClass
+import com.streamo.app.ui.common.cardWidth
+import com.streamo.app.ui.common.contentPadding
+import com.streamo.app.ui.common.itemSpacing
 
 @Composable
 fun SearchScreen(
     onNavigateToDetail: (Int, String, Int, Int) -> Unit = { _, _, _, _ -> },
     viewModel: SearchViewModel = hiltViewModel()
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     val gridState = rememberLazyGridState()
     val showCardInfo by viewModel.showCardInfo.collectAsState()
 
@@ -101,7 +106,7 @@ fun SearchScreen(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = windowSizeClass.contentPadding)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             OutlinedTextField(
@@ -155,10 +160,10 @@ fun SearchScreen(
                 // Caricamento iniziale
                 viewModel.isSearching && viewModel.results.isEmpty() -> {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 140.dp),
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                        columns = GridCells.Adaptive(minSize = windowSizeClass.cardWidth),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current, start = windowSizeClass.contentPadding, end = windowSizeClass.contentPadding),
+                        horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing),
+                        verticalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
                     ) {
                         items(9) {
                             SkeletonCard()
@@ -180,10 +185,10 @@ fun SearchScreen(
                 viewModel.results.isNotEmpty() -> {
                     LazyVerticalGrid(
                         state = gridState,
-                        columns = GridCells.Adaptive(minSize = 140.dp),
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                        columns = GridCells.Adaptive(minSize = windowSizeClass.cardWidth),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current, start = windowSizeClass.contentPadding, end = windowSizeClass.contentPadding),
+                        horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing),
+                        verticalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
                     ) {
                         items(viewModel.results) { item ->
                             val type = item.mediaType ?: "movie"

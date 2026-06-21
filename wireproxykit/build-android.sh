@@ -32,11 +32,11 @@ echo "==> Resolving deps (in $SRC)"
 echo "==> gomobile init"
 gomobile init
 
-echo "==> Building warpkit.aar (min API 26, 16 KB page-size aligned)"
+echo "==> Building warpkit.aar (min API 24, 16 KB page-size aligned)"
 mkdir -p "$OUT"
 # -z max-page-size=16384: align ELF LOAD segments to 16 KB, required by Google
 # Play for Android 15+ devices (developer.android.com/16kb-page-size).
-( cd "$SRC" && gomobile bind -target=android -androidapi 26 -javapkg=com.streamo.warp \
+( cd "$SRC" && gomobile bind -target=android -androidapi 24 -javapkg=com.streamo.warp \
     -ldflags="-extldflags=-Wl,-z,max-page-size=16384" \
     -o "$OUT/warpkit.aar" . )
 
