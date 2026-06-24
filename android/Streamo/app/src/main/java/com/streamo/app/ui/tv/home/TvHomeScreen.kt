@@ -135,10 +135,9 @@ fun TvHomeScreen(
                         onItemClick = { item ->
                             onNavigateToDetail(item.id, section.mediaType, 0, 0)
                         },
-                        onHeaderClick = {
+                        onMoreClick = {
                             onNavigateToSectionList(section.title, section.endpoint, section.mediaType)
                         },
-                        onLoadMore = { viewModel.loadMoreFor(section) },
                         firstCardFocusRequester = if (focusTarget == 2 && section.id == firstSectionId) firstCardFocus else null
                     )
                 }

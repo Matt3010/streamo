@@ -64,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -301,6 +302,9 @@ private fun DetailContent(
         run {
             // Backdrop full-width at top
             if (backdropUrl != null) {
+                // clipToBounds: il graphicsLayer sotto scala l'immagine (fino a 1.06×)
+                // attorno al centro; senza clip l'immagine ingrandita sconfinerebbe
+                // oltre l'altezza del layout e andrebbe a coprire la top bar.
                 AsyncImage(
                     model = TMDBImage.url(backdropUrl, TMDBImage.Size.W1280),
                     contentDescription = null,
@@ -308,6 +312,7 @@ private fun DetailContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(heroHeight)
+                        .clipToBounds()
                         .graphicsLayer {
                             val scroll = scrollState.value.toFloat()
                             val frac = (scroll / backdropPx).coerceIn(0f, 1f)

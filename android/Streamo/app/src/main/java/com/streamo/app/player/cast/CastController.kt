@@ -94,6 +94,14 @@ class CastController @Inject constructor(
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
+    /**
+     * True mentre la TV sta caricando/bufferizzando il contenuto (prima che parta la
+     * riproduzione). Il telefono lo specchia in uno spinner invece di mostrare il tasto
+     * play/pausa, che altrimenti sembrerebbe "fermo" durante l'avvio.
+     */
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
+
     private val _position = MutableStateFlow(0L)
     val position: StateFlow<Long> = _position.asStateFlow()
 
@@ -181,6 +189,10 @@ class CastController @Inject constructor(
             dlnaPlayConfirmed = false
             dlnaLaunchPolls = 0
             _isPlaying.value = true
+            // loading DOPO la sessione: il collector del telefono è gated sul renderer
+            // connesso (impostato dal collector di _session), e lo StateFlow non riconsegna
+            // un valore invariato — emetterlo prima lo farebbe scartare.
+            _loading.value = true
             attachSession(media)
             acquireLocks()
             startPolling()
@@ -205,6 +217,9 @@ class CastController @Inject constructor(
         // telefono è gated sul renderer connesso, impostato dal collector della sessione.
         _session.value = CastSession.Lan(renderer, media)
         _isPlaying.value = true
+        // loading DOPO la sessione, stesso motivo: lo StateFlow non riconsegna un valore
+        // invariato, quindi emetterlo prima del renderer connesso lo farebbe scartare.
+        _loading.value = true
         lanPollFailures = 0
         lanStoppedStreak = 0
         lanActiveConfirmed = false
@@ -223,6 +238,7 @@ class CastController @Inject constructor(
         seekJob?.cancel(); seekJob = null
         _session.value = null
         _isPlaying.value = false
+        _loading.value = false
         _position.value = 0
         _duration.value = 0
         if (s != null) {
@@ -295,8 +311,8 @@ class CastController @Inject constructor(
                             // sul valore iniziale e si desincronizza se la TV viene messa in
                             // pausa/play dal telecomando.
                             when (dlna.transportState(s.renderer)) {
-                                "PLAYING" -> { _isPlaying.value = true; dlnaPlayConfirmed = true }
-                                "PAUSED_PLAYBACK" -> _isPlaying.value = false
+                                "PLAYING" -> { _isPlaying.value = true; dlnaPlayConfirmed = true; _loading.value = false }
+                                "PAUSED_PLAYBACK" -> { _isPlaying.value = false; _loading.value = false }
                                 null -> {}
                                 else -> {
                                     // TRANSITIONING / STOPPED / NO_MEDIA_PRESENT: in avvio
@@ -340,6 +356,7 @@ class CastController @Inject constructor(
                                     // Specchia lo stato reale: il bottone play sul telefono
                                     // deve seguire la TV, non restare sul valore iniziale.
                                     _isPlaying.value = (st.status == "playing")
+                                    _loading.value = (st.status == "loading")
                                     _position.value = st.positionMs
                                     if (st.durationMs > 0) _duration.value = st.durationMs
                                 }

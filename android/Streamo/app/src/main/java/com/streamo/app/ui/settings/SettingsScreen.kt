@@ -100,7 +100,6 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val message by viewModel.message.collectAsState()
     val stats by viewModel.stats.collectAsState()
-    val autoplay by viewModel.autoplayNext.collectAsState()
     val autoDelete by viewModel.autoDeleteWatched.collectAsState()
     val showCardInfo by viewModel.showCardInfo.collectAsState()
     val reduceEffects by viewModel.reduceEffects.collectAsState()
@@ -518,22 +517,6 @@ fun SettingsScreen(
             // 2. Riproduzione
             // ————————————————————————————
             SectionHeader("Riproduzione")
-
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Riproduci episodio successivo", style = MaterialTheme.typography.bodyLarge)
-                    Switch(
-                        checked = autoplay,
-                        onCheckedChange = { viewModel.setAutoplayNext(it) }
-                    )
-                }
-            }
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {

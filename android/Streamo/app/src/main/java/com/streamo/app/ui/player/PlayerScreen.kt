@@ -6,14 +6,19 @@ import android.content.pm.ActivityInfo
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -167,6 +172,7 @@ fun PlayerScreen(
     val videoTracks by viewModel.videoTracks.collectAsState()
     val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsState()
     val streamingLimit by viewModel.streamingLimit.collectAsState()
+    val currentAutoHeight by viewModel.currentAutoHeight.collectAsState()
     val playbackSpeed by viewModel.playbackSpeed.collectAsState()
     val currentSourceIndex by viewModel.currentSourceIndex.collectAsState()
     val currentSeason by viewModel.currentSeason.collectAsState()
@@ -181,7 +187,6 @@ fun PlayerScreen(
     val castProtocolPrefs by viewModel.castProtocolPrefs.collectAsState()
     val lanConnected by viewModel.lanConnected.collectAsState()
     val skipPrompt by viewModel.skipPrompt.collectAsState()
-    val nextCountdown by viewModel.nextCountdown.collectAsState()
     var showCastDialog by remember { mutableStateOf(false) }
     var showExitCastDialog by remember { mutableStateOf(false) }
     var showOfflineCastWarning by remember { mutableStateOf(false) }
@@ -283,7 +288,15 @@ fun PlayerScreen(
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // Orientamento del player: su phone/TV lo gestisce qui PlayerScreen. Su
+        // tablet NO — lo possiede TabletRootView (keyed sulla destinazione Player),
+        // perché su rotazione il tablet fa swap di shell e distrugge/ricrea questo
+        // PlayerScreen: il suo onDispose finirebbe in race con il LaunchedEffect del
+        // nuovo, lasciando l'orientamento sbloccato (player in verticale).
+        val act = context as? Activity
+        if (act != null && !context.isTabletDevice()) {
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
     }
 
     // Durante il cast il video è sulla TV: lascia spegnere lo schermo del telefono
@@ -303,13 +316,15 @@ fun PlayerScreen(
             val window = (context as? Activity)?.window
             val decorView = window?.decorView
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            // Restore the device's normal orientation policy: TV stays landscape,
-            // tablet returns to free rotation, phone re-locks to portrait. Hardcoding
-            // portrait here would trap a tablet in portrait after leaving the player.
-            (context as? Activity)?.requestedOrientation = when {
-                context.isTvDevice() -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                context.isTabletDevice() -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            // Ripristina la policy di orientamento normale: TV resta landscape,
+            // phone torna a portrait. Sul TABLET non tocchiamo nulla: l'orientamento
+            // è di TabletRootView, e scrivere qui durante lo swap di shell su
+            // rotazione lo desincronizzerebbe (player che ruota in verticale).
+            val orientAct = context as? Activity
+            if (orientAct != null && !context.isTabletDevice()) {
+                orientAct.requestedOrientation = if (context.isTvDevice())
+                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
             // Ripristina il baseline dell'app: edge-to-edge (decorFits = false, come
             // enableEdgeToEdge in MainActivity), NON true. Mettere true qui lasciava
@@ -422,6 +437,13 @@ fun PlayerScreen(
             } else {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black))
             }
+        }
+
+        // Durante il cast il video locale è fermo: la TextureView trattiene l'ultimo
+        // frame del video precedente. Copri la sorgente haze con nero così i controlli
+        // glass sfocano nero, non il frame stantio.
+        if (isCastActive) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
         }
         } // chiusura hazeSource Box (video + freeze)
 
@@ -900,7 +922,9 @@ fun PlayerScreen(
         // Badge WARP — poco sotto i pulsanti centrali (play/skip).
         // Fuori dall'AnimatedVisibility dei controlli ma dentro la Box principale.
         // Disegnato dopo i controlli per stare sopra in z-order.
-        if (warpEnabled && error == null && !inPipMode) {
+        // Nascosto durante il cast via app (LanCast): lo stream viene servito dal TV.
+        // Resta visibile col cast DLNA (lo stream passa ancora dal telefono via proxy).
+        if (warpEnabled && error == null && !inPipMode && lanConnected == null) {
             AnimatedVisibility(
                 visible = controlsVisible,
                 enter = fadeIn(),
@@ -938,9 +962,8 @@ fun PlayerScreen(
         // glass dei controlli, allineati orizzontalmente con la timeline (padding
         // interno della capsula = 24.dp) e con lo stesso background blur della barra.
         val skipVisible = skipPrompt != null
-        val countdownVisible = nextCountdown != null
         AnimatedVisibility(
-            visible = skipVisible || countdownVisible || showNextEpisodeButton,
+            visible = skipVisible || showNextEpisodeButton,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
@@ -950,59 +973,7 @@ fun PlayerScreen(
                     end = horizontalSafePadding + 24.dp
                 )
         ) {
-            if (countdownVisible) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.height(44.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .height(44.dp)
-                            .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
-                            .clickable {
-                                resetControls()
-                                viewModel.cancelNextEpisode()
-                            }
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Text(
-                            text = "Annulla",
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .height(44.dp)
-                            .glassCapsule(playerHazeState, GlassDefaults.ChipShape)
-                            .clickable {
-                                resetControls()
-                                viewModel.playNextNow()
-                                onNextEpisode()
-                            }
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Text(
-                            text = "Prossimo episodio (${nextCountdown}s)",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Icon(
-                            imageVector = Icons.Filled.SkipNext,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            } else if (skipVisible) {
+            if (skipVisible) {
                 val skipLabel = when (skipPrompt) {
                     PlayerViewModel.SkipPrompt.INTRO -> "Salta intro"
                     PlayerViewModel.SkipPrompt.CREDITS -> "Salta crediti"
@@ -1075,20 +1046,20 @@ fun PlayerScreen(
                     )
                 },
                 confirmButton = {
-                    GlassDialogPrimaryButton(onClick = {
-                        showExitCastDialog = false
-                        onBack()
-                    }) {
-                        Text("Continua in background")
-                    }
-                },
-                dismissButton = {
                     GlassDialogDestructiveButton(onClick = {
                         showExitCastDialog = false
                         viewModel.stopCast()
                         onBack()
                     }) {
                         Text("Interrompi")
+                    }
+                },
+                dismissButton = {
+                    GlassDialogNeutralButton(onClick = {
+                        showExitCastDialog = false
+                        onBack()
+                    }) {
+                        Text("Continua in background")
                     }
                 }
             )
@@ -1174,6 +1145,12 @@ fun PlayerScreen(
             }
             fun aspectLabel(mode: Int): String =
                 if (mode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) "Riempi schermo" else "Adatta"
+            // Normalizza un'altezza video grezza (es. 694) allo standard più
+            // vicino (es. 720): gli stream non sempre rispettano le risoluzioni
+            // canoniche, ma l'utente le riconosce solo in quella forma.
+            fun nearestStandard(h: Int): Int =
+                listOf(240, 360, 480, 720, 1080, 1440, 2160)
+                    .minByOrNull { kotlin.math.abs(it - h) } ?: h
 
             GlassDialog(
                 onDismissRequest = { settingsMenu = false },
@@ -1185,25 +1162,54 @@ fun PlayerScreen(
                         .fillMaxWidth()
                         .padding(vertical = 12.dp)
                 ) {
-                        // Header fisso (solo nei sotto-pannelli): non scorre con la lista.
-                        val panelTitle = when (settingsPanel) {
-                            "subtitles" -> "Sottotitoli"
-                            "audio" -> "Audio"
-                            "speed" -> "Velocità di riproduzione"
-                            "quality" -> "Qualità video"
-                            "aspect" -> "Formato video"
-                            "server" -> "Selezione server"
-                            else -> null
-                        }
-                        if (panelTitle != null) {
-                            PlayerPanelHeader(panelTitle) { settingsPanel = null }
-                        }
-                        Column(
-                            modifier = Modifier
-                                .heightIn(max = 280.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            when (settingsPanel) {
+                        // "Auto" è sempre la prima opzione: annotato con la
+                        // risoluzione che ABR sta usando (o la migliore nota se
+                        // Media3 non ha ancora riportato una size) — ma solo
+                        // quando si è effettivamente in modalità Auto adaptive.
+                        // Se l'utente ha bloccato manualmente un variant, la
+                        // risoluzione NON si mostra: solo "Auto".
+                        val effectiveHeight = if (selectedVideoQuality == null) {
+                            currentAutoHeight
+                                ?: videoTracks.firstOrNull()
+                                    ?.label?.removeSuffix("p")?.toIntOrNull()
+                        } else null
+                        val autoLabel = effectiveHeight
+                            ?.let { "Auto (${nearestStandard(it)}p)" } ?: "Auto"
+                        AnimatedContent(
+                            targetState = settingsPanel,
+                            transitionSpec = {
+                                // Entrando in un sotto-pannello: scorre da destra.
+                                // Tornando al menu principale: scorre da sinistra.
+                                val forward = initialState == null
+                                val dir = if (forward) 1 else -1
+                                (slideInHorizontally(tween(220)) { w -> dir * w } + fadeIn(tween(220)))
+                                    .togetherWith(
+                                        slideOutHorizontally(tween(220)) { w -> -dir * w } + fadeOut(tween(220))
+                                    )
+                                    .using(SizeTransform(clip = false) { _, _ -> tween(220) })
+                            },
+                            label = "settingsPanel"
+                        ) { panel ->
+                          Column {
+                            // Header fisso (solo nei sotto-pannelli): non scorre con la lista.
+                            val panelTitle = when (panel) {
+                                "subtitles" -> "Sottotitoli"
+                                "audio" -> "Audio"
+                                "speed" -> "Velocità di riproduzione"
+                                "quality" -> "Qualità video"
+                                "aspect" -> "Formato video"
+                                "server" -> "Selezione server"
+                                else -> null
+                            }
+                            if (panelTitle != null) {
+                                PlayerPanelHeader(panelTitle) { settingsPanel = null }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 280.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                            when (panel) {
                                 "subtitles" -> {
                                     PlayerOptionRow("Disattivati", selectedSubtitle == null) {
                                         viewModel.disableSubtitles(); settingsPanel = null
@@ -1231,22 +1237,56 @@ fun PlayerScreen(
                                     }
                                 }
                                 "quality" -> {
-                                    PlayerOptionRow("Auto", selectedVideoQuality == null && streamingLimit == "auto") {
+                                    // "Auto" è sempre la prima opzione: etichetta
+                                    // (autoLabel) calcolata sopra. "Massima" non appare
+                                    // qui: è una preferenza che si sceglie in
+                                    // Impostazioni e blocca il variant migliore.
+                                    //
+                                    // Evidenziazione:
+                                    // - pref "auto" + nessun lock → riga Auto.
+                                    // - pref cap (1080/720/480) → ABR sceglie entro il
+                                    //   tetto; evidenziamo il track effettivamente
+                                    //   riprodotto (match su currentAutoHeight, fallback
+                                    //   al miglior track ≤ cap), NON la riga Auto.
+                                    // - lock manuale (pref auto) → quel track.
+                                    val capH = streamingLimit.toIntOrNull() ?: 0
+                                    val isCap = capH > 0 && selectedVideoQuality == null
+                                    // Altezza effettivamente riprodotta sotto il cap.
+                                    val playingH = currentAutoHeight
+                                        ?: videoTracks
+                                            .mapNotNull { it.label.removeSuffix("p").toIntOrNull() }
+                                            .filter { it <= capH }
+                                            .maxOrNull()
+                                    // In modalità cap evidenziamo il track più vicino
+                                    // all'altezza riprodotta (currentAutoHeight può non
+                                    // combaciare esattamente con l'altezza dichiarata del
+                                    // variant, es. display aspect / arrotondamenti).
+                                    val capTrackFormatId = if (isCap && playingH != null) {
+                                        videoTracks.minByOrNull { t ->
+                                            val h = t.label.removeSuffix("p").toIntOrNull() ?: 0
+                                            kotlin.math.abs(h - playingH)
+                                        }?.formatId
+                                    } else null
+                                    val autoSelected =
+                                        selectedVideoQuality == null && streamingLimit == "auto"
+                                    PlayerOptionRow(
+                                        autoLabel,
+                                        autoSelected
+                                    ) {
                                         viewModel.setAutoVideoQuality()
                                         viewModel.setStreamingLimit("auto")
-                                        settingsPanel = null
-                                    }
-                                    PlayerOptionRow("Massima", streamingLimit == "max") {
-                                        viewModel.setStreamingLimit("max")
                                         settingsPanel = null
                                     }
                                     if (videoTracks.size > 1) {
                                         Spacer(modifier = Modifier.height(4.dp))
                                     }
                                     videoTracks.forEach { track ->
+                                        val highlighted =
+                                            selectedVideoQuality?.formatId == track.formatId ||
+                                                track.formatId == capTrackFormatId
                                         PlayerOptionRow(
                                             track.label,
-                                            selectedVideoQuality?.formatId == track.formatId
+                                            highlighted
                                         ) { viewModel.selectVideoQuality(track); settingsPanel = null }
                                     }
                                 }
@@ -1281,10 +1321,35 @@ fun PlayerScreen(
                                     ) { settingsPanel = "speed" }
                                     PlayerSettingsRow(
                                         Icons.Filled.HighQuality, "Qualità video",
+                                        // Preferenza qualità: nel main panel mostriamo la
+                                        // risoluzione effettivamente riprodotta.
+                                        // - "max": label del miglior track noto.
+                                        // - cap (1080/720/480): ABR sceglie entro il tetto;
+                                        //   mostriamo lo standard più vicino all'altezza
+                                        //   effettiva (es. stream a 694p → "720p"), non il
+                                        //   cap letterale né l'altezza grezza del variant.
+                                        // - "auto" + lock manuale: solo "Auto" (no risoluzione).
+                                        // - "auto" adaptive: "Auto (Xp)".
                                         when {
-                                            streamingLimit == "max" -> "Massima"
-                                            selectedVideoQuality != null -> selectedVideoQuality!!.label
-                                            else -> "Auto"
+                                            streamingLimit == "max" ->
+                                                videoTracks.firstOrNull()?.label ?: autoLabel
+                                            streamingLimit == "1080" || streamingLimit == "720" ||
+                                                streamingLimit == "480" -> {
+                                                    val capH = streamingLimit.toIntOrNull() ?: 0
+                                                    val playH = currentAutoHeight
+                                                        ?: videoTracks
+                                                            .mapNotNull {
+                                                                it.label.removeSuffix("p").toIntOrNull()
+                                                            }
+                                                            .filter { it <= capH }
+                                                            .maxOrNull()
+                                                        ?: capH
+                                                    "${nearestStandard(playH)}p"
+                                            }
+                                            // Preferenza "auto" con variant bloccato a mano:
+                                            // nascondi la risoluzione (solo "Auto").
+                                            selectedVideoQuality != null -> "Auto"
+                                            else -> autoLabel
                                         },
                                         videoTracks.size > 1 || streamingLimit != "auto"
                                     ) { settingsPanel = "quality" }
@@ -1298,6 +1363,8 @@ fun PlayerScreen(
                                     ) { settingsPanel = "server" }
                                 }
                             }
+                            }
+                          }
                         }
                     }
                 }

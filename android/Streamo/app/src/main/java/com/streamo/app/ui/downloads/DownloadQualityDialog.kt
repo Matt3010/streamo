@@ -90,7 +90,14 @@ fun DownloadQualityDialog(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
 
-                options.forEach { opt ->
+                // Risoluzione reale del massimo variant rilevato dal probe, usata per
+    // annotare la riga "Massima" con la risoluzione effettivamente scaricata
+    // (es. "Massima (1080p)"). Null = non ancora rilevata, fallback "Massima (—)".
+    val maxHeightLabel: String = remember(request.heights) {
+        request.heights.firstOrNull()?.let { "($it p)" } ?: "(—)"
+    }
+
+    options.forEach { opt ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -103,7 +110,12 @@ fun DownloadQualityDialog(
                             onClick = { selected = opt }
                         )
                         Spacer(modifier = Modifier.padding(start = 4.dp))
-                        Text(opt.label())
+                        // "Massima" mostra la risoluzione del variant migliore
+                        // rilevato, così l'utente sa cosa scarica davvero.
+                        val rowLabel = if (opt is DownloadQualityPref.Max) {
+                            "Massima $maxHeightLabel"
+                        } else opt.label()
+                        Text(rowLabel)
                     }
                 }
 

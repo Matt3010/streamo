@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.ClosedCaptionOff
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -132,12 +133,15 @@ fun TvPlayerScreen(
     val selectedAudio by viewModel.selectedAudio.collectAsState()
     val selectedSubtitle by viewModel.selectedSubtitle.collectAsState()
     val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsState()
+    val streamingLimit by viewModel.streamingLimit.collectAsState()
+    val currentAutoHeight by viewModel.currentAutoHeight.collectAsState()
     val playbackSpeed by viewModel.playbackSpeed.collectAsState()
     val sources by viewModel.sources.collectAsState()
     val currentSourceIndex by viewModel.currentSourceIndex.collectAsState()
     val currentSeason by viewModel.currentSeason.collectAsState()
     val currentEpisode by viewModel.currentEpisode.collectAsState()
     val episodeTitle by viewModel.episodeTitle.collectAsState()
+    val warpEnabled by viewModel.warpEnabled.collectAsState()
 
     var controlsVisible by remember { mutableStateOf(true) }
     var showSettings by remember { mutableStateOf(false) }
@@ -161,11 +165,11 @@ fun TvPlayerScreen(
 
     // Keep the relevant element focused: settings list when open, play/pause when the
     // controls are showing, the root key-catcher when immersive.
-    LaunchedEffect(controlsVisible, showSettings, settingsPanel) {
+    LaunchedEffect(controlsVisible, showSettings, settingsPanel, loading, buffering) {
         runCatching {
             when {
                 showSettings -> settingsFocus.requestFocus()
-                controlsVisible -> playPauseFocus.requestFocus()
+                controlsVisible && !loading && !buffering -> playPauseFocus.requestFocus()
                 else -> rootFocus.requestFocus()
             }
         }
@@ -224,8 +228,10 @@ fun TvPlayerScreen(
                         cmd.title, cmd.posterUrl, cmd.releaseDate
                     )
                 }
-                is LanCommand.Pause -> viewModel.player.pause()
-                is LanCommand.Resume -> viewModel.player.play()
+                // Mostra i controlli quando il telefono mette in pausa/riprende: in pausa
+                // restano visibili (nessun auto-hide finché fermo), così il player riappare.
+                is LanCommand.Pause -> { viewModel.player.pause(); controlsVisible = true }
+                is LanCommand.Resume -> { viewModel.player.play(); controlsVisible = true }
                 is LanCommand.Stop -> onBack()
                 is LanCommand.Seek -> viewModel.player.seekTo(cmd.positionMs)
             }
@@ -403,7 +409,11 @@ fun TvPlayerScreen(
                 }
 
                 // Center transport row, or replay button once playback ended.
-                if (playbackEnded) {
+                // Durante loading/buffering non mostrare il tasto play/pausa: lo spinner
+                // centrale copre già lo stato, altrimenti sembrerebbe "fermo".
+                if (loading || buffering) {
+                    // spinner overlay già centrato sopra
+                } else if (playbackEnded) {
                     TvCircleButton(
                         icon = Icons.Filled.Replay,
                         contentDescription = "Riproduci dall'inizio",
@@ -457,6 +467,15 @@ fun TvPlayerScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 48.dp, vertical = 32.dp)
                 )
+
+                // Badge "Maschera IP attiva (WARP)" — sopra la seek bar, lato sinistro.
+                if (warpEnabled) {
+                    TvWarpBadge(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(bottom = 96.dp, start = 48.dp)
+                    )
+                }
 
                 // Next-episode pill (TV series, near the end / once ended).
                 val progressFraction = if (duration > 0) currentPosition.toFloat() / duration else 0f
@@ -512,6 +531,8 @@ fun TvPlayerScreen(
                 selectedSubtitle = selectedSubtitle,
                 selectedAudio = selectedAudio,
                 selectedVideoQuality = selectedVideoQuality,
+                streamingLimit = streamingLimit,
+                currentAutoHeight = currentAutoHeight,
                 playbackSpeed = playbackSpeed,
                 resizeMode = resizeMode,
                 currentSourceIndex = currentSourceIndex,
@@ -520,7 +541,11 @@ fun TvPlayerScreen(
                 onSelectSubtitle = { viewModel.selectSubtitleTrack(it); settingsPanel = null },
                 onSelectAudio = { viewModel.selectAudioTrack(it); settingsPanel = null },
                 onSelectSpeed = { viewModel.setPlaybackSpeed(it); settingsPanel = null },
-                onSelectAutoQuality = { viewModel.setAutoVideoQuality(); settingsPanel = null },
+                onSelectAutoQuality = {
+                    viewModel.setAutoVideoQuality()
+                    viewModel.setStreamingLimit("auto")
+                    settingsPanel = null
+                },
                 onSelectQuality = { viewModel.selectVideoQuality(it); settingsPanel = null },
                 onSelectAspect = { resizeMode = it; settingsPanel = null },
                 onSelectSource = { viewModel.selectSource(it); settingsPanel = null }
@@ -537,6 +562,13 @@ private fun speedLabel(s: Float): String = when {
 
 private fun aspectLabel(mode: Int): String =
     if (mode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) "Riempi schermo" else "Adatta"
+
+// Normalizza un'altezza video grezza (es. 694) allo standard più vicino (es. 720):
+// gli stream non sempre rispettano le risoluzioni canoniche, ma l'utente le
+// riconosce solo in quella forma. Allineato al player phone.
+private fun nearestStandard(h: Int): Int =
+    listOf(240, 360, 480, 720, 1080, 1440, 2160)
+        .minByOrNull { kotlin.math.abs(it - h) } ?: h
 
 /**
  * Focusable seek bar for the remote. When focused (white thumb + thicker track),
@@ -618,6 +650,28 @@ private fun TvSeekBar(
     }
 }
 
+/** Badge "maschera IP" mostrato quando WARP è attivo (sfondo scuro, regola CLAUDE.md). */
+@Composable
+private fun TvWarpBadge(modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        val muted = Color.White.copy(alpha = 0.7f)
+        Icon(
+            imageVector = Icons.Filled.Lock,
+            contentDescription = null,
+            tint = muted,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(text = "Maschera IP attiva (WARP)", color = muted, fontSize = 13.sp)
+    }
+}
+
 /** Round icon button with a TV focus highlight (filled white circle when focused). */
 @Composable
 private fun TvCircleButton(
@@ -663,6 +717,8 @@ private fun TvSettingsOverlay(
     selectedSubtitle: PlayerViewModel.TrackInfo?,
     selectedAudio: PlayerViewModel.TrackInfo?,
     selectedVideoQuality: PlayerViewModel.TrackInfo?,
+    streamingLimit: String,
+    currentAutoHeight: Int?,
     playbackSpeed: Float,
     resizeMode: Int,
     currentSourceIndex: Int,
@@ -681,6 +737,15 @@ private fun TvSettingsOverlay(
         AspectRatioFrameLayout.RESIZE_MODE_FIT to "Adatta",
         AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Riempi schermo"
     )
+
+    // "Auto" annotato con la risoluzione che ABR sta usando (o la migliore nota se
+    // Media3 non ha ancora riportato una size) — ma solo in modalità Auto adaptive.
+    // Se l'utente ha bloccato un variant a mano, mostra solo "Auto". Allineato al phone.
+    val effectiveHeight = if (selectedVideoQuality == null) {
+        currentAutoHeight
+            ?: videoTracks.firstOrNull()?.label?.removeSuffix("p")?.toIntOrNull()
+    } else null
+    val autoLabel = effectiveHeight?.let { "Auto (${nearestStandard(it)}p)" } ?: "Auto"
 
     // Right-aligned panel so the dimmed video stays visible — typical TV settings drawer.
     Box(
@@ -748,11 +813,35 @@ private fun TvSettingsOverlay(
                             }
                         }
                         "quality" -> {
-                            TvOptionRow("Auto", selectedVideoQuality == null, firstRowFocus, onSelectAutoQuality)
+                            // Evidenziazione allineata al phone:
+                            // - pref "auto" + nessun lock → riga Auto.
+                            // - pref cap (1080/720/480) → evidenzia il track effettivamente
+                            //   riprodotto (match su currentAutoHeight, fallback al miglior
+                            //   track ≤ cap), NON la riga Auto.
+                            // - lock manuale → quel track.
+                            val capH = streamingLimit.toIntOrNull() ?: 0
+                            val isCap = capH > 0 && selectedVideoQuality == null
+                            val playingH = currentAutoHeight
+                                ?: videoTracks
+                                    .mapNotNull { it.label.removeSuffix("p").toIntOrNull() }
+                                    .filter { it <= capH }
+                                    .maxOrNull()
+                            val capTrackFormatId = if (isCap && playingH != null) {
+                                videoTracks.minByOrNull { t ->
+                                    val h = t.label.removeSuffix("p").toIntOrNull() ?: 0
+                                    kotlin.math.abs(h - playingH)
+                                }?.formatId
+                            } else null
+                            val autoSelected =
+                                selectedVideoQuality == null && streamingLimit == "auto"
+                            TvOptionRow(autoLabel, autoSelected, firstRowFocus, onSelectAutoQuality)
                             videoTracks.forEach { track ->
+                                val highlighted =
+                                    selectedVideoQuality?.formatId == track.formatId ||
+                                        track.formatId == capTrackFormatId
                                 TvOptionRow(
                                     track.label,
-                                    selectedVideoQuality?.formatId == track.formatId
+                                    highlighted
                                 ) { onSelectQuality(track) }
                             }
                         }
@@ -789,8 +878,32 @@ private fun TvSettingsOverlay(
                             ) { onOpenPanel("speed") }
                             TvSettingsRow(
                                 Icons.Filled.HighQuality, "Qualità video",
-                                selectedVideoQuality?.label ?: "Auto",
-                                videoTracks.size > 1
+                                // Riassunto qualità allineato al phone:
+                                // - "max": label del miglior track noto.
+                                // - cap (1080/720/480): standard più vicino all'altezza
+                                //   effettiva (es. 694p → "720p"), non il cap letterale.
+                                // - "auto" + lock manuale: solo "Auto".
+                                // - "auto" adaptive: "Auto (Xp)".
+                                when {
+                                    streamingLimit == "max" ->
+                                        videoTracks.firstOrNull()?.label ?: autoLabel
+                                    streamingLimit == "1080" || streamingLimit == "720" ||
+                                        streamingLimit == "480" -> {
+                                            val capH = streamingLimit.toIntOrNull() ?: 0
+                                            val playH = currentAutoHeight
+                                                ?: videoTracks
+                                                    .mapNotNull {
+                                                        it.label.removeSuffix("p").toIntOrNull()
+                                                    }
+                                                    .filter { it <= capH }
+                                                    .maxOrNull()
+                                                ?: capH
+                                            "${nearestStandard(playH)}p"
+                                    }
+                                    selectedVideoQuality != null -> "Auto"
+                                    else -> autoLabel
+                                },
+                                videoTracks.size > 1 || streamingLimit != "auto"
                             ) { onOpenPanel("quality") }
                             TvSettingsRow(
                                 Icons.Filled.AspectRatio, "Formato video",

@@ -26,7 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -107,16 +108,14 @@ fun TvRootView() {
 
     val contentFocusRequester = remember { FocusRequester() }
 
-    // Close drawer on nav — prevents auto-open when focus shifts to drawer area.
-    // Skip focus request for Detail/SectionList — they manage their own initial focus.
-    val isDetailOrList = currentDestination?.hierarchy?.any {
-        it.hasRoute(NavRoutes.Detail::class) || it.hasRoute(NavRoutes.SectionList::class)
-    } == true
+    // Close drawer on nav AND anchor focus into the content immediately — otherwise the
+    // freshly-composed screen leaves focus orphaned and the nav rail grabs it (auto-opens
+    // "at random"). contentFocusRequester is on a focusGroup, so this lands on the first
+    // focusable child; screens that manage their own initial focus (Detail/SectionList)
+    // refine it afterward. Retry a few frames to cover the compose gap on slower screens.
     LaunchedEffect(currentDestination) {
         drawerState.setValue(DrawerValue.Closed)
-        if (!isDetailOrList) {
-            runCatching { contentFocusRequester.requestFocus() }
-        }
+        runCatching { contentFocusRequester.requestFocus() }
     }
 
     if (!showDrawer) {
@@ -167,7 +166,8 @@ fun TvRootView() {
             modifier = Modifier
                 .fillMaxSize()
                 .focusRequester(contentFocusRequester)
-                .focusable()
+                .focusRestorer()
+                .focusGroup()
         ) {
             AmbientBackground()
             TvAppNavHost(navController = navController, modifier = Modifier.fillMaxSize())

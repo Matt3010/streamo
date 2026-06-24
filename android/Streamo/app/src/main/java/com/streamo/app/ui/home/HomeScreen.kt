@@ -67,7 +67,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.data.local.entity.ProgressEntry
-import com.streamo.app.data.local.entity.WatchlistEntry
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.navigation.LocalBottomBarPadding
 import com.streamo.app.navigation.LocalNavController
@@ -216,17 +215,11 @@ fun HomeScreen(
                         }
                     }
 
-                    // My list
-                    if (watchlist.isNotEmpty()) {
-                        item {
-                            MyListRow(
-                                entries = watchlist,
-                                showInfo = showCardInfo,
-                                onNavigateToDetail = onNavigateToDetail,
-                                onHeaderClick = { navController.navigate(NavRoutes.Watchlist) }
-                            )
-                        }
-                    }
+                    // 'La mia lista' è stata rimossa dalla Home: è raggiungibile
+                    // dal tab 'Lista' nella navbar e dalla sua voce in
+                    // WatchlistScreen. Ripeterla qui era ridondante. La collezione
+                    // resta comunque osservata dal ViewModel (serviva per
+                    // l'icona watchlist sull'hero).
 
                     // Sections
                     items(HomeSections.all.filter { !it.hiddenFromRows }) { section ->
@@ -368,36 +361,6 @@ private fun ContinueWatchingRow(
                         )
                     },
                     onRemove = { onRemove(entry) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MyListRow(
-    entries: List<WatchlistEntry>,
-    showInfo: Boolean,
-    onNavigateToDetail: (Int, String, Int, Int) -> Unit,
-    onHeaderClick: () -> Unit
-) {
-    val windowSizeClass = LocalWindowSizeClass.current
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionHeader(
-            title = "La mia lista",
-            icon = Icons.Filled.Bookmark,
-            onClick = onHeaderClick
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = windowSizeClass.contentPadding),
-            horizontalArrangement = Arrangement.spacedBy(windowSizeClass.itemSpacing)
-        ) {
-            items(entries) { entry ->
-                MediaCard(
-                    title = entry.title,
-                    posterUrl = entry.posterPath?.let { TMDBImage.url(it, TMDBImage.Size.W500) },
-                    showInfo = showInfo,
-                    onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, 0, 0) }
                 )
             }
         }

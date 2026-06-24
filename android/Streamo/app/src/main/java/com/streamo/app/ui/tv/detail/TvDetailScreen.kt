@@ -3,6 +3,7 @@ package com.streamo.app.ui.tv.detail
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -84,8 +86,23 @@ fun TvDetailScreen(
     val playFocusRequester = remember { FocusRequester() }
     val playInteraction = remember { MutableInteractionSource() }
     val playFocused by playInteraction.collectIsFocusedAsState()
+    val watchlistFocusRequester = remember { FocusRequester() }
+    val watchlistInteraction = remember { MutableInteractionSource() }
+    val watchlistFocused by watchlistInteraction.collectIsFocusedAsState()
+    val loadingFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { viewModel.load() }
+
+    // Hold focus on the loading anchor for the WHOLE load. For a series the spinner stays
+    // up for seconds (loadSeason/resolveProvider); without a focusable target in the content
+    // the nav rail grabs focus and auto-expands. A fixed retry count expires mid-load and
+    // the rail grabs the gap, so reclaim every frame until loading ends or Play has focus.
+    LaunchedEffect(viewModel.isLoading) {
+        while ((viewModel.isLoading || viewModel.item == null) && !playFocused) {
+            runCatching { loadingFocusRequester.requestFocus() }
+            delay(80)
+        }
+    }
 
     // Drive initial focus onto Play. Key on the moment the content (and thus Play's
     // modifier) is actually rendered — i.e. loading finished AND item present — NOT on
@@ -94,14 +111,20 @@ fun TvDetailScreen(
     // `item` expires before Play exists, leaving the nav rail to grab focus and pop open.
     // During the NavHost swap the rail can still momentarily grab focus, so retry a few
     // frames — but stop the instant Play has focus, so a quick D-pad move isn't yanked back.
+    // Play is DISABLED when no provider is available ("Titolo non disponibile") — a disabled
+    // node can't take focus, so requesting it leaves focus orphaned and the rail grabs it.
+    // Fall back to the always-enabled Watchlist button in that case.
+    val playEnabled = viewModel.providerAvailability == ProviderAvailability.READY ||
+        viewModel.providerAvailability == ProviderAvailability.NEEDS_PICKER
     val contentReady = !viewModel.isLoading && viewModel.item != null
-    LaunchedEffect(contentReady) {
+    LaunchedEffect(contentReady, playEnabled) {
         if (contentReady) {
             // Initial delay to let Compose settle the layout after content appears
             delay(100)
             repeat(15) {
-                if (playFocused) return@LaunchedEffect
-                runCatching { playFocusRequester.requestFocus() }
+                if (playFocused || watchlistFocused) return@LaunchedEffect
+                val target = if (playEnabled) playFocusRequester else watchlistFocusRequester
+                runCatching { target.requestFocus() }
                 delay(60)
             }
         }
@@ -113,7 +136,13 @@ fun TvDetailScreen(
         AmbientBackground()
 
         if (viewModel.isLoading || viewModel.item == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusRequester(loadingFocusRequester)
+                    .focusable(),
+                contentAlignment = Alignment.Center
+            ) {
                 CircularProgressIndicator(color = Color.White)
             }
             return@Box
@@ -255,6 +284,8 @@ fun TvDetailScreen(
 
                     TvFocusable(
                         onClick = { viewModel.toggleWatchlist() },
+                        focusRequester = watchlistFocusRequester,
+                        interactionSource = watchlistInteraction,
                         scaleOnFocus = 1.05f
                     ) { focused ->
                         Row(

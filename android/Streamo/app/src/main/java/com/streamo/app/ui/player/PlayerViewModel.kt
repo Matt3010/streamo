@@ -322,6 +322,15 @@ class PlayerViewModel @Inject constructor(
     private val _streamingLimit = MutableStateFlow("auto")
     val streamingLimit: StateFlow<String> = _streamingLimit.asStateFlow()
 
+    /**
+     * Altezza del variant video attualmente in riproduzione in modalità Auto (adattiva).
+     * Aggiornata da `Player.Listener.onVideoSizeChanged`. `null` finché Media3 non
+     * ha riportato la prima frame — la UI mostra il miglior valore noto in sua vece
+     * (selectedVideoQuality o testa di videoTracks).
+     */
+    private val _currentAutoHeight = MutableStateFlow<Int?>(null)
+    val currentAutoHeight: StateFlow<Int?> = _currentAutoHeight.asStateFlow()
+
     private val _playbackSpeed = MutableStateFlow(1f)
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
 
@@ -404,17 +413,10 @@ class PlayerViewModel @Inject constructor(
     private val _skipSegment = MutableStateFlow<SkipSegment?>(null)
     val skipSegment: StateFlow<SkipSegment?> = _skipSegment.asStateFlow()
 
-    /** Countdown (secondi) mostrato prima dell'avanzamento automatico al prossimo episodio. */
-    private val _nextCountdown = MutableStateFlow<Int?>(null)
-    val nextCountdown: StateFlow<Int?> = _nextCountdown.asStateFlow()
-
     private var skipSegments: IntroSkipClient.Segments? = null
     private var didFetchSkipSegments = false
     private var introDismissed = false
     private var creditsDismissed = false
-    private var countdownJob: Job? = null
-    private var didTriggerNext = false
-    private var pendingNextEpisode: Pair<Int, Int>? = null
 
     // ---
 
@@ -445,6 +447,9 @@ class PlayerViewModel @Inject constructor(
             else settings.streamingQualityMobile.first()
             _streamingLimit.value = pref
             applyStreamingLimit(pref)
+            // Se la preferenza salvata è "Massima" i track non sono ancora noti qui
+            // (arrivano con onPlaybackStateChanged → STATE_READY → refreshAvailableTracks).
+            // Ci agganciamo lì con [lockBestIfMaxRequested].
         }
 
         player.addListener(object : Player.Listener {
@@ -471,6 +476,13 @@ class PlayerViewModel @Inject constructor(
 
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 refreshAvailableTracks()
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                // Altezza del variant attualmente renderizzato. In Auto è il valore
+                // che ABR ha scelto; con override manuale è quello del track bloccato.
+                // Usato dalla modale qualità per annotare "Auto (Xp)".
+                if (videoSize.height > 0) _currentAutoHeight.value = videoSize.height
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -533,6 +545,14 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             castController.isPlaying.collect {
                 if (_dlnaConnected.value != null || _lanConnected.value != null) _isPlaying.value = it
+            }
+        }
+        // Specchia il caricamento della TV: durante l'avvio cast il player locale è in pausa
+        // e non emette STATE_BUFFERING, quindi il telefono mostrerebbe il tasto play invece
+        // dello spinner. Lo riusiamo come "buffering" così l'overlay di caricamento appare.
+        viewModelScope.launch {
+            castController.loading.collect {
+                if (_dlnaConnected.value != null || _lanConnected.value != null) _buffering.value = it
             }
         }
 
@@ -870,14 +890,9 @@ class PlayerViewModel @Inject constructor(
         didFetchSkipSegments = false
         introDismissed = false
         creditsDismissed = false
-        didTriggerNext = false
         skipSegments = null
         _skipPrompt.value = null
         _skipSegment.value = null
-        _nextCountdown.value = null
-        pendingNextEpisode = null
-        countdownJob?.cancel()
-        countdownJob = null
     }
 
     private fun maybeFetchSkipSegments() {
@@ -931,55 +946,12 @@ class PlayerViewModel @Inject constructor(
                 startMs = (effectiveCreditsStart * 1000).toLong(),
                 endMs = (endSec * 1000).toLong()
             )
-            if (!didTriggerNext) {
-                didTriggerNext = true
-                onCreditsReached()
-            }
         } else {
             newPrompt = null
             newSegment = null
         }
         if (_skipPrompt.value != newPrompt) _skipPrompt.value = newPrompt
         if (_skipSegment.value != newSegment) _skipSegment.value = newSegment
-    }
-
-    /** Chiamato quando la riproduzione entra nei crediti. */
-    private fun onCreditsReached() {
-        viewModelScope.launch {
-            val autoplay = settings.autoplayNext.first()
-            if (!autoplay || mediaType != "tv" || season == 0) return@launch
-            val item = tmdbItem ?: client.details(tmdbId, "tv") ?: return@launch
-            val next = TVLogic.nextEpisode(item, season, episode) ?: return@launch
-            pendingNextEpisode = next
-            armNextEpisode(seconds = 8)
-        }
-    }
-
-    /** Arm a cancellable countdown before auto-advancing to the next episode. */
-    private fun armNextEpisode(seconds: Int = 8) {
-        _nextCountdown.value = seconds
-        countdownJob?.cancel()
-        countdownJob = viewModelScope.launch {
-            for (n in seconds downTo 1) {
-                if (!isPastCreditsStart()) {
-                    _nextCountdown.value = null
-                    didTriggerNext = false
-                    pendingNextEpisode = null
-                    return@launch
-                }
-                _nextCountdown.value = n
-                delay(1000)
-            }
-            _nextCountdown.value = null
-            playNextEpisode()
-        }
-    }
-
-    private fun isPastCreditsStart(): Boolean {
-        val startMs = skipSegments?.creditsStartMs
-            ?: _duration.value.takeIf { it > 0 }?.let { (it * TVLogic.WATCHED_THRESHOLD).toLong() }
-            ?: return true
-        return _currentPosition.value >= startMs
     }
 
     /** Esegue l'azione del bottone skip visibile (intro o credits). */
@@ -993,38 +965,19 @@ class PlayerViewModel @Inject constructor(
             }
             SkipPrompt.CREDITS -> {
                 creditsDismissed = true
-                if (pendingNextEpisode != null) {
-                    playNextNow()
-                } else {
-                    // Film o nessun prossimo episodio: salta alla fine.
-                    val dur = _duration.value
-                    val target = if (dur > 0L) (dur - 1000L).coerceAtLeast(0L) else 0L
-                    seekTo(target)
-                }
+                // Salta alla fine del video.
+                val dur = _duration.value
+                val target = if (dur > 0L) (dur - 1000L).coerceAtLeast(0L) else 0L
+                seekTo(target)
             }
         }
         _skipPrompt.value = null
         _skipSegment.value = null
     }
 
-    /** Avanza subito al prossimo episodio armato dal countdown. */
-    fun playNextNow() {
-        countdownJob?.cancel()
-        countdownJob = null
-        _nextCountdown.value = null
-        playNextEpisode()
-    }
-
-    /** Dismissa il countdown senza avanzare. */
-    fun cancelNextEpisode() {
-        countdownJob?.cancel()
-        countdownJob = null
-        _nextCountdown.value = null
-    }
-
     fun playNextEpisode() {
         if (mediaType != "tv" || season == 0) return
-        val next = pendingNextEpisode ?: TVLogic.nextEpisode(tmdbItem ?: return, season, episode) ?: return
+        val next = TVLogic.nextEpisode(tmdbItem ?: return, season, episode) ?: return
         saveCurrentProgress()
         season = next.first
         episode = next.second
@@ -1087,12 +1040,6 @@ class PlayerViewModel @Inject constructor(
                 }
             }
 
-            // Auto-advance fallback: se il percorso crediti/countdown non ha già
-            // scattato, passa al prossimo episodio solo alla fine reale del video.
-            val autoplay = settings.autoplayNext.first()
-            if (autoplay && _nextEpisodeAvailable.value && !didTriggerNext) {
-                playNextEpisode()
-            }
         }
     }
 
@@ -1226,6 +1173,12 @@ class PlayerViewModel @Inject constructor(
         _selectedVideoQuality.value = _selectedVideoQuality.value?.let { sel ->
             _videoTracks.value.firstOrNull { it.formatId == sel.formatId }
         }
+        // Se la preferenza corrente è "Massima" e nessun override è ancora attivo,
+        // blocca il variant più alto non appena lo conosciamo. Così l'utente vede
+        // davvero la qualità massima fin dal primo frame, non un ABR oscillante.
+        if (_streamingLimit.value == "max" && _selectedVideoQuality.value == null) {
+            _videoTracks.value.firstOrNull()?.let { selectVideoQuality(it) }
+        }
         ProviderDebugLogger.log("TRACKS audio=${audio.size} subtitles=${subtitles.size} video=${video.size}")
 
         _selectedAudio.value = audio.firstOrNull { info ->
@@ -1316,9 +1269,24 @@ class PlayerViewModel @Inject constructor(
     /** Modifica il limite qualità streaming dal menu del player. */
     fun setStreamingLimit(pref: String) {
         _streamingLimit.value = pref
-        // Resetta override qualità manuale se attivo
-        if (_selectedVideoQuality.value != null) {
-            setAutoVideoQuality()
+        if (pref == "max") {
+            // "Massima" = blocca il variant più alto tra quelli noti. Senza lock
+            // esplicito, ABR resterebbe a oscillare e l'utente non vedrebbe mai la
+            // qualità effettivamente riprodotta. applyStreamingLimit("max") toglie
+            // ogni tetto — selectVideoQuality lo applica al miglior track.
+            val best = _videoTracks.value.firstOrNull()
+            if (best != null) {
+                selectVideoQuality(best)
+            } else {
+                // Track non ancora noti: rimuovi un eventuale override precedente,
+                // così al primo refreshAvailableTracks il lock prenderà il top.
+                if (_selectedVideoQuality.value != null) setAutoVideoQuality()
+            }
+        } else {
+            // Resetta override qualità manuale se attivo, così ABR può scegliere
+            // entro il nuovo cap. Tranne se il lock proveniva da "max" e l'utente
+            // ha appena cambiato rete/pref — in quel caso l'override va rimosso.
+            if (_selectedVideoQuality.value != null) setAutoVideoQuality()
         }
         applyStreamingLimit(pref)
         viewModelScope.launch {

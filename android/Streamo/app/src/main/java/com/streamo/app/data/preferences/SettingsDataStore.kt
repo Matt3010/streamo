@@ -26,7 +26,6 @@ class SettingsDataStore @Inject constructor(
 
     companion object {
         private val TMDB_API_KEY = stringPreferencesKey("tmdb_api_key")
-        private val AUTOPLAY_NEXT = booleanPreferencesKey("autoplay_next")
         private val PROVIDER_LOCALE = stringPreferencesKey("provider_locale")
         private val SHOW_CARD_INFO = booleanPreferencesKey("show_card_info")
         private val REDUCE_EFFECTS = booleanPreferencesKey("reduce_effects")
@@ -52,14 +51,6 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setTmdbApiKey(key: String) {
         context.dataStore.edit { it[TMDB_API_KEY] = key }
-    }
-
-    val autoplayNext: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[AUTOPLAY_NEXT] ?: true
-    }
-
-    suspend fun setAutoplayNext(value: Boolean) {
-        context.dataStore.edit { it[AUTOPLAY_NEXT] = value }
     }
 
     val providerLocale: Flow<String> = context.dataStore.data.map { prefs ->

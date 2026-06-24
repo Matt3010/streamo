@@ -47,8 +47,6 @@ class SettingsViewModel @Inject constructor(
     val providerLocale: StateFlow<String?> = settings.providerLocale
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _autoplayNext = MutableStateFlow(true)
-    val autoplayNext: StateFlow<Boolean> = _autoplayNext.asStateFlow()
 
     private val _autoDeleteWatched = MutableStateFlow(false)
     val autoDeleteWatched: StateFlow<Boolean> = _autoDeleteWatched.asStateFlow()
@@ -110,9 +108,6 @@ class SettingsViewModel @Inject constructor(
 
     init {
         computeStats()
-        viewModelScope.launch {
-            settings.autoplayNext.collect { _autoplayNext.value = it }
-        }
         viewModelScope.launch {
             settings.autoDeleteWatched.collect { _autoDeleteWatched.value = it }
         }
@@ -177,11 +172,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setAutoplayNext(value: Boolean) {
-        viewModelScope.launch {
-            settings.setAutoplayNext(value)
-        }
-    }
 
     fun setAutoDeleteWatched(value: Boolean) {
         viewModelScope.launch {

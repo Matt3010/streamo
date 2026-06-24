@@ -51,7 +51,6 @@ fun TvSettingsScreen(
     onNavigateToDebugLogs: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val autoplayNext by viewModel.autoplayNext.collectAsState()
     val streamingQuality by viewModel.streamingQualityWifi.collectAsState()
     val warpEnabled by viewModel.warpEnabled.collectAsState()
     val warpRegistered by viewModel.warpRegistered.collectAsState()
@@ -191,16 +190,10 @@ fun TvSettingsScreen(
         // ————————————————————————————
         SectionHeader("Riproduzione")
 
-        SettingsToggleRow(
-            label = "Riproduzione automatica prossimo episodio",
-            checked = autoplayNext,
-            onToggle = { viewModel.setAutoplayNext(it) },
-            focusRequester = initialFocusRequester
-        )
-
         SettingsValueRow(
             label = "Qualità streaming",
             value = streamingQualityLabel(streamingQuality),
+            focusRequester = initialFocusRequester,
             onClick = { showStreamingPicker = true }
         )
 
