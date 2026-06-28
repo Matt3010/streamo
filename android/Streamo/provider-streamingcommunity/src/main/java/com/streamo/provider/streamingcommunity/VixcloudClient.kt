@@ -1,12 +1,11 @@
-package com.streamo.app.provider
+package com.streamo.provider.streamingcommunity
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.streamo.provider.sdk.*
 
 /**
  * Turns a vixcloud `/embed/<id>` URL into a directly-playable HLS master
@@ -14,14 +13,14 @@ import javax.inject.Singleton
  * iframe: instead of letting a player inside a webview build the URL, we
  * scrape the embed page and reconstruct it ourselves.
  *
- * Port of iOS VixcloudClient.swift.
+ * Port of iOS VixcloudClient.swift. Lives in the StreamingCommunity extension
+ * APK (no Hilt); [setClient] injects the host's WARP loopback proxy per call.
  */
-@Singleton
-class VixcloudClient @Inject constructor(
+class VixcloudClient(
     private val client: OkHttpClient
 ) {
-    /** Active HTTP client, swapped to a WARP-proxied client when IP-masking is
-     * on (see [com.streamo.app.provider.ProviderResolver.prepareWARP]). */
+    /** Active HTTP client, swapped to a WARP-proxied client built around the
+     * host's loopback proxy port when IP-masking is on. */
     @Volatile
     private var activeClient: OkHttpClient = client
 

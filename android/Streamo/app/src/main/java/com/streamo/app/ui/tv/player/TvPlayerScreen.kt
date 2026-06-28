@@ -713,7 +713,7 @@ private fun TvSettingsOverlay(
     subtitleTracks: List<PlayerViewModel.TrackInfo>,
     audioTracks: List<PlayerViewModel.TrackInfo>,
     videoTracks: List<PlayerViewModel.TrackInfo>,
-    sources: List<com.streamo.app.provider.PlaybackSource>,
+    sources: List<com.streamo.provider.sdk.PlaybackSource>,
     selectedSubtitle: PlayerViewModel.TrackInfo?,
     selectedAudio: PlayerViewModel.TrackInfo?,
     selectedVideoQuality: PlayerViewModel.TrackInfo?,
@@ -730,7 +730,7 @@ private fun TvSettingsOverlay(
     onSelectAutoQuality: () -> Unit,
     onSelectQuality: (PlayerViewModel.TrackInfo) -> Unit,
     onSelectAspect: (Int) -> Unit,
-    onSelectSource: (com.streamo.app.provider.PlaybackSource) -> Unit
+    onSelectSource: (com.streamo.provider.sdk.PlaybackSource) -> Unit
 ) {
     val speedOptions = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
     val aspectOptions = listOf(

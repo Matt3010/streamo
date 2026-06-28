@@ -16,6 +16,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Discover the streaming-provider extension's bound service (Android 11+
+         package visibility). Without this, queryIntentServices returns nothing. -->
+    <queries>
+        <intent>
+            <action android:name="com.streamo.provider.BIND" />
+        </intent>
+    </queries>
+
     <!-- TV support: app must run without touchscreen and without leanback hardware,
          so neither is required. Keeps the app installable on phones AND TV/Fire TV. -->
     <uses-feature

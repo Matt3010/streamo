@@ -23,12 +23,13 @@ import com.streamo.app.download.DownloadQualityGate
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.DownloadQualityRequest
 import com.streamo.app.download.ResolveAndDownloadWorker
-import com.streamo.app.provider.ProviderCandidate
-import com.streamo.app.provider.ProviderMatchStatus
-import com.streamo.app.provider.ProviderResolvedTitle
-import com.streamo.app.provider.ProviderResolveFailureReason
-import com.streamo.app.provider.ProviderResolveTitleOutcome
-import com.streamo.app.provider.ProviderResolver
+import com.streamo.provider.sdk.ProviderCandidate
+import com.streamo.provider.sdk.ProviderMatchStatus
+import com.streamo.provider.sdk.ProviderResolvedTitle
+import com.streamo.provider.sdk.ProviderResolveFailureReason
+import com.streamo.provider.sdk.ProviderResolveTitleOutcome
+import com.streamo.app.provider.ProviderManager
+import com.streamo.app.provider.ProviderMappingStore
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.Release
 import com.streamo.app.util.TVLogic
@@ -44,7 +45,9 @@ import com.streamo.app.data.preferences.SettingsDataStore
 import javax.inject.Inject
 
 enum class ProviderAvailability {
-    UNKNOWN, RESOLVING, READY, UNAVAILABLE, NEEDS_PICKER
+    UNKNOWN, RESOLVING, READY, UNAVAILABLE, NEEDS_PICKER,
+    /** No streaming provider installed/enabled — catalog-only mode. */
+    NO_PROVIDER
 }
 
 @UnstableApi
@@ -53,7 +56,8 @@ class DetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val client: TMDBClient,
     private val repository: AppRepository,
-    private val providerResolver: ProviderResolver,
+    private val providerManager: ProviderManager,
+    private val providerMappingStore: ProviderMappingStore,
     private val qualityGate: DownloadQualityGate,
     private val settings: SettingsDataStore,
     private val app: Application
@@ -125,8 +129,8 @@ class DetailViewModel @Inject constructor(
                     loadSeason(target)
                 }
 
-                // Prime the provider resolver with any persisted mapping
-                providerResolver.loadAndPrime(tmdbId, mediaType)
+                // Prime the active provider with any persisted mapping
+                providerManager.active?.let { providerMappingStore.loadAndPrime(it, tmdbId, mediaType) }
                 resolveProvider()
                 computeResume()
             } catch (e: Exception) {
@@ -355,11 +359,18 @@ class DetailViewModel @Inject constructor(
     // region Provider resolution
 
     suspend fun resolveProvider() {
+        val provider = providerManager.active
+        if (provider == null) {
+            providerAvailability = ProviderAvailability.NO_PROVIDER
+            providerMessage = "Nessun provider di streaming installato"
+            providerCandidates = emptyList()
+            return
+        }
         providerAvailability = ProviderAvailability.RESOLVING
         providerMessage = null
         providerCandidates = emptyList()
         try {
-            val outcome = providerResolver.resolveTitle(
+            val outcome = provider.resolveTitle(
                 tmdbId,
                 mediaType,
                 item?.title ?: item?.name ?: "",
@@ -386,15 +397,16 @@ class DetailViewModel @Inject constructor(
     }
 
     fun confirmProviderCandidate(candidate: ProviderCandidate) {
+        val provider = providerManager.active ?: return
         viewModelScope.launch {
-            providerResolver.confirmCandidate(candidate, tmdbId, mediaType)
+            provider.confirmCandidate(candidate, tmdbId, mediaType)
             val resolved = ProviderResolvedTitle(
                 id = candidate.providerTitleId,
                 slug = candidate.providerSlug,
                 title = candidate.title,
                 mediaType = mediaType
             )
-            providerResolver.saveMapping(
+            providerMappingStore.saveMapping(
                 tmdbId,
                 mediaType,
                 ProviderResolveTitleOutcome(
@@ -411,7 +423,7 @@ class DetailViewModel @Inject constructor(
 
     fun refreshProvider() {
         viewModelScope.launch {
-            providerResolver.invalidate(tmdbId, mediaType)
+            providerManager.active?.invalidate(tmdbId, mediaType)
             resolveProvider()
         }
     }
@@ -512,6 +524,7 @@ class DetailViewModel @Inject constructor(
                 ProviderAvailability.RESOLVING -> "Caricamento…"
                 ProviderAvailability.UNAVAILABLE -> providerMessage ?: "Non disponibile"
                 ProviderAvailability.NEEDS_PICKER -> "Scegli la versione"
+                ProviderAvailability.NO_PROVIDER -> "Streaming non installato"
                 ProviderAvailability.READY -> {
                     if (isTV) {
                         resumeSeasonEpisode?.let { "Riprendi da S${it.first} E${it.second}" } ?: "Guarda"

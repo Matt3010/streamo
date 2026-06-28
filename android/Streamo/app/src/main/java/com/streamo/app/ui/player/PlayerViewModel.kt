@@ -41,9 +41,10 @@ import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.download.NetworkType
 import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.provider.IntroSkipClient
-import com.streamo.app.provider.PlaybackSource
+import com.streamo.provider.sdk.PlaybackSource
 import com.streamo.app.provider.ProviderDebugLogger
-import com.streamo.app.provider.ProviderResolver
+import com.streamo.app.provider.ProviderManager
+import com.streamo.app.provider.ProviderMappingStore
 import com.streamo.app.provider.warp.WarpTunnel
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.ConnectivityHelper
@@ -65,7 +66,8 @@ import javax.inject.Inject
 class PlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
     private val savedStateHandle: SavedStateHandle,
-    private val resolver: ProviderResolver,
+    private val providerManager: ProviderManager,
+    private val providerMappingStore: ProviderMappingStore,
     private val repository: AppRepository,
     private val settings: SettingsDataStore,
     private val client: TMDBClient,
@@ -232,10 +234,16 @@ class PlayerViewModel @Inject constructor(
                 _loading.value = true
                 _error.value = null
                 try {
+                    val provider = providerManager.active
+                    if (provider == null) {
+                        _error.value = "Nessun provider di streaming installato"
+                        _loading.value = false
+                        return@launch
+                    }
                     val resolution = if (mediaType == "tv" && season > 0) {
-                        resolver.episodeSource(tmdbId, title, releaseDate, season, episode)
+                        provider.episodeSource(tmdbId, title, releaseDate, season, episode)
                     } else {
-                        resolver.movieSource(tmdbId, title, releaseDate)
+                        provider.movieSource(tmdbId, title, releaseDate)
                     }
                     if (resolution.sources.isEmpty()) {
                         _loading.value = false
@@ -658,10 +666,16 @@ class PlayerViewModel @Inject constructor(
                 pauseDownloadsForStreaming()
 
                 // Online: resolve stream URL via the provider pipeline
+                val provider = providerManager.active
+                if (provider == null) {
+                    _error.value = "Nessun provider di streaming installato"
+                    _loading.value = false
+                    return@launch
+                }
                 val resolution = if (mediaType == "tv" && season > 0) {
-                    resolver.episodeSource(tmdbId, title, releaseDate, season, episode)
+                    provider.episodeSource(tmdbId, title, releaseDate, season, episode)
                 } else {
-                    resolver.movieSource(tmdbId, title, releaseDate)
+                    provider.movieSource(tmdbId, title, releaseDate)
                 }
 
                 if (resolution.sources.isEmpty()) {
@@ -680,11 +694,11 @@ class PlayerViewModel @Inject constructor(
 
                 // Save provider mapping for future reuse
                 resolution.providerTitle?.let { resolved ->
-                    resolver.saveMapping(tmdbId, mediaType, com.streamo.app.provider.ProviderResolveTitleOutcome(
+                    providerMappingStore.saveMapping(tmdbId, mediaType, com.streamo.provider.sdk.ProviderResolveTitleOutcome(
                         resolved = resolved,
                         reason = null,
                         candidates = resolution.candidates,
-                        matchStatus = com.streamo.app.provider.ProviderMatchStatus.AUTO_CONFIRMED
+                        matchStatus = com.streamo.provider.sdk.ProviderMatchStatus.AUTO_CONFIRMED
                     ))
                 }
             } catch (e: Exception) {

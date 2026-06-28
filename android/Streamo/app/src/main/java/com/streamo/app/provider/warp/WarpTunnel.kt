@@ -39,7 +39,8 @@ class WarpTunnel @Inject constructor(
     private val mutex = Mutex()
     @Volatile private var tmpDirReady = false
 
-    @Volatile private var proxyPort: Int = 0
+    @Volatile var proxyPort: Int = 0
+        private set
     @Volatile private var running: Boolean = false
     @Volatile private var proxiedClient: OkHttpClient? = null
 

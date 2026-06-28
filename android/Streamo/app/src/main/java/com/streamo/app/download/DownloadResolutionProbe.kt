@@ -7,7 +7,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.offline.DownloadHelper
-import com.streamo.app.provider.ProviderResolver
+import com.streamo.app.provider.ProviderManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.IOException
@@ -17,7 +17,7 @@ import kotlin.coroutines.resume
 
 /**
  * Rileva le risoluzioni (altezze video) realmente disponibili per un titolo, risolvendo
- * la sorgente col [ProviderResolver] e leggendo le varianti del master playlist HLS via
+ * la sorgente col provider attivo ([ProviderManager]) e leggendo le varianti del master playlist HLS via
  * ExoPlayer DownloadHelper. Restituisce le altezze distinte in ordine decrescente, anche
  * non standard. Lista vuota se la risoluzione fallisce (il chiamante decide il fallback).
  */
@@ -25,7 +25,7 @@ import kotlin.coroutines.resume
 @Singleton
 class DownloadResolutionProbe @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val resolver: ProviderResolver
+    private val providerManager: ProviderManager
 ) {
     private val TAG = "DownloadResProbe"
 
@@ -36,10 +36,11 @@ class DownloadResolutionProbe @Inject constructor(
         season: Int,
         episode: Int
     ): List<Int> {
+        val provider = providerManager.active ?: return emptyList()
         val resolution = if (mediaType == "tv" && season > 0) {
-            resolver.episodeSource(tmdbId, title, null, season, episode.coerceAtLeast(1))
+            provider.episodeSource(tmdbId, title, null, season, episode.coerceAtLeast(1))
         } else {
-            resolver.movieSource(tmdbId, title, null)
+            provider.movieSource(tmdbId, title, null)
         }
         val streamUrl = resolution.sources.firstOrNull()?.playlistUrl ?: return emptyList()
         return heightsFromManifest(streamUrl)

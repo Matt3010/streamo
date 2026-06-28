@@ -72,8 +72,8 @@ class AppRepository @Inject constructor(
     suspend fun updateDownloadContentAndStatus(id: Int, contentId: String, streamUrl: String, status: String) =
         downloadDao.updateContentAndStatus(id, contentId, streamUrl, status)
 
-    suspend fun updateDownloadContentStatusAndWarp(id: Int, contentId: String, streamUrl: String, status: String, warpEnabled: Boolean) =
-        downloadDao.updateContentStatusAndWarp(id, contentId, streamUrl, status, warpEnabled)
+    suspend fun updateDownloadContentStatusAndWarp(id: Int, contentId: String, streamUrl: String, streamHeaders: String, status: String, warpEnabled: Boolean) =
+        downloadDao.updateContentStatusAndWarp(id, contentId, streamUrl, streamHeaders, status, warpEnabled)
 
     suspend fun getPendingOrderedByCreation(): List<DownloadEntry> =
         downloadDao.getPendingOrderedByCreation()

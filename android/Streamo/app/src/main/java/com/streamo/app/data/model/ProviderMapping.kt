@@ -13,7 +13,7 @@ data class ProviderMapping(
     val quality: String? = null
 )
 
-/** @deprecated Use provider.PlaybackSource instead. */
+/** @deprecated Use com.streamo.provider.sdk.PlaybackSource instead. */
 data class StreamSource(
     val url: String,
     val quality: String? = null,

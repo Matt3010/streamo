@@ -15,6 +15,9 @@ data class DownloadEntry(
     val stillPath: String? = null,
     val contentId: String = "",
     val streamUrl: String = "",
+    /** JSON map of HTTP headers (Referer/Origin/…) the provider returned for
+     * streamUrl, persisted so the reuse path can fetch media without re-resolving. */
+    val streamHeaders: String = "",
     val localPath: String = "",
     val quality: String? = null,
     val status: String = "pending", // pending, resolving, downloading, completed, failed, paused

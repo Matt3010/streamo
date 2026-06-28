@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:label="Streamo · StreamingCommunity"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".ProviderInfoActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".StreamProviderService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.streamo.provider.BIND" />
+            </intent-filter>
+            <meta-data android:name="com.streamo.provider.ID" android:value="streamingcommunity" />
+            <meta-data android:name="com.streamo.provider.NAME" android:value="StreamingCommunity" />
+            <meta-data android:name="com.streamo.provider.VERSION" android:value="1.0" />
+        </service>
+    </application>
+</manifest>

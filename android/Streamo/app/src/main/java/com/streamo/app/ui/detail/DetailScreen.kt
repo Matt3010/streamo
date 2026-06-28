@@ -560,6 +560,7 @@ private fun DetailScrollContent(
                     val needsPicker = viewModel.providerAvailability == ProviderAvailability.NEEDS_PICKER
                     val isResolving = viewModel.providerAvailability == ProviderAvailability.RESOLVING
                     val isUnavailable = viewModel.providerAvailability == ProviderAvailability.UNAVAILABLE
+                    val isNoProvider = viewModel.providerAvailability == ProviderAvailability.NO_PROVIDER
 
                     // Movie progress bar + timestamp (iOS parity)
                     val movieProgress = viewModel.movieResumeEntry
@@ -651,7 +652,7 @@ private fun DetailScrollContent(
                             contentDescription = if (isInWatchlist) "Rimuovi da lista" else "Aggiungi a lista",
                             active = isInWatchlist
                         )
-                        if (!isUnavailable) {
+                        if (!isUnavailable && !isNoProvider) {
                             BrandIconButton(
                                 onClick = {
                                     if (viewModel.isTV) {
@@ -765,8 +766,9 @@ private fun DetailScrollContent(
                 val hasRealTitle = !item.title.isNullOrBlank() || !item.name.isNullOrBlank()
                 if (viewModel.isTV && viewModel.seasons.isNotEmpty() && hasRealTitle) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    if (viewModel.providerAvailability == ProviderAvailability.UNAVAILABLE) {
-                        // Streaming non disponibile: niente lista episodi, solo placeholder.
+                    if (viewModel.providerAvailability == ProviderAvailability.UNAVAILABLE ||
+                        viewModel.providerAvailability == ProviderAvailability.NO_PROVIDER) {
+                        // Streaming non disponibile / nessun provider: niente lista episodi, solo placeholder.
                         EpisodesUnavailable(message = viewModel.providerMessage)
                     } else {
                         val navController = LocalNavController.current

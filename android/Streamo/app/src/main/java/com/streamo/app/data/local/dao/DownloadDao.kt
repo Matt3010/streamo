@@ -58,8 +58,8 @@ interface DownloadDao {
      * [pickNextPendingDownload] dà priorità per WARP. Senza questo, un download
      * risolto sotto un WARP diverso da quello salvato ri-risolverebbe ad ogni resume.
      */
-    @Query("UPDATE downloads SET contentId = :contentId, streamUrl = :streamUrl, status = :status, warpEnabled = :warpEnabled WHERE id = :id")
-    suspend fun updateContentStatusAndWarp(id: Int, contentId: String, streamUrl: String, status: String, warpEnabled: Boolean)
+    @Query("UPDATE downloads SET contentId = :contentId, streamUrl = :streamUrl, streamHeaders = :streamHeaders, status = :status, warpEnabled = :warpEnabled WHERE id = :id")
+    suspend fun updateContentStatusAndWarp(id: Int, contentId: String, streamUrl: String, streamHeaders: String, status: String, warpEnabled: Boolean)
 
     @Query("UPDATE downloads SET downloadPercentage = :percentage, bytesDownloaded = :downloaded, bytesTotal = :total, bytesPerSecond = :speed, status = :status WHERE id = :id")
     suspend fun updateProgress(id: Int, percentage: Float, downloaded: Long, total: Long, speed: Long, status: String)

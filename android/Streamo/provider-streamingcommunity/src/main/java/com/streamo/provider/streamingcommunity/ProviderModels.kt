@@ -1,66 +1,17 @@
-package com.streamo.app.provider
+package com.streamo.provider.streamingcommunity
 
 import com.google.gson.*
 import com.google.gson.reflect.TypeToken
+import com.streamo.provider.sdk.*
 import java.lang.reflect.Type
 
 /**
- * Wire + domain types for the StreamingCommunity provider resolution.
+ * StreamingCommunity-specific wire types (Inertia / Telegraph payloads + Gson
+ * adapters). The provider-neutral domain types (ProviderResolvedTitle,
+ * ProviderCandidate, PlaybackSource, PlaybackResolution, …) now live in the
+ * shared :provider-api module (com.streamo.provider.sdk).
  * Port of iOS ProviderModels.swift.
  */
-
-// region Title resolution models
-
-/** A confirmed StreamingCommunity title mapped to a TMDB id. */
-data class ProviderResolvedTitle(
-    val id: Int,
-    val slug: String?,
-    val title: String,
-    val mediaType: String // "movie" or "tv"
-)
-
-/** A picker candidate (weak / alternative matches). */
-data class ProviderCandidate(
-    val providerTitleId: Int,
-    val providerSlug: String?,
-    val title: String,
-    val year: Int?,
-    val score: Int,
-    val posterUrl: String? = null
-)
-
-enum class ProviderMatchStatus(val rawValue: String) {
-    AUTO_CONFIRMED("auto_confirmed"),
-    MANUAL_CONFIRMED("manual_confirmed"),
-    FAILED("failed");
-
-    companion object {
-        fun fromRaw(value: String): ProviderMatchStatus =
-            entries.find { it.rawValue == value } ?: FAILED
-    }
-}
-
-enum class ProviderResolveFailureReason {
-    NOT_FOUND,
-    TEMPORARILY_UNAVAILABLE,
-    UNRELEASED
-}
-
-/** Outcome of resolving a TMDB title to a provider title. */
-data class ProviderResolveTitleOutcome(
-    val resolved: ProviderResolvedTitle?,
-    val reason: ProviderResolveFailureReason?,
-    val candidates: List<ProviderCandidate>,
-    val matchStatus: ProviderMatchStatus?
-)
-
-/** Outcome of resolving a movie/episode embed. */
-data class ProviderEmbedOutcome(
-    val embedUrl: String?,
-    val reason: ProviderResolveFailureReason?
-)
-
-// endregion
 
 // region Decodable payloads (Inertia data-page JSON)
 
@@ -215,27 +166,5 @@ private class ProviderTitlesContainerDeserializer : JsonDeserializer<ProviderTit
         }
     }
 }
-
-// endregion
-
-// region Playback models
-
-/** A playable HLS source with required headers. */
-data class PlaybackSource(
-    val playlistUrl: String,
-    val headers: Map<String, String>
-)
-
-/** Full result of resolving a title to playable sources. */
-data class PlaybackResolution(
-    val sources: List<PlaybackSource>,
-    val reason: ProviderResolveFailureReason?,
-    val message: String?,
-    val providerTitle: ProviderResolvedTitle?,
-    val candidates: List<ProviderCandidate>,
-    /** Whether sources were resolved through the WARP proxy (drives the player's
-     * choice of a proxied DataSource and the WARP/Diretto badge). */
-    val viaProxy: Boolean = false
-)
 
 // endregion

@@ -1,4 +1,4 @@
-package com.streamo.app.provider
+package com.streamo.provider.streamingcommunity
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -6,12 +6,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URLDecoder
 import java.net.URLEncoder
-import com.streamo.app.util.TVLogic
+import com.streamo.provider.sdk.*
 import java.text.Normalizer
-import com.streamo.app.data.preferences.SettingsDataStore
-import kotlinx.coroutines.flow.first
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Scrapes StreamingCommunity to map a TMDB title to a playable vixcloud embed
@@ -23,19 +19,25 @@ import javax.inject.Singleton
  *   3. Score candidates with tokenOverlapScore
  *   4. For TV: fetch the season page to get episode IDs
  *   5. Fetch the iframe page to extract the vixcloud embed URL
+ *
+ * Lives in the StreamingCommunity extension APK (no Hilt). The host's WARP
+ * loopback proxy is injected per-call via [setClient]; [locale] is set from the
+ * host's provider language preference before each resolve.
  */
-@Singleton
-class ProviderClient @Inject constructor(
-    private val client: OkHttpClient,
-    private val settings: SettingsDataStore
+class ProviderClient(
+    private val client: OkHttpClient
 ) {
     /**
-     * HTTP client used for every request. Swapped to a WARP-proxied client by
-     * [com.streamo.app.provider.ProviderResolver.prepareWARP] when IP-masking is
-     * on, and reset to the direct [client] otherwise. Mirrors iOS `setSession`.
+     * HTTP client used for every request. Swapped to a WARP-proxied client built
+     * around the host's loopback proxy port when IP-masking is on, and reset to
+     * the direct [client] otherwise. Mirrors iOS `setSession`.
      */
     @Volatile
     private var activeClient: OkHttpClient = client
+
+    /** Provider search language (e.g. "it"), set by the resolver per call. */
+    @Volatile
+    var locale: String = "it"
 
     fun setClient(c: OkHttpClient) { activeClient = c }
     fun resetClient() { activeClient = client }
@@ -245,12 +247,6 @@ class ProviderClient @Inject constructor(
 
     // endregion
 
-    // region Locale
-
-    private suspend fun locale(): String = settings.providerLocale.first()
-
-    // endregion
-
     // region Title resolution
 
     suspend fun resolveTitle(
@@ -272,7 +268,7 @@ class ProviderClient @Inject constructor(
         }
 
         // Don't search for unreleased titles
-        if (TVLogic.isFutureDate(releaseDate)) {
+        if (ScDateUtil.isFutureDate(releaseDate)) {
             ProviderDebugLogger.log("resolveTitle: future date ($releaseDate) → unreleased")
             return ProviderResolveTitleOutcome(
                 resolved = null,
@@ -363,7 +359,7 @@ class ProviderClient @Inject constructor(
     private suspend fun search(query: String): List<ProviderSearchTitle>? {
         val base = baseURL() ?: return null
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val url = "$base/${locale()}/search?q=$encoded"
+        val url = "$base/$locale/search?q=$encoded"
         ProviderDebugLogger.log("search: GET $url")
         val (data, contentType) = get(url) ?: return null
         ProviderDebugLogger.log("search: response contentType=$contentType length=${data.length}")
@@ -428,7 +424,7 @@ class ProviderClient @Inject constructor(
     private suspend fun fetchSeason(providerTitleId: Int, slug: String?, seasonNumber: Int): ProviderLoadedSeason? {
         val base = baseURL() ?: return null
         val resolvedSlug = slug?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val url = "$base/${locale()}/titles/$providerTitleId-$resolvedSlug/season-$seasonNumber"
+        val url = "$base/$locale/titles/$providerTitleId-$resolvedSlug/season-$seasonNumber"
         ProviderDebugLogger.log("fetchSeason: GET $url")
         val (data, contentType) = get(url) ?: return null
 
@@ -451,7 +447,7 @@ class ProviderClient @Inject constructor(
         val url = buildString {
             append(base)
             append("/")
-            append(locale())
+            append(locale)
             append("/iframe/")
             append(providerTitleId)
             if (episodeId != null) {

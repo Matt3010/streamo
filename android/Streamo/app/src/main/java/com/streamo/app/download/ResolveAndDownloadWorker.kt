@@ -35,8 +35,7 @@ import androidx.work.WorkerParameters
 import com.streamo.app.MainActivity
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
-import com.streamo.app.provider.ProviderResolver
-import com.streamo.app.provider.VixcloudClient
+import com.streamo.app.provider.ProviderManager
 import com.streamo.app.provider.warp.WarpTunnel
 import com.streamo.app.tmdb.TMDBImage
 import dagger.hilt.EntryPoint
@@ -60,6 +59,21 @@ import okhttp3.OkHttpClient
 private const val TAG = "MediaDownload"
 private const val PROGRESS_INTERVAL_MS = 800L
 
+private val HEADERS_SERIALIZER = kotlinx.serialization.builtins.MapSerializer(
+    kotlinx.serialization.serializer<String>(),
+    kotlinx.serialization.serializer<String>()
+)
+
+private fun encodeHeaders(headers: Map<String, String>): String =
+    kotlinx.serialization.json.Json.encodeToString(HEADERS_SERIALIZER, headers)
+
+private fun decodeHeaders(json: String): Map<String, String> =
+    if (json.isBlank()) emptyMap() else try {
+        kotlinx.serialization.json.Json.decodeFromString(HEADERS_SERIALIZER, json)
+    } catch (_: Exception) {
+        emptyMap()
+    }
+
 @UnstableApi
 class ResolveAndDownloadWorker(
     context: Context,
@@ -69,7 +83,7 @@ class ResolveAndDownloadWorker(
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface WorkerEntryPoint {
-        fun providerResolver(): ProviderResolver
+        fun providerManager(): ProviderManager
         fun repository(): AppRepository
         fun warpTunnel(): WarpTunnel
         fun settings(): SettingsDataStore
@@ -87,7 +101,7 @@ class ResolveAndDownloadWorker(
         }
 
         val repository = entryPoint().repository()
-        val resolver = entryPoint().providerResolver()
+        val provider = entryPoint().providerManager().active
         val warpTunnel = entryPoint().warpTunnel()
         val settings = entryPoint().settings()
 
@@ -146,16 +160,6 @@ class ResolveAndDownloadWorker(
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
 
-        val upstreamFactory: DataSource.Factory = OkHttpDataSource.Factory(baseClient)
-            .setDefaultRequestProperties(VixcloudClient.playbackHeaders)
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-
-        // Wrap in CacheDataSource so cached segments serve from disk.
-        val proxiedCacheFactory = CacheDataSource.Factory()
-            .setCache(DownloadInfrastructure.cache)
-            .setUpstreamDataSourceFactory(upstreamFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
         try {
             val contentId = "${entry.tmdbId}_${entry.mediaType}_${entry.season}_${entry.episode}"
 
@@ -164,28 +168,53 @@ class ResolveAndDownloadWorker(
             // cache key vengono ripresi invece di ricominciare da zero.
             // Solo quando il warp cambia (o non c'é URL salvato) rifacciamo la
             // risoluzione dal provider, perché vixcloud lega il token all'IP.
-            val streamUrl = if (entry.streamUrl.isNotBlank() && entry.warpEnabled == warpEnabled) {
+            // Reuse the saved streamUrl + headers only when WARP is unchanged AND
+            // we have persisted headers (entries from before the headers column
+            // re-resolve once). The provider's playback headers now come over IPC.
+            val (streamUrl, streamHeaders) = if (
+                entry.streamUrl.isNotBlank() && entry.streamHeaders.isNotBlank() &&
+                entry.warpEnabled == warpEnabled
+            ) {
                 Log.d(TAG, "Reusing existing streamUrl (warp unchanged), contentId=${entry.contentId}")
-                entry.streamUrl
+                entry.streamUrl to decodeHeaders(entry.streamHeaders)
             } else {
+                if (provider == null) {
+                    throw IllegalStateException("Nessun provider di streaming installato")
+                }
                 val resolution = if (entry.mediaType == "tv" && entry.season > 0) {
-                    resolver.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
+                    provider.episodeSource(entry.tmdbId, entry.title, null, entry.season, entry.episode.coerceAtLeast(1))
                 } else {
-                    resolver.movieSource(entry.tmdbId, entry.title, null)
+                    provider.movieSource(entry.tmdbId, entry.title, null)
                 }
                 Log.d(TAG, "Resolver returned ${resolution.sources.size} source(s). Message=${resolution.message}")
 
                 if (resolution.sources.isEmpty()) {
                     throw IllegalStateException(resolution.message ?: "Nessuno stream disponibile")
                 }
-                resolution.sources.first().playlistUrl
+                val src = resolution.sources.first()
+                src.playlistUrl to src.headers
             }
             Log.d(TAG, "streamUrl=$streamUrl, contentId=$contentId")
 
-            // Persist the WARP state this streamUrl was resolved under, so the
-            // reuse check above and pickNextPendingDownload prioritization stay
+            // Build the upstream DataSource.Factory now that we have the provider's
+            // playback headers (Referer/Origin/…). vixcloud rejects the default
+            // Accept: */* header, so these are required.
+            val upstreamFactory: DataSource.Factory = OkHttpDataSource.Factory(baseClient)
+                .setDefaultRequestProperties(streamHeaders)
+                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+            // Wrap in CacheDataSource so cached segments serve from disk.
+            val proxiedCacheFactory = CacheDataSource.Factory()
+                .setCache(DownloadInfrastructure.cache)
+                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+            // Persist the WARP state + headers this streamUrl was resolved under, so
+            // the reuse check above and pickNextPendingDownload prioritization stay
             // accurate when the entry was picked under a different WARP than saved.
-            repository.updateDownloadContentStatusAndWarp(downloadId, contentId, streamUrl, "downloading", warpEnabled)
+            repository.updateDownloadContentStatusAndWarp(
+                downloadId, contentId, streamUrl, encodeHeaders(streamHeaders), "downloading", warpEnabled
+            )
             Log.d(TAG, "Room updated to downloading")
 
             // Resolve stream keys for a SINGLE video rendition (+ default audio).

@@ -73,6 +73,10 @@ android {
 }
 
 dependencies {
+    // Shared provider SDK contract (StreamProvider interface + neutral models).
+    // The catalog host depends only on this; concrete providers implement it.
+    implementation(project(":provider-api"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

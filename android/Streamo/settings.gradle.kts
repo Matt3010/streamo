@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Streamo"
 include(":app")
+include(":provider-api")
+include(":provider-streamingcommunity")
