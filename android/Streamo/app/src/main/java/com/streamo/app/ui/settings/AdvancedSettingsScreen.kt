@@ -71,6 +71,7 @@ fun AdvancedSettingsScreen(
     val message by viewModel.message.collectAsState()
     val tmdbKey by viewModel.tmdbApiKey.collectAsState()
     val providerLocale by viewModel.providerLocale.collectAsState()
+    val animeUnityBaseUrl by viewModel.animeUnityBaseUrl.collectAsState()
     val warpEnabled by viewModel.warpEnabled.collectAsState()
     val warpRegistered by viewModel.warpRegistered.collectAsState()
     val warpBusy by viewModel.warpBusy.collectAsState()
@@ -104,6 +105,13 @@ fun AdvancedSettingsScreen(
     LaunchedEffect(providerLocale) {
         val loaded = providerLocale
         if (loaded != null && !isLocaleFocused) localLocale = loaded
+    }
+
+    var localAuUrl by rememberSaveable { mutableStateOf("") }
+    var isAuUrlFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(animeUnityBaseUrl) {
+        val loaded = animeUnityBaseUrl
+        if (loaded != null && !isAuUrlFocused) localAuUrl = loaded
     }
 
     LaunchedEffect(message) {
@@ -248,6 +256,60 @@ fun AdvancedSettingsScreen(
                             "Ripristina \"it\"",
                             style = MaterialTheme.typography.titleSmall,
                             color = if (isDefaultLocale) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
+            // Dominio AnimeUnity
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("AnimeUnity", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = localAuUrl,
+                        onValueChange = {
+                            localAuUrl = it
+                            viewModel.setAnimeUnityBaseUrl(it)
+                        },
+                        label = { Text("Dominio AnimeUnity") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { state -> isAuUrlFocused = state.isFocused }
+                    )
+                    Text(
+                        "Il dominio ruota nel tempo. Lascia il predefinito se non sai cosa cambiare.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val isDefaultAuUrl =
+                        localAuUrl == SettingsViewModel.DEFAULT_ANIMEUNITY_BASE_URL
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isDefaultAuUrl) Color.White.copy(alpha = 0.04f)
+                                else Color.White.copy(alpha = 0.08f)
+                            )
+                            .then(
+                                if (isDefaultAuUrl) Modifier
+                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                            )
+                            .clickable(enabled = !isDefaultAuUrl) {
+                                localAuUrl = SettingsViewModel.DEFAULT_ANIMEUNITY_BASE_URL
+                                viewModel.resetAnimeUnityBaseUrl()
+                            }
+                            .padding(horizontal = 18.dp, vertical = 13.dp)
+                    ) {
+                        Text(
+                            "Ripristina dominio predefinito",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (isDefaultAuUrl) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             else MaterialTheme.colorScheme.error
                         )
                     }

@@ -8,12 +8,15 @@ import com.streamo.app.BuildConfig
 import com.streamo.app.data.backup.BackupManager
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
+import com.streamo.app.download.DownloadInfrastructure
 import com.streamo.app.download.DownloadQualityPref
 import com.streamo.app.download.DownloadQueueManager
 import com.streamo.app.download.ResolveAndDownloadWorker
+import com.streamo.app.provider.anime.AnimeUnityClient
 import com.streamo.app.provider.warp.WarpTunnel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -30,6 +34,7 @@ class SettingsViewModel @Inject constructor(
     private val settings: SettingsDataStore,
     private val warpTunnel: WarpTunnel,
     private val queueManager: DownloadQueueManager,
+    private val animeClient: AnimeUnityClient,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -45,6 +50,10 @@ class SettingsViewModel @Inject constructor(
 
     // null = non ancora caricato: il campo locale evita il flash del default.
     val providerLocale: StateFlow<String?> = settings.providerLocale
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // Dominio AnimeUnity (rotazione dominio): null finché il DataStore non ha caricato.
+    val animeUnityBaseUrl: StateFlow<String?> = settings.animeUnityBaseUrl
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
 
@@ -75,6 +84,14 @@ class SettingsViewModel @Inject constructor(
 
     private val _confirmRecalc = MutableStateFlow(false)
     val confirmRecalc: StateFlow<Boolean> = _confirmRecalc.asStateFlow()
+
+    // Streaming playback cache size (bounded LRU, separate from downloads). TV settings
+    // exposes only this (downloads section is hidden on TV) as a single "Spazio e cache" row.
+    private val _streamingCacheBytes = MutableStateFlow(0L)
+    val streamingCacheBytes: StateFlow<Long> = _streamingCacheBytes.asStateFlow()
+
+    private val _confirmClearStreaming = MutableStateFlow(false)
+    val confirmClearStreaming: StateFlow<Boolean> = _confirmClearStreaming.asStateFlow()
 
     private val _confirmRestoreStep1 = MutableStateFlow(false)
     val confirmRestoreStep1: StateFlow<Boolean> = _confirmRestoreStep1.asStateFlow()
@@ -108,6 +125,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         computeStats()
+        refreshStreamingCache()
         viewModelScope.launch {
             settings.autoDeleteWatched.collect { _autoDeleteWatched.value = it }
         }
@@ -169,6 +187,24 @@ class SettingsViewModel @Inject constructor(
     fun resetProviderLocale() {
         viewModelScope.launch {
             settings.setProviderLocale("it")
+        }
+    }
+
+    fun setAnimeUnityBaseUrl(value: String) {
+        viewModelScope.launch {
+            val trimmed = value.trim()
+            if (trimmed.isNotBlank()) settings.setAnimeUnityBaseUrl(trimmed)
+            // Nuovo dominio = nuova sessione (CSRF/cookie vecchi non validi).
+            animeClient.invalidateBaseURL()
+            animeClient.invalidateSession()
+        }
+    }
+
+    fun resetAnimeUnityBaseUrl() {
+        viewModelScope.launch {
+            settings.setAnimeUnityBaseUrl(SettingsViewModel.DEFAULT_ANIMEUNITY_BASE_URL)
+            animeClient.invalidateBaseURL()
+            animeClient.invalidateSession()
         }
     }
 
@@ -361,6 +397,41 @@ class SettingsViewModel @Inject constructor(
         _message.value = null
     }
 
+    fun showClearStreamingDialog() {
+        refreshStreamingCache()
+        _confirmClearStreaming.value = true
+    }
+
+    fun dismissClearStreamingDialog() {
+        _confirmClearStreaming.value = false
+    }
+
+    fun clearStreamingCache() {
+        _confirmClearStreaming.value = false
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val cache = DownloadInfrastructure.playbackCache
+                // Snapshot before mutating: removeSpan mutates the span set mid-iteration.
+                cache.keys.toList().forEach { key ->
+                    cache.getCachedSpans(key).toList().forEach { span ->
+                        runCatching { cache.removeSpan(span) }
+                    }
+                }
+            }
+            refreshStreamingCache()
+        }
+    }
+
+    /** Re-read the playback cache size from disk. */
+    fun refreshStreamingCache() {
+        viewModelScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { DownloadInfrastructure.playbackCache.cacheSpace }.getOrDefault(0L)
+            }
+            _streamingCacheBytes.value = bytes
+        }
+    }
+
     private fun computeStats() {
         viewModelScope.launch {
             val progressList = repository.progress().first()
@@ -373,5 +444,9 @@ class SettingsViewModel @Inject constructor(
                 "$minutes min guardati"
             }
         }
+    }
+
+    companion object {
+        const val DEFAULT_ANIMEUNITY_BASE_URL = "https://www.animeunity.so"
     }
 }

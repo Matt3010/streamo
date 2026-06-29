@@ -21,6 +21,10 @@ class ContinueWatchingViewModel @Inject constructor(
     val items: StateFlow<List<ProgressEntry>> = repository.progress()
         .map { list ->
             list
+                // Gli anime (mediaType == "anime") vivono nel tab Anime dedicato:
+                // i loro poster sono URL assoluti AnimeUnity e il resume passa per
+                // AnimeDetail/Player con episodeId, non compatibili con questo screen.
+                .filter { it.mediaType != "anime" }
                 .groupBy { it.tmdbId to it.mediaType }
                 .map { (_, entries) -> entries.maxByOrNull { it.updatedAt }!! }
                 .filter { entry ->

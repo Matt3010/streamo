@@ -41,6 +41,9 @@ class SettingsDataStore @Inject constructor(
         private val WARP_ENABLED = booleanPreferencesKey("warp_enabled")
         private val WARP_REGISTERED = booleanPreferencesKey("warp_registered")
         private val WARP_CONFIG = stringPreferencesKey("warp_config")
+        private val SEARCH_SORT_FIELD = stringPreferencesKey("search_sort_field")
+        private val SEARCH_SORT_ORDER = stringPreferencesKey("search_sort_order")
+        private val ANIMEUNITY_BASE_URL = stringPreferencesKey("animeunity_base_url")
 
         val defaultAccent = Triple(0.898f, 0.035f, 0.078f)
     }
@@ -120,6 +123,34 @@ class SettingsDataStore @Inject constructor(
     }
 
     // endregion
+
+    // --- Preferenze ordinamento sezione Cerca ---
+    // Token grezzi: field = "POPULARITY"|"RATING"|"VOTE_COUNT"|"YEAR"; order = "asc"|"desc".
+    val searchSortField: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SEARCH_SORT_FIELD] ?: "POPULARITY"
+    }
+
+    val searchSortOrder: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SEARCH_SORT_ORDER] ?: "DESC"
+    }
+
+    suspend fun setSearchSort(field: String, order: String) {
+        context.dataStore.edit {
+            it[SEARCH_SORT_FIELD] = field
+            it[SEARCH_SORT_ORDER] = order
+        }
+    }
+
+    // --- Dominio AnimeUnity ---
+    // AnimeUnity ruota dominio; questo è il primario corrente, sovrascrivibile
+    // da Impostazioni avanzate se si sposta. Default https://www.animeunity.so.
+    val animeUnityBaseUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[ANIMEUNITY_BASE_URL] ?: "https://www.animeunity.so"
+    }
+
+    suspend fun setAnimeUnityBaseUrl(value: String) {
+        context.dataStore.edit { it[ANIMEUNITY_BASE_URL] = value }
+    }
 
     val autoDeleteWatched: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[AUTO_DELETE_WATCHED] ?: false

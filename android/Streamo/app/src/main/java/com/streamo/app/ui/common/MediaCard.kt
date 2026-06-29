@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +47,7 @@ fun MediaCard(
     year: Int? = null,
     rating: Double? = null,
     showInfo: Boolean = true,
+    overlayContent: @Composable BoxScope.() -> Unit = {},
     onClick: () -> Unit = {}
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -114,6 +116,8 @@ fun MediaCard(
                     .fillMaxSize()
                     .background(Color.White.copy(alpha = tintAlpha))
             )
+            // Overlay caller (badge ITA, ecc.) — dentro il poster clippato.
+            overlayContent()
         }
         if (showInfo) {
             Column(

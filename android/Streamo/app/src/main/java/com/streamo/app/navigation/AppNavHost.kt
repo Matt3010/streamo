@@ -20,6 +20,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.streamo.app.ui.anime.AnimeDetailScreen
+import com.streamo.app.ui.anime.AnimeScreen
 import com.streamo.app.ui.continuewatching.ContinueWatchingScreen
 import com.streamo.app.ui.detail.DetailScreen
 import com.streamo.app.ui.downloads.DownloadsScreen
@@ -30,6 +32,7 @@ import com.streamo.app.ui.player.PlayerScreen
 import com.streamo.app.ui.search.SearchScreen
 import com.streamo.app.ui.sectionlist.SectionListScreen
 import com.streamo.app.ui.settings.AdvancedSettingsScreen
+import com.streamo.app.ui.settings.CacheManagementScreen
 import com.streamo.app.ui.settings.LogViewerScreen
 import com.streamo.app.ui.settings.SettingsScreen
 import com.streamo.app.ui.watchlist.WatchlistScreen
@@ -105,6 +108,33 @@ fun AppNavHost(
                 }
             )
         }
+        composable<NavRoutes.Anime> {
+            AnimeScreen(
+                onNavigateToDetail = { anime ->
+                    navController.navigate(
+                        NavRoutes.AnimeDetail(
+                            animeId = anime.id,
+                            slug = anime.slug,
+                            title = anime.displayTitle,
+                            poster = anime.imageurl,
+                            type = anime.type,
+                            year = anime.year ?: 0,
+                            status = anime.status,
+                            dub = anime.dub ?: 0,
+                            plot = anime.plot
+                        )
+                    )
+                }
+            )
+        }
+        composable<NavRoutes.AnimeDetail>(
+            enterTransition = { detailEnterTransition() },
+            exitTransition = { detailExitTransition() },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = { fadeOut(tween(200)) }
+        ) {
+            AnimeDetailScreen(onBack = { navController.popBackStack() })
+        }
         composable<NavRoutes.Detail>(
             enterTransition = { detailEnterTransition() },
             exitTransition = { detailExitTransition() },
@@ -128,7 +158,13 @@ fun AppNavHost(
         composable<NavRoutes.Settings> {
             SettingsScreen(
                 onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings()) },
+                onNavigateToCacheManagement = { navController.navigate(NavRoutes.CacheManagement) },
                 onNavigateToDebugLogs = { navController.navigate(NavRoutes.DebugLogs) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable<NavRoutes.CacheManagement> {
+            CacheManagementScreen(
                 onBack = { navController.popBackStack() }
             )
         }
@@ -219,6 +255,7 @@ fun AppNavHost(
 private val tabOrder = listOf(
     NavRoutes.Home::class,
     NavRoutes.Search::class,
+    NavRoutes.Anime::class,
     NavRoutes.Watchlist::class
 )
 

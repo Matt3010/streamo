@@ -21,12 +21,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
@@ -90,10 +92,11 @@ private sealed class RailTab(
 ) {
     data object Home : RailTab(NavRoutes.Home, "Home", Icons.Filled.Home, Icons.Outlined.Home)
     data object Search : RailTab(NavRoutes.Search, "Cerca", Icons.Filled.Search, Icons.Outlined.Search)
+    data object Anime : RailTab(NavRoutes.Anime, "Anime", Icons.Filled.Animation, Icons.Outlined.Animation)
     data object Watchlist : RailTab(NavRoutes.Watchlist, "Lista", Icons.Filled.Bookmark, Icons.Outlined.Bookmark)
 }
 
-private val railTabs = listOf(RailTab.Home, RailTab.Search, RailTab.Watchlist)
+private val railTabs = listOf(RailTab.Home, RailTab.Search, RailTab.Anime, RailTab.Watchlist)
 
 /**
  * Tablet shell: si adatta all'orientamento del device.

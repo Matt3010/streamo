@@ -25,7 +25,7 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val client: TMDBClient,
     private val repository: AppRepository,
-    settings: SettingsDataStore
+    private val settings: SettingsDataStore
 ) : ViewModel() {
 
     val showCardInfo: StateFlow<Boolean> = settings.showCardInfo
@@ -60,6 +60,14 @@ class SearchViewModel @Inject constructor(
     var isSearchFieldFocused by mutableStateOf(false)
         private set
 
+    // Ordinamento (persistito in SettingsDataStore). Usato sia come snapshot per
+    // fetch/applySort sia come stato osservato dalla UI per evidenziare il chip.
+    var sortField by mutableStateOf(SortField.POPULARITY)
+        private set
+
+    var sortOrder by mutableStateOf(SortOrder.DESC)
+        private set
+
     private var currentPage = 1
     private var searchJob: Job? = null
 
@@ -82,6 +90,12 @@ class SearchViewModel @Inject constructor(
                 availableGenres.clear()
                 availableGenres.addAll(genres)
             } catch (_: Exception) { }
+        }
+        viewModelScope.launch {
+            settings.searchSortField.collect { sortField = SortField.fromKey(it) }
+        }
+        viewModelScope.launch {
+            settings.searchSortOrder.collect { sortOrder = SortOrder.fromKey(it) }
         }
     }
 
@@ -121,6 +135,7 @@ class SearchViewModel @Inject constructor(
             }
             results.addAll(found)
             hasMore = found.isNotEmpty()
+            applySort()
             isSearching = false
         }
     }
@@ -155,6 +170,30 @@ class SearchViewModel @Inject constructor(
         reSearch()
     }
 
+    /** Cambia ordinamento: persiste in DataStore e applica. Text-search → riordina gli
+     *  elementi già caricati (TMDB search non supporta `sort_by`); browse → re-fetch
+     *  con nuovo `sort_by` server-side; nessun risultato → aggiorna solo la preferenza. */
+    fun onSortChange(field: SortField, order: SortOrder) {
+        if (sortField == field && sortOrder == order) return
+        sortField = field
+        sortOrder = order
+        viewModelScope.launch { settings.setSearchSort(field.name, order.name) }
+        val trimmed = query.trim()
+        when {
+            trimmed.length >= 2 -> applySort()
+            hasActiveFilters() -> reSearch()
+        }
+    }
+
+    /** Riordina `results` in-place (nulls-last). Usato per il path text-search e per
+     *  applicare un cambio di sort senza re-fetch quando la query è attiva. */
+    private fun applySort() {
+        if (results.isEmpty()) return
+        val sorted = sortItems(results.toList(), sortField, sortOrder)
+        results.clear()
+        results.addAll(sorted)
+    }
+
     private fun hasActiveFilters(): Boolean {
         return mediaTypeFilter != "all" || selectedGenreIds.isNotEmpty()
     }
@@ -186,6 +225,7 @@ class SearchViewModel @Inject constructor(
             }
             results.addAll(found)
             hasMore = found.isNotEmpty()
+            applySort()
             isSearching = false
         }
     }
@@ -226,6 +266,7 @@ class SearchViewModel @Inject constructor(
                 hasMore = false
             } else {
                 results.addAll(found)
+                if (trimmed.length >= 2) applySort()
             }
             isSearching = false
         }
@@ -234,20 +275,42 @@ class SearchViewModel @Inject constructor(
     private suspend fun browse(page: Int): List<TmdbItem> {
         val genreFilter = selectedGenreIds.toSet().takeIf { it.isNotEmpty() }
         return when (mediaTypeFilter) {
-            "movie" -> client.browseMovies(page = page, genreIds = genreFilter)
-            "tv" -> client.browseTv(page = page, genreIds = genreFilter)
+            "movie" -> client.browseMovies(
+                page = page,
+                genreIds = genreFilter,
+                sortBy = sortKey(sortField, sortOrder, "movie")
+            )
+            "tv" -> client.browseTv(
+                page = page,
+                genreIds = genreFilter,
+                sortBy = sortKey(sortField, sortOrder, "tv")
+            )
             else -> {
-                // "all": discover entrambi e merge
-                val movies = client.browseMovies(page = page, genreIds = genreFilter)
-                val tv = client.browseTv(page = page, genreIds = genreFilter)
-                val merged = movies + tv
-                if (genreFilter != null) {
-                    merged.filter { item ->
+                // "all": discover entrambi (ciascuno sortato server-side con la sua
+                // sortKey) e merge. Il mix "all" senza generi mantiene il random del
+                // default (popolarità desc) per UX; con altro sort si ordina client-side.
+                val movies = client.browseMovies(
+                    page = page,
+                    genreIds = genreFilter,
+                    sortBy = sortKey(sortField, sortOrder, "movie")
+                )
+                val tv = client.browseTv(
+                    page = page,
+                    genreIds = genreFilter,
+                    sortBy = sortKey(sortField, sortOrder, "tv")
+                )
+                val merged = if (genreFilter != null) {
+                    (movies + tv).filter { item ->
                         item.genreIds?.any { it in genreFilter } == true
                     }
                 } else {
-                    merged
-                }.shuffled()
+                    movies + tv
+                }
+                if (sortField == SortField.POPULARITY && sortOrder == SortOrder.DESC && genreFilter == null) {
+                    merged.shuffled()
+                } else {
+                    sortItems(merged, sortField, sortOrder)
+                }
             }
         }
     }

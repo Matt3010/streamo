@@ -18,6 +18,8 @@ import com.streamo.app.ui.tv.search.TvSearchScreen
 import com.streamo.app.ui.tv.sectionlist.TvSectionListScreen
 import com.streamo.app.ui.tv.settings.TvLogViewerScreen
 import com.streamo.app.ui.tv.settings.TvSettingsScreen
+import com.streamo.app.ui.tv.anime.TvAnimeScreen
+import com.streamo.app.ui.tv.anime.TvAnimeDetailScreen
 
 /**
  * TV navigation host. Mirrors [com.streamo.app.navigation.AppNavHost] but maps
@@ -74,6 +76,30 @@ fun TvAppNavHost(
                     onNavigateToPlayer = { tmdbId, mediaType, season, episode, title, poster, releaseDate ->
                         navController.navigate(NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate))
                     }
+                )
+            }
+            composable<NavRoutes.Anime> {
+                TvAnimeScreen(
+                    onNavigateToDetail = { anime ->
+                        navController.navigate(
+                            NavRoutes.AnimeDetail(
+                                animeId = anime.id,
+                                slug = anime.slug,
+                                title = anime.displayTitle,
+                                poster = anime.imageurl,
+                                type = anime.type,
+                                year = anime.year ?: 0,
+                                status = anime.status,
+                                dub = anime.dub ?: 0,
+                                plot = anime.plot
+                            )
+                        )
+                    }
+                )
+            }
+            composable<NavRoutes.AnimeDetail> {
+                TvAnimeDetailScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable<NavRoutes.Detail> {

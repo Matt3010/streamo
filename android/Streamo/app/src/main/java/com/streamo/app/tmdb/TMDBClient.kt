@@ -115,17 +115,25 @@ class TMDBClient @Inject constructor(
         return merged
     }
 
-    suspend fun browseMovies(page: Int = 1, genreIds: Collection<Int>? = null): List<TmdbItem> {
+    suspend fun browseMovies(
+        page: Int = 1,
+        genreIds: Collection<Int>? = null,
+        sortBy: String = "popularity.desc"
+    ): List<TmdbItem> {
         val withGenres = genreIds?.joinToString(",")?.takeIf { it.isNotEmpty() }
-        return api.discoverMovie(apiKey = apiKey(), page = page, withGenres = withGenres)
+        return api.discoverMovie(apiKey = apiKey(), page = page, withGenres = withGenres, sortBy = sortBy)
             .results.orEmpty()
             .filter { it.genreIds?.contains(99) != true }
             .map { it.copy(mediaType = "movie") }
     }
 
-    suspend fun browseTv(page: Int = 1, genreIds: Collection<Int>? = null): List<TmdbItem> {
+    suspend fun browseTv(
+        page: Int = 1,
+        genreIds: Collection<Int>? = null,
+        sortBy: String = "popularity.desc"
+    ): List<TmdbItem> {
         val withGenres = genreIds?.joinToString(",")?.takeIf { it.isNotEmpty() }
-        return api.discoverTv(apiKey = apiKey(), page = page, withGenres = withGenres)
+        return api.discoverTv(apiKey = apiKey(), page = page, withGenres = withGenres, sortBy = sortBy)
             .results.orEmpty()
             .filter { it.genreIds?.contains(99) != true }
             .map { it.copy(mediaType = "tv") }

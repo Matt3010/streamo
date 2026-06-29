@@ -112,6 +112,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             repository.progress().collect { list ->
                 _progress.value = list
+                    // Gli anime (mediaType == "anime") hanno poster assoluti AnimeUnity
+                    // e il loro "Continua a guardare" vive nel tab Anime dedicato.
+                    .filter { it.mediaType != "anime" }
                     .groupBy { it.tmdbId to it.mediaType }
                     .map { (_, entries) -> entries.maxByOrNull { it.updatedAt }!! }
                     .filter { entry ->

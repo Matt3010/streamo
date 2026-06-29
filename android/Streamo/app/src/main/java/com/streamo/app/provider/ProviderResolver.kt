@@ -3,6 +3,7 @@ package com.streamo.app.provider
 import com.streamo.app.data.local.entity.ProviderMappingEntity
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.repository.AppRepository
+import com.streamo.app.provider.anime.AnimeUnityClient
 import com.streamo.app.provider.warp.WarpTunnel
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -20,6 +21,7 @@ import javax.inject.Singleton
 class ProviderResolver @Inject constructor(
     private val provider: ProviderClient,
     private val vix: VixcloudClient,
+    private val animeClient: AnimeUnityClient,
     private val repository: AppRepository,
     private val warpTunnel: WarpTunnel,
     private val settings: SettingsDataStore
@@ -46,6 +48,7 @@ class ProviderResolver @Inject constructor(
         if (!enabled || !warpTunnel.isAvailable) {
             provider.resetClient()
             vix.resetClient()
+            animeClient.resetClient()
             return false
         }
         val proxied = if (warpTunnel.start()) warpTunnel.proxiedClient() else null
@@ -53,10 +56,12 @@ class ProviderResolver @Inject constructor(
             ProviderDebugLogger.log("ProviderResolver.prepareWARP: tunnel not ready → direct")
             provider.resetClient()
             vix.resetClient()
+            animeClient.resetClient()
             return false
         }
         provider.setClient(proxied)
         vix.setClient(proxied)
+        animeClient.setClient(proxied)
         ProviderDebugLogger.log("ProviderResolver.prepareWARP: routing through WARP proxy")
         return true
     }
@@ -171,6 +176,40 @@ class ProviderResolver @Inject constructor(
             }
         val embed = provider.episodeEmbed(resolved.id, resolved.slug, season, episode)
         return finalize(embed, resolved, outcome.candidates, useProxy)
+    }
+
+    /**
+     * Resolve an AnimeUnity episode to playable HLS sources. Anime has its own
+     * native catalog (no TMDB title search): go straight from the AnimeUnity
+     * episode id to a vixcloud embed URL, then reuse [VixcloudClient] exactly
+     * like the TMDB path. Port of iOS `ProviderResolver.animeSource`.
+     */
+    suspend fun animeSource(animeId: Int, slug: String?, episodeId: Int): PlaybackResolution {
+        ProviderDebugLogger.log("ProviderResolver.animeSource: animeId=$animeId slug=$slug episodeId=$episodeId")
+        val useProxy = prepareWARP()
+        return try {
+            val embedUrl = animeClient.embedURL(episodeId = episodeId, animeId = animeId, slug = slug)
+            val sources = vix.playbackSources(embedUrl)
+            ProviderDebugLogger.log("ProviderResolver.animeSource: got ${sources.size} playable sources")
+            PlaybackResolution(
+                sources = sources,
+                reason = null,
+                message = null,
+                providerTitle = null,
+                candidates = emptyList(),
+                viaProxy = useProxy
+            )
+        } catch (e: Exception) {
+            ProviderDebugLogger.logError("ProviderResolver.animeSource: failed", e)
+            PlaybackResolution(
+                sources = emptyList(),
+                reason = ProviderResolveFailureReason.TEMPORARILY_UNAVAILABLE,
+                message = e.message ?: "Riproduzione non disponibile.",
+                providerTitle = null,
+                candidates = emptyList(),
+                viaProxy = useProxy
+            )
+        }
     }
 
     private suspend fun finalize(

@@ -5,6 +5,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -19,13 +20,31 @@ import java.util.concurrent.TimeUnit
 @UnstableApi
 object DownloadInfrastructure {
 
+    // Cap for the streaming playback cache. Streaming only needs a short
+    // seek-back window; an LRU evictor keeps recent segments and drops the oldest
+    // once this cap is reached. This is what prevents a long online playback from
+    // filling device storage — the exact failure seen on a low-storage Firestick,
+    // where every segment of a 2h movie used to accumulate on disk forever.
+    private const val PLAYBACK_CACHE_MAX_BYTES = 300L * 1024L * 1024L
+
     private var _cache: SimpleCache? = null
+    private var _playbackCache: SimpleCache? = null
     private var _downloadManager: DownloadManager? = null
     private var _cacheDataSourceFactory: CacheDataSource.Factory? = null
     private var _httpDataSourceFactory: DataSource.Factory? = null
 
     val cache: SimpleCache
         get() = _cache ?: error("DownloadInfrastructure not initialized. Call initialize() first.")
+
+    /**
+     * Bounded LRU cache used for online (streaming) playback. Distinct from [cache]
+     * (the download store): the download cache uses a NoOp evictor so offline content
+     * is never dropped, while this one evicts the oldest segments to stay within
+     * [PLAYBACK_CACHE_MAX_BYTES]. Lives in the system-clearable cache directory, so
+     * the OS can reclaim it under storage pressure.
+     */
+    val playbackCache: SimpleCache
+        get() = _playbackCache ?: error("DownloadInfrastructure not initialized. Call initialize() first.")
 
     val downloadManager: DownloadManager
         get() = _downloadManager ?: error("DownloadInfrastructure not initialized. Call initialize() first.")
@@ -77,6 +96,16 @@ object DownloadInfrastructure {
             .setCache(_cache!!)
             .setUpstreamDataSourceFactory(_httpDataSourceFactory!!)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        // Bounded playback cache for streaming (NOT downloads). Separate store so a
+        // long movie cannot fill the device: the LRU evictor caps it at
+        // PLAYBACK_CACHE_MAX_BYTES, dropping the oldest segments as new ones arrive.
+        // cacheDir is system-clearable, fitting for ephemeral streaming content.
+        val playbackCacheDir = File(context.cacheDir, "streamo_playback").apply { mkdirs() }
+        _playbackCache = SimpleCache(
+            playbackCacheDir,
+            LeastRecentlyUsedCacheEvictor(PLAYBACK_CACHE_MAX_BYTES)
+        )
 
         // One download at a time to preserve bandwidth and provider rate-limits
         val downloadExecutor = Executors.newFixedThreadPool(1)

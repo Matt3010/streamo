@@ -39,6 +39,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.BuildConfig
 import com.streamo.app.R
 import com.streamo.app.ui.common.AmbientBackground
+import com.streamo.app.ui.downloads.formatBytes
 import com.streamo.app.ui.settings.SettingsViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
 
@@ -59,6 +60,8 @@ fun TvSettingsScreen(
     val stats by viewModel.stats.collectAsState()
     val message by viewModel.message.collectAsState()
     val confirmRecalc by viewModel.confirmRecalc.collectAsState()
+    val streamingBytes by viewModel.streamingCacheBytes.collectAsState()
+    val confirmClearStreaming by viewModel.confirmClearStreaming.collectAsState()
 
     var showStreamingPicker by remember { mutableStateOf(false) }
 
@@ -171,6 +174,64 @@ fun TvSettingsScreen(
         }
     }
 
+    // Clear streaming cache confirmation dialog
+    if (confirmClearStreaming) {
+        TvSettingsDialog(
+            title = "Svuotare la cache streaming?",
+            onDismiss = { viewModel.dismissClearStreamingDialog() }
+        ) {
+            Text(
+                text = "Verranno rimossi i segmenti della riproduzione online (${formatBytes(streamingBytes)}).",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TvFocusable(
+                    onClick = { viewModel.dismissClearStreamingDialog() },
+                    modifier = Modifier.weight(1f)
+                ) { focused ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f))
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Annulla",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (focused) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                TvFocusable(
+                    onClick = { viewModel.clearStreamingCache() },
+                    modifier = Modifier.weight(1f)
+                ) { focused ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (focused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Svuota",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -252,6 +313,12 @@ fun TvSettingsScreen(
             label = "Ricalcola libreria",
             value = "Rimuove progressi orfani",
             onClick = { viewModel.showRecalcDialog() }
+        )
+
+        SettingsValueRow(
+            label = "Spazio e cache",
+            value = "Streaming: ${formatBytes(streamingBytes)}",
+            onClick = { viewModel.showClearStreamingDialog() }
         )
 
         if (stats.isNotBlank()) {

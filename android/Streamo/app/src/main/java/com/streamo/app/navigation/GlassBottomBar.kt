@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
@@ -66,10 +68,11 @@ internal sealed class Tab(
 ) {
     data object Home : Tab(NavRoutes.Home, "Home", Icons.Filled.Home, Icons.Outlined.Home)
     data object Search : Tab(NavRoutes.Search, "Cerca", Icons.Filled.Search, Icons.Outlined.Search)
+    data object Anime : Tab(NavRoutes.Anime, "Anime", Icons.Filled.Animation, Icons.Outlined.Animation)
     data object Watchlist : Tab(NavRoutes.Watchlist, "Lista", Icons.Filled.Bookmark, Icons.Outlined.Bookmark)
 }
 
-internal val tabs = listOf(Tab.Home, Tab.Search, Tab.Watchlist)
+internal val tabs = listOf(Tab.Home, Tab.Search, Tab.Anime, Tab.Watchlist)
 
 /**
  * Bottom bar in stile "glass": pillola flottante semitrasparente con bordo

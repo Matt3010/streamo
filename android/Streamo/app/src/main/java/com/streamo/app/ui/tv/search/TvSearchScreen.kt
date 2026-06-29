@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Badge
@@ -56,6 +57,8 @@ import com.streamo.app.data.remote.dto.TmdbGenre
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.search.SearchViewModel
+import com.streamo.app.ui.search.SortField
+import com.streamo.app.ui.search.SortOrder
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.TvMediaCard
 
@@ -71,6 +74,7 @@ fun TvSearchScreen(
     val searchFieldFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
     var showGenrePicker by remember { mutableStateOf(false) }
+    var showSortPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         searchFieldFocusRequester.requestFocus()
@@ -107,10 +111,13 @@ fun TvSearchScreen(
             selectedGenreIds = viewModel.selectedGenreIds,
             selectedGenreNames = viewModel.selectedGenreNames,
             availableGenres = viewModel.availableGenres,
+            sortField = viewModel.sortField,
+            sortOrder = viewModel.sortOrder,
             onMediaTypeChange = viewModel::onMediaTypeFilterChange,
             onToggleGenre = viewModel::toggleGenre,
             onClearGenres = viewModel::clearGenreFilters,
-            onOpenGenrePicker = { showGenrePicker = true }
+            onOpenGenrePicker = { showGenrePicker = true },
+            onOpenSortPicker = { showSortPicker = true }
         )
 
         if (viewModel.results.isEmpty() && !viewModel.isSearching && viewModel.query.isBlank()) {
@@ -184,6 +191,15 @@ fun TvSearchScreen(
             onDismiss = { showGenrePicker = false }
         )
     }
+
+    if (showSortPicker) {
+        TvSortPickerDialog(
+            field = viewModel.sortField,
+            order = viewModel.sortOrder,
+            onSortChange = viewModel::onSortChange,
+            onDismiss = { showSortPicker = false }
+        )
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -196,10 +212,13 @@ private fun TvFilterBar(
     selectedGenreIds: List<Int>,
     selectedGenreNames: List<String>,
     availableGenres: List<TmdbGenre>,
+    sortField: SortField,
+    sortOrder: SortOrder,
     onMediaTypeChange: (String) -> Unit,
     onToggleGenre: (Int) -> Unit,
     onClearGenres: () -> Unit,
-    onOpenGenrePicker: () -> Unit
+    onOpenGenrePicker: () -> Unit,
+    onOpenSortPicker: () -> Unit
 ) {
     Column(modifier = Modifier.padding(vertical = 4.dp)) {
         Row(
@@ -228,6 +247,12 @@ private fun TvFilterBar(
                 )
             }
 
+            TvSortButton(
+                field = sortField,
+                order = sortOrder,
+                onClick = onOpenSortPicker
+            )
+
             TvFilterButton(
                 selectedCount = selectedGenreIds.size,
                 onClick = onOpenGenrePicker
@@ -241,6 +266,126 @@ private fun TvFilterBar(
                 onToggleGenre = onToggleGenre,
                 modifier = Modifier.padding(top = 8.dp)
             )
+        }
+    }
+}
+
+/** Bottone ordinamento TV: capsula focusable con icona Sort + campo + freccia direzione. */
+@Composable
+private fun TvSortButton(
+    field: SortField,
+    order: SortOrder,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TvFocusable(
+        onClick = onClick,
+        modifier = modifier
+    ) { focused ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .height(44.dp)
+                .clip(RoundedCornerShape(50))
+                .background(
+                    if (focused) Color.White.copy(alpha = 0.18f)
+                    else Color.White.copy(alpha = 0.08f)
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                .padding(horizontal = 16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Sort,
+                contentDescription = "Ordina per ${field.label}, ${order.label}",
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = field.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+private fun TvSortPickerDialog(
+    field: SortField,
+    order: SortOrder,
+    onSortChange: (SortField, SortOrder) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 400.dp, max = 700.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1A1A1A))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Ordina per",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            FlowRow(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SortField.entries.forEach { f ->
+                    TvGenreChip(
+                        label = f.label,
+                        selected = field == f,
+                        onClick = { onSortChange(f, order) }
+                    )
+                }
+            }
+
+            Text(
+                text = "Direzione",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SortOrder.entries.forEach { o ->
+                    TvGenreChip(
+                        label = o.label,
+                        selected = order == o,
+                        onClick = { onSortChange(field, o) }
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
+            ) {
+                TvFocusable(onClick = onDismiss) { focused ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (focused) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            )
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "Chiudi",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
         }
     }
 }

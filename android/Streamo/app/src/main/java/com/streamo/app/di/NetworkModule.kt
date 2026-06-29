@@ -6,6 +6,9 @@ import com.google.gson.GsonBuilder
 import com.streamo.app.BuildConfig
 import com.streamo.app.data.preferences.SettingsDataStore
 import com.streamo.app.data.remote.TMDBApi
+import com.streamo.app.provider.anime.AnimeUnityClient
+import com.streamo.app.provider.anime.AnimeUnityCookieJar
+import com.streamo.app.provider.anime.AnimeUnityHttpClient
 import com.streamo.app.tmdb.TMDBClient
 import dagger.Module
 import dagger.Provides
@@ -64,4 +67,38 @@ object NetworkModule {
     fun provideTMDBClient(api: TMDBApi, settings: SettingsDataStore): TMDBClient {
         return TMDBClient(api, settings)
     }
+
+    // --- AnimeUnity (catalogo nativo, separato da TMDB) ---
+
+    /** Cookie jar condiviso fra il client diretto e quello proxato WARP: il
+     *  cookie `animeunity_session` (pair del token CSRF) deve sopravvivere allo
+     *  swap del client sottostante. */
+    @Provides
+    @Singleton
+    fun provideAnimeUnityCookieJar(): AnimeUnityCookieJar = AnimeUnityCookieJar()
+
+    @Provides
+    @Singleton
+    @AnimeUnityHttpClient
+    fun provideAnimeUnityOkHttp(cookieJar: AnimeUnityCookieJar): OkHttpClient {
+        val logging = HttpLoggingInterceptor().apply {
+            // BASIC: i body POST AnimeUnity possono contenere token; non loggarli interi.
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+            else HttpLoggingInterceptor.Level.NONE
+        }
+        return OkHttpClient.Builder()
+            .cookieJar(cookieJar)
+            .addInterceptor(logging)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAnimeUnityClient(
+        @AnimeUnityHttpClient client: OkHttpClient,
+        cookieJar: AnimeUnityCookieJar,
+        settings: SettingsDataStore
+    ): AnimeUnityClient = AnimeUnityClient(client, cookieJar, settings)
 }

@@ -53,6 +53,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,6 +85,9 @@ class PlayerViewModel @Inject constructor(
     val title: String = savedStateHandle["title"] ?: ""
     val poster: String? = savedStateHandle["poster"]
     private val releaseDate: String? = savedStateHandle["releaseDate"]
+    // Anime (AnimeUnity): id anime in tmdbId, episodeId AnimeUnity + slug per Referer embed.
+    private val animeEpisodeId: Int = savedStateHandle["animeEpisodeId"] ?: 0
+    private val animeSlug: String? = savedStateHandle["animeSlug"]
 
     val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context).apply {
         setParameters(
@@ -459,10 +463,11 @@ class PlayerViewModel @Inject constructor(
                     _duration.value = player.duration.coerceAtLeast(0L)
                     _loading.value = false
                     refreshAvailableTracks()
-                    // Resume playback after manual seek once decoder is ready
-                    // (Overlay is cleared by the fixed delay in seekTo, not here,
-                    // to avoid showing the first decoded frame which can be corrupted.)
-                    if (!_seekingManually.value && !player.isPlaying) {
+                    // Resume playback after manual seek once decoder is ready.
+                    // Proteggiamo anche da isScrubbing: durante lo scrub TV il player
+                    // deve restare in pausa congelato; un vecchio job non deve riportarlo
+                    // in play a metà pressione.
+                    if (!_seekingManually.value && !isScrubbing && !player.isPlaying) {
                         player.play()
                     }
                     // Fetch skip segments once the item is seekable and duration is known.
@@ -658,10 +663,13 @@ class PlayerViewModel @Inject constructor(
                 pauseDownloadsForStreaming()
 
                 // Online: resolve stream URL via the provider pipeline
-                val resolution = if (mediaType == "tv" && season > 0) {
-                    resolver.episodeSource(tmdbId, title, releaseDate, season, episode)
-                } else {
-                    resolver.movieSource(tmdbId, title, releaseDate)
+                val resolution = when {
+                    mediaType == "anime" ->
+                        resolver.animeSource(tmdbId, animeSlug, animeEpisodeId)
+                    mediaType == "tv" && season > 0 ->
+                        resolver.episodeSource(tmdbId, title, releaseDate, season, episode)
+                    else ->
+                        resolver.movieSource(tmdbId, title, releaseDate)
                 }
 
                 if (resolution.sources.isEmpty()) {
@@ -757,9 +765,12 @@ class PlayerViewModel @Inject constructor(
             }
 
             // Use CacheDataSource.Factory: cached segments are served from disk,
-            // network requests fall through to the upstream factory.
+            // network requests fall through to the upstream factory. Stream into the
+            // bounded playbackCache (LRU-capped) — NOT the download cache, which uses a
+            // NoOp evictor and would accumulate every segment of a long movie on disk
+            // until the device runs out of storage (seen on low-storage Firestick).
             CacheDataSource.Factory()
-                .setCache(DownloadInfrastructure.cache)
+                .setCache(DownloadInfrastructure.playbackCache)
                 .setUpstreamDataSourceFactory(upstreamFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         }
@@ -801,9 +812,22 @@ class PlayerViewModel @Inject constructor(
         _playbackSpeed.value = speed
     }
 
+    /** Gate per i salti discreti ±10s. */
     private var isSeeking = false
 
+    /** Gate separato per lo scrub TV: un tap non può mai essere perso per colpa di un
+     *  seek-render job precedente che finisce in ritardo. */
+    private var isScrubbing = false
+
+    /** Token monotonico: solo l'ultimo seek/scrub avviato può azzerare il freeze-frame.
+     *  La cancellazione del job precedente è cooperativa, quindi il suo `finally` può
+     *  ancora eseguire dopo che un nuovo scrub è iniziato: confrontiamo il token e
+     *  ignoriamo la pulizia se non siamo più il job attivo. */
+    private var seekToken = 0L
+
     private var seekRenderJob: Job? = null
+
+    private var scrubWasPlaying = false
 
     /**
      * Tiene attivo il freeze-frame finché il decoder non ha davvero renderizzato un
@@ -813,22 +837,30 @@ class PlayerViewModel @Inject constructor(
      * lungo). Qui aspettiamo STATE_READY (adattivo) + un margine di qualche frame.
      */
     private fun awaitSeekRendered(wasPlaying: Boolean) {
+        val token = ++seekToken
         seekRenderJob?.cancel()
         seekRenderJob = viewModelScope.launch {
-            var waited = 0
-            while (player.playbackState != Player.STATE_READY && waited < 4000) {
-                delay(16); waited += 16
+            try {
+                var waited = 0
+                while (isActive && player.playbackState != Player.STATE_READY && waited < 4000) {
+                    delay(16); waited += 16
+                }
+                // Non riportare in play se un altro scrub/seek ha già invalidato questo job.
+                if (isActive && seekToken == token && wasPlaying) player.play()
+                // Solo il job attuale può tenere il freeze-frame per il margine di frame puliti.
+                if (isActive && seekToken == token) delay(220)
+            } finally {
+                // Solo il job attuale può sganciare i gate.
+                if (seekToken == token) {
+                    isSeeking = false
+                    _seekingManually.value = false
+                }
             }
-            if (wasPlaying) player.play()
-            // Margine: lascia scorrere qualche frame pulito prima di togliere il freeze.
-            delay(220)
-            _seekingManually.value = false
-            isSeeking = false
         }
     }
 
     private fun performSeek(action: () -> Unit) {
-        if (isSeeking) return
+        if (isSeeking || isScrubbing) return
         isSeeking = true
         // Mostra il freeze-frame anche per i salti ±10s: maschera il bordo verde.
         _seekingManually.value = true
@@ -874,7 +906,7 @@ class PlayerViewModel @Inject constructor(
             castController.seekTo(positionMs)
             return
         }
-        if (isSeeking) return
+        if (isSeeking || isScrubbing) return
         isSeeking = true
         _seekingManually.value = true
         // Cattura l'intento PRIMA di pause() (che azzera playWhenReady).
@@ -882,6 +914,39 @@ class PlayerViewModel @Inject constructor(
         player.pause()
         player.seekTo(positionMs)
         awaitSeekRendered(wasPlaying)
+    }
+
+    // MARK: - Scrub (TV seekbar focalizzata)
+
+    /** Inizia lo scrub: invalida il job precedente, resetta i gate, pausa e congela il frame. */
+    fun beginScrub() {
+        if (isCastActive || isScrubbing) return
+        seekRenderJob?.cancel()
+        ++seekToken
+        isSeeking = false
+        isScrubbing = true
+        _seekingManually.value = true
+        scrubWasPlaying = player.playWhenReady
+        player.pause()
+    }
+
+    /** Committa lo scrub con un solo seek assoluto al rilascio. */
+    fun commitScrubTo(positionMs: Long) {
+        if (isCastActive) {
+            castController.seekTo(positionMs)
+            return
+        }
+        if (!isScrubbing) return
+        isScrubbing = false
+        player.seekTo(positionMs)
+        awaitSeekRendered(scrubWasPlaying)
+    }
+
+    /** Annulla uno scrub aperto senza committare (es. uscita dalla composizione). */
+    fun cancelScrub() {
+        if (!isScrubbing) return
+        isScrubbing = false
+        _seekingManually.value = false
     }
 
     // MARK: - Skip intro / credits
@@ -896,8 +961,11 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun maybeFetchSkipSegments() {
-        // Skip per offline o TMDB id assente.
-        if (didFetchSkipSegments || _isOfflinePlayback.value || tmdbId <= 0) return
+        // Skip per offline, TMDB id assente, o anime (id AnimeUnity non è TMDB →
+        // TheIntroDB non ha skip data; niente next-episode TMDB).
+        if (didFetchSkipSegments || _isOfflinePlayback.value || tmdbId <= 0 ||
+            mediaType == "anime"
+        ) return
         didFetchSkipSegments = true
         val durationMs = _duration.value.takeIf { it > 0 }
         viewModelScope.launch {
@@ -1005,7 +1073,9 @@ class PlayerViewModel @Inject constructor(
                     positionSeconds = durationSec,
                     durationSeconds = durationSec,
                     title = title,
-                    posterPath = poster
+                    posterPath = poster,
+                    providerEpisodeId = if (mediaType == "anime") animeEpisodeId else null,
+                    providerSlug = if (mediaType == "anime") animeSlug else null
                 )
             )
             repository.addToHistory(
@@ -1056,7 +1126,9 @@ class PlayerViewModel @Inject constructor(
                     positionSeconds = posSec,
                     durationSeconds = durSec,
                     title = title,
-                    posterPath = poster
+                    posterPath = poster,
+                    providerEpisodeId = if (mediaType == "anime") animeEpisodeId else null,
+                    providerSlug = if (mediaType == "anime") animeSlug else null
                 )
             )
             // Record in history as soon as the user has watched a meaningful chunk,

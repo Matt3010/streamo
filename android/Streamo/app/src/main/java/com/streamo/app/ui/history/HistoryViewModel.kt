@@ -58,7 +58,11 @@ class HistoryViewModel @Inject constructor(
         repository.history(),
         repository.progress(),
         filter
-    ) { entries, progressList, activeFilter ->
+    ) { rawEntries, progressList, activeFilter ->
+        // Gli anime (mediaType == "anime") hanno routing/poster incompatibili con
+        // questo screen (Detail/Player TMDB-only): li escludiamo; il loro resume
+        // vive nel tab Anime dedicato.
+        val entries = rawEntries.filter { it.mediaType != "anime" }
         val progressByKey = progressList.associateBy { coordinate(it.tmdbId, it.mediaType, it.season, it.episode) }
 
         fun progressFor(e: HistoryEntry): ProgressEntry? =

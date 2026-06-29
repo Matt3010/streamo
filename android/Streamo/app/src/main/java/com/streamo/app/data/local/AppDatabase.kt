@@ -26,12 +26,25 @@ import com.streamo.app.data.local.entity.WatchlistEntry
         DownloadEntry::class,
         SearchHistoryEntry::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
+        /**
+         * Aggiunge a `progress` le colonne per il resume degli anime: l'id episodio
+         * AnimeUnity e lo slug (per l'header Referer dell'embed vixcloud). Permette di
+         * riprendere un anime dal "Continua a guardare" saltando la ri-dettaglio.
+         * Gli anime sono discriminati da `mediaType = "anime"` (nessuna colonna source).
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE progress ADD COLUMN providerEpisodeId INTEGER")
+                db.execSQL("ALTER TABLE progress ADD COLUMN providerSlug TEXT")
+            }
+        }
+
         val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

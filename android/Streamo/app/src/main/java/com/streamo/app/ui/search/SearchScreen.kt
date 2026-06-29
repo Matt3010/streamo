@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
@@ -135,9 +136,12 @@ fun SearchScreen(
                 selectedGenreIds = viewModel.selectedGenreIds,
                 availableGenres = viewModel.availableGenres,
                 selectedGenreNames = viewModel.selectedGenreNames,
+                sortField = viewModel.sortField,
+                sortOrder = viewModel.sortOrder,
                 onMediaTypeChange = viewModel::onMediaTypeFilterChange,
                 onToggleGenre = viewModel::toggleGenre,
-                onClearGenres = viewModel::clearGenreFilters
+                onClearGenres = viewModel::clearGenreFilters,
+                onSortChange = viewModel::onSortChange
             )
 
             // Contenuto principale
@@ -334,11 +338,15 @@ private fun FilterBar(
     selectedGenreIds: List<Int>,
     availableGenres: List<TmdbGenre>,
     selectedGenreNames: List<String>,
+    sortField: SortField,
+    sortOrder: SortOrder,
     onMediaTypeChange: (String) -> Unit,
     onToggleGenre: (Int) -> Unit,
-    onClearGenres: () -> Unit
+    onClearGenres: () -> Unit,
+    onSortChange: (SortField, SortOrder) -> Unit
 ) {
     var showGenrePicker by remember { mutableStateOf(false) }
+    var showSortPicker by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.padding(vertical = 4.dp)) {
         Row(
@@ -367,6 +375,12 @@ private fun FilterBar(
                 )
             }
 
+            SortButton(
+                field = sortField,
+                order = sortOrder,
+                onClick = { showSortPicker = true }
+            )
+
             FilterButton(
                 selectedCount = selectedGenreIds.size,
                 onClick = { showGenrePicker = true }
@@ -392,6 +406,91 @@ private fun FilterBar(
             onDismiss = { showGenrePicker = false }
         )
     }
+
+    if (showSortPicker) {
+        SortPickerDialog(
+            field = sortField,
+            order = sortOrder,
+            onSortChange = onSortChange,
+            onDismiss = { showSortPicker = false }
+        )
+    }
+}
+
+/** Capsula glass che mostra il campo + la direzione di ordinamento correnti. */
+@Composable
+private fun SortButton(
+    field: SortField,
+    order: SortOrder,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(44.dp)
+            .clip(GlassDefaults.ChipShape)
+            .background(GlassDefaults.Container)
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Sort,
+            contentDescription = "Ordina per ${field.label}, ${order.label}",
+            tint = Color.White
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SortPickerDialog(
+    field: SortField,
+    order: SortOrder,
+    onSortChange: (SortField, SortOrder) -> Unit,
+    onDismiss: () -> Unit
+) {
+    GlassAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "Ordina per",
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SortField.entries.forEach { f ->
+                        GlassFilterChip(
+                            label = f.label,
+                            selected = field == f,
+                            onClick = { onSortChange(f, order) }
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Direzione",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SortOrder.entries.forEach { o ->
+                        GlassFilterChip(
+                            label = o.label,
+                            selected = order == o,
+                            onClick = { onSortChange(field, o) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            GlassDialogPrimaryButton(onClick = onDismiss) {
+                Text("Chiudi")
+            }
+        }
+    )
 }
 
 @Composable

@@ -93,6 +93,7 @@ private fun rgbToHsv(r: Float, g: Float, b: Float): Triple<Float, Float, Float> 
 @Composable
 fun SettingsScreen(
     onNavigateToAdvanced: () -> Unit = {},
+    onNavigateToCacheManagement: () -> Unit = {},
     onNavigateToDebugLogs: () -> Unit = {},
     onBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
@@ -600,6 +601,34 @@ fun SettingsScreen(
                     Text("Statistiche", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(stats, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToCacheManagement)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Spazio e cache", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Libera la cache di streaming e i download per recuperare spazio.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 

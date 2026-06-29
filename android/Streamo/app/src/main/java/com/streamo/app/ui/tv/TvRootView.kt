@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
@@ -54,6 +56,7 @@ private data class TvNavItem(
 private val tvNavItems = listOf(
     TvNavItem(NavRoutes.Home, "Home", Icons.Filled.Home, Icons.Outlined.Home),
     TvNavItem(NavRoutes.Search, "Cerca", Icons.Filled.Search, Icons.Outlined.Search),
+    TvNavItem(NavRoutes.Anime, "Anime", Icons.Filled.Animation, Icons.Outlined.Animation),
     TvNavItem(NavRoutes.Library, "Libreria", Icons.Filled.Bookmark, Icons.Outlined.Bookmark),
     TvNavItem(NavRoutes.Settings, "Impostazioni", Icons.Filled.Settings, Icons.Outlined.Settings)
 )

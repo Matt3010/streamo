@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -58,6 +59,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,8 +71,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,6 +92,8 @@ import com.streamo.app.ui.player.PlayerViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.util.Format
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * TV Player screen. Reuses [PlayerViewModel] unchanged — feature parity with the
@@ -123,6 +129,7 @@ fun TvPlayerScreen(
     val bufferedPosition by viewModel.bufferedPosition.collectAsState()
     val buffering by viewModel.buffering.collectAsState()
     val loading by viewModel.loading.collectAsState()
+    val seekingManually by viewModel.seekingManually.collectAsState()
     val error by viewModel.error.collectAsState()
     val playbackEnded by viewModel.playbackEnded.collectAsState()
     val nextAvailable by viewModel.nextEpisodeAvailable.collectAsState()
@@ -151,9 +158,195 @@ fun TvPlayerScreen(
     // Bumped on every key press while controls are visible, to reset the auto-hide timer.
     var interactionTick by remember { mutableIntStateOf(0) }
 
+    // Scrub state hoisted here (like the phone player) so the freeze-frame overlay and the
+    // spinner can react to it: while scrubbing we show the last decoded frame frozen and the
+    // timeline preview moves, but NO seek happens until the user releases the D-pad.
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubPositionMs by remember { mutableLongStateOf(0L) }
+    // Posizione committata in attesa che il player la raggiunga (-1 = nessuna). Dopo il
+    // commit lo scrub finisce ma `currentPosition` resta sul valore VECCHIO finché il seek
+    // non atterra (il player era in pausa durante lo scrub e il polling lo aggiorna ~1s
+    // dopo): senza questo, al rilascio la barra tornerebbe per un attimo al tempo originale
+    // e poi salterebbe al nuovo punto. Teniamo la barra sul target finché non combaciano.
+    var pendingSeekMs by remember { mutableLongStateOf(-1L) }
+    // Direzione corrente dello scrub: 0 fermo, +1 destra, -1 sinistra. Aggiornata da ogni
+    // evento tasto (down o autorepeat). Lo scrub è guidato dal root key-handler sia in
+    // immersivo (controlli nascosti) sia con la seekbar focalizzata, così "tieni premuto =
+    // scorri continuo" vale SEMPRE.
+    var scrubDir by remember { mutableIntStateOf(0) }
+    // Timestamp (uptime ms) dell'ultimo evento tasto di scrub ricevuto. Il rilascio si
+    // rileva dall'ASSENZA di eventi per [SCRUB_IDLE_MS], NON da ACTION_UP: su molti
+    // telecomandi TV (BT/IR) ogni autorepeat è una coppia DOWN/UP, quindi committare su UP
+    // farebbe un seek per ogni repeat = scatti con caricamento. Modello allineato a Media3
+    // DefaultTimeBar (commit a timeout).
+    val lastScrubKeyMs = remember { mutableLongStateOf(0L) }
+    // True solo quando è un HOLD confermato (stream di eventi fitti): da lì il ticker anima
+    // lo scorrimento continuo e fluido. Un singolo tap NON lo attiva → resta un salto secco
+    // istantaneo, niente "animazione" secondo per secondo.
+    var scrubHold by remember { mutableStateOf(false) }
+    // Conta gli eventi consecutivi a gap breve. Serve [HOLD_ENGAGE_STREAK] per confermare un
+    // hold: così tap singolo / doppio tap restano salti discreti e non fanno partire il ticker.
+    var scrubRepeatStreak by remember { mutableIntStateOf(0) }
+    // Intervallo misurato tra due eventi consecutivi durante un hold: il rilascio = gap molto
+    // più lungo di questo, così la barra si ferma quasi subito quando lasci il tasto (no overshoot).
+    val scrubKeyIntervalMs = remember { mutableLongStateOf(0L) }
+    // La seekbar segnala qui il proprio focus, così il root sa quando L/R = scrub vs navigazione.
+    var seekbarFocused by remember { mutableStateOf(false) }
+    // Reference to the PlayerView's TextureView so we can grab a frozen frame on scrub/seek.
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+    var frozenFrame by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    val captureFrame: () -> Unit = {
+        val tv = playerViewRef?.videoSurfaceView as? android.view.TextureView
+        if (tv != null && tv.width > 0 && tv.height > 0 && tv.isAvailable) {
+            try {
+                frozenFrame = tv.getBitmap(tv.width, tv.height)
+            } catch (_: Exception) { /* surface non valida → fallback nero */ }
+        }
+    }
+
+    // Mostra il frame congelato ogni volta che vedremmo nero/verde: durante lo scrub
+    // (drag della timeline), durante un seek manuale (flush del decoder) o in rebuffer.
+    val freezeVisible = (scrubbing || seekingManually || buffering) && !loading && error == null
+
+    // Sgancia il frame congelato 150ms dopo che la riproduzione è di nuovo pronta.
+    LaunchedEffect(scrubbing, seekingManually, buffering) {
+        if (!scrubbing && !seekingManually && !buffering && frozenFrame != null) {
+            delay(150)
+            frozenFrame = null
+        }
+    }
+
+    // Registra un evento tasto di scrub. Due regimi netti:
+    //  - TAP (pressione discreta): salto SECCO e istantaneo di [TAP_SEEK_MS], niente animazione.
+    //    Tap singolo = +1 salto, doppio tap = +2 salti (nessun bug di stato).
+    //  - HOLD (tasto tenuto = stream di eventi a gap breve): dopo [HOLD_ENGAGE_STREAK] eventi
+    //    consecutivi fitti passa al ticker che anima lo scorrimento continuo e fluido.
+    // Il gap tra eventi distingue i due: breve = parte di un hold, lungo = pressione separata.
+    // repeatCount NON è affidabile (molti telecomandi TV mandano coppie DOWN/UP con count 0).
+    val maxPos = { if (duration > 0L) duration else Long.MAX_VALUE }
+    val onScrubKey: (Int, Boolean) -> Unit = { dir, _ ->
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!scrubbing) {
+            captureFrame()
+            val from = currentPosition.coerceIn(0L, maxPos())
+            scrubPositionMs = (from + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
+            scrubbing = true
+            pendingSeekMs = -1L
+            scrubHold = false
+            scrubRepeatStreak = 0
+            scrubKeyIntervalMs.longValue = 0L
+            viewModel.beginScrub()
+        } else {
+            val gap = now - lastScrubKeyMs.longValue
+            if (gap in 16L..250L) {
+                // Evento fitto = parte di un hold.
+                scrubKeyIntervalMs.longValue = gap
+                scrubRepeatStreak++
+                if (scrubRepeatStreak >= HOLD_ENGAGE_STREAK) {
+                    scrubHold = true
+                } else if (!scrubHold) {
+                    // Ancora ambiguo (potrebbe essere doppio tap veloce): salto secco anche qui.
+                    scrubPositionMs = (scrubPositionMs + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
+                }
+                // Da hold confermato in poi NON saltare: avanza il ticker.
+            } else {
+                // Gap lungo = pressione discreta separata: nuovo salto secco, azzera l'hold.
+                scrubPositionMs = (scrubPositionMs + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
+                scrubRepeatStreak = 0
+                scrubHold = false
+            }
+        }
+        scrubDir = dir
+        lastScrubKeyMs.longValue = now
+    }
+
+    // Committa subito lo scrub corrente alla posizione di preview (es. un tasto non-L/R
+    // interrompe lo scrub). Idempotente. Tiene la barra sul target (pendingSeekMs) finché
+    // il player non raggiunge il nuovo punto, evitando il "rimbalzo" al tempo vecchio.
+    val commitScrubNow: () -> Unit = {
+        if (scrubbing) {
+            val target = scrubPositionMs
+            scrubbing = false
+            scrubDir = 0
+            pendingSeekMs = target
+            viewModel.commitScrubTo(target)
+        }
+    }
+
+    // Azzera il target in attesa quando il player lo raggiunge (tolleranza per il sync di
+    // ExoPlayer CLOSEST_SYNC), con una rete di sicurezza temporale se il seek atterra lontano.
+    LaunchedEffect(pendingSeekMs, currentPosition) {
+        if (pendingSeekMs >= 0L) {
+            if (kotlin.math.abs(currentPosition - pendingSeekMs) < 2_000L) {
+                pendingSeekMs = -1L
+            } else {
+                delay(5_000)
+                pendingSeekMs = -1L
+            }
+        }
+    }
+
+    // Posizione mostrata in timeline: la preview durante lo scrub, il target committato
+    // finché il seek non atterra, altrimenti la posizione reale del player.
+    val displayedPositionMs = when {
+        scrubbing -> scrubPositionMs
+        pendingSeekMs >= 0L -> pendingSeekMs
+        else -> currentPosition
+    }
+
+    // Sessione di scrub: muove la barra di preview in modo continuo e fluido (ticker 50ms,
+    // passo accelerato), indipendente dalla cadenza dei key-repeat. Il player resta in pausa
+    // sul frame congelato. Due soglie sul gap dall'ultimo evento tasto:
+    //  - advanceGap: oltre questa SMETTE di avanzare (la barra si ferma quasi subito al
+    //    rilascio, niente overshoot);
+    //  - commitGap: oltre questa committa il seek UNA volta.
+    // Entrambe adattive: cortissime una volta che gli autorepeat fluiscono (≈ intervallo
+    // misurato), lunghe (SCRUB_IDLE_MS) prima del primo repeat per coprirne il ritardo.
+    // Niente dipendenza da ACTION_UP (su molti telecomandi TV è una coppia per ogni repeat).
+    LaunchedEffect(scrubbing) {
+        if (scrubbing) {
+            var elapsed = 0L
+            while (isActive) {
+                delay(SCRUB_TICK_MS)
+                val now = android.os.SystemClock.uptimeMillis()
+                val gap = now - lastScrubKeyMs.longValue
+                val interval = scrubKeyIntervalMs.longValue
+                if (!scrubHold) {
+                    // Regime TAP: nessuna animazione. La barra è già al salto secco; aspetta
+                    // altri tap (che si accumulano) e committa quando gli eventi cessano.
+                    // L'idle lungo copre il ritardo del primo autorepeat, così un hold non
+                    // viene committato come tap prima che il ticker continuo possa partire.
+                    if (gap > SCRUB_IDLE_MS) {
+                        commitScrubNow()
+                        break
+                    }
+                } else {
+                    // Regime HOLD: scorrimento continuo animato + rilascio rapido (soglie strette).
+                    val advanceGap = maxOf(interval + 40L, 80L)
+                    val commitGap = maxOf(interval + 130L, 180L)
+                    if (gap > commitGap) {
+                        commitScrubNow()
+                        break
+                    }
+                    if (scrubDir != 0 && duration > 0L && gap <= advanceGap) {
+                        // Se un repeat atteso è già MANCATO (gap oltre la cadenza), il tasto è
+                        // probabilmente appena rilasciato: avanza col passo minimo (accel 1) così
+                        // la "coda" prima dello stop è impercettibile, niente overshoot di secondi.
+                        val releasing = gap > interval
+                        val step = if (releasing) scrubStepMs(0L, duration) else scrubStepMs(elapsed, duration)
+                        scrubPositionMs = (scrubPositionMs + scrubDir * step).coerceIn(0L, duration)
+                        elapsed += SCRUB_TICK_MS
+                    }
+                }
+            }
+        }
+    }
+
     val rootFocus = remember { FocusRequester() }
     val playPauseFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
+    val seekbarFocus = remember { FocusRequester() }
 
     // Auto-hide controls after 4s while playing, unless the settings overlay is open.
     LaunchedEffect(isPlaying, controlsVisible, showSettings, interactionTick, buffering, playbackEnded) {
@@ -163,13 +356,18 @@ fun TvPlayerScreen(
         }
     }
 
-    // Keep the relevant element focused: settings list when open, play/pause when the
-    // controls are showing, the root key-catcher when immersive.
-    LaunchedEffect(controlsVisible, showSettings, settingsPanel, loading, buffering) {
+    // Keep the relevant element focused: settings list when open, the seek bar when the
+    // controls are showing (timeline-first on TV, so Left/Right scrub immediately), the
+    // Replay button once playback ends, the root key-catcher when immersive.
+    // NOTA: loading/buffering non devono spostare il focus; se lo facessero, durante lo
+    // scrub ExoPlayer passa spesso per STATE_BUFFERING e la richiesta ripetuta di focus
+    // sulla seekbar può interrompere lo scrub a metà pressione (commit prematuro + loop).
+    LaunchedEffect(controlsVisible, showSettings, settingsPanel, playbackEnded) {
         runCatching {
             when {
                 showSettings -> settingsFocus.requestFocus()
-                controlsVisible && !loading && !buffering -> playPauseFocus.requestFocus()
+                playbackEnded -> playPauseFocus.requestFocus()
+                controlsVisible -> seekbarFocus.requestFocus()
                 else -> rootFocus.requestFocus()
             }
         }
@@ -275,24 +473,83 @@ fun TvPlayerScreen(
             .focusRequester(rootFocus)
             .focusable()
             .onPreviewKeyEvent { event ->
-                if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                // Controls visible / settings open: let the focus system navigate, just
-                // keep the controls awake by resetting the auto-hide timer.
-                if (controlsVisible || showSettings) {
+                val nk = event.nativeKeyEvent
+                val isRight = nk.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                    nk.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+                val isLeft = nk.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                    nk.keyCode == KeyEvent.KEYCODE_MEDIA_REWIND
+
+                // Settings overlay: lascia tutto al focus system della modale.
+                if (showSettings) {
+                    if (nk.action == KeyEvent.ACTION_DOWN) interactionTick++
+                    return@onPreviewKeyEvent false
+                }
+
+                // --- Scrub L/R, valido in OGNI modalità (questo è il fix) ---
+                // Il root possiede lo scrub: tenere premuto L/R fa scorrere la timeline in
+                // modo continuo (frame congelato + barra) sia in immersivo sia con la seekbar
+                // focalizzata. Ogni evento tasto (down/autorepeat) rinfresca lo scrub; il seek
+                // parte da solo quando gli eventi smettono (timeout, vedi [onScrubKey]). NON si
+                // usa ACTION_UP: su molti telecomandi TV arriva tra un autorepeat e l'altro.
+                if (isRight || isLeft) {
+                    // Ignora ACTION_UP per lo scrub: il commit è a timeout. Consuma se stiamo
+                    // scrubbando, così l'UP non finisce alla navigazione del focus.
+                    if (nk.action == KeyEvent.ACTION_UP) {
+                        return@onPreviewKeyEvent scrubbing
+                    }
+                    if (nk.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+
+                    // Live (durata sconosciuta): nessuno scrub possibile, fallback ±10s.
+                    if (duration <= 0L) {
+                        if (nk.repeatCount == 0) {
+                            reveal()
+                            captureFrame()
+                            if (isRight) viewModel.seekForward() else viewModel.seekBack()
+                        }
+                        interactionTick++
+                        return@onPreviewKeyEvent true
+                    }
+                    val dir = if (isRight) 1 else -1
+                    val isRepeat = nk.repeatCount > 0
+                    when {
+                        // Scrub già in corso (posseduto dal root): ogni down/repeat lo rinfresca
+                        // e ne aggiorna la direzione.
+                        scrubbing -> onScrubKey(dir, isRepeat)
+                        // Immersivo: rivela i controlli e avvia lo scrub.
+                        !controlsVisible -> { reveal(); onScrubKey(dir, isRepeat) }
+                        // Controlli visibili con la seekbar focalizzata: avvia lo scrub.
+                        seekbarFocused -> onScrubKey(dir, isRepeat)
+                        // Altrimenti un bottone è focalizzato → L/R naviga: non consumare.
+                        else -> { interactionTick++; return@onPreviewKeyEvent false }
+                    }
+                    interactionTick++
+                    return@onPreviewKeyEvent true
+                }
+
+                if (nk.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+
+                // Tasto non-L/R durante uno scrub in corso (es. Up/Center): committa il seek
+                // prima di processarlo, così il player non resta congelato in pausa.
+                if (scrubbing) commitScrubNow()
+
+                // Seekbar focalizzata: CENTER/ENTER fa play/pausa in modo DETERMINISTICO.
+                // La seekbar è solo `focusable` (nessun onClick), quindi senza questo l'evento
+                // cadrebbe non gestito e il play/pausa dipenderebbe dal default del PlayerView.
+                if (controlsVisible && seekbarFocused &&
+                    (nk.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        nk.keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    viewModel.togglePlayPause()
+                    interactionTick++
+                    return@onPreviewKeyEvent true
+                }
+
+                // Controlli visibili / non-L/R: lascia navigare il focus system.
+                if (controlsVisible) {
                     interactionTick++
                     return@onPreviewKeyEvent false
                 }
-                // Immersive mode: Left/Right scrub ±10s WITHOUT revealing the controls,
-                // so the user can keep skipping. Center/Up/Down open the overlay.
-                when (event.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_RIGHT,
-                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                        viewModel.seekForward(); true
-                    }
-                    KeyEvent.KEYCODE_DPAD_LEFT,
-                    KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        viewModel.seekBack(); true
-                    }
+                // Immersivo, non-L/R: Center/Up/Down rivelano i controlli.
+                when (nk.keyCode) {
                     KeyEvent.KEYCODE_DPAD_CENTER,
                     KeyEvent.KEYCODE_ENTER,
                     KeyEvent.KEYCODE_DPAD_UP,
@@ -318,14 +575,35 @@ fun TvPlayerScreen(
                 playerView.useController = false
                 playerView.isFocusable = false
                 playerView.isFocusableInTouchMode = false
+                playerViewRef = playerView
                 playerView
             },
             update = { it.resizeMode = resizeMode },
             modifier = Modifier.fillMaxSize()
         )
 
-        // Buffering / loading spinner.
-        if (buffering || loading) {
+        // Freeze-frame overlay: tiene l'ultimo frame sullo schermo durante scrub/seek/
+        // rebuffer invece di mostrare nero, verde (flush del decoder) o lo spinner. Fallback
+        // a nero solo se nessun frame è stato catturato (seek prima del primo frame).
+        if (freezeVisible) {
+            val bmp = frozenFrame
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+            }
+        }
+
+        // Buffering / loading spinner — nascosto quando il frame congelato copre già lo
+        // schermo (scrub o seek), così l'utente vede un fermo-immagine, non un caricamento.
+        if ((buffering || loading) && !freezeVisible) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
                 color = Color.White
@@ -434,7 +712,7 @@ fun TvPlayerScreen(
                             contentDescription = "Indietro di 10 secondi",
                             size = 64.dp,
                             iconSize = 38.dp,
-                            onClick = { viewModel.seekBack() }
+                            onClick = { captureFrame(); viewModel.seekBack() }
                         )
                         TvCircleButton(
                             icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -449,19 +727,20 @@ fun TvPlayerScreen(
                             contentDescription = "Avanti di 10 secondi",
                             size = 64.dp,
                             iconSize = 38.dp,
-                            onClick = { viewModel.seekForward() }
+                            onClick = { captureFrame(); viewModel.seekForward() }
                         )
                     }
                 }
 
-                // Bottom: focusable seek bar. When focused, Left/Right scrub ±10s.
+                // Bottom: focusable seek bar (display only). Lo scrub L/R è gestito dal root
+                // key-handler (vedi onPreviewKeyEvent del Box): qui la barra mostra la
+                // posizione di preview durante lo scrub e riporta il proprio focus.
                 TvSeekBar(
-                    positionMs = currentPosition,
+                    positionMs = displayedPositionMs,
                     durationMs = duration,
                     bufferedMs = bufferedPosition,
-                    onSeekBack = { viewModel.seekBack() },
-                    onSeekForward = { viewModel.seekForward() },
-                    onInteract = { interactionTick++ },
+                    onFocusChanged = { seekbarFocused = it },
+                    focusRequester = seekbarFocus,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -571,39 +850,40 @@ private fun nearestStandard(h: Int): Int =
         .minByOrNull { kotlin.math.abs(it - h) } ?: h
 
 /**
- * Focusable seek bar for the remote. When focused (white thumb + thicker track),
- * Left/Right scrub ±10s via [onSeekBack]/[onSeekForward]; Up/Down fall through so the
- * focus system can move to the transport row. [onInteract] keeps the controls awake.
+ * Focusable seek bar for the remote (display only). The L/R scrub gesture is owned by the
+ * parent's root key-handler (see the Box `onPreviewKeyEvent` in [TvPlayerScreen]) so that
+ * "hold to scrub continuously" works in EVERY mode — immersive (controls hidden) and with
+ * the bar focused alike. This composable only renders the timeline at [positionMs] (the
+ * parent already substitutes the scrub-preview / pending-seek position there). It reports
+ * its focus via [onFocusChanged] so the parent knows when L/R means scrub vs. focus
+ * navigation. Up/Down fall through to the focus system.
  */
 @Composable
 private fun TvSeekBar(
     positionMs: Long,
     durationMs: Long,
     bufferedMs: Long,
-    onSeekBack: () -> Unit,
-    onSeekForward: () -> Unit,
-    onInteract: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    focusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val primary = MaterialTheme.colorScheme.primary
+
+    LaunchedEffect(focused) { onFocusChanged(focused) }
+
+    val displayPosition = positionMs
+    val displaySeconds = (displayPosition / 1000).toInt()
+    val durationSeconds = (durationMs / 1000).toInt()
+
     Column(
         modifier = modifier
-            .onPreviewKeyEvent { event ->
-                if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                when (event.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_RIGHT,
-                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { onSeekForward(); onInteract(); true }
-                    KeyEvent.KEYCODE_DPAD_LEFT,
-                    KeyEvent.KEYCODE_MEDIA_REWIND -> { onSeekBack(); onInteract(); true }
-                    else -> false
-                }
-            }
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interaction)
     ) {
         val progressFraction =
-            if (durationMs > 0L) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+            if (durationMs > 0L) (displayPosition.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
         val bufferedFraction =
             if (durationMs > 0L) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
         val trackHeight = if (focused) 6.dp else 4.dp
@@ -644,10 +924,53 @@ private fun TvSeekBar(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(Format.time(positionMs / 1000.0), color = Color.White, fontSize = 13.sp)
-            Text(Format.time(durationMs / 1000.0), color = Color.White, fontSize = 13.sp)
+            Text(Format.time(displaySeconds.toDouble()), color = Color.White, fontSize = 13.sp)
+            Text(Format.time(durationSeconds.toDouble()), color = Color.White, fontSize = 13.sp)
         }
     }
+}
+
+/** Periodo del ticker di scrub: ogni 50ms avanza la posizione di preview (20 step/sec). */
+private const val SCRUB_TICK_MS = 50L
+
+/** Salto secco e istantaneo di una singola pressione discreta del D-pad (no animazione). */
+private const val TAP_SEEK_MS = 10_000L
+
+/**
+ * Eventi consecutivi a gap breve necessari per confermare un HOLD (e far partire il ticker
+ * continuo). Tap singolo e doppio tap restano sotto soglia → salti discreti istantanei.
+ */
+private const val HOLD_ENGAGE_STREAK = 2
+
+/**
+ * Quanto restare in scrub senza ricevere eventi tasto prima di committare il seek. Deve
+ * superare il ritardo del primo autorepeat di sistema (~400-500ms) per non committare mentre
+ * il tasto è ancora premuto ma il primo repeat non è ancora arrivato. Allineato al modello
+ * di Media3 DefaultTimeBar (timeout di stop-scrubbing).
+ */
+private const val SCRUB_IDLE_MS = 600L
+
+/**
+ * Passo (ms di video) avanzato per ogni tick di [SCRUB_TICK_MS] mentre il D-pad è tenuto
+ * premuto. Parte lento per il controllo fine e accelera con la durata della pressione; la
+ * base scala con la lunghezza del contenuto, così i film lunghi si attraversano in tempi
+ * umani senza che le clip brevi schizzino via. Profilo simile a Jellyfin/Wholphin.
+ */
+private fun scrubStepMs(elapsedMs: Long, durationMs: Long): Long {
+    val durMin = durationMs / 60_000L
+    val base = when {
+        durMin < 15 -> 150L
+        durMin < 45 -> 300L
+        durMin < 120 -> 500L
+        else -> 800L
+    }
+    val accel = when {
+        elapsedMs < 1200L -> 1L
+        elapsedMs < 3000L -> 3L
+        elapsedMs < 6000L -> 7L
+        else -> 14L
+    }
+    return base * accel
 }
 
 /** Badge "maschera IP" mostrato quando WARP è attivo (sfondo scuro, regola CLAUDE.md). */
