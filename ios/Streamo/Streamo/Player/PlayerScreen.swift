@@ -103,7 +103,7 @@ private struct PlayerControlsOverlay: View {
                             handleSurfaceTap(at: value.location, size: geo.size)
                         }
                     )
-                    .simultaneousGesture(horizontalSeekGesture)
+                    .simultaneousGesture(horizontalSeekGesture(in: geo.size))
             }
 
             if chromeVisible { chrome }
@@ -266,13 +266,18 @@ private struct PlayerControlsOverlay: View {
     }
 
     private func handleSurfaceTap(at location: CGPoint, size: CGSize) {
-        let centerRect = CGRect(
-            x: size.width * 0.22,
-            y: size.height * 0.22,
-            width: size.width * 0.56,
-            height: size.height * 0.56
-        )
-        if centerRect.contains(location) {
+        // Play/pause must react only around the actual control at the exact
+        // centre of the video. The previous proportional rectangle covered
+        // 56% of both axes, so taps far above or below the button also toggled
+        // playback. A fixed circular target keeps the interaction local while
+        // still providing an accessible hit area when the chrome is hidden.
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let deltaX = location.x - center.x
+        let deltaY = location.y - center.y
+        let playbackTapRadius: CGFloat = 44
+        let isPlaybackTap = hypot(deltaX, deltaY) <= playbackTapRadius
+
+        if isPlaybackTap {
             togglePlaybackFromSurface()
         } else {
             toggleChrome()
@@ -292,9 +297,16 @@ private struct PlayerControlsOverlay: View {
 
     private func resetHideTimer() { if chromeVisible { scheduleHide() } }
 
-    private var horizontalSeekGesture: some Gesture {
+    private func horizontalSeekGesture(in surfaceSize: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 42, coordinateSpace: .local)
             .onEnded { value in
+                // The surface gesture is simultaneous with the scrubber's drag,
+                // so both recognisers receive a timeline interaction. Decide from
+                // where the drag began (not from the final location or `scrubbing`,
+                // whose onEnded ordering is undefined) and reserve the whole lower
+                // transport strip for progress seeking only.
+                guard !isTimelineInteractionStart(value.startLocation, surfaceSize: surfaceSize) else { return }
+
                 let dx = value.translation.width
                 let dy = value.translation.height
                 guard abs(dx) > abs(dy) * 1.4 else { return }
@@ -304,6 +316,17 @@ private struct PlayerControlsOverlay: View {
                     resetHideTimer()
                 }
             }
+    }
+
+    private func isTimelineInteractionStart(_ location: CGPoint, surfaceSize: CGSize) -> Bool {
+        guard chromeVisible else { return false }
+
+        // Covers the 20-pt scrubber, its timecodes, spacing and the chrome's
+        // bottom padding. This prevents a progress drag from also firing the
+        // global ±10-second swipe when the finger is released.
+        let timelineInteractionHeight: CGFloat = 72
+        let timelineTop = max(0, surfaceSize.height - timelineInteractionHeight)
+        return location.y >= timelineTop
     }
 
     /// Auto-hide the chrome after a few seconds of no interaction (only while
@@ -360,7 +383,15 @@ struct PlayerScreen: View {
             case .ready:
                 if let player = controller.player {
                     ZStack {
+                        // The full-screen cover's root respects the safe area by
+                        // default. The black background already extends beyond it,
+                        // but the AVPlayerLayer did not, leaving a permanent strip
+                        // visible along the home-indicator edge in landscape.
+                        // Extend only the video surface; controls remain inset and
+                        // therefore stay clear of the notch / home indicator.
                         PlayerLayerView(player: player, pip: pip)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .ignoresSafeArea(.container, edges: .all)
                         PlayerControlsOverlay(
                             controller: controller,
                             pip: pip,
