@@ -52,6 +52,7 @@ final class PlaybackController {
     /// scrubber holds at the requested spot instead of snapping to the stale
     /// buffering position.
     private var seekTarget: Double?
+    private var seekGeneration = 0
 
     /// A skip affordance the player UI should surface at the current position,
     /// or nil when none applies. Driven by TheIntroDB segments.
@@ -148,6 +149,7 @@ final class PlaybackController {
         self.viaProxy = nil
         state = .resolving
         teardownPlayer()
+        resetSkipState()
 
         // Offline download: play the local bundle directly, no provider resolve.
         // Offline playback uses no network, so downloads keep running.
@@ -177,6 +179,7 @@ final class PlaybackController {
     /// Returns whether playback advanced.
     @discardableResult
     func startNext(_ request: PlaybackRequest) async -> Bool {
+        resetSkipState()
         let resolution = await resolve(request)
         guard !resolution.sources.isEmpty else { return false }
         self.activeRequest = request
@@ -192,7 +195,6 @@ final class PlaybackController {
         pendingStartAt = request.startAt
         didReachEnd = false
         loopbackForced = false
-        resetSkipState()
         loadCurrentSource(request: request)
     }
 
@@ -325,15 +327,8 @@ final class PlaybackController {
         np.configureCommands()
         np.onPlay = { [weak player] in player?.play() }
         np.onPause = { [weak player] in player?.pause() }
-        np.onSkip = { [weak self, weak player] delta in
-            guard let player else { return }
-            let target = max(0, player.currentTime().seconds + delta)
-            self?.seekPlayer(player, to: target)
-        }
-        np.onSeek = { [weak self, weak player] pos in
-            guard let player else { return }
-            self?.seekPlayer(player, to: pos)
-        }
+        np.onSkip = { [weak self] delta in self?.skip(by: delta) }
+        np.onSeek = { [weak self] pos in self?.seek(to: pos) }
         let subtitle = request.mediaType == .tv ? "Stagione \(request.season) · Episodio \(request.episode)" : nil
         np.setMetadata(title: request.title, subtitle: subtitle, duration: 0,
                        posterURL: TmdbImage.url(request.poster, .w500))
@@ -343,17 +338,21 @@ final class PlaybackController {
         // Hold the UI at the requested time until the seek actually lands —
         // otherwise the poll reads the pre-seek (still-buffering) position and
         // the scrubber snaps backwards before jumping to target.
+        seekGeneration &+= 1
+        let generation = seekGeneration
         seekTarget = seconds
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) { [weak self] _ in
-            Task { @MainActor in self?.seekTarget = nil }
+            Task { @MainActor in
+                guard self?.seekGeneration == generation else { return }
+                self?.seekTarget = nil
+            }
         }
     }
 
     // MARK: - Skip intro / credits
 
-    /// Clear all skip/next state for a fresh item. The single reset point,
-    /// reached via `beginPlayback` for start / startNext / offline. NOT called
-    /// on a mirror switch (same episode → state must survive).
+    /// Clear all skip/next state before a fresh item resolves. NOT called on a
+    /// mirror switch (same episode -> state must survive).
     private func resetSkipState() {
         didTriggerNext = false
         didFetchSegments = false
@@ -415,7 +414,7 @@ final class PlaybackController {
             if skipPrompt != nil { skipPrompt = nil }
             return
         }
-        let t = player.currentTime().seconds
+        let t = currentTime()
         guard t.isFinite else { return }
         let new: SkipPrompt?
         var newSegment: ClosedRange<Double>?
@@ -472,7 +471,7 @@ final class PlaybackController {
     /// Relative seek (±10s buttons), clamped to [0, duration].
     func skip(by delta: Double) {
         guard let player else { return }
-        let target = player.currentTime().seconds + delta
+        let target = currentTime() + delta
         let dur = duration()
         let clamped = dur > 0 ? min(max(0, target), dur) : max(0, target)
         seekPlayer(player, to: clamped)
@@ -768,6 +767,8 @@ final class PlaybackController {
         skipBoundaryObserver = nil
         player?.pause()
         player = nil
+        seekGeneration &+= 1
+        seekTarget = nil
         didReachEnd = false
         // Revoke any AirPlay token so the download stops being LAN-reachable.
         LocalHLSServer.shared.endAirplaySession()

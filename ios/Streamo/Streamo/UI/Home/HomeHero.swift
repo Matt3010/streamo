@@ -240,19 +240,27 @@ struct HomeHeroSkeleton: View {
     private var heroHeight: CGFloat { min(UIScreen.main.bounds.width * 1.25, 560) }
 
     var body: some View {
-        Rectangle()
-            .fill(Color(.secondarySystemBackground))
+        SkeletonBox(cornerRadius: 0)
             .frame(height: heroHeight)
             .frame(maxWidth: .infinity)
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        Theme.red.opacity(0.20),
+                        .black.opacity(0.08),
+                        .black.opacity(0.92),
+                        .black,
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottom
+                )
+            )
             .overlay(alignment: .bottom) {
                 VStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.12))
-                        .frame(width: 220, height: 26)
-                    RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.12))
-                        .frame(width: 150, height: 44)
+                    SkeletonBox(cornerRadius: 7)
+                        .frame(width: 228, height: 28)
                 }
                 .padding(.bottom, 56)
             }
-            .redacted(reason: .placeholder)
     }
 }

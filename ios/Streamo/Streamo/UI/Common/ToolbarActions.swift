@@ -48,6 +48,9 @@ struct ToolbarActions: ViewModifier {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button { nav.presentedSheet = .anime } label: {
+                            Label("Anime", systemImage: "sparkles.tv.fill")
+                        }
                         Button { nav.presentedSheet = .downloads } label: {
                             Label(downloadRowTitle(count: count, percent: percent, reconstructing: reconstructing),
                                   systemImage: failed ? "exclamationmark.triangle.fill" : "arrow.down.circle")

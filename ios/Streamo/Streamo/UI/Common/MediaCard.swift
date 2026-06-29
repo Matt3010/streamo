@@ -272,6 +272,9 @@ struct MediaCard: View {
                 Text(card.title)
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                     .lineLimit(aspectRatio > 1 ? 2 : 1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.88)
+                    .allowsTightening(true)
                     .shadow(color: .black.opacity(0.8), radius: 2)
                 if episodeBadge != nil || year != nil || rating != nil {
                     HStack(spacing: 6) {
@@ -295,7 +298,7 @@ struct MediaCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 10)
         .padding(.bottom, showProgress && pct > 0 ? 22 : 10)
     }
 

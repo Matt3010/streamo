@@ -200,49 +200,51 @@ struct DetailView: View {
             .buttonStyle(BrandButtonStyle(kind: .secondary))
         }
 
-        bookmarkButton(item, inList: inList)
+        HStack(spacing: 10) {
+            bookmarkButton(item, inList: inList)
 
-        // Version picker / retry affordances when the auto-match isn't usable.
-        Group {
             if showVersionPicker {
-                Button {
+                compactIconButton(
+                    systemImage: model.providerMatchStatus == .failed ? "rectangle.stack.badge.plus" : "rectangle.stack",
+                    accessibilityLabel: model.providerMatchStatus == .failed ? "Scegli versione" : "Cambia versione"
+                ) {
                     showPicker = true
-                } label: {
-                    Label(model.providerMatchStatus == .failed ? "Scegli versione" : "Cambia versione",
-                          systemImage: "rectangle.stack")
                 }
-                .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
             } else if availability == .unavailable && !offlineReady {
-                Button {
+                compactIconButton(systemImage: "arrow.clockwise", accessibilityLabel: "Cerca versioni") {
                     Task { await model.refreshProvider(library: library) }
-                } label: {
-                    Label("Cerca versioni", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
             }
-            if let msg = model.providerMessage, availability != .ready && !offlineReady {
-                Text(msg).font(.footnote).foregroundStyle(.secondary)
+
+            if let trailer = model.trailerURL {
+                compactIconButton(systemImage: "play.rectangle", accessibilityLabel: "Trailer") {
+                    openURL(trailer)
+                }
             }
         }
 
-        if let trailer = model.trailerURL {
-            Button { openURL(trailer) } label: {
-                Label("Trailer", systemImage: "play.rectangle")
-            }
-            .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
+        if let msg = model.providerMessage, availability != .ready && !offlineReady {
+            Text(msg).font(.footnote).foregroundStyle(.secondary)
         }
 
-        if ref.mediaType == .movie, let p = movieResume(item), p.duration > 0,
+        if ref.mediaType == .movie, let p = movieProgress(item), p.duration > 0,
            Format.percentValue(position: p.position, duration: p.duration) > 0 {
+            let watched = TVLogic.isWatched(position: p.position, duration: p.duration)
             ProgressView(value: Format.percent(position: p.position, duration: p.duration), total: 100)
                 .tint(Theme.red)
             HStack {
-                Text("\(Format.time(p.position)) / \(Format.time(p.duration))")
-                    .font(.caption).foregroundStyle(.secondary)
+                if watched {
+                    Label("Completato", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.red)
+                } else {
+                    Text("\(Format.time(p.position)) / \(Format.time(p.duration))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("Riparti dall'inizio") {
+                Button(watched ? "Segna non visto" : "Riparti dall'inizio") {
                     library.removeProgress(item.id, .movie, season: 0, episode: 0)
-                    ToastCenter.shared.show("Progresso azzerato")
+                    ToastCenter.shared.show(watched ? "Film segnato come non visto" : "Progresso azzerato")
                 }
                 .font(.caption).buttonStyle(.borderless)
             }
@@ -263,6 +265,28 @@ struct DetailView: View {
         }
         .buttonStyle(BrandButtonStyle(kind: inList ? .primary : .secondary))
         .accessibilityLabel(inList ? UIText.removeFromList : UIText.addToList)
+    }
+
+    private func compactIconButton(systemImage: String, accessibilityLabel: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background {
+                    LiquidGlassBackground(
+                        shape: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                        tint: Theme.red.opacity(0.08)
+                    )
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     /// "Disponibile: Esce il …" note for upcoming titles (port of upcomingAvailabilityStr).
@@ -457,30 +481,60 @@ struct DetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Episodi", symbol: "play.square.stack.fill")
 
-            VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("STAGIONE")
                         .font(.caption2.weight(.semibold)).tracking(0.6)
                         .foregroundStyle(.secondary)
-                    Picker("Stagione", selection: Binding(
-                        get: { model.selectedSeason },
-                        set: { newValue in Task { await model.changeSeason(newValue) } }
-                    )) {
-                        ForEach(model.seasons, id: \.self) { Text("Stagione \($0)").tag($0) }
+                    Menu {
+                        ForEach(model.seasons, id: \.self) { season in
+                            Button {
+                                Task { await model.changeSeason(season) }
+                            } label: {
+                                if season == model.selectedSeason {
+                                    Label("Stagione \(season)", systemImage: "checkmark")
+                                } else {
+                                    Text("Stagione \(season)")
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Stagione \(model.selectedSeason)")
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.75))
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background {
+                            LiquidGlassBackground(
+                                shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                                tint: Theme.red.opacity(0.08)
+                            )
+                        }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(.white.opacity(0.14))
+                        )
                     }
-                    .pickerStyle(.menu)
-                    .tint(.white)
+                    .buttonStyle(.plain)
                 }
 
+                Spacer()
+
                 if seasonStats.total > 0 {
-                    Button {
+                    compactIconButton(
+                        systemImage: seasonStats.actionable == 0 ? "checkmark.circle" : "square.stack.3d.down.forward",
+                        accessibilityLabel: seasonStats.actionable == 0 ? "Stagione già in download" : "Scarica tutta la stagione"
+                    ) {
                         enqueueSelectedSeason(item)
-                    } label: {
-                        Label(seasonStats.actionable == 0 ? "Stagione già in download" : "Scarica tutta la stagione",
-                              systemImage: "square.stack.3d.down.forward")
                     }
-                    .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
                     .disabled(seasonStats.actionable == 0 || providerDisabled)
+                    .opacity(seasonStats.actionable == 0 || providerDisabled ? 0.45 : 1)
                 }
             }
             .padding(.horizontal)
@@ -559,6 +613,7 @@ struct DetailView: View {
             return "Guarda S\(target.season) E\(target.episode)"
         }
         if let p = movieResume(item) { return "Riprendi da \(Format.time(p.position))" }
+        if let p = movieProgress(item), TVLogic.isWatched(position: p.position, duration: p.duration) { return "Riguarda" }
         return "Guarda"
     }
 
@@ -637,9 +692,13 @@ struct DetailView: View {
     }
 
     private func movieResume(_ item: TmdbItem) -> ProgressEntry? {
-        guard let p = library.progress(item.id, .movie, season: 0, episode: 0),
+        guard let p = movieProgress(item),
               TVLogic.resumeStart(position: p.position, duration: p.duration) != nil else { return nil }
         return p
+    }
+
+    private func movieProgress(_ item: TmdbItem) -> ProgressEntry? {
+        library.progress(item.id, .movie, season: 0, episode: 0)
     }
 
     private func episodeProgressMap(_ item: TmdbItem) -> [Int: ProgressEntry] {
@@ -659,9 +718,9 @@ struct DetailView: View {
 
     /// Skeleton episode tile shown while a season's episodes load.
     private var episodeSkeleton: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             SkeletonBox(cornerRadius: 10).frame(width: 220, height: 220 * 9 / 16)
-            SkeletonBox(cornerRadius: 6).frame(width: 150, height: 12)
+            SkeletonBox(cornerRadius: 5).frame(width: 164, height: 12)
         }
         .frame(width: 220)
     }
@@ -669,12 +728,11 @@ struct DetailView: View {
     /// Skeleton shown while the TMDB detail loads (title + CTA + meta lines).
     private var detailSkeleton: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SkeletonBox(cornerRadius: 8).frame(width: 220, height: 30)
+            SkeletonBox(cornerRadius: 9).frame(width: 246, height: 32)
             SkeletonBox(cornerRadius: 14).frame(height: 50)
-            SkeletonBox(cornerRadius: 14).frame(height: 46)
-            SkeletonBox(cornerRadius: 6).frame(width: 160, height: 14)
-            SkeletonBox(cornerRadius: 6).frame(height: 14)
-            SkeletonBox(cornerRadius: 6).frame(width: 240, height: 14)
+            SkeletonBox(cornerRadius: 6).frame(width: 176, height: 13)
+            SkeletonBox(cornerRadius: 5).frame(height: 12)
+            SkeletonBox(cornerRadius: 5).frame(width: 238, height: 12)
         }
     }
 
@@ -740,6 +798,7 @@ private struct EpisodeCard: View {
     var downloads: DownloadManager? = nil
 
     private let w: CGFloat = 220
+    private var imageHeight: CGFloat { w * 9 / 16 }
 
     private var totalSeconds: Double {
         if let d = progress?.duration, d > 0 { return d }
@@ -771,24 +830,15 @@ private struct EpisodeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .bottom) {
-                still
-                LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
-                VStack(spacing: 4) {
-                    HStack(alignment: .bottom) {
-                        Text("\(episode.episodeNumber)").font(.title3.bold()).foregroundStyle(.white)
-                        Spacer()
-                        if let label = timeLabel {
-                            Text(label).font(.caption2.monospacedDigit()).foregroundStyle(.white.opacity(0.9))
-                        }
-                    }
-                    if watchedSeconds > 0 {
-                        ProgressBar(percent: pct)
-                    }
+            still
+                .frame(width: w, height: imageHeight)
+                .clipped()
+                .overlay {
+                    LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
                 }
-                .padding(8)
-            }
-            .frame(width: w, height: w * 9 / 16)
+                .overlay(alignment: .bottom) {
+                    episodeProgressOverlay
+                }
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -811,6 +861,33 @@ private struct EpisodeCard: View {
                 .lineLimit(2)
         }
         .frame(width: w)
+    }
+
+    private var episodeProgressOverlay: some View {
+        VStack(spacing: 5) {
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
+                Text("\(episode.episodeNumber)")
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                if let label = timeLabel {
+                    Text(label)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .allowsTightening(true)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            if watchedSeconds > 0 {
+                ProgressBar(percent: pct)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder

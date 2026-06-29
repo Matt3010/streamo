@@ -12,6 +12,8 @@ struct StreamoApp: App {
     private let navigation = AppNavigation.shared
 
     init() {
+        Self.preparePersistentStoreDirectories()
+
         let schema = Schema([
             WatchlistEntry.self,
             ProgressEntry.self,
@@ -35,6 +37,22 @@ struct StreamoApp: App {
         let a = AppSettings.defaultAccent
         UIRefreshControl.appearance().tintColor =
             UIColor(red: a.r, green: a.g, blue: a.b, alpha: 1)
+    }
+
+    private static func preparePersistentStoreDirectories() {
+        let fm = FileManager.default
+        var directories = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        if let groupURL = fm.containerURL(forSecurityApplicationGroupIdentifier: WidgetShared.appGroup) {
+            directories.append(
+                groupURL
+                    .appendingPathComponent("Library", isDirectory: true)
+                    .appendingPathComponent("Application Support", isDirectory: true)
+            )
+        }
+
+        for url in directories {
+            try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        }
     }
 
     var body: some Scene {

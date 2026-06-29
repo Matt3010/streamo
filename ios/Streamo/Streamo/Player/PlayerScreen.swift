@@ -93,11 +93,18 @@ private struct PlayerControlsOverlay: View {
 
     var body: some View {
         ZStack {
-            // Tap anywhere toggles the transport chrome.
-            Color.black.opacity(chromeVisible ? 0.35 : 0.001)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { toggleChrome() }
+            // Center tap mirrors the native player: play/pause. Edge taps still
+            // toggle the transport chrome.
+            GeometryReader { geo in
+                Color.black.opacity(chromeVisible ? 0.35 : 0.001)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        SpatialTapGesture().onEnded { value in
+                            handleSurfaceTap(at: value.location, size: geo.size)
+                        }
+                    )
+                    .simultaneousGesture(horizontalSeekGesture)
+            }
 
             if chromeVisible { chrome }
 
@@ -258,7 +265,46 @@ private struct PlayerControlsOverlay: View {
         if chromeVisible { scheduleHide() } else { hideTask?.cancel() }
     }
 
+    private func handleSurfaceTap(at location: CGPoint, size: CGSize) {
+        let centerRect = CGRect(
+            x: size.width * 0.22,
+            y: size.height * 0.22,
+            width: size.width * 0.56,
+            height: size.height * 0.56
+        )
+        if centerRect.contains(location) {
+            togglePlaybackFromSurface()
+        } else {
+            toggleChrome()
+        }
+    }
+
+    private func togglePlaybackFromSurface() {
+        controller.togglePlayPause()
+        playing = controller.isPlaying
+        chromeVisible = true
+        if playing {
+            scheduleHide()
+        } else {
+            hideTask?.cancel()
+        }
+    }
+
     private func resetHideTimer() { if chromeVisible { scheduleHide() } }
+
+    private var horizontalSeekGesture: some Gesture {
+        DragGesture(minimumDistance: 42, coordinateSpace: .local)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > abs(dy) * 1.4 else { return }
+                controller.skip(by: dx > 0 ? 10 : -10)
+                if chromeVisible {
+                    position = controller.currentTime()
+                    resetHideTimer()
+                }
+            }
+    }
 
     /// Auto-hide the chrome after a few seconds of no interaction (only while
     /// playing — a paused player keeps its controls up).
@@ -315,7 +361,6 @@ struct PlayerScreen: View {
                 if let player = controller.player {
                     ZStack {
                         PlayerLayerView(player: player, pip: pip)
-                            .ignoresSafeArea()
                         PlayerControlsOverlay(
                             controller: controller,
                             pip: pip,

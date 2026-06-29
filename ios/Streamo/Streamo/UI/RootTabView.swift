@@ -19,6 +19,8 @@ struct RootTabView: View {
             NavigationStack {
                 Group {
                     switch route {
+                    case .anime:
+                        AnimeCatalogView().navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
                     case .history:
                         HistoryView().navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
                     case .settings:
@@ -97,15 +99,6 @@ struct RootTabView: View {
             }
             .tabItem { Label("Cerca", systemImage: "magnifyingglass") }
             .tag(AppNavigation.Tab.search)
-
-            NavigationStack {
-                AnimeCatalogView()
-                    .navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
-                    .toolbarActions()
-                    .background { AmbientBackground() }
-            }
-            .tabItem { Label("Anime", systemImage: "sparkles.tv.fill") }
-            .tag(AppNavigation.Tab.anime)
 
             NavigationStack {
                 WatchlistView()

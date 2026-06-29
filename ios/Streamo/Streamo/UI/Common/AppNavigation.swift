@@ -10,10 +10,10 @@ import Observation
 final class AppNavigation {
     static let shared = AppNavigation()
 
-    enum Tab: Hashable { case home, search, anime, watchlist, history, settings }
+    enum Tab: Hashable { case home, search, watchlist, history, settings }
 
     /// The global utility pages reachable from the toolbar on every tab.
-    enum SheetRoute: String, Identifiable { case history, settings, downloads; var id: String { rawValue } }
+    enum SheetRoute: String, Identifiable { case anime, history, settings, downloads; var id: String { rawValue } }
 
     var selectedTab: Tab = .home
     /// Navigation path for the Home tab's stack (used for deep links).

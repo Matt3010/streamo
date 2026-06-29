@@ -14,12 +14,22 @@ final class AnimeCatalogModel {
     private(set) var isSearching = false
 
     var query = "" {
-        didSet { if query != oldValue { scheduleSearch() } }
+        didSet {
+            guard query != oldValue else { return }
+            if restoringPreservedQuery {
+                restoringPreservedQuery = false
+                return
+            }
+            scheduleSearch()
+        }
     }
 
     private var offset = 0
     private var canLoadMore = true
     private var searchTask: Task<Void, Never>?
+    private var preserveQueryDuringNextNavigation = false
+    private var restoringPreservedQuery = false
+    private var lastNonEmptyQuery = ""
     private let pageSize = 30
 
     /// First browse load (no-op once populated).
@@ -37,6 +47,10 @@ final class AnimeCatalogModel {
 
     func retry() async {
         if isSearching { scheduleSearch() } else { await loadBrowse(reset: true) }
+    }
+
+    func preserveSearchWhileOpeningResult() {
+        preserveQueryDuringNextNavigation = true
     }
 
     private func loadBrowse(reset: Bool) async {
@@ -62,6 +76,15 @@ final class AnimeCatalogModel {
     private func scheduleSearch() {
         searchTask?.cancel()
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty, preserveQueryDuringNextNavigation {
+            preserveQueryDuringNextNavigation = false
+            if !lastNonEmptyQuery.isEmpty {
+                restoringPreservedQuery = true
+                query = lastNonEmptyQuery
+            }
+            return
+        }
+        if !q.isEmpty { lastNonEmptyQuery = query }
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self, !Task.isCancelled else { return }
