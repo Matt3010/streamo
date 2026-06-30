@@ -72,6 +72,10 @@ final class PlaybackController {
     /// Latched once the credits-driven next-episode flow has fired, so the
     /// end-of-stream `onCompleted` fallback never double-advances.
     private(set) var didTriggerNext = false
+    /// Set when the TMDB metadata lookup for the next episode fails. The credits
+    /// latch stays closed to avoid retrying every five-second playback tick, but
+    /// the literal end-of-stream fallback is allowed one immediate attempt.
+    private var nextEpisodeLookupFailed = false
     /// Fired once when playback first crosses into the credits segment, so the
     /// view can resolve the next episode and arm the countdown.
     var onCreditsReached: (() -> Void)?
@@ -87,6 +91,22 @@ final class PlaybackController {
     private var creditsDismissed = false
     private var skipBoundaryObserver: Any?
     private var countdownTask: Task<Void, Never>?
+    /// Identifies the currently registered countdown task. Incrementing it
+    /// invalidates cleanup from an older cancelled task, so that task can never
+    /// clear the handle of a newer countdown.
+    private var countdownGeneration: UInt = 0
+
+    /// Provider resolution currently in flight. A new playback request or a
+    /// teardown cancels it and advances `playbackGeneration`, so a late result
+    /// can never recreate or replace a player that is no longer current.
+    private var resolutionTask: Task<ProviderResolver.PlaybackResolution, Never>?
+    private var playbackGeneration: UInt = 0
+
+    /// Serializes next-episode hand-offs. Credits, end-of-stream fallback and
+    /// "Play now" can all target the same episode within a very small window;
+    /// only the first trigger is allowed to resolve and commit that transition.
+    private var nextTransitionRequestID: String?
+    private var nextTransitionGeneration: UInt = 0
 
     /// Called ~every few seconds and on teardown with (position, duration).
     /// The watch page hooks progress persistence here.
@@ -145,6 +165,8 @@ final class PlaybackController {
     }
 
     func start(_ request: PlaybackRequest) async {
+        invalidateNextTransition()
+        let generation = beginPlaybackOperation()
         self.activeRequest = request
         self.viaProxy = nil
         state = .resolving
@@ -154,6 +176,7 @@ final class PlaybackController {
         // Offline download: play the local bundle directly, no provider resolve.
         // Offline playback uses no network, so downloads keep running.
         if let offline = request.offlineURL {
+            guard isCurrentPlaybackOperation(generation) else { return }
             beginPlayback(request, sources: [VixcloudClient.PlaybackSource(playlistURL: offline, headers: [:])])
             return
         }
@@ -164,7 +187,7 @@ final class PlaybackController {
         // screen can show the WARP/Diretto badge for the whole resolve duration.
         self.viaProxy = AppSettings.shared.providerProxyActive
 
-        let resolution = await resolve(request)
+        guard let resolution = await resolveForPlayback(request, generation: generation) else { return }
         self.viaProxy = resolution.viaProxy
         guard !resolution.sources.isEmpty else {
             state = .failed(resolution.message ?? "Titolo non disponibile")
@@ -179,14 +202,145 @@ final class PlaybackController {
     /// Returns whether playback advanced.
     @discardableResult
     func startNext(_ request: PlaybackRequest) async -> Bool {
-        resetSkipState()
-        let resolution = await resolve(request)
-        guard !resolution.sources.isEmpty else { return false }
+        await startNext(request, cancelCountdown: true)
+    }
+
+    /// Internal autoplay entry point. The countdown calls this with
+    /// `cancelCountdown: false`; otherwise resetting the per-item state would
+    /// cancel the task that is currently executing this transition.
+    @discardableResult
+    private func startNext(_ request: PlaybackRequest, cancelCountdown: Bool) async -> Bool {
+        guard let transitionGeneration = beginNextTransition(for: request) else {
+            return false
+        }
+        defer { finishNextTransition(requestID: request.id, generation: transitionGeneration) }
+
+        let generation = beginPlaybackOperation()
+
+        // A manual/immediate advance must dismiss any visible countdown now, but
+        // keep the current item's completion latch and skip state intact until the
+        // next stream has actually resolved. Clearing `didTriggerNext` before the
+        // await would let the old item reach its end and start a second concurrent
+        // next-episode resolution.
+        if cancelCountdown {
+            cancelCountdownTask()
+            nextCountdown = nil
+            pendingNextRequest = nil
+        }
+
+        guard let resolution = await resolveForPlayback(request, generation: generation),
+              !resolution.sources.isEmpty else { return false }
+
+        // The hand-off is now committed. Reset per-item state for the new episode
+        // without cancelling the countdown task when that same task initiated us.
+        resetSkipState(cancelCountdown: false)
         self.activeRequest = request
         self.viaProxy = resolution.viaProxy
         teardownPlayer()
         beginPlayback(request, sources: resolution.sources)
         return true
+    }
+
+    /// Acquire the single next-episode transition slot. All entry points run on
+    /// the MainActor, so checking and setting the slot is atomic. A duplicate or
+    /// conflicting trigger is ignored instead of cancelling/restarting the
+    /// provider request already in flight.
+    private func beginNextTransition(for request: PlaybackRequest) -> UInt? {
+        guard nextTransitionRequestID == nil else { return nil }
+        nextTransitionGeneration &+= 1
+        nextTransitionRequestID = request.id
+        return nextTransitionGeneration
+    }
+
+    private func finishNextTransition(requestID: String, generation: UInt) {
+        guard nextTransitionGeneration == generation,
+              nextTransitionRequestID == requestID else { return }
+        nextTransitionRequestID = nil
+    }
+
+    /// A normal `start` or teardown supersedes any in-flight next-episode
+    /// hand-off. Advancing the generation keeps cleanup from that old task from
+    /// releasing a newer transition slot. Provider work is invalidated separately
+    /// by `beginPlaybackOperation` / `invalidatePlaybackOperations`.
+    private func invalidateNextTransition() {
+        nextTransitionGeneration &+= 1
+        nextTransitionRequestID = nil
+    }
+
+    private var isNextTransitionInProgress: Bool {
+        nextTransitionRequestID != nil
+    }
+
+    /// Start a TMDB next-episode metadata lookup for the current item. This
+    /// clears only the prior lookup-failure marker; the credits latch remains
+    /// closed until a new player item is committed.
+    func beginNextEpisodeLookup(for requestID: String) {
+        guard activeRequest?.id == requestID else { return }
+        nextEpisodeLookupFailed = false
+    }
+
+    /// Record a real TMDB lookup failure for the current item and report whether
+    /// the end callback already ran while the request was suspended. MainActor
+    /// serialization makes the two possible orderings deterministic:
+    ///
+    /// - failure first: `needsNextEpisodeEndFallback` is true when the later end
+    ///   callback runs;
+    /// - end first: the caller receives `true` and performs one final attempt.
+    @discardableResult
+    func recordNextEpisodeLookupFailure(for requestID: String) -> Bool {
+        guard activeRequest?.id == requestID else { return false }
+        nextEpisodeLookupFailed = true
+        return didReachEnd
+    }
+
+    /// End-of-stream should resolve the next episode when credits never fired or
+    /// when their TMDB lookup failed. The separate failure marker avoids opening
+    /// `didTriggerNext` and hammering TMDB on every periodic credits update.
+    var needsNextEpisodeEndFallback: Bool {
+        !didTriggerNext || nextEpisodeLookupFailed
+    }
+
+    /// Start a new logical playback operation and invalidate any provider
+    /// resolution belonging to an older request. The generation is checked
+    /// again after every suspension point before mutating player state.
+    private func beginPlaybackOperation() -> UInt {
+        playbackGeneration &+= 1
+        resolutionTask?.cancel()
+        resolutionTask = nil
+        return playbackGeneration
+    }
+
+    /// Invalidate all asynchronous playback work without starting a replacement.
+    /// Used by teardown so late provider responses become harmless no-ops.
+    private func invalidatePlaybackOperations() {
+        playbackGeneration &+= 1
+        resolutionTask?.cancel()
+        resolutionTask = nil
+    }
+
+    private func isCurrentPlaybackOperation(_ generation: UInt) -> Bool {
+        playbackGeneration == generation && !Task.isCancelled
+    }
+
+    /// Resolve through a registered cancellable task. Cancellation is useful for
+    /// cooperative URLSession work; the generation check is the hard guarantee
+    /// for providers that finish despite cancellation.
+    private func resolveForPlayback(
+        _ request: PlaybackRequest,
+        generation: UInt
+    ) async -> ProviderResolver.PlaybackResolution? {
+        let task = Task { await resolve(request) }
+        resolutionTask = task
+        let resolution = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+
+        let isCurrent = playbackGeneration == generation
+        if isCurrent { resolutionTask = nil }
+        guard isCurrent, !Task.isCancelled else { return nil }
+        return resolution
     }
 
     private func beginPlayback(_ request: PlaybackRequest, sources: [VixcloudClient.PlaybackSource]) {
@@ -351,10 +505,11 @@ final class PlaybackController {
 
     // MARK: - Skip intro / credits
 
-    /// Clear all skip/next state before a fresh item resolves. NOT called on a
+    /// Clear all skip/next state when committing a fresh item. NOT called on a
     /// mirror switch (same episode -> state must survive).
-    private func resetSkipState() {
+    private func resetSkipState(cancelCountdown: Bool = true) {
         didTriggerNext = false
+        nextEpisodeLookupFailed = false
         didFetchSegments = false
         introDismissed = false
         creditsDismissed = false
@@ -363,6 +518,16 @@ final class PlaybackController {
         skipSegment = nil
         nextCountdown = nil
         pendingNextRequest = nil
+        if cancelCountdown {
+            cancelCountdownTask()
+        }
+    }
+
+    /// Cancel the registered countdown and invalidate cleanup from that task.
+    /// The generation guard prevents an older cancelled task from clearing a
+    /// newer countdown that may already have been armed.
+    private func cancelCountdownTask() {
+        countdownGeneration &+= 1
         countdownTask?.cancel()
         countdownTask = nil
     }
@@ -500,9 +665,15 @@ final class PlaybackController {
     /// Arm an auto-advance countdown to `request`. Cancellable; counts down to
     /// zero then hands off to `startNext`.
     func armNextEpisode(_ request: PlaybackRequest, seconds: Int = 8) {
+        cancelCountdownTask()
         pendingNextRequest = request
-        countdownTask?.cancel()
+        let generation = countdownGeneration
         countdownTask = Task { @MainActor in
+            defer {
+                if countdownGeneration == generation {
+                    countdownTask = nil
+                }
+            }
             for n in stride(from: seconds, through: 1, by: -1) {
                 // Abort if the user scrubbed back out of the credits region —
                 // unlatch so re-entering the credits re-arms the countdown.
@@ -517,7 +688,7 @@ final class PlaybackController {
                 if Task.isCancelled { return }
             }
             nextCountdown = nil
-            await startNext(request)
+            await startNext(request, cancelCountdown: false)
         }
     }
 
@@ -531,24 +702,29 @@ final class PlaybackController {
     /// Skip the countdown and advance immediately.
     func playNextNow() {
         guard let request = pendingNextRequest else { return }
-        countdownTask?.cancel()
-        countdownTask = nil
         nextCountdown = nil
+
+        // Once the countdown has already entered `startNext`, cancelling its task
+        // would abort the one valid transition. In that narrow window, "Play now"
+        // simply acknowledges the transition already in progress.
+        guard !isNextTransitionInProgress else { return }
+
+        cancelCountdownTask()
         Task { await startNext(request) }
     }
 
     /// Dismiss the countdown without advancing. `didTriggerNext` stays latched,
     /// so the end-of-stream fallback won't re-arm it for this episode.
     func cancelNextEpisode() {
-        countdownTask?.cancel()
-        countdownTask = nil
+        cancelCountdownTask()
         nextCountdown = nil
     }
 
     func teardown() {
+        invalidateNextTransition()
+        invalidatePlaybackOperations()
         flushProgress()
-        countdownTask?.cancel()
-        countdownTask = nil
+        cancelCountdownTask()
         teardownPlayer()
         // Release the audio session back to the keep-alive's mixable policy
         // (so a still-running background download doesn't stop the user's music).

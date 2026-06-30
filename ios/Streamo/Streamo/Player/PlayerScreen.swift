@@ -356,6 +356,10 @@ struct PlayerScreen: View {
 
     @State private var controller = PlaybackController()
     @State private var pip = PiPProxy()
+    /// TMDB lookup used to determine the next aired episode. It is cancelled
+    /// when the player closes or a newer lookup supersedes it.
+    @State private var nextEpisodeTask: Task<Void, Never>?
+    @State private var nextEpisodeGeneration: UInt = 0
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(Library.self) private var library
@@ -443,9 +447,9 @@ struct PlayerScreen: View {
                                         season: r.season, episode: r.episode,
                                         title: r.title, poster: r.poster, source: r.source)
                 }
-                // Fallback: only auto-advance from the literal end when the
-                // credits-driven path hasn't already fired (no credits data).
-                if !controller.didTriggerNext { resolveAndArmNext(immediate: true) }
+                // Literal-end fallback: run when credits never fired or when
+                // their TMDB next-episode lookup failed.
+                if controller.needsNextEpisodeEndFallback { resolveAndArmNext(immediate: true) }
             }
             // Credits reached: advance early (with a cancellable countdown).
             controller.onCreditsReached = { resolveAndArmNext() }
@@ -465,6 +469,7 @@ struct PlayerScreen: View {
             }
         }
         .onDisappear {
+            cancelNextEpisodeResolution()
             let req = controller.activeRequest
             controller.teardown()   // flushes final progress before we check
             autoDeleteIfWatched(req)
@@ -537,8 +542,42 @@ struct PlayerScreen: View {
         // episode-id list); TMDB autoplay uses the show's season layout here.
         guard AppSettings.shared.autoplayNext,
               let cur = controller.activeRequest, cur.source == .tmdb, cur.mediaType == .tv else { return }
-        Task {
-            guard let item = try? await TMDBClient.shared.details(id: cur.tmdbId, type: .tv),
+        cancelNextEpisodeResolution()
+        let generation = nextEpisodeGeneration
+        nextEpisodeTask = Task { @MainActor in
+            defer {
+                if nextEpisodeGeneration == generation {
+                    nextEpisodeTask = nil
+                }
+            }
+
+            // Keep the credits latch closed after a TMDB error, otherwise the
+            // five-second playback observer would continuously restart this
+            // lookup. The failure marker enables the literal end fallback. If
+            // the end callback already ran while this request was suspended, do
+            // one final lookup inline so neither race ordering loses autoplay.
+            controller.beginNextEpisodeLookup(for: cur.id)
+            var item: TmdbItem?
+            var mayRetryAfterEnd = !immediate
+            while item == nil {
+                do {
+                    item = try await TMDBClient.shared.details(id: cur.tmdbId, type: .tv)
+                } catch {
+                    guard !Task.isCancelled,
+                          nextEpisodeGeneration == generation,
+                          controller.activeRequest?.id == cur.id else { return }
+
+                    let endedWhileResolving = controller.recordNextEpisodeLookupFailure(for: cur.id)
+                    guard mayRetryAfterEnd, endedWhileResolving else { return }
+                    mayRetryAfterEnd = false
+                    controller.beginNextEpisodeLookup(for: cur.id)
+                }
+            }
+
+            guard !Task.isCancelled,
+                  nextEpisodeGeneration == generation,
+                  controller.activeRequest?.id == cur.id,
+                  let item,
                   let next = TVLogic.nextEpisode(item, season: cur.season, episode: cur.episode) else { return }
             let nextReq = PlaybackRequest(
                 tmdbId: cur.tmdbId, mediaType: .tv, title: cur.title, releaseDate: cur.releaseDate,
@@ -550,5 +589,11 @@ struct PlayerScreen: View {
                 controller.armNextEpisode(nextReq)
             }
         }
+    }
+
+    private func cancelNextEpisodeResolution() {
+        nextEpisodeGeneration &+= 1
+        nextEpisodeTask?.cancel()
+        nextEpisodeTask = nil
     }
 }
