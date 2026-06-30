@@ -1,5 +1,4 @@
 import SwiftUI
-import WidgetKit
 
 struct RootTabView: View {
     @Environment(Library.self) private var library
@@ -56,7 +55,6 @@ struct RootTabView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
-                WidgetCenter.shared.reloadAllTimelines()
                 // The tunnel may not survive suspension — flag it so the next
                 // start() re-probes and restarts instead of reusing a dead session.
                 Task { await WarpTunnel.shared.invalidate() }
@@ -72,7 +70,6 @@ struct RootTabView: View {
                 break
             }
         }
-        .onOpenURL { url in handleDeepLink(url) }
     }
 
     private var onlineTabs: some View {
@@ -126,22 +123,4 @@ struct RootTabView: View {
         }
     }
 
-    /// streamo://open?type=tv&id=123&s=1&e=2 → open the title's detail.
-    private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "streamo",
-              let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-        let q = comps.queryItems ?? []
-        func value(_ name: String) -> String? { q.first { $0.name == name }?.value }
-        guard let id = value("id").flatMap(Int.init),
-              let typeRaw = value("type"), let type = MediaType(rawValue: typeRaw) else { return }
-        // Offline mode only renders Downloads, so a tab/stack-based open would
-        // silently land nowhere. Surface that to the user instead.
-        guard network.isOnline else {
-            ToastCenter.shared.show("Sei offline — apertura disponibile al ritorno della connessione")
-            return
-        }
-        let season = value("s").flatMap(Int.init) ?? 0
-        let episode = value("e").flatMap(Int.init) ?? 0
-        nav.open(MediaRef(tmdbId: id, mediaType: type, resumeSeason: season, resumeEpisode: episode))
-    }
 }

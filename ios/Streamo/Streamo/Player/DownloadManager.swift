@@ -253,17 +253,38 @@ final class DownloadManager {
         syncDownloadKeepAlive()
     }
 
-    /// Loopback URL of a completed download, or nil if its files are missing
-    /// or the local HLS server failed to bind. AVPlayer plays this through
-    /// `LocalHLSServer` — which is why offline playback works in airplane
-    /// mode (loopback bypasses AVFoundation's network-presence preflight).
+    /// True when the completed download still has its local HLS manifest.
+    /// This deliberately does not depend on the loopback listener being ready,
+    /// so synchronous SwiftUI availability checks never block or flicker while
+    /// the server is starting.
+    func hasOfflineAsset(for entry: DownloadEntry) -> Bool {
+        guard entry.state == .completed else { return false }
+        let master = Self.downloadDirectory(for: key(for: entry)).appendingPathComponent("master.m3u8")
+        return FileManager.default.fileExists(atPath: master.path)
+    }
+
+    /// Non-blocking loopback URL probe. Playback launch paths should prefer
+    /// `offlineURLAsync(for:)`, which waits for the listener without blocking
+    /// the MainActor.
     func offlineURL(for entry: DownloadEntry) -> URL? {
+        guard hasOfflineAsset(for: entry) else { return nil }
+        let k = key(for: entry)
+        guard let port = LocalHLSServer.shared.boundPortIfReady() else {
+            Task { _ = try? await LocalHLSServer.shared.ensureRunning(timeout: 2.0) }
+            return nil
+        }
+        return LocalHLSServer.url(port: port, relativePath: "\(k)/master.m3u8")
+    }
+
+    /// Playback-safe variant: waits asynchronously for the loopback listener
+    /// instead of sleeping on the MainActor for up to two seconds.
+    func offlineURLAsync(for entry: DownloadEntry) async -> URL? {
         guard entry.state == .completed else { return nil }
         let k = key(for: entry)
         let master = Self.downloadDirectory(for: k).appendingPathComponent("master.m3u8")
-        guard FileManager.default.fileExists(atPath: master.path) else { return nil }
-        let port = LocalHLSServer.shared.waitForReady()
-        guard port != 0 else { return nil }
+        guard FileManager.default.fileExists(atPath: master.path),
+              let port = try? await LocalHLSServer.shared.ensureRunning(timeout: 2.0),
+              hasOfflineAsset(for: entry) else { return nil }
         return LocalHLSServer.url(port: port, relativePath: "\(k)/master.m3u8")
     }
 
@@ -487,6 +508,11 @@ final class DownloadManager {
             resolution = await ProviderResolver.shared.episodeSource(
                 tmdbId: entry.tmdbId, title: entry.title ?? "", releaseDate: entry.releaseDate,
                 season: entry.season, episode: entry.episode, client: .download)
+        }
+        defer {
+            if let token = resolution.liveProxyToken {
+                LocalHLSServer.shared.revokeLiveProxyToken(token)
+            }
         }
         guard isCurrentRun(key: k, runID: runID), !Task.isCancelled else {
             debugLog("runDownload stale after resolve key=\(k) run=\(runID)")

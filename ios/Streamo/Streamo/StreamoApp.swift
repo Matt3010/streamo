@@ -41,16 +41,7 @@ struct StreamoApp: App {
 
     private static func preparePersistentStoreDirectories() {
         let fm = FileManager.default
-        var directories = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        if let groupURL = fm.containerURL(forSecurityApplicationGroupIdentifier: WidgetShared.appGroup) {
-            directories.append(
-                groupURL
-                    .appendingPathComponent("Library", isDirectory: true)
-                    .appendingPathComponent("Application Support", isDirectory: true)
-            )
-        }
-
-        for url in directories {
+        for url in fm.urls(for: .applicationSupportDirectory, in: .userDomainMask) {
             try? fm.createDirectory(at: url, withIntermediateDirectories: true)
         }
     }

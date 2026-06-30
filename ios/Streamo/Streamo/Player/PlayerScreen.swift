@@ -132,6 +132,14 @@ private struct PlayerControlsOverlay: View {
         .onChange(of: playing) { _, isPlaying in
             if isPlaying, chromeVisible { scheduleHide() }
         }
+        .onChange(of: controller.isBuffering) { _, buffering in
+            if buffering {
+                hideTask?.cancel()
+                chromeVisible = true
+            } else if controller.isPlaying, chromeVisible {
+                scheduleHide()
+            }
+        }
     }
 
     // MARK: Chrome (auto-hiding transport)
@@ -335,7 +343,7 @@ private struct PlayerControlsOverlay: View {
         hideTask?.cancel()
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
-            if !Task.isCancelled, controller.isPlaying { chromeVisible = false }
+            if !Task.isCancelled, controller.shouldAutoHideControls { chromeVisible = false }
         }
     }
 
@@ -364,6 +372,8 @@ struct PlayerScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(Library.self) private var library
 
+    private var displayRequest: PlaybackRequest { controller.activeRequest ?? request }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -378,7 +388,7 @@ struct PlayerScreen: View {
             case .idle, .resolving:
                 VStack(spacing: 16) {
                     ProgressView().tint(.white)
-                    Text(request.title).font(.headline).foregroundStyle(.white).multilineTextAlignment(.center).padding(.horizontal, 40)
+                    Text(displayRequest.title).font(.headline).foregroundStyle(.white).multilineTextAlignment(.center).padding(.horizontal, 40)
                     Text("Caricamento stream…").font(.subheadline).foregroundStyle(.white.opacity(0.7))
                     if let viaProxy = controller.viaProxy {
                         WarpBadge(viaProxy: viaProxy, streaming: true)
@@ -399,16 +409,22 @@ struct PlayerScreen: View {
                         PlayerControlsOverlay(
                             controller: controller,
                             pip: pip,
-                            title: request.title,
-                            subtitle: request.mediaType == .tv ? "S\(request.season) · E\(request.episode)" : nil,
+                            title: displayRequest.title,
+                            subtitle: displayRequest.mediaType == .tv ? "S\(displayRequest.season) · E\(displayRequest.episode)" : nil,
                             onClose: { dismiss() }
                         )
+                        if controller.isBuffering {
+                            ProgressView()
+                                .controlSize(.large)
+                                .tint(.white)
+                                .allowsHitTesting(false)
+                        }
                     }
                 }
             case .failed(let message):
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.yellow)
-                    Text(request.title).font(.headline).foregroundStyle(.white)
+                    Text(displayRequest.title).font(.headline).foregroundStyle(.white)
                     ScrollView {
                         Text(message)
                             .font(.system(.footnote, design: .monospaced))
@@ -491,6 +507,7 @@ struct PlayerScreen: View {
     /// Artwork URL for the loading/error backdrop. AnimeUnity carries an
     /// absolute image URL; TMDB carries a path resolved through `TmdbImage`.
     private var artworkURL: URL? {
+        let request = displayRequest
         if request.source == .animeUnity {
             return request.artworkURLString.flatMap(URL.init(string:))
         }
@@ -537,11 +554,21 @@ struct PlayerScreen: View {
     /// `onCompleted` end-of-stream fallback (`immediate`). Gated by the existing
     /// `autoplayNext` setting; `startNext` only switches if the next episode
     /// actually resolves, so a missing one leaves playback put.
+    private enum NextEpisodeResolutionResult {
+        case request(PlaybackRequest)
+        /// The catalog/download snapshot proves that no playable next episode
+        /// exists, so the end callback must not retry.
+        case unavailable
+        /// A network/local-server operation failed transiently. Keep the credits
+        /// latch closed, but permit one final attempt at the literal end.
+        case retryableFailure
+    }
+
     private func resolveAndArmNext(immediate: Bool = false) {
-        // Anime autoplay-next is driven from AnimeDetailView (it has the ordered
-        // episode-id list); TMDB autoplay uses the show's season layout here.
         guard AppSettings.shared.autoplayNext,
-              let cur = controller.activeRequest, cur.source == .tmdb, cur.mediaType == .tv else { return }
+              let cur = controller.activeRequest,
+              cur.mediaType == .tv else { return }
+
         cancelNextEpisodeResolution()
         let generation = nextEpisodeGeneration
         nextEpisodeTask = Task { @MainActor in
@@ -551,44 +578,149 @@ struct PlayerScreen: View {
                 }
             }
 
-            // Keep the credits latch closed after a TMDB error, otherwise the
-            // five-second playback observer would continuously restart this
-            // lookup. The failure marker enables the literal end fallback. If
-            // the end callback already ran while this request was suspended, do
-            // one final lookup inline so neither race ordering loses autoplay.
-            controller.beginNextEpisodeLookup(for: cur.id)
-            var item: TmdbItem?
+            controller.beginNextEpisodeResolution(for: cur.id)
             var mayRetryAfterEnd = !immediate
-            while item == nil {
-                do {
-                    item = try await TMDBClient.shared.details(id: cur.tmdbId, type: .tv)
-                } catch {
-                    guard !Task.isCancelled,
-                          nextEpisodeGeneration == generation,
-                          controller.activeRequest?.id == cur.id else { return }
 
-                    let endedWhileResolving = controller.recordNextEpisodeLookupFailure(for: cur.id)
+            while true {
+                let outcome: NextEpisodeResolutionResult
+                if cur.offlineURL != nil {
+                    // Stay fully offline: only advance when the exact next episode
+                    // is already downloaded and its local URL can be prepared.
+                    outcome = await nextOfflineResolution(after: cur)
+                } else if cur.source == .animeUnity {
+                    outcome = await nextAnimeUnityResolution(after: cur)
+                } else {
+                    outcome = await nextTMDBResolution(after: cur)
+                }
+
+                guard !Task.isCancelled,
+                      nextEpisodeGeneration == generation,
+                      controller.activeRequest?.id == cur.id else { return }
+
+                switch outcome {
+                case .request(let nextRequest):
+                    if immediate {
+                        await controller.startNext(nextRequest)
+                    } else {
+                        controller.armNextEpisode(nextRequest)
+                    }
+                    return
+
+                case .unavailable:
+                    return
+
+                case .retryableFailure:
+                    let endedWhileResolving = controller.recordNextEpisodeResolutionFailure(for: cur.id)
                     guard mayRetryAfterEnd, endedWhileResolving else { return }
+                    // The item ended while this request was suspended. Retry once
+                    // immediately; a second failure terminates without looping.
                     mayRetryAfterEnd = false
-                    controller.beginNextEpisodeLookup(for: cur.id)
+                    controller.beginNextEpisodeResolution(for: cur.id)
                 }
             }
-
-            guard !Task.isCancelled,
-                  nextEpisodeGeneration == generation,
-                  controller.activeRequest?.id == cur.id,
-                  let item,
-                  let next = TVLogic.nextEpisode(item, season: cur.season, episode: cur.episode) else { return }
-            let nextReq = PlaybackRequest(
-                tmdbId: cur.tmdbId, mediaType: .tv, title: cur.title, releaseDate: cur.releaseDate,
-                poster: cur.poster, backdrop: cur.backdrop, season: next.season, episode: next.episode, startAt: 0
-            )
-            if immediate {
-                await controller.startNext(nextReq)
-            } else {
-                controller.armNextEpisode(nextReq)
-            }
         }
+    }
+
+    /// Resolve the next aired TMDB episode. Network/service errors are retryable;
+    /// a valid series response with no following aired coordinate is terminal.
+    private func nextTMDBResolution(after cur: PlaybackRequest) async -> NextEpisodeResolutionResult {
+        guard cur.source == .tmdb else { return .unavailable }
+        let item: TmdbItem
+        do {
+            item = try await TMDBClient.shared.details(id: cur.tmdbId, type: .tv)
+        } catch {
+            return .retryableFailure
+        }
+        guard let next = TVLogic.nextEpisode(item, season: cur.season, episode: cur.episode) else {
+            return .unavailable
+        }
+        return .request(PlaybackRequest(
+            tmdbId: cur.tmdbId, mediaType: .tv, title: cur.title, releaseDate: cur.releaseDate,
+            poster: cur.poster, backdrop: cur.backdrop,
+            season: next.season, episode: next.episode, startAt: 0
+        ))
+    }
+
+    /// Build the exact next downloaded episode without contacting TMDB. The
+    /// snapshot stored with downloads supplies season boundaries; legacy rows
+    /// without a snapshot advance only within the current season.
+    private func nextOfflineResolution(after cur: PlaybackRequest) async -> NextEpisodeResolutionResult {
+        let candidates = library.downloads()
+            .filter {
+                $0.tmdbId == cur.tmdbId && $0.mediaType == .tv &&
+                $0.source == cur.source && $0.state == .completed
+            }
+            .sorted { ($0.season, $0.episode) < ($1.season, $1.episode) }
+
+        let currentEntry = candidates.first { $0.season == cur.season && $0.episode == cur.episode }
+        let snapshot = currentEntry?.itemJSON
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode(TmdbItem.self, from: $0) }
+
+        let coordinate: (season: Int, episode: Int)?
+        if let snapshot {
+            coordinate = TVLogic.nextEpisode(snapshot, season: cur.season, episode: cur.episode)
+        } else {
+            // Legacy rows have no series snapshot, so we cannot infer a season
+            // boundary safely. Advance only to the literal next episode in the
+            // same season rather than skipping missing episodes or guessing the
+            // first episode of a later season.
+            coordinate = (season: cur.season, episode: cur.episode + 1)
+        }
+
+        guard let coordinate,
+              let entry = candidates.first(where: {
+                  $0.season == coordinate.season && $0.episode == coordinate.episode
+              }) else { return .unavailable }
+
+        guard let url = await DownloadManager.shared.offlineURLAsync(for: entry) else {
+            // The asset existed when selected, so failure here is normally a
+            // transient local-listener startup problem or a concurrent delete.
+            // A concurrent delete is harmless: the end retry will return
+            // `.unavailable` after the library snapshot refreshes.
+            return .retryableFailure
+        }
+
+        return .request(PlaybackRequest(
+            tmdbId: entry.tmdbId, mediaType: .tv,
+            title: entry.title ?? cur.title, releaseDate: entry.releaseDate ?? cur.releaseDate,
+            poster: entry.poster ?? cur.poster, backdrop: entry.backdrop ?? cur.backdrop,
+            season: entry.season, episode: entry.episode, startAt: 0,
+            offlineURL: url, source: entry.source
+        ))
+    }
+
+    /// AnimeUnity has native episode ids. Session/page failures are transient;
+    /// a page that explicitly reports the current episode as the last is not.
+    private func nextAnimeUnityResolution(after cur: PlaybackRequest) async -> NextEpisodeResolutionResult {
+        guard cur.source == .animeUnity else { return .unavailable }
+        guard await ProviderResolver.shared.ensureAnimeSession() else { return .retryableFailure }
+
+        let nextNumber = cur.episode + 1
+        let page: AnimeUnityClient.AUEpisodePage
+        do {
+            page = try await AnimeUnityClient.shared.episodePage(
+                animeId: cur.tmdbId, start: nextNumber, end: nextNumber
+            )
+        } catch {
+            return .retryableFailure
+        }
+
+        guard nextNumber <= page.total else { return .unavailable }
+        guard let episode = page.episodes.first(where: { $0.numberInt == nextNumber }) ?? page.episodes.first else {
+            return .retryableFailure
+        }
+
+        let baseTitle = cur.title.components(separatedBy: " • Ep.").first ?? cur.title
+        let episodeLabel = episode.number ?? String(nextNumber)
+        return .request(PlaybackRequest(
+            tmdbId: cur.tmdbId, mediaType: .tv,
+            title: "\(baseTitle) • Ep. \(episodeLabel)", releaseDate: cur.releaseDate,
+            poster: cur.poster, backdrop: cur.backdrop,
+            season: 1, episode: nextNumber, startAt: 0,
+            source: .animeUnity, animeSlug: cur.animeSlug,
+            animeEpisodeId: episode.id, artworkURLString: cur.artworkURLString
+        ))
     }
 
     private func cancelNextEpisodeResolution() {

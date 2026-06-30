@@ -48,6 +48,11 @@ final class PlaybackController {
 
     private(set) var state: State = .idle
     private(set) var player: AVPlayer?
+    /// True only while AVPlayer is waiting for enough media after playback was
+    /// requested. The UI keeps controls visible and surfaces a spinner in this
+    /// state instead of treating buffering as active playback.
+    private(set) var isBuffering = false
+    private var playbackRequested = false
     /// Non-nil while a seek is in flight; UI reads this as currentTime so the
     /// scrubber holds at the requested spot instead of snapping to the stale
     /// buffering position.
@@ -72,10 +77,11 @@ final class PlaybackController {
     /// Latched once the credits-driven next-episode flow has fired, so the
     /// end-of-stream `onCompleted` fallback never double-advances.
     private(set) var didTriggerNext = false
-    /// Set when the TMDB metadata lookup for the next episode fails. The credits
-    /// latch stays closed to avoid retrying every five-second playback tick, but
-    /// the literal end-of-stream fallback is allowed one immediate attempt.
-    private var nextEpisodeLookupFailed = false
+    /// Set when resolving the next episode fails for a retryable reason (TMDB,
+    /// AnimeUnity or local-server startup). The credits latch stays closed to
+    /// avoid retrying every five-second playback tick, while the literal end of
+    /// the current item is allowed one final attempt.
+    private var nextEpisodeResolutionFailed = false
     /// Fired once when playback first crosses into the credits segment, so the
     /// view can resolve the next episode and arm the countdown.
     var onCreditsReached: (() -> Void)?
@@ -91,6 +97,10 @@ final class PlaybackController {
     private var creditsDismissed = false
     private var skipBoundaryObserver: Any?
     private var countdownTask: Task<Void, Never>?
+    /// Manual "Play now" launches its own task. Keep it registered so an
+    /// explicit new start or teardown can cancel it before it begins/commits.
+    private var manualNextTask: Task<Void, Never>?
+    private var manualNextGeneration: UInt = 0
     /// Identifies the currently registered countdown task. Incrementing it
     /// invalidates cleanup from an older cancelled task, so that task can never
     /// clear the handle of a newer countdown.
@@ -118,6 +128,7 @@ final class PlaybackController {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
+    private var timeControlObserver: NSKeyValueObservation?
     /// Latched once the current item reaches the real end, so teardown's final
     /// flush cannot overwrite the 100% save with a slightly-short currentTime.
     private var didReachEnd = false
@@ -151,6 +162,13 @@ final class PlaybackController {
     /// denied / no Wi-Fi. Loopback always works for on-device playback.
     private var usingLAN = false
     private var loopbackForced = false
+    /// Live-proxy lease used by the currently committed stream. A newly resolved
+    /// episode gets its own token; the old lease is revoked only after the old
+    /// player has been stopped, so AirPlay cannot receive transient 401s.
+    private var activeLiveProxyToken: String?
+    /// Tracks whether this controller actually paused the download queue. This
+    /// makes error/teardown cleanup idempotent and avoids resuming it twice.
+    private var downloadsPausedForPlayback = false
 
     private func resolve(_ request: PlaybackRequest) async -> ProviderResolver.PlaybackResolution {
         if request.source == .animeUnity {
@@ -165,24 +183,31 @@ final class PlaybackController {
     }
 
     func start(_ request: PlaybackRequest) async {
+        cancelManualNextTask()
         invalidateNextTransition()
         let generation = beginPlaybackOperation()
+
+        // A fresh explicit start supersedes any existing item immediately.
+        flushProgress()
+        teardownPlayer()
+        replaceLiveProxyToken(with: nil)
+        NowPlayingCenter.shared.clear()
+
         self.activeRequest = request
         self.viaProxy = nil
         state = .resolving
-        teardownPlayer()
         resetSkipState()
+        configureDownloadMode(for: request)
 
         // Offline download: play the local bundle directly, no provider resolve.
-        // Offline playback uses no network, so downloads keep running.
         if let offline = request.offlineURL {
             guard isCurrentPlaybackOperation(generation) else { return }
-            beginPlayback(request, sources: [VixcloudClient.PlaybackSource(playlistURL: offline, headers: [:])])
+            beginPlayback(request,
+                          sources: [VixcloudClient.PlaybackSource(playlistURL: offline, headers: [:])],
+                          liveProxyToken: nil)
             return
         }
 
-        // Streaming uses the network/provider, so pause downloads while it plays.
-        DownloadManager.shared.pauseForPlayback()
         // Mode is known before resolving (it's just the setting), so the loading
         // screen can show the WARP/Diretto badge for the whole resolve duration.
         self.viaProxy = AppSettings.shared.providerProxyActive
@@ -190,10 +215,11 @@ final class PlaybackController {
         guard let resolution = await resolveForPlayback(request, generation: generation) else { return }
         self.viaProxy = resolution.viaProxy
         guard !resolution.sources.isEmpty else {
-            state = .failed(resolution.message ?? "Titolo non disponibile")
+            if let token = resolution.liveProxyToken { LocalHLSServer.shared.revokeLiveProxyToken(token) }
+            failPlayback(resolution.message ?? "Titolo non disponibile")
             return
         }
-        beginPlayback(request, sources: resolution.sources)
+        beginPlayback(request, sources: resolution.sources, liveProxyToken: resolution.liveProxyToken)
     }
 
     /// Autoplay variant: resolve the next request first and only switch if it
@@ -210,6 +236,7 @@ final class PlaybackController {
     /// cancel the task that is currently executing this transition.
     @discardableResult
     private func startNext(_ request: PlaybackRequest, cancelCountdown: Bool) async -> Bool {
+        guard activeRequest != nil, !Task.isCancelled else { return false }
         guard let transitionGeneration = beginNextTransition(for: request) else {
             return false
         }
@@ -219,26 +246,50 @@ final class PlaybackController {
 
         // A manual/immediate advance must dismiss any visible countdown now, but
         // keep the current item's completion latch and skip state intact until the
-        // next stream has actually resolved. Clearing `didTriggerNext` before the
-        // await would let the old item reach its end and start a second concurrent
-        // next-episode resolution.
+        // next stream has actually resolved.
         if cancelCountdown {
             cancelCountdownTask()
             nextCountdown = nil
             pendingNextRequest = nil
         }
 
+        if let offline = request.offlineURL {
+            guard isCurrentPlaybackOperation(generation) else { return false }
+            commitNextPlayback(
+                request,
+                sources: [VixcloudClient.PlaybackSource(playlistURL: offline, headers: [:])],
+                viaProxy: nil,
+                liveProxyToken: nil
+            )
+            return true
+        }
+
         guard let resolution = await resolveForPlayback(request, generation: generation),
               !resolution.sources.isEmpty else { return false }
 
-        // The hand-off is now committed. Reset per-item state for the new episode
-        // without cancelling the countdown task when that same task initiated us.
-        resetSkipState(cancelCountdown: false)
-        self.activeRequest = request
-        self.viaProxy = resolution.viaProxy
-        teardownPlayer()
-        beginPlayback(request, sources: resolution.sources)
+        commitNextPlayback(request,
+                           sources: resolution.sources,
+                           viaProxy: resolution.viaProxy,
+                           liveProxyToken: resolution.liveProxyToken)
         return true
+    }
+
+    /// Atomically commit a resolved next episode. The old request remains active
+    /// until its final progress snapshot has been persisted; only then do we
+    /// reset per-item state, stop the old player and rotate proxy leases.
+    private func commitNextPlayback(
+        _ request: PlaybackRequest,
+        sources: [VixcloudClient.PlaybackSource],
+        viaProxy: Bool?,
+        liveProxyToken: String?
+    ) {
+        flushProgress()
+        resetSkipState(cancelCountdown: false)
+        teardownPlayer()
+        self.activeRequest = request
+        self.viaProxy = viaProxy
+        configureDownloadMode(for: request)
+        beginPlayback(request, sources: sources, liveProxyToken: liveProxyToken)
     }
 
     /// Acquire the single next-episode transition slot. All entry points run on
@@ -271,33 +322,33 @@ final class PlaybackController {
         nextTransitionRequestID != nil
     }
 
-    /// Start a TMDB next-episode metadata lookup for the current item. This
-    /// clears only the prior lookup-failure marker; the credits latch remains
-    /// closed until a new player item is committed.
-    func beginNextEpisodeLookup(for requestID: String) {
+    /// Start resolving the next episode for the current item. This clears only
+    /// the prior retryable-failure marker; the credits latch remains closed until
+    /// a new player item is committed.
+    func beginNextEpisodeResolution(for requestID: String) {
         guard activeRequest?.id == requestID else { return }
-        nextEpisodeLookupFailed = false
+        nextEpisodeResolutionFailed = false
     }
 
-    /// Record a real TMDB lookup failure for the current item and report whether
-    /// the end callback already ran while the request was suspended. MainActor
+    /// Record a retryable next-episode resolution failure and report whether the
+    /// end callback already ran while the request was suspended. MainActor
     /// serialization makes the two possible orderings deterministic:
     ///
     /// - failure first: `needsNextEpisodeEndFallback` is true when the later end
     ///   callback runs;
     /// - end first: the caller receives `true` and performs one final attempt.
     @discardableResult
-    func recordNextEpisodeLookupFailure(for requestID: String) -> Bool {
+    func recordNextEpisodeResolutionFailure(for requestID: String) -> Bool {
         guard activeRequest?.id == requestID else { return false }
-        nextEpisodeLookupFailed = true
+        nextEpisodeResolutionFailed = true
         return didReachEnd
     }
 
     /// End-of-stream should resolve the next episode when credits never fired or
-    /// when their TMDB lookup failed. The separate failure marker avoids opening
-    /// `didTriggerNext` and hammering TMDB on every periodic credits update.
+    /// when a retryable lookup/startup failed. The separate failure marker avoids
+    /// opening `didTriggerNext` and hammering services on every periodic update.
     var needsNextEpisodeEndFallback: Bool {
-        !didTriggerNext || nextEpisodeLookupFailed
+        !didTriggerNext || nextEpisodeResolutionFailed
     }
 
     /// Start a new logical playback operation and invalidate any provider
@@ -339,16 +390,28 @@ final class PlaybackController {
 
         let isCurrent = playbackGeneration == generation
         if isCurrent { resolutionTask = nil }
-        guard isCurrent, !Task.isCancelled else { return nil }
+        guard isCurrent, !Task.isCancelled else {
+            if let token = resolution.liveProxyToken {
+                LocalHLSServer.shared.revokeLiveProxyToken(token)
+            }
+            return nil
+        }
         return resolution
     }
 
-    private func beginPlayback(_ request: PlaybackRequest, sources: [VixcloudClient.PlaybackSource]) {
+    private func beginPlayback(
+        _ request: PlaybackRequest,
+        sources: [VixcloudClient.PlaybackSource],
+        liveProxyToken: String?
+    ) {
+        replaceLiveProxyToken(with: liveProxyToken)
         self.sources = sources
         sourceIndex = 0
         pendingStartAt = request.startAt
+        lastPosition = request.startAt
         didReachEnd = false
         loopbackForced = false
+        state = .resolving
         loadCurrentSource(request: request)
     }
 
@@ -356,9 +419,10 @@ final class PlaybackController {
     /// observer advances to the next mirror.
     private func loadCurrentSource(request: PlaybackRequest) {
         guard sourceIndex < sources.count else {
-            state = .failed("Riproduzione non disponibile")
+            failPlayback("Riproduzione non disponibile")
             return
         }
+        state = .resolving
         let source = sources[sourceIndex]
         configureAudioSession()
 
@@ -439,9 +503,9 @@ final class PlaybackController {
         installTimeObserver(on: player)
         installEndObserver(for: item)
         installStatusObserver(for: item)
+        installTimeControlObserver(for: player)
         configureNowPlaying(request, player: player)
-        player.play()
-        state = .ready
+        play()
     }
 
     /// Append the given query items to a proxied stream URL (skipping any name
@@ -467,9 +531,9 @@ final class PlaybackController {
             // No mirror left. If we were streaming through the WARP proxy, the
             // outage is the likely cause — surface the same message shown when
             // the proxy is already down at open time, instead of a generic one.
-            state = .failed(viaProxy == true
-                            ? "Proxy non raggiungibile."
-                            : "Riproduzione non disponibile")
+            failPlayback(viaProxy == true
+                         ? "Proxy non raggiungibile."
+                         : "Riproduzione non disponibile")
             return
         }
         teardownPlayer()
@@ -479,26 +543,44 @@ final class PlaybackController {
     private func configureNowPlaying(_ request: PlaybackRequest, player: AVPlayer) {
         let np = NowPlayingCenter.shared
         np.configureCommands()
-        np.onPlay = { [weak player] in player?.play() }
-        np.onPause = { [weak player] in player?.pause() }
+        np.onPlay = { [weak self] in self?.play() }
+        np.onPause = { [weak self] in self?.pause() }
+        np.onToggle = { [weak self] in self?.togglePlayPause() }
         np.onSkip = { [weak self] delta in self?.skip(by: delta) }
         np.onSeek = { [weak self] pos in self?.seek(to: pos) }
         let subtitle = request.mediaType == .tv ? "Stagione \(request.season) · Episodio \(request.episode)" : nil
+        let posterURL = request.source == .animeUnity
+            ? request.artworkURLString.flatMap(URL.init(string:))
+            : TmdbImage.url(request.poster, .w500)
         np.setMetadata(title: request.title, subtitle: subtitle, duration: 0,
-                       posterURL: TmdbImage.url(request.poster, .w500))
+                       posterURL: posterURL)
     }
 
-    private func seekPlayer(_ player: AVPlayer, to seconds: Double) {
-        // Hold the UI at the requested time until the seek actually lands —
-        // otherwise the poll reads the pre-seek (still-buffering) position and
-        // the scrubber snaps backwards before jumping to target.
+    private func seekPlayer(
+        _ player: AVPlayer,
+        to seconds: Double,
+        clearsPendingStartOnCompletion: Bool = false
+    ) {
         seekGeneration &+= 1
         let generation = seekGeneration
-        seekTarget = seconds
-        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) { [weak self] _ in
+        let target = max(0, seconds)
+        seekTarget = target
+        lastPosition = target
+        didReachEnd = false
+        updateNowPlaying(position: target)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600)) { [weak self, weak player] _ in
             Task { @MainActor in
-                guard self?.seekGeneration == generation else { return }
-                self?.seekTarget = nil
+                guard let self, let player,
+                      self.player === player,
+                      self.seekGeneration == generation else { return }
+                self.seekTarget = nil
+                let landed = player.currentTime().seconds
+                if landed.isFinite { self.lastPosition = landed }
+                if clearsPendingStartOnCompletion,
+                   abs(self.pendingStartAt - target) < 0.5 {
+                    self.pendingStartAt = 0
+                }
+                self.updateNowPlaying()
             }
         }
     }
@@ -509,7 +591,7 @@ final class PlaybackController {
     /// mirror switch (same episode -> state must survive).
     private func resetSkipState(cancelCountdown: Bool = true) {
         didTriggerNext = false
-        nextEpisodeLookupFailed = false
+        nextEpisodeResolutionFailed = false
         didFetchSegments = false
         introDismissed = false
         creditsDismissed = false
@@ -619,12 +701,37 @@ final class PlaybackController {
         return d.isFinite && d > 0 ? d : 0
     }
 
-    /// Whether playback is currently advancing (drives the play/pause glyph).
-    var isPlaying: Bool { (player?.timeControlStatus ?? .paused) != .paused }
+    /// Effective playback state for controls. A buffering player remains active
+    /// (`.waitingToPlayAtSpecifiedRate`), while an external/system pause is not
+    /// mistaken for a user-visible playing state merely because play was requested.
+    var isPlaying: Bool {
+        guard playbackRequested, let player else { return false }
+        return player.timeControlStatus != .paused
+    }
+    var shouldAutoHideControls: Bool { isPlaying && !isBuffering && state == .ready }
+
+    func play() {
+        guard let player else { return }
+        let duration = self.duration()
+        if didReachEnd || (duration > 0 && currentTime() >= duration - 0.5) {
+            seekPlayer(player, to: 0)
+        }
+        playbackRequested = true
+        player.play()
+        updateBufferingState(for: player)
+        updateNowPlaying(rateOverride: 1)
+    }
+
+    func pause() {
+        guard let player else { return }
+        playbackRequested = false
+        player.pause()
+        isBuffering = false
+        updateNowPlaying(rateOverride: 0)
+    }
 
     func togglePlayPause() {
-        guard let player else { return }
-        if player.timeControlStatus == .paused { player.play() } else { player.pause() }
+        if isPlaying { pause() } else { play() }
     }
 
     /// Absolute seek (used by the scrubber).
@@ -710,7 +817,17 @@ final class PlaybackController {
         guard !isNextTransitionInProgress else { return }
 
         cancelCountdownTask()
-        Task { await startNext(request) }
+        cancelManualNextTask()
+        manualNextGeneration &+= 1
+        let generation = manualNextGeneration
+        manualNextTask = Task { @MainActor in
+            defer {
+                if manualNextGeneration == generation {
+                    manualNextTask = nil
+                }
+            }
+            await startNext(request)
+        }
     }
 
     /// Dismiss the countdown without advancing. `didTriggerNext` stays latched,
@@ -720,22 +837,26 @@ final class PlaybackController {
         nextCountdown = nil
     }
 
+    private func cancelManualNextTask() {
+        manualNextGeneration &+= 1
+        manualNextTask?.cancel()
+        manualNextTask = nil
+    }
+
     func teardown() {
+        cancelManualNextTask()
         invalidateNextTransition()
         invalidatePlaybackOperations()
         flushProgress()
         cancelCountdownTask()
         teardownPlayer()
-        // Release the audio session back to the keep-alive's mixable policy
-        // (so a still-running background download doesn't stop the user's music).
-        BackgroundKeepAlive.shared.setPlayerActive(false)
+        replaceLiveProxyToken(with: nil)
+        releasePlaybackResources()
         NowPlayingCenter.shared.clear()
-        // Only resume if streaming actually paused them (offline never did).
-        if activeRequest?.offlineURL == nil {
-            DownloadManager.shared.resumeAfterPlayback()
-        }
         activeRequest = nil
         viaProxy = nil
+        pendingStartAt = 0
+        lastPosition = 0
         state = .idle
     }
 
@@ -744,7 +865,11 @@ final class PlaybackController {
     /// Record whether the stream was playing as the app backgrounds, so the
     /// foreground recovery only resurrects a stream the user hadn't paused.
     func prepareForBackground() {
-        wasPlayingBeforeBackground = (player?.timeControlStatus ?? .paused) != .paused
+        // Use the effective AVPlayer state, not only our last intent: iOS may
+        // have paused playback because of an interruption or route change.
+        wasPlayingBeforeBackground = isPlaying
+        let position = currentTime()
+        if position.isFinite, position >= 0 { lastPosition = position }
     }
 
     /// Recover an online stream when the app returns to the foreground. iOS can
@@ -768,14 +893,14 @@ final class PlaybackController {
             if player.currentItem?.status == .failed {
                 // The item gave up during suspension — rebuild the same mirror
                 // from where we left off.
-                pendingStartAt = lastPosition
+                pendingStartAt = recoveryPosition()
                 teardownPlayer()
                 loadCurrentSource(request: request)
             } else if wasPlayingBeforeBackground {
                 // Still alive but paused/stalled by the dead connection. Nudge
                 // it: the reissued segment fetch hits the now-live tunnel (and
                 // LocalHLSServer's own stale-tunnel retry as a backstop).
-                player.play()
+                play()
             }
         }
     }
@@ -783,20 +908,27 @@ final class PlaybackController {
     // MARK: - Private
 
     private func installStatusObserver(for item: AVPlayerItem) {
-        statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+        statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             let status = item.status
             let error = item.error
-            Task { @MainActor in self?.handleStatus(status, error: error) }
+            Task { @MainActor in
+                guard let self, self.player?.currentItem === item else { return }
+                self.handleStatus(for: item, status: status, error: error)
+            }
         }
     }
 
-    private func handleStatus(_ status: AVPlayerItem.Status, error: Error? = nil) {
+    private func handleStatus(for item: AVPlayerItem, status: AVPlayerItem.Status, error: Error? = nil) {
+        guard player?.currentItem === item else { return }
         switch status {
         case .readyToPlay:
-            // Apply the resume seek once, when the item can actually seek.
+            state = .ready
+            updateBufferingState(for: player)
+            // Apply the resume seek once, when the item can actually seek. Keep
+            // the target until the completion callback, so a mirror failure or
+            // background rebuild during the seek preserves the resume position.
             if pendingStartAt > 1, let player {
-                seekPlayer(player, to: pendingStartAt)
-                pendingStartAt = 0
+                seekPlayer(player, to: pendingStartAt, clearsPendingStartOnCompletion: true)
             }
             // Item is seekable and its duration is known here. Fetch skip
             // segments once; on a mirror reload / foreground rebuild the data
@@ -810,7 +942,7 @@ final class PlaybackController {
         case .failed:
             let isOffline = activeRequest?.offlineURL != nil
             print("[PlaybackController] AVPlayerItem failed (offline=\(isOffline)): \(String(describing: error))")
-            dumpPlayerItemLogs()
+            dumpPlayerItemLogs(for: item)
             // A LAN attempt (offline file or on-device proxy) can fail when the
             // device can't reach its own LAN address (Local Network permission
             // denied / Wi-Fi off). Retry the same source once on loopback with
@@ -825,11 +957,9 @@ final class PlaybackController {
             if isOffline {
                 // Offline playback has a single source — surface a specific
                 // error instead of the generic "non disponibile".
-                if let request = activeRequest {
-                    state = .failed(offlineFailureMessage(for: request, error: error))
-                } else {
-                    state = .failed("Riproduzione offline non riuscita.")
-                }
+                let message = activeRequest.map { offlineFailureMessage(for: $0, item: item, error: error) }
+                    ?? "Riproduzione offline non riuscita."
+                failPlayback(message)
                 return
             }
             // This mirror failed — fall through to the next server.
@@ -843,8 +973,7 @@ final class PlaybackController {
     /// exact URLs AVPlayer touched (or tried to touch) and the per-request
     /// status/error codes — the only reliable way to see what's missing from
     /// a `.movpkg` that fails offline.
-    private func dumpPlayerItemLogs() {
-        guard let item = player?.currentItem else { return }
+    private func dumpPlayerItemLogs(for item: AVPlayerItem) {
         if let errorLog = item.errorLog() {
             for event in errorLog.events {
                 print("[PlayerItemErrorLog] uri=\(event.uri ?? "?") status=\(event.errorStatusCode) domain=\(event.errorDomain) comment=\(event.errorComment ?? "")")
@@ -862,16 +991,16 @@ final class PlaybackController {
     /// so any failure is now a real media-level issue (bad playlist, missing
     /// segment, codec mismatch) and showing the failing URIs makes it easy
     /// to diagnose without dropping to Console.app.
-    private func offlineFailureMessage(for request: PlaybackRequest, error: Error?) -> String {
+    private func offlineFailureMessage(for request: PlaybackRequest, item: AVPlayerItem, error: Error?) -> String {
         var lines: [String] = []
         if let ns = error as NSError? { lines.append("\(ns.domain) \(ns.code)") }
-        if let events = player?.currentItem?.errorLog()?.events, !events.isEmpty {
+        if let events = item.errorLog()?.events, !events.isEmpty {
             for event in events.prefix(5) {
                 let uri = event.uri ?? "(nil)"
                 lines.append("ERR: \(trunc(uri))\n  \(event.errorDomain) \(event.errorStatusCode) \(event.errorComment ?? "")")
             }
         }
-        if let events = player?.currentItem?.accessLog()?.events, !events.isEmpty {
+        if let events = item.accessLog()?.events, !events.isEmpty {
             for event in events.prefix(3) {
                 lines.append("ACC: " + trunc(event.uri ?? "(nil)"))
             }
@@ -888,12 +1017,11 @@ final class PlaybackController {
 
     private func installTimeObserver(on player: AVPlayer) {
         let interval = CMTime(seconds: 5, preferredTimescale: 1)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] _ in
             MainActor.assumeIsolated {
-                self?.flushProgress()
-                // Backstop the precise boundary observer: catches manual seeks
-                // and any boundary the player skipped over.
-                self?.updateSkipPrompt()
+                guard let self, let player, self.player === player else { return }
+                self.flushProgress()
+                self.updateSkipPrompt()
             }
         }
     }
@@ -902,7 +1030,8 @@ final class PlaybackController {
         guard let player, let item = player.currentItem else { return }
         let duration = item.duration.seconds
         let safeDuration = duration.isFinite ? duration : 0
-        let position = didReachEnd && safeDuration > 0 ? safeDuration : player.currentTime().seconds
+        let rawPosition = didReachEnd && safeDuration > 0 ? safeDuration : currentTime()
+        let position = safeDuration > 0 ? min(max(0, rawPosition), safeDuration) : max(0, rawPosition)
         guard position.isFinite, position > 0 else { return }
         lastPosition = position
         NowPlayingCenter.shared.update(position: position, duration: safeDuration, rate: player.rate)
@@ -912,16 +1041,24 @@ final class PlaybackController {
     private func installEndObserver(for item: AVPlayerItem) {
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.handleEnded() }
+        ) { [weak self, weak item] _ in
+            MainActor.assumeIsolated {
+                guard let self, let item, self.player?.currentItem === item else { return }
+                self.handleEnded(for: item)
+            }
         }
     }
 
-    private func handleEnded() {
+    private func handleEnded(for item: AVPlayerItem) {
+        guard !didReachEnd, player?.currentItem === item else { return }
         didReachEnd = true
-        if let item = player?.currentItem {
-            let duration = item.duration.seconds
-            if duration.isFinite, duration > 0 { onProgress?(duration, duration) }
+        playbackRequested = false
+        isBuffering = false
+        let duration = item.duration.seconds
+        if duration.isFinite, duration > 0 {
+            lastPosition = duration
+            NowPlayingCenter.shared.update(position: duration, duration: duration, rate: 0)
+            onProgress?(duration, duration)
         }
         onCompleted?()
     }
@@ -937,12 +1074,16 @@ final class PlaybackController {
         endObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        timeControlObserver?.invalidate()
+        timeControlObserver = nil
         if let skipBoundaryObserver, let player {
             player.removeTimeObserver(skipBoundaryObserver)
         }
         skipBoundaryObserver = nil
         player?.pause()
         player = nil
+        playbackRequested = false
+        isBuffering = false
         seekGeneration &+= 1
         seekTarget = nil
         didReachEnd = false
@@ -976,6 +1117,78 @@ final class PlaybackController {
     /// vixcloud URL (Diretto + Auto) returns false and plays as-is.
     private static func isLocalProxyURL(_ url: URL) -> Bool {
         url.host == "127.0.0.1"
+    }
+
+    private func installTimeControlObserver(for player: AVPlayer) {
+        timeControlObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self, weak player] _, _ in
+            Task { @MainActor in
+                guard let self, let player, self.player === player else { return }
+                self.updateBufferingState(for: player)
+                self.updateNowPlaying()
+            }
+        }
+    }
+
+    private func updateBufferingState(for player: AVPlayer?) {
+        guard let player, self.player === player else {
+            isBuffering = false
+            return
+        }
+        isBuffering = playbackRequested && player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+    }
+
+    private func updateNowPlaying(position: Double? = nil, rateOverride: Float? = nil) {
+        guard let player else { return }
+        let pos = position ?? currentTime()
+        let rate = rateOverride ?? (isPlaying ? max(player.rate, 1) : 0)
+        NowPlayingCenter.shared.update(position: max(0, pos), duration: duration(), rate: rate)
+    }
+
+    private func recoveryPosition() -> Double {
+        if let seekTarget, seekTarget.isFinite { return max(0, seekTarget) }
+        if pendingStartAt.isFinite, pendingStartAt > 0 { return pendingStartAt }
+        return max(0, lastPosition)
+    }
+
+    private func configureDownloadMode(for request: PlaybackRequest) {
+        if request.offlineURL == nil {
+            guard !downloadsPausedForPlayback else { return }
+            DownloadManager.shared.pauseForPlayback()
+            downloadsPausedForPlayback = true
+        } else {
+            resumeDownloadsIfNeeded()
+        }
+    }
+
+    private func resumeDownloadsIfNeeded() {
+        guard downloadsPausedForPlayback else { return }
+        downloadsPausedForPlayback = false
+        DownloadManager.shared.resumeAfterPlayback()
+    }
+
+    private func replaceLiveProxyToken(with token: String?) {
+        let old = activeLiveProxyToken
+        activeLiveProxyToken = token
+        if let old, old != token {
+            LocalHLSServer.shared.revokeLiveProxyToken(old)
+        }
+    }
+
+    private func releasePlaybackResources() {
+        BackgroundKeepAlive.shared.setPlayerActive(false)
+        resumeDownloadsIfNeeded()
+        if !BackgroundKeepAlive.shared.isActive {
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        }
+    }
+
+    private func failPlayback(_ message: String) {
+        flushProgress()
+        teardownPlayer()
+        replaceLiveProxyToken(with: nil)
+        releasePlaybackResources()
+        NowPlayingCenter.shared.clear()
+        state = .failed(message)
     }
 
     private func configureAudioSession() {

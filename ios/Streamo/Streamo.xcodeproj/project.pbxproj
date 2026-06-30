@@ -7,35 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B1E34F4F2FC6EB220089E72A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1E34F4E2FC6EB210089E72A /* WidgetKit.framework */; };
-		B1E34F512FC6EB220089E72A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1E34F502FC6EB220089E72A /* SwiftUI.framework */; };
-		B1E34F5C2FC6EB240089E72A /* StreamoWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1E34F4C2FC6EB210089E72A /* StreamoWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C0FFEE0000000000000000F2 /* WireProxyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */; };
 		C0FFEE0000000000000000F3 /* WireProxyKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		B1E34F5A2FC6EB240089E72A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = AA0000000000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B1E34F4B2FC6EB210089E72A;
-			remoteInfo = StreamoWidgetExtension;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		B1E34F612FC6EB240089E72A /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				B1E34F5C2FC6EB240089E72A /* StreamoWidgetExtension.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		C0FFEE0000000000000000F4 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -51,45 +30,18 @@
 
 /* Begin PBXFileReference section */
 		AA0000000000000000000005 /* Streamo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Streamo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B1E34F4C2FC6EB210089E72A /* StreamoWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StreamoWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		B1E34F4E2FC6EB210089E72A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
-		B1E34F502FC6EB220089E72A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
-		B1E34F652FC6ED180089E72A /* StreamoWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StreamoWidgetExtension.entitlements; sourceTree = "<group>"; };
 		C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = WireProxyKit.xcframework; path = Frameworks/WireProxyKit.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		B1E34F5D2FC6EB240089E72A /* Exceptions for "StreamoWidget" folder in "StreamoWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */;
-		};
-		B1E34F632FC6EC3E0089E72A /* Exceptions for "Streamo" folder in "StreamoWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Widget/WidgetSnapshot.swift,
-			);
-			target = B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000006 /* Streamo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				B1E34F632FC6EC3E0089E72A /* Exceptions for "Streamo" folder in "StreamoWidgetExtension" target */,
 			);
 			path = Streamo;
-			sourceTree = "<group>";
-		};
-		B1E34F522FC6EB220089E72A /* StreamoWidget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				B1E34F5D2FC6EB240089E72A /* Exceptions for "StreamoWidget" folder in "StreamoWidgetExtension" target */,
-			);
-			path = StreamoWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -103,24 +55,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B1E34F492FC6EB210089E72A /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				B1E34F512FC6EB220089E72A /* SwiftUI.framework in Frameworks */,
-				B1E34F4F2FC6EB220089E72A /* WidgetKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		AA0000000000000000000002 = {
 			isa = PBXGroup;
 			children = (
-				B1E34F652FC6ED180089E72A /* StreamoWidgetExtension.entitlements */,
 				AA0000000000000000000006 /* Streamo */,
-				B1E34F522FC6EB220089E72A /* StreamoWidget */,
 				B1E34F4D2FC6EB210089E72A /* Frameworks */,
 				AA0000000000000000000003 /* Products */,
 			);
@@ -130,7 +71,6 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000005 /* Streamo.app */,
-				B1E34F4C2FC6EB210089E72A /* StreamoWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -138,8 +78,6 @@
 		B1E34F4D2FC6EB210089E72A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				B1E34F4E2FC6EB210089E72A /* WidgetKit.framework */,
-				B1E34F502FC6EB220089E72A /* SwiftUI.framework */,
 				C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */,
 			);
 			name = Frameworks;
@@ -155,13 +93,11 @@
 				AA0000000000000000000007 /* Sources */,
 				AA0000000000000000000008 /* Frameworks */,
 				AA0000000000000000000009 /* Resources */,
-				B1E34F612FC6EB240089E72A /* Embed Foundation Extensions */,
 				C0FFEE0000000000000000F4 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				B1E34F5B2FC6EB240089E72A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000006 /* Streamo */,
@@ -170,28 +106,6 @@
 			productName = Streamo;
 			productReference = AA0000000000000000000005 /* Streamo.app */;
 			productType = "com.apple.product-type.application";
-		};
-		B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = B1E34F5E2FC6EB240089E72A /* Build configuration list for PBXNativeTarget "StreamoWidgetExtension" */;
-			buildPhases = (
-				B1E34F482FC6EB210089E72A /* Sources */,
-				B1E34F492FC6EB210089E72A /* Frameworks */,
-				B1E34F4A2FC6EB210089E72A /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				B1E34F522FC6EB220089E72A /* StreamoWidget */,
-			);
-			name = StreamoWidgetExtension;
-			packageProductDependencies = (
-			);
-			productName = StreamoWidgetExtension;
-			productReference = B1E34F4C2FC6EB210089E72A /* StreamoWidgetExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -205,9 +119,6 @@
 				TargetAttributes = {
 					AA0000000000000000000004 = {
 						CreatedOnToolsVersion = 16.0;
-					};
-					B1E34F4B2FC6EB210089E72A = {
-						CreatedOnToolsVersion = 26.5;
 					};
 				};
 			};
@@ -226,20 +137,12 @@
 			projectRoot = "";
 			targets = (
 				AA0000000000000000000004 /* Streamo */,
-				B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		AA0000000000000000000009 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		B1E34F4A2FC6EB210089E72A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -256,21 +159,9 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B1E34F482FC6EB210089E72A /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		B1E34F5B2FC6EB240089E72A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = B1E34F4B2FC6EB210089E72A /* StreamoWidgetExtension */;
-			targetProxy = B1E34F5A2FC6EB240089E72A /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -402,7 +293,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Streamo/Streamo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -439,7 +329,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Streamo/Streamo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -471,68 +360,6 @@
 			};
 			name = Release;
 		};
-		B1E34F5F2FC6EB240089E72A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_ENTITLEMENTS = StreamoWidgetExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = StreamoWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Project Obsidian";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.streamo.app.StreamoWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		B1E34F602FC6EB240089E72A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_ENTITLEMENTS = StreamoWidgetExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = StreamoWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Project Obsidian";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.streamo.app.StreamoWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -550,15 +377,6 @@
 			buildConfigurations = (
 				AA000000000000000000000E /* Debug */,
 				AA000000000000000000000F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		B1E34F5E2FC6EB240089E72A /* Build configuration list for PBXNativeTarget "StreamoWidgetExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				B1E34F5F2FC6EB240089E72A /* Debug */,
-				B1E34F602FC6EB240089E72A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

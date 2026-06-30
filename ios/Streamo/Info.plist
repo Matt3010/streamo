@@ -2,37 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Keeps audio playing + Picture-in-Picture alive when backgrounded.
-	     The rest of Info.plist is still auto-generated (GENERATE_INFOPLIST_FILE=YES
-	     merges the launch screen, orientations, etc. into this file). -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
 	</array>
-	<!-- Local network access for the LAN-share HTTP server in
-	     LocalHLSServer.swift. The prompt fires the first time a non-loopback
-	     peer hits the listener (i.e. after the user enables LAN sharing in
-	     Settings); without this key iOS silently drops LAN traffic. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Permette di condividere i download su Wi-Fi (es. per riprodurli da un PC con VLC). Si attiva solo quando abiliti "Condivisione LAN" nelle Impostazioni.</string>
-	<!-- Advertised so iOS prompts for (and grants) Local Network access — a
-	     bare NWListener often never triggers the prompt, so incoming LAN
-	     connections get silently dropped on a real Wi-Fi. -->
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>
-	</array>
-	<!-- Deep-link scheme used by the widget (streamo://open?type=&id=&s=&e=). -->
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.streamo.app</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>streamo</string>
-			</array>
-		</dict>
 	</array>
 </dict>
 </plist>

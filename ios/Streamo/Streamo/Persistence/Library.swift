@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import Observation
-import WidgetKit
 
 /// On-device library: watchlist / progress / history backed by SwiftData.
 /// Replaces the web app's /user/* endpoints. Lives on the main actor and is
@@ -22,23 +21,6 @@ final class Library {
     func save() {
         try? context.save()
         touch()
-        Task { await updateWidgetSnapshot() }
-    }
-
-    /// Mirror the current "Continua a guardare" list into the App Group so the
-    /// widget can render it. Uses the same rows as Home, so a finished TV
-    /// episode can advance the widget to the next unstarted episode at 0%.
-    private func updateWidgetSnapshot() async {
-        let rows = await continueRows(limit: 10)
-        let items = rows.map { p in
-            WidgetShared.ContinueItem(
-                tmdbId: p.tmdbId, mediaTypeRaw: p.mediaType.rawValue, title: p.title ?? "—",
-                poster: p.poster ?? p.backdrop, season: p.season, episode: p.episode,
-                percent: Format.percent(position: p.position, duration: p.duration)
-            )
-        }
-        WidgetShared.saveContinue(items)
-        WidgetCenter.shared.reloadTimelines(ofKind: "StreamoContinue")
     }
 
     // MARK: - Watchlist
@@ -225,14 +207,6 @@ final class Library {
             }
         }
         return result
-    }
-
-    /// Sync "latest in-flight, not finished" list — used for the widget
-    /// snapshot. The Home UI uses the richer async `continueRows`.
-    func continueWatching(limit: Int = 30) -> [ProgressEntry] {
-        continueCandidates(limit: limit).filter {
-            !TVLogic.isWatched(position: $0.position, duration: $0.duration)
-        }
     }
 
     /// AnimeUnity "Continua a guardare": latest in-flight episode per anime

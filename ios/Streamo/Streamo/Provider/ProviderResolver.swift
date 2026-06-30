@@ -30,10 +30,6 @@ actor ProviderResolver {
     private let provider: ProviderClient
     private let vix: VixcloudClient
     private var titleCache: [String: ProviderResolveTitleOutcome] = [:]
-    /// Per-session auth token embedded in the on-device proxy URLs. Minted on
-    /// each proxied resolve and pushed to `LocalHLSServer`.
-    private var liveProxyToken = ""
-
     init(provider: ProviderClient = .shared,
          vix: VixcloudClient = .shared) {
         self.provider = provider
@@ -50,6 +46,10 @@ actor ProviderResolver {
         /// Whether sources are served through the WARP proxy (`true`) or fetched
         /// directly from the provider/CDN (`false`). Drives the WARP/Diretto badge.
         var viaProxy: Bool = false
+        /// Auth token embedded in on-device live-proxy URLs. The consumer owns
+        /// this lease and must revoke it when the stream/download is no longer
+        /// using those URLs. Multiple leases may coexist during an atomic handoff.
+        var liveProxyToken: String? = nil
     }
 
     private func cacheKey(_ id: Int, _ type: MediaType, useProxy: Bool) -> String {
@@ -273,8 +273,7 @@ actor ProviderResolver {
         }
 
         let token = Self.mintLiveToken()
-        liveProxyToken = token
-        LocalHLSServer.shared.setLiveProxyToken(token)
+        LocalHLSServer.shared.registerLiveProxyToken(token)
 
         // Canonical loopback URLs (on-device playback needs no Local Network
         // permission). `PlaybackController` swaps the host to the LAN IP for
@@ -284,9 +283,10 @@ actor ProviderResolver {
         }.map { VixcloudClient.PlaybackSource(playlistURL: $0, headers: [:]) }
 
         guard !proxied.isEmpty else {
+            LocalHLSServer.shared.revokeLiveProxyToken(token)
             return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: "Stream non trovato nella pagina del player.", providerTitle: resolved, candidates: candidates, viaProxy: useProxy)
         }
-        return PlaybackResolution(sources: proxied, reason: nil, message: nil, providerTitle: resolved, candidates: candidates, viaProxy: useProxy)
+        return PlaybackResolution(sources: proxied, reason: nil, message: nil, providerTitle: resolved, candidates: candidates, viaProxy: useProxy, liveProxyToken: token)
     }
 
     /// 128-bit URL-safe auth token for the on-device proxy session.

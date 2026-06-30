@@ -12,6 +12,7 @@ final class NowPlayingCenter {
 
     var onPlay: (() -> Void)?
     var onPause: (() -> Void)?
+    var onToggle: (() -> Void)?
     /// Relative skip in seconds (positive = forward).
     var onSkip: ((Double) -> Void)?
     /// Absolute seek in seconds.
@@ -28,7 +29,7 @@ final class NowPlayingCenter {
         let c = MPRemoteCommandCenter.shared()
         c.playCommand.addTarget { [weak self] _ in self?.onPlay?(); return .success }
         c.pauseCommand.addTarget { [weak self] _ in self?.onPause?(); return .success }
-        c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.onPlay?(); return .success }
+        c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.onToggle?(); return .success }
 
         c.skipForwardCommand.preferredIntervals = [15]
         c.skipForwardCommand.addTarget { [weak self] event in
@@ -68,7 +69,7 @@ final class NowPlayingCenter {
 
     func clear() {
         artworkToken &+= 1
-        onPlay = nil; onPause = nil; onSkip = nil; onSeek = nil
+        onPlay = nil; onPause = nil; onToggle = nil; onSkip = nil; onSeek = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 

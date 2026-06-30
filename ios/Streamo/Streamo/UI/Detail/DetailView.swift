@@ -7,6 +7,8 @@ struct DetailView: View {
     @State private var downloadUIVersion = 0
     @State private var locallyRemovedDownloadKeys = Set<String>()
     @State private var pendingRequest: PlaybackRequest?
+    @State private var playbackPreparationTask: Task<Void, Never>?
+    @State private var playbackPreparationGeneration: UInt = 0
     @State private var showPicker = false
     @State private var confirmRemoveFromList = false
     @State private var pendingDeleteDownload: DownloadEntry?
@@ -86,6 +88,7 @@ struct DetailView: View {
             }
         }
         .task { await reloadDetail() }
+        .onDisappear { cancelPlaybackPreparation() }
         .fullScreenCover(item: $pendingRequest) { req in
             PlayerScreen(request: req)
         }
@@ -174,12 +177,12 @@ struct DetailView: View {
     @ViewBuilder
     private func releasedActions(for item: TmdbItem, inList: Bool) -> some View {
         let availability = model.providerAvailability
-        let offlineReady = primaryOfflineURL(for: item) != nil
+        let offlineReady = primaryOfflineAvailable(for: item)
         let ready = availability == .ready || offlineReady
 
         // Big red primary play button (full width), like the web.
         Button {
-            pendingRequest = primaryRequest(for: item)
+            preparePlayback { await primaryRequest(for: item) }
         } label: {
             HStack(spacing: 8) {
                 if availability == .resolving && !offlineReady { ProgressView().controlSize(.small).tint(.white) }
@@ -193,7 +196,7 @@ struct DetailView: View {
         // "Vai al prossimo" (TV) — jumps past the resume point.
         if ready, let next = nextAfterResume(item) {
             Button {
-                pendingRequest = request(for: item, season: next.season, episode: next.episode)
+                preparePlayback { await request(for: item, season: next.season, episode: next.episode) }
             } label: {
                 Text("Vai al prossimo")
             }
@@ -424,7 +427,7 @@ struct DetailView: View {
         // A completed download always wins: even if the provider hasn't
         // resolved (or failed), the button is enabled and should describe the
         // target episode/movie instead of the resolver state.
-        if primaryOfflineURL(for: item) != nil { return primaryLabel(for: item) }
+        if primaryOfflineAvailable(for: item) { return primaryLabel(for: item) }
         switch model.providerAvailability {
         case .resolving: return "Caricamento…"
         case .unavailable: return model.providerMessage ?? "Non disponibile"
@@ -554,7 +557,7 @@ struct DetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(model.episodes) { ep in
-                            let offlineReady = offlineURL(for: item, season: model.selectedSeason, episode: ep.episodeNumber) != nil
+                            let offlineReady = hasOfflineAsset(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
                             let disabled = providerDisabled && !offlineReady
                             EpisodeCard(
                                 episode: ep,
@@ -567,12 +570,12 @@ struct DetailView: View {
                             .opacity(disabled ? 0.5 : 1)
                             .onTapGesture {
                                 guard !disabled else { return }
-                                pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
+                                preparePlayback { await request(for: item, season: model.selectedSeason, episode: ep.episodeNumber) }
                             }
                             .contextMenu {
                                 if !disabled {
                                     Button {
-                                        pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
+                                        preparePlayback { await request(for: item, season: model.selectedSeason, episode: ep.episodeNumber) }
                                     } label: { Label("Riproduci", systemImage: "play.fill") }
                                 }
                                 Button {
@@ -600,6 +603,30 @@ struct DetailView: View {
 
     // MARK: - CTA helpers
 
+    /// Serialize asynchronous request preparation. Starting another playback
+    /// target cancels and invalidates the previous one, so a slower offline
+    /// server startup can never present an earlier tap after a newer selection.
+    private func preparePlayback(
+        _ build: @escaping @MainActor () async -> PlaybackRequest?
+    ) {
+        playbackPreparationGeneration &+= 1
+        let generation = playbackPreparationGeneration
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor in
+            let prepared = await build()
+            guard !Task.isCancelled,
+                  playbackPreparationGeneration == generation else { return }
+            playbackPreparationTask = nil
+            pendingRequest = prepared
+        }
+    }
+
+    private func cancelPlaybackPreparation() {
+        playbackPreparationGeneration &+= 1
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+    }
+
     /// Same label format whether playback will use the provider or a local
     /// download — the user shouldn't have to read "Guarda offline" to know
     /// which coordinate is about to play.
@@ -617,12 +644,12 @@ struct DetailView: View {
         return "Guarda"
     }
 
-    private func primaryRequest(for item: TmdbItem) -> PlaybackRequest {
+    private func primaryRequest(for item: TmdbItem) async -> PlaybackRequest? {
         if ref.mediaType == .tv {
             let target = primaryPlaybackTarget(for: item)
-            return request(for: item, season: target.season, episode: target.episode)
+            return await request(for: item, season: target.season, episode: target.episode)
         }
-        return request(for: item, season: 0, episode: 0)
+        return await request(for: item, season: 0, episode: 0)
     }
 
     /// Build a playback request, seeding `startAt` from saved progress until the
@@ -630,7 +657,7 @@ struct DetailView: View {
     /// resumes. If a completed download exists for this coordinate, route it
     /// through the local `.movpkg` so the title plays in airplane mode too —
     /// otherwise we'd hit the provider needlessly.
-    private func request(for item: TmdbItem, season: Int, episode: Int) -> PlaybackRequest {
+    private func request(for item: TmdbItem, season: Int, episode: Int) async -> PlaybackRequest? {
         let s = ref.mediaType == .tv ? season : 0
         let e = ref.mediaType == .tv ? episode : 0
         let p = library.progress(item.id, ref.mediaType, season: s, episode: e)
@@ -638,7 +665,12 @@ struct DetailView: View {
         if let p, let resume = TVLogic.resumeStart(position: p.position, duration: p.duration) {
             startAt = resume
         }
-        let offlineURL = offlineURL(for: item, season: s, episode: e)
+        let offlineAvailable = hasOfflineAsset(for: item, season: s, episode: e)
+        let offlineURL = await offlineURLAsync(for: item, season: s, episode: e)
+        guard !offlineAvailable || offlineURL != nil else {
+            ToastCenter.shared.show("Riproduzione offline non disponibile. Riprova.")
+            return nil
+        }
         return PlaybackRequest(
             tmdbId: item.id, mediaType: ref.mediaType, title: item.displayTitle, releaseDate: item.primaryDate,
             poster: item.posterPath, backdrop: item.backdropPath,
@@ -646,13 +678,9 @@ struct DetailView: View {
         )
     }
 
-    private func primaryOfflineURL(for item: TmdbItem) -> URL? {
-        if ref.mediaType == .tv {
-            return offlineTarget(for: item).flatMap {
-                offlineURL(for: item, season: $0.season, episode: $0.episode)
-            }
-        }
-        return offlineURL(for: item, season: 0, episode: 0)
+    private func primaryOfflineAvailable(for item: TmdbItem) -> Bool {
+        if ref.mediaType == .tv { return offlineTarget(for: item) != nil }
+        return hasOfflineAsset(for: item, season: 0, episode: 0)
     }
 
     private func primaryPlaybackTarget(for item: TmdbItem) -> (season: Int, episode: Int) {
@@ -664,25 +692,32 @@ struct DetailView: View {
 
     private func offlineTarget(for item: TmdbItem) -> (season: Int, episode: Int)? {
         if ref.resumeSeason > 0, ref.resumeEpisode > 0,
-           offlineURL(for: item, season: ref.resumeSeason, episode: ref.resumeEpisode) != nil {
+           hasOfflineAsset(for: item, season: ref.resumeSeason, episode: ref.resumeEpisode) {
             return (ref.resumeSeason, ref.resumeEpisode)
         }
         if let next = library.nextUnwatched(item: item),
-           offlineURL(for: item, season: next.season, episode: next.episode) != nil {
+           hasOfflineAsset(for: item, season: next.season, episode: next.episode) {
             return next
         }
         return library.downloads()
-            .filter { $0.tmdbId == item.id && $0.mediaType == .tv && downloads.offlineURL(for: $0) != nil }
+            .filter { $0.tmdbId == item.id && $0.mediaType == .tv && downloads.hasOfflineAsset(for: $0) }
             .sorted { ($0.season, $0.episode) < ($1.season, $1.episode) }
             .first
             .map { ($0.season, $0.episode) }
     }
 
-    private func offlineURL(for item: TmdbItem, season: Int, episode: Int) -> URL? {
+    private func hasOfflineAsset(for item: TmdbItem, season: Int, episode: Int) -> Bool {
         let s = ref.mediaType == .tv ? season : 0
         let e = ref.mediaType == .tv ? episode : 0
-        return downloadFor(item.id, ref.mediaType, season: s, episode: e)
-            .flatMap { downloads.offlineURL(for: $0) }
+        guard let entry = downloadFor(item.id, ref.mediaType, season: s, episode: e) else { return false }
+        return downloads.hasOfflineAsset(for: entry)
+    }
+
+    private func offlineURLAsync(for item: TmdbItem, season: Int, episode: Int) async -> URL? {
+        let s = ref.mediaType == .tv ? season : 0
+        let e = ref.mediaType == .tv ? episode : 0
+        guard let entry = downloadFor(item.id, ref.mediaType, season: s, episode: e) else { return nil }
+        return await downloads.offlineURLAsync(for: entry)
     }
 
     /// Episode after the resume point (for "Vai al prossimo"), or nil.

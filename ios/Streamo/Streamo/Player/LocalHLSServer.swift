@@ -18,8 +18,8 @@ final class LocalHLSServer: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "com.streamo.localhls")
     private var listener: NWListener?
-    private var readyContinuations: [CheckedContinuation<UInt16, Error>] = []
     private var boundPort: UInt16 = 0
+    private var lastStartError: Error?
     /// Preferred fixed port so the shared LAN URL / QR stay valid across app
     /// launches (an ephemeral port changed every relaunch → stale links).
     private let preferredPort: UInt16 = 50321
@@ -34,13 +34,12 @@ final class LocalHLSServer: @unchecked Sendable {
     private var airplayToken: String = ""
     private var airplayPathPrefix: String = ""
 
-    /// Auth token for the live-proxy routes (`/playlist`, `/cdn`, …). When the
-    /// app plays through the on-device WARP proxy, the rewritten playlist embeds
-    /// this as `?key=` on every sub-resource so AirPlay receivers (no headers)
-    /// authenticate via the URL alone. Loopback (on-device) is always trusted;
-    /// LAN peers must present a matching `key`. Set by `ProviderResolver` when a
-    /// proxied session begins. Read on `queue`.
-    private var liveProxyToken: String = ""
+    /// Active auth leases for live-proxy routes (`/playlist`, `/cdn`, …).
+    /// Each resolved player/download owns one token embedded in every rewritten
+    /// URL. A set (rather than one global token) lets the old stream remain valid
+    /// while the next episode is being resolved and committed atomically.
+    /// Loopback is always trusted; LAN peers must present one active token.
+    private var liveProxyTokens = Set<String>()
 
     /// On-disk root the server reads from. Every download goes under a
     /// per-entry subfolder here.
@@ -53,23 +52,33 @@ final class LocalHLSServer: @unchecked Sendable {
 
     private init() {}
 
-    /// Start the listener if not already running. Returns the bound port.
-    /// Safe to call repeatedly — subsequent calls return the same port.
-    func ensureRunning() async throws -> UInt16 {
-        if boundPort != 0 { return boundPort }
-        return try await withCheckedThrowingContinuation { cont in
-            queue.async { [weak self] in
-                guard let self else { cont.resume(throwing: ServerError.cancelled); return }
-                if self.boundPort != 0 {
-                    cont.resume(returning: self.boundPort)
-                    return
-                }
-                self.readyContinuations.append(cont)
-                if self.listener == nil {
-                    self.startListenerOnQueue()
-                }
+    /// Start the listener if needed and wait asynchronously for a usable port.
+    /// The wait is bounded because an NWListener can remain in `.waiting`
+    /// during a transient network transition. Polling suspends the caller and
+    /// therefore never blocks the MainActor; callers that launch offline video
+    /// use a shorter timeout than the general startup path.
+    func ensureRunning(timeout: TimeInterval = 5.0) async throws -> UInt16 {
+        if let port = boundPortIfReady() { return port }
+
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.lastStartError = nil
+            if self.listener == nil {
+                self.startListenerOnQueue()
             }
         }
+
+        let deadline = Date().addingTimeInterval(max(0.1, timeout))
+        while Date() < deadline {
+            try Task.checkCancellation()
+            let snapshot: (UInt16, Error?) = queue.sync { (boundPort, lastStartError) }
+            if snapshot.0 != 0 { return snapshot.0 }
+            if let error = snapshot.1 { throw error }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        if let port = boundPortIfReady() { return port }
+        throw ServerError.timedOut
     }
 
     private func startListenerOnQueue() {
@@ -100,8 +109,7 @@ final class LocalHLSServer: @unchecked Sendable {
                 switch state {
                 case .ready:
                     if let port = listener.port { self.boundPort = port.rawValue }
-                    for c in self.readyContinuations { c.resume(returning: self.boundPort) }
-                    self.readyContinuations.removeAll()
+                    self.lastStartError = nil
                 case .failed(let err):
                     self.listener?.cancel()
                     self.listener = nil
@@ -110,8 +118,7 @@ final class LocalHLSServer: @unchecked Sendable {
                         // Fixed port unavailable — fall back to a random one.
                         self.startListenerOnQueue(preferred: false)
                     } else {
-                        for c in self.readyContinuations { c.resume(throwing: err) }
-                        self.readyContinuations.removeAll()
+                        self.lastStartError = err
                     }
                 default:
                     break
@@ -123,36 +130,20 @@ final class LocalHLSServer: @unchecked Sendable {
             if preferred {
                 startListenerOnQueue(preferred: false)
             } else {
-                for c in readyContinuations { c.resume(throwing: error) }
-                readyContinuations.removeAll()
+                lastStartError = error
             }
         }
     }
 
-    /// Synchronously waits up to `timeout` for the server to be ready and
-    /// returns the bound port (0 on timeout). Safe to call from `MainActor`:
-    /// `configure(library:)` warms the server up at launch so this almost
-    /// always returns immediately. We poll because the listener's ready
-    /// callback fires on a private queue we shouldn't block waiting for.
-    func waitForReady(timeout: TimeInterval = 2.0) -> UInt16 {
-        if let port = currentBoundPort() { return port }
-        // Kick off the bind if it hasn't started yet (idempotent).
-        Task.detached { _ = try? await self.ensureRunning() }
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let port = currentBoundPort() { return port }
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        return 0
-    }
-
-    private func currentBoundPort() -> UInt16? {
+    /// Non-blocking readiness probe for synchronous UI computations. Callers
+    /// that are about to start playback should use `ensureRunning()` instead of
+    /// polling/sleeping on the MainActor.
+    func boundPortIfReady() -> UInt16? {
         let port = queue.sync { boundPort }
         return port == 0 ? nil : port
     }
 
-    /// Build a loopback URL for a known port + path. Static so callers can
-    /// construct synchronously after `waitForReady` returns the port.
+    /// Build a loopback URL for a known ready port + path.
     static func url(port: UInt16, relativePath: String) -> URL? {
         let encoded = encodePathSegments(relativePath)
         return URL(string: "http://127.0.0.1:\(port)/\(encoded)")
@@ -174,8 +165,7 @@ final class LocalHLSServer: @unchecked Sendable {
     /// impossible there anyway), so the caller falls back to the loopback URL.
     func beginAirplaySession(relativePath: String) -> URL? {
         guard let host = LANAddress.currentShareableIPv4() else { return nil }
-        let port = waitForReady()
-        guard port != 0 else { return nil }
+        guard let port = boundPortIfReady() else { return nil }
         let token = Self.randomToken()
         let prefix = relativePath.lastIndex(of: "/").map { String(relativePath[...$0]) } ?? ""
         queue.sync {
@@ -197,10 +187,16 @@ final class LocalHLSServer: @unchecked Sendable {
 
     // MARK: - Live proxy (on-device WARP)
 
-    /// Set (or clear) the live-proxy auth token. Passing "" disables LAN access
-    /// to the proxy routes (loopback stays open).
-    func setLiveProxyToken(_ token: String) {
-        queue.async { [weak self] in self?.liveProxyToken = token }
+    /// Register/revoke one live-proxy lease. Registration is synchronous so the
+    /// returned URL is authorized before AVPlayer/HLSDownloader can request it.
+    func registerLiveProxyToken(_ token: String) {
+        guard !token.isEmpty else { return }
+        queue.sync { _ = liveProxyTokens.insert(token) }
+    }
+
+    func revokeLiveProxyToken(_ token: String) {
+        guard !token.isEmpty else { return }
+        queue.sync { _ = liveProxyTokens.remove(token) }
     }
 
     /// Map an upstream vixcloud / vix-content URL to the matching on-device
@@ -303,12 +299,13 @@ final class LocalHLSServer: @unchecked Sendable {
         let rawCleanPath = pathOnly.hasPrefix("/") ? String(pathOnly.dropFirst()) : pathOnly
         if let upstream = Self.liveProxyUpstream(forPath: rawCleanPath, query: query) {
             let params = Self.parseQuery(query)
-            let authorized = loopback || (!liveProxyToken.isEmpty && params["key"] == liveProxyToken)
+            let authorized = loopback || params["key"].map { liveProxyTokens.contains($0) } == true
             guard authorized else {
                 send(status: "401 Unauthorized", on: connection, then: { connection.cancel() })
                 return
             }
             handleLiveProxy(upstream: upstream,
+                            token: params["key"] ?? "",
                             forceHeight: params["q"].flatMap { Int($0) } ?? 0,
                             client: params["c"] ?? "-",
                             requestLines: lines, on: connection)
@@ -547,13 +544,12 @@ final class LocalHLSServer: @unchecked Sendable {
     /// quality-capped; everything else is passed through. The whole response is
     /// buffered — playlists are tiny and media segments are a few MB, matching
     /// the former Node proxy's per-segment behaviour.
-    private func handleLiveProxy(upstream: ProxyUpstream, forceHeight: Int, client: String,
+    private func handleLiveProxy(upstream: ProxyUpstream, token: String, forceHeight: Int, client: String,
                                  requestLines: [String], on connection: NWConnection) {
         guard let url = URL(string: upstream.url) else {
             send(status: "502 Bad Gateway", on: connection, then: { connection.cancel() })
             return
         }
-        let token = liveProxyToken
         let rangeHeader = Self.headerValue("range", in: requestLines)
         let acceptHeader = Self.headerValue("accept", in: requestLines) ?? "*/*"
 
@@ -655,5 +651,6 @@ final class LocalHLSServer: @unchecked Sendable {
     enum ServerError: Error {
         case cancelled
         case invalidPath
+        case timedOut
     }
 }

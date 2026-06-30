@@ -7,6 +7,8 @@ struct DownloadsView: View {
     @Environment(Library.self) private var library
     @State private var downloads = DownloadManager.shared
     @State private var pendingRequest: PlaybackRequest?
+    @State private var playbackPreparationTask: Task<Void, Never>?
+    @State private var playbackPreparationGeneration: UInt = 0
     @State private var pendingDelete: DownloadEntry?
     @State private var pendingDeleteSeries: SeriesDelete?
 
@@ -58,7 +60,7 @@ struct DownloadsView: View {
                         switch item {
                         case .movie(let e):
                             DownloadRow(entry: e, downloads: downloads, library: library,
-                                        onPlay: { pendingRequest = playRequest(e) },
+                                        onPlay: { preparePlayback { await playRequest(e) } },
                                         onDelete: { pendingDelete = e })
                         case .series(let id, let title, let poster, let eps):
                             NavigationLink {
@@ -79,6 +81,7 @@ struct DownloadsView: View {
         }
         .navigationTitle("Download")
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { cancelPlaybackPreparation() }
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
         .confirmationDialog("Eliminare questo download?",
                             isPresented: .isPresent($pendingDelete),
@@ -125,8 +128,29 @@ struct DownloadsView: View {
         .padding(.vertical, 4)
     }
 
-    private func playRequest(_ e: DownloadEntry) -> PlaybackRequest? {
-        guard let url = downloads.offlineURL(for: e) else { return nil }
+    private func preparePlayback(
+        _ build: @escaping @MainActor () async -> PlaybackRequest?
+    ) {
+        playbackPreparationGeneration &+= 1
+        let generation = playbackPreparationGeneration
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor in
+            let prepared = await build()
+            guard !Task.isCancelled,
+                  playbackPreparationGeneration == generation else { return }
+            playbackPreparationTask = nil
+            pendingRequest = prepared
+        }
+    }
+
+    private func cancelPlaybackPreparation() {
+        playbackPreparationGeneration &+= 1
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+    }
+
+    private func playRequest(_ e: DownloadEntry) async -> PlaybackRequest? {
+        guard let url = await downloads.offlineURLAsync(for: e) else { return nil }
         let watched = library.progress(e.tmdbId, e.mediaType, season: e.season, episode: e.episode)
         return PlaybackRequest(tmdbId: e.tmdbId, mediaType: e.mediaType, title: e.title ?? "—",
                                releaseDate: e.releaseDate, poster: e.poster, backdrop: nil,
@@ -144,6 +168,8 @@ struct SeriesDownloadsView: View {
     @Environment(Library.self) private var library
     @State private var downloads = DownloadManager.shared
     @State private var pendingRequest: PlaybackRequest?
+    @State private var playbackPreparationTask: Task<Void, Never>?
+    @State private var playbackPreparationGeneration: UInt = 0
     @State private var pendingDelete: DownloadEntry?
 
     var body: some View {
@@ -157,7 +183,7 @@ struct SeriesDownloadsView: View {
                     ForEach(eps.sorted { $0.episode < $1.episode }, id: \.persistentModelID) { e in
                         DownloadRow(entry: e, downloads: downloads, library: library,
                                     episodeLabel: "Episodio \(e.episode)",
-                                    onPlay: { pendingRequest = playRequest(e) },
+                                    onPlay: { preparePlayback { await playRequest(e) } },
                                     onDelete: { deleteOrConfirm(e) })
                     }
                 }
@@ -166,6 +192,7 @@ struct SeriesDownloadsView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { cancelPlaybackPreparation() }
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
         .confirmationDialog("Eliminare questo episodio?",
                             isPresented: .isPresent($pendingDelete),
@@ -192,8 +219,29 @@ struct SeriesDownloadsView: View {
         }
     }
 
-    private func playRequest(_ e: DownloadEntry) -> PlaybackRequest? {
-        guard let url = downloads.offlineURL(for: e) else { return nil }
+    private func preparePlayback(
+        _ build: @escaping @MainActor () async -> PlaybackRequest?
+    ) {
+        playbackPreparationGeneration &+= 1
+        let generation = playbackPreparationGeneration
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor in
+            let prepared = await build()
+            guard !Task.isCancelled,
+                  playbackPreparationGeneration == generation else { return }
+            playbackPreparationTask = nil
+            pendingRequest = prepared
+        }
+    }
+
+    private func cancelPlaybackPreparation() {
+        playbackPreparationGeneration &+= 1
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+    }
+
+    private func playRequest(_ e: DownloadEntry) async -> PlaybackRequest? {
+        guard let url = await downloads.offlineURLAsync(for: e) else { return nil }
         let watched = library.progress(e.tmdbId, e.mediaType, season: e.season, episode: e.episode)
         return PlaybackRequest(tmdbId: e.tmdbId, mediaType: e.mediaType, title: e.title ?? "—",
                                releaseDate: e.releaseDate, poster: e.poster, backdrop: nil,
