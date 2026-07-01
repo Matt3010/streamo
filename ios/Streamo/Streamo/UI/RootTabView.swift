@@ -20,8 +20,6 @@ struct RootTabView: View {
                     switch route {
                     case .anime:
                         AnimeCatalogView().navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
-                    case .history:
-                        HistoryView().navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
                     case .settings:
                         SettingsView()
                     case .downloads:

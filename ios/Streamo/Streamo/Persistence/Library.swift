@@ -99,22 +99,18 @@ final class Library {
     }
 
     /// Library maintenance ("Ricalcola"): drop progress rows for titles no
-    /// longer referenced by history OR the watchlist — leftovers from titles
-    /// you removed that still linger in "Continua a guardare". Watch time is
-    /// already computed live from history, so this only tidies the resume list
-    /// and refreshes derived views. Returns the number of titles cleaned up.
+    /// longer referenced by the watchlist, so titles you removed do not linger
+    /// in "Continua a guardare". Returns the number of titles cleaned up.
     @discardableResult
     func recalculate() -> Int {
         let key: (String, Int) -> String = { "\($0)-\($1)" }
-        let historyKeys = Set(((try? context.fetch(FetchDescriptor<HistoryEntry>())) ?? [])
-            .map { key($0.mediaTypeRaw, $0.tmdbId) })
         let watchlistKeys = Set(((try? context.fetch(FetchDescriptor<WatchlistEntry>())) ?? [])
             .map { key($0.mediaTypeRaw, $0.tmdbId) })
 
         var removed = Set<String>()
         for p in (try? context.fetch(FetchDescriptor<ProgressEntry>())) ?? [] {
             let k = key(p.mediaTypeRaw, p.tmdbId)
-            if !historyKeys.contains(k) && !watchlistKeys.contains(k) {
+            if !watchlistKeys.contains(k) {
                 context.delete(p)
                 removed.insert(k)
             }
@@ -296,31 +292,8 @@ final class Library {
 
     func saveHistory(tmdbId: Int, type: MediaType, season: Int, episode: Int, title: String?, poster: String?,
                      source: ContentSource = .tmdb) {
-        // De-dupe same episode within a short window so a pause+resume doesn't
-        // spam rows: replace today's row for the same coordinate.
-        let raw = type.rawValue
-        let srcRaw = source.rawValue
-        let cal = Calendar.current
-        let startOfDay = cal.startOfDay(for: .now)
-        var d = FetchDescriptor<HistoryEntry>(predicate: #Predicate {
-            $0.tmdbId == tmdbId && $0.mediaTypeRaw == raw && $0.sourceRaw == srcRaw && $0.season == season && $0.episode == episode && $0.watchedAt >= startOfDay
-        })
-        d.fetchLimit = 1
-        // Snapshot the current cumulative position so the row can later show
-        // how much was watched on this day (this snapshot − the previous day's).
-        let prog = progress(tmdbId, type, season: season, episode: episode, source: source)
-        let pos = prog?.position ?? 0
-        let dur = prog?.duration ?? 0
-        if let existing = try? context.fetch(d).first {
-            existing.watchedAt = .now
-            existing.progressSeconds = pos
-            existing.durationSeconds = dur
-        } else {
-            context.insert(HistoryEntry(tmdbId: tmdbId, mediaType: type, season: season, episode: episode,
-                                        title: title, poster: poster,
-                                        progressSeconds: pos, durationSeconds: dur, source: source))
-        }
-        save()
+        // History is no longer exposed in the app. Keep the schema and old rows
+        // for migration/backup compatibility, but do not record new entries.
     }
 
     func history() -> [HistoryEntry] {

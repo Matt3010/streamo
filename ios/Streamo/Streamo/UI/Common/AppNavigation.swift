@@ -10,15 +10,15 @@ import Observation
 final class AppNavigation {
     static let shared = AppNavigation()
 
-    enum Tab: Hashable { case home, search, watchlist, history, settings }
+    enum Tab: Hashable { case home, search, watchlist }
 
     /// The global utility pages reachable from the toolbar on every tab.
-    enum SheetRoute: String, Identifiable { case anime, history, settings, downloads; var id: String { rawValue } }
+    enum SheetRoute: String, Identifiable { case anime, settings, downloads; var id: String { rawValue } }
 
     var selectedTab: Tab = .home
     /// Navigation path for the Home tab's stack (used for deep links).
     var homePath: [MediaRef] = []
-    /// Currently presented utility sheet (History / Settings / Downloads).
+    /// Currently presented utility sheet.
     var presentedSheet: SheetRoute?
     /// Bumped every time the Search tab is tapped, so `SearchView` can re-open
     /// the keyboard (e.g. after a search dismissed it).

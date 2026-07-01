@@ -31,7 +31,7 @@ struct SettingsView: View {
             Button("Continua", role: .destructive) { confirmRestoreStep2 = true }
             Button("Annulla", role: .cancel) { pendingRestoreData = nil }
         } message: {
-            Text("Tutti i dati attuali (lista, cronologia, progressi, download) verranno sostituiti con quelli del backup. L'operazione non è reversibile.")
+            Text("Tutti i dati attuali (lista, progressi, download) verranno sostituiti con quelli del backup. L'operazione non è reversibile.")
         }
         .confirmationDialog("Confermi il ripristino?", isPresented: $confirmRestoreStep2, titleVisibility: .visible) {
             Button("Ripristina", role: .destructive) { performRestore() }
@@ -92,7 +92,7 @@ struct SettingsView: View {
         } header: {
             Text("Dati e sistema")
         } footer: {
-            Text("Il backup include lista, cronologia, progressi e impostazioni. Il ripristino sostituisce i dati attuali; i file video scaricati non sono inclusi.")
+            Text("Il backup include lista, progressi e impostazioni. Il ripristino sostituisce i dati attuali; i file video scaricati non sono inclusi.")
         }
     }
 

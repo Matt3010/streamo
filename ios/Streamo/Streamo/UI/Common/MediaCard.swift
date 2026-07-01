@@ -315,7 +315,7 @@ struct MediaCard: View {
         let needBackdrop = aspectRatio > 1 && (card.backdrop == nil || card.backdrop?.isEmpty == true)
         guard needYearRating || needPoster || needBackdrop else { return }
 
-        // Debounce: while flinging through a long grid (Cronologia / La mia
+        // Debounce: while flinging through a long grid (La mia
         // lista) a card may appear and disappear in well under this window. Its
         // `.task` is cancelled on disappear, so we never hit the network for
         // cards scrolled past — only ones that actually settle in view enrich.

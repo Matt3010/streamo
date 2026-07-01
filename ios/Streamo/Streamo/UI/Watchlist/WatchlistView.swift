@@ -2,12 +2,9 @@ import SwiftUI
 
 struct WatchlistView: View {
     @Environment(Library.self) private var library
-    @State private var enrichment = WatchlistEnrichment()
     @State private var pendingRemove: WatchlistEntry?
     @State private var searchText = ""
     @AppStorage("watchlistTypeFilter") private var typeFilterRaw = "all"
-
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 14)]
 
     private var typeFilter: MediaTypeFilter { MediaTypeFilter(rawValue: typeFilterRaw) ?? .all }
 
@@ -22,8 +19,6 @@ struct WatchlistView: View {
 
                 if all.isEmpty {
                     empty("Lista vuota", "Aggiungi film e serie con il segnalibro.")
-                } else if !enrichment.isLoaded {
-                    skeletonGrid
                 } else if filtered.isEmpty {
                     if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         empty("Nessun titolo", "Cambia filtro per vedere altri titoli.")
@@ -40,11 +35,6 @@ struct WatchlistView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Cerca nella lista")
-        // Enrich once on appear to derive year/rating/upcoming for the cards.
-        // Skeletons cover this first pass; afterwards derived display values are
-        // kept so the grid scrolls smoothly.
-        .task { await enrichment.refresh(all, library: library) }
-        .refreshable { await enrichment.refresh(library.watchlist(), library: library, force: true) }
         .confirmationDialog("Rimuovere \(pendingRemove?.title ?? "questo titolo") dalla lista?",
                             isPresented: .isPresent($pendingRemove),
                             titleVisibility: .visible) {
@@ -74,45 +64,76 @@ struct WatchlistView: View {
         }
     }
 
-    /// Placeholder grid shown while the first enrichment pass runs, so the
-    /// heavy work happens behind skeletons instead of lagging the live grid.
-    private var skeletonGrid: some View {
-        LazyVGrid(columns: columns, spacing: 18) {
-            ForEach(0..<12, id: \.self) { _ in SkeletonCard() }
-        }
-        .padding(.horizontal)
-    }
-
     @ViewBuilder
     private func content(_ filtered: [WatchlistEntry]) -> some View {
-        LazyVGrid(columns: columns, spacing: 18) {
-            ForEach(filtered, id: \.persistentModelID) { cell($0) }
+        LazyVStack(spacing: 8) {
+            ForEach(filtered, id: \.persistentModelID) { entry in
+                cell(entry)
+            }
         }
         .padding(.horizontal)
     }
 
-    // MARK: - Grid cell
+    // MARK: - Text rows
 
-    @ViewBuilder
     private func cell(_ entry: WatchlistEntry) -> some View {
         NavigationLink(value: MediaRef(tmdbId: entry.tmdbId, mediaType: entry.mediaType)) {
-            MediaCard(card: enrichedCard(entry), library: library)
+            HStack(spacing: 12) {
+                Image(systemName: entry.mediaType == .tv ? "tv" : "film")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.red)
+                    .frame(width: 34, height: 34)
+                    .glassPanel(cornerRadius: 9, tint: 0.05, stroke: 0.08)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(displayTitle(entry))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 8) {
+                        Text(typeLabel(entry.mediaType))
+                        Text(statusLabel(entry.status))
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            .glassPanel(cornerRadius: 14)
         }
         .buttonStyle(.plain)
         .contextMenu { menu(for: entry) }
     }
 
-    /// Build the card with the values enrichment already derived, so MediaCard
-    /// has nothing left to fetch/compute and the grid scrolls smoothly.
-    private func enrichedCard(_ entry: WatchlistEntry) -> CardItem {
-        var card = CardItem(watchlist: entry)
-        if let x = enrichment.extras(for: entry) {
-            card.year = x.year
-            card.rating = x.rating
-            card.nextReleaseText = x.releaseText
-            card.isUpcoming = x.isUpcoming
+    private func typeLabel(_ type: MediaType) -> String {
+        switch type {
+        case .movie: return "Film"
+        case .tv: return "Serie"
         }
-        return card
+    }
+
+    private func displayTitle(_ entry: WatchlistEntry) -> String {
+        let title = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? UIText.untitled : title
+    }
+
+    private func statusLabel(_ status: WatchlistStatus) -> String {
+        switch status {
+        case .todo: return "Da guardare"
+        case .inProgress: return "In corso"
+        case .done: return "Completato"
+        }
     }
 
     @ViewBuilder
