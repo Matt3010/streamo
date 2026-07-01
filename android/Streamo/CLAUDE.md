@@ -20,6 +20,24 @@ When paths must be shown, redact username: `C:\Users\<user>\...` or `~\...`
 
 Streamo Android is a Kotlin/Jetpack Compose port of the iOS app, whose Swift source lives in the same repo at [`../../ios/Streamo`](../../ios/Streamo) — useful as a behavioral reference when porting or reconciling features. It browses a TMDB catalog and plays movies/TV via an external scraping provider, with offline downloads, casting, watchlist, history and JSON backup.
 
+## Working approach
+
+If you can't find the solution after several attempts, or you're out of ideas, search the internet instead of inventing things and burning tokens on guesses. Don't keep blindly retrying or fabricating APIs/behavior — look it up (web search / official docs) to get the real answer.
+
+## Writing plans
+
+When you produce an implementation plan, write it so that any model — not just the one that authored it — can read and execute it reliably. Plans are frequently handed off to other models (e.g. GLM-5.2, MiniMax-M3, Kimi-K2.7-Code, DeepSeek-V4) for execution, so they must be self-contained and unambiguous. Follow these rules:
+
+- **Make it self-contained.** State every fact needed to execute. Never rely on conversation history, hidden context, or "as discussed" — the executing model may not have seen any of it.
+- **Lead with Context.** Open with a short section explaining *why* the change is being made: the problem, what prompted it, and the intended outcome.
+- **Use a strict hierarchy.** Markdown headings (`##`/`###`), then ordered lists for sequential steps and unordered lists for non-sequential items. One idea per bullet. No walls of prose.
+- **Be concrete and deterministic.** Name exact file paths, function/class names, and symbols (e.g. `provider/ProviderResolver.confirmCandidate()`). Avoid vague references like "the relevant file" or "update accordingly".
+- **Reference what already exists.** Point to existing functions, utilities, and patterns to reuse, with their paths — don't imply new code where the codebase already has a solution.
+- **Fence all code and commands.** Put code, file snippets, and shell commands in fenced blocks with a language tag. Quote error messages and identifiers exactly.
+- **Use consistent terminology.** Pick one name per concept and reuse it verbatim throughout the plan; don't alternate synonyms.
+- **State acceptance criteria.** End with explicit, checkable success conditions and a verification section (commands to run, expected output, how to confirm the change end-to-end).
+- **Describe repeated patterns once.** For a change that repeats across many files, describe the pattern a single time and list a few representative paths rather than enumerating every file and line.
+
 ## Build & test commands
 
 Single module `:app`. Gradle 8.10.2 wrapper, AGP 8.7.3, Kotlin 2.1.20, JDK 11. Use `./gradlew` (Unix) or `.\gradlew.bat` (Windows PowerShell).

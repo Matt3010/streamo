@@ -45,6 +45,7 @@ import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.TvMediaCard
 import com.streamo.app.ui.tv.common.TvProgressMediaCard
+import com.streamo.app.ui.tv.common.tvFocusRing
 
 /**
  * TV Anime: catalogo AnimeUnity con ricerca + "Continua a guardare", D-pad navigabile.
@@ -173,6 +174,7 @@ fun TvAnimeScreen(
                                         if (focused) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                                     )
+                                    .tvFocusRing(focused, RoundedCornerShape(8.dp))
                                     .padding(horizontal = 24.dp, vertical = 12.dp)
                             ) {
                                 Text("Riprova", color = Color.White)

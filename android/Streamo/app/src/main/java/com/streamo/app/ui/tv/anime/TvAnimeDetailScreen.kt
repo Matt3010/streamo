@@ -49,6 +49,7 @@ import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.ui.anime.AnimeDetailViewModel
 import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.tv.common.TvFocusable
+import com.streamo.app.ui.tv.common.tvFocusRing
 import com.streamo.app.util.TVLogic
 
 /**
@@ -260,7 +261,8 @@ private fun AnimeDetailHeader(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(if (focused) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.08f)),
+                    .background(if (focused) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.08f))
+                    .tvFocusRing(focused, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Filled.ArrowBack, contentDescription = "Indietro", tint = Color.White)
@@ -282,6 +284,7 @@ private fun TvWindowChip(label: String, selected: Boolean, onClick: () -> Unit) 
                         else -> Color.White.copy(alpha = 0.08f)
                     }
                 )
+                .tvFocusRing(focused, RoundedCornerShape(50))
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
@@ -317,7 +320,8 @@ private fun TvEpisodeCell(
                         watched -> Color.White.copy(alpha = 0.08f)
                         else -> Color.White.copy(alpha = 0.16f)
                     }
-                ),
+                )
+                .tvFocusRing(focused, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center
         ) {
             Text(

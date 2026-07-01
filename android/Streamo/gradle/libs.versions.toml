@@ -24,6 +24,7 @@ kotlin = "2.1.20"
 ksp = "2.1.20-1.0.31"
 tvMaterial = "1.0.0"
 haze = "1.6.0"
+castFramework = "22.3.1"
 
 [libraries]
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
@@ -102,6 +103,9 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+
+# Google Cast (Chromecast sender). Brings androidx.mediarouter transitively.
+play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "castFramework" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

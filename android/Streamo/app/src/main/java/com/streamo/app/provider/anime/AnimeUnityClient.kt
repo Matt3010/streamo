@@ -145,7 +145,12 @@ class AnimeUnityClient @Inject constructor(
             } catch (_: Exception) {
                 throw AUError.NotFound
             }
-            val episodes = (info.episodes ?: emptyList()).filter { !it.isHidden }
+            // `hidden` looks like a visibility flag but isn't: AnimeUnity's own detail
+            // page embeds hidden episodes into its Vue component unfiltered, and a
+            // hidden-flagged episode still resolves to a playable embed URL. Some
+            // titles (e.g. donghua batches) mark most episodes hidden=1, so filtering
+            // on it here was dropping real episodes down to just the first/last.
+            val episodes = info.episodes ?: emptyList()
             AUEpisodePage(episodes = episodes, total = info.episodesCount ?: episodes.size)
         }
 

@@ -19,6 +19,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -92,3 +93,17 @@ fun Modifier.tvFocusFrame(
     .clip(shape)
     .then(if (focused) Modifier.border(3.dp, Color.White, shape) else Modifier)
     .padding(3.dp)
+
+/**
+ * Thin white focus ring for chips/rows/dialog buttons that already manage their
+ * own background and padding (unlike [tvFocusFrame], no gutter is reserved, so
+ * apply this last — after `.clip(shape)` and `.background(...)` — so the ring
+ * draws on the outer edge and stays visible even when a "selected" fill would
+ * otherwise make focused vs. unfocused indistinguishable).
+ */
+fun Modifier.tvFocusRing(
+    focused: Boolean,
+    shape: Shape,
+    width: Dp = 2.dp,
+    color: Color = Color.White
+): Modifier = if (focused) this.border(width, color, shape) else this

@@ -61,6 +61,7 @@ import com.streamo.app.ui.search.SortField
 import com.streamo.app.ui.search.SortOrder
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.TvMediaCard
+import com.streamo.app.ui.tv.common.tvFocusRing
 
 /**
  * TV Search screen. OutlinedTextField (focus → system/leanback IME opens
@@ -293,6 +294,7 @@ private fun TvSortButton(
                     else Color.White.copy(alpha = 0.08f)
                 )
                 .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                .tvFocusRing(focused, RoundedCornerShape(50))
                 .padding(horizontal = 16.dp)
         ) {
             Icon(
@@ -376,6 +378,7 @@ private fun TvSortPickerDialog(
                                 if (focused) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                             )
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
                         Text(
@@ -416,6 +419,7 @@ private fun TvGenreChip(
                         Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
                     } else Modifier
                 )
+                .tvFocusRing(focused, RoundedCornerShape(50))
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Text(
@@ -453,6 +457,7 @@ private fun TvFilterChip(
                         Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
                     } else Modifier
                 )
+                .tvFocusRing(focused, RoundedCornerShape(50))
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
@@ -482,7 +487,8 @@ private fun TvFilterButton(
                     if (focused) Color.White.copy(alpha = 0.18f)
                     else Color.White.copy(alpha = 0.08f)
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50)),
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                .tvFocusRing(focused, RoundedCornerShape(50)),
             contentAlignment = Alignment.Center
         ) {
             if (selectedCount > 0) {
@@ -556,6 +562,7 @@ private fun TvGenreSummaryChip(
                     else Color.White.copy(alpha = 0.08f)
                 )
                 .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                .tvFocusRing(focused, RoundedCornerShape(50))
                 .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
         ) {
             Text(
@@ -634,6 +641,7 @@ private fun TvGenrePickerDialog(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f))
+                                .tvFocusRing(focused, RoundedCornerShape(8.dp))
                                 .padding(horizontal = 20.dp, vertical = 12.dp)
                         ) {
                             Text(
@@ -649,6 +657,7 @@ private fun TvGenrePickerDialog(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
                         Text(

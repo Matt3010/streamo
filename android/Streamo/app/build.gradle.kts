@@ -132,6 +132,9 @@ dependencies {
     // DLNA: proxy HTTP locale per servire lo stream HLS alle TV
     implementation(libs.nanohttpd)
 
+    // Google Cast (Chromecast sender) — Default Media Receiver, riutilizza il proxy HLS locale.
+    implementation(libs.play.services.cast.framework)
+
     // WARP (Cloudflare) IP-masking: userspace WireGuard via gomobile .aar.
     // Built by wireproxykit/build-android.sh (repo root) into app/libs/warpkit.aar.
     // fileTree (not files(...)) so the app still builds WITHOUT the .aar —

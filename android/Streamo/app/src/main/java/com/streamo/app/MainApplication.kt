@@ -7,6 +7,9 @@ import com.streamo.app.download.DownloadStateSyncer
 import com.streamo.app.download.MediaDownloadService
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.common.util.UnstableApi
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailabilityLight
 import com.streamo.app.player.lancast.LanCastService
 import com.streamo.app.util.isTvDevice
 import dagger.hilt.android.HiltAndroidApp
@@ -64,6 +67,15 @@ class MainApplication : Application() {
         if (isTvDevice()) {
             LanCastService.startIfTv(this)
             Log.d(TAG, "LanCastService started (TV device)")
+        }
+
+        // Pre-inizializza il Cast SDK se Play Services è disponibile: così il SessionManager
+        // e la discovery MediaRouter sono pronti quando l'utente apre la modale di cast.
+        // Su dispositivi senza GMS (Fire TV / Android TV) è un no-op sicuro.
+        if (GoogleApiAvailabilityLight.getInstance()
+                .isGooglePlayServicesAvailable(this) == ConnectionResult.SUCCESS
+        ) {
+            runCatching { CastContext.getSharedInstance(this) }
         }
     }
 }

@@ -43,6 +43,7 @@ import androidx.tv.material3.NavigationDrawer
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.rememberDrawerState
 import com.streamo.app.navigation.NavRoutes
+import kotlinx.coroutines.delay
 import com.streamo.app.player.lancast.LanCastReceiver
 import com.streamo.app.ui.common.AmbientBackground
 
@@ -111,14 +112,23 @@ fun TvRootView() {
 
     val contentFocusRequester = remember { FocusRequester() }
 
-    // Close drawer on nav AND anchor focus into the content immediately — otherwise the
-    // freshly-composed screen leaves focus orphaned and the nav rail grabs it (auto-opens
-    // "at random"). contentFocusRequester is on a focusGroup, so this lands on the first
-    // focusable child; screens that manage their own initial focus (Detail/SectionList)
-    // refine it afterward. Retry a few frames to cover the compose gap on slower screens.
+    // Close drawer on nav AND anchor focus into the content. contentFocusRequester sits on the
+    // focusGroup itself (not a standalone placeholder — a permanent extra focus target there
+    // gets recorded by focusRestorer's save/restore and can end up "winning" default-focus
+    // resolution forever after, trapping D-pad focus on it). requestFocus() on a group makes it
+    // descend into children (restoring the last-focused one via focusRestorer, or the default
+    // one), which returns false the instant currentDestination flips because the old screen's
+    // composable is already gone and the new one hasn't composed a focusable child yet — retry
+    // for a few frames until one exists. Screens that manage their own initial focus
+    // (Detail/SectionList) refine it further afterward.
     LaunchedEffect(currentDestination) {
         drawerState.setValue(DrawerValue.Closed)
-        runCatching { contentFocusRequester.requestFocus() }
+        repeat(15) {
+            if (runCatching { contentFocusRequester.requestFocus() }.getOrDefault(false)) {
+                return@LaunchedEffect
+            }
+            delay(16)
+        }
     }
 
     if (!showDrawer) {

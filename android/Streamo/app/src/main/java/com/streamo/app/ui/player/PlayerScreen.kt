@@ -125,6 +125,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.streamo.app.player.PipController
 import com.streamo.app.player.dlna.DlnaRenderer
+import com.streamo.app.player.chromecast.ChromecastRenderer
 import com.streamo.app.player.lancast.LanRenderer
 import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassDialog
@@ -186,19 +187,34 @@ fun PlayerScreen(
     val lanScanning by viewModel.lanScanning.collectAsState()
     val castProtocolPrefs by viewModel.castProtocolPrefs.collectAsState()
     val lanConnected by viewModel.lanConnected.collectAsState()
+    val chromecastRenderers by viewModel.chromecastRenderers.collectAsState()
+    val chromecastScanning by viewModel.chromecastScanning.collectAsState()
+    val chromecastConnected by viewModel.chromecastConnected.collectAsState()
     val skipPrompt by viewModel.skipPrompt.collectAsState()
     var showCastDialog by remember { mutableStateOf(false) }
     var showExitCastDialog by remember { mutableStateOf(false) }
     var showOfflineCastWarning by remember { mutableStateOf(false) }
     var pendingOfflineRenderer by remember { mutableStateOf<com.streamo.app.player.dlna.DlnaRenderer?>(null) }
+    var pendingOfflineChromecast by remember { mutableStateOf<ChromecastRenderer?>(null) }
     var pendingLanRenderer by remember { mutableStateOf<com.streamo.app.player.lancast.LanRenderer?>(null) }
 
-    val isCastActive = dlnaConnected != null || lanConnected != null
-    val castDeviceName = dlnaConnected?.friendlyName ?: lanConnected?.friendlyName ?: "TV"
+    val isCastActive = dlnaConnected != null || lanConnected != null || chromecastConnected != null
+    val castDeviceName = dlnaConnected?.friendlyName
+        ?: lanConnected?.friendlyName
+        ?: chromecastConnected?.friendlyName
+        ?: "TV"
     val castProtocol = when {
         lanConnected != null -> "streamo"
+        chromecastConnected != null -> "chromecast"
         dlnaConnected != null -> "dlna"
         else -> null
+    }
+
+    // Ferma la discovery Cast continua appena la modale si chiude (qualunque sia il motivo:
+    // dismiss, selezione device, stop). DLNA/Obsidian sono one-shot e si esauriscono da soli;
+    // la callback MediaRouter del Cast invece resterebbe attiva consumando batteria.
+    LaunchedEffect(showCastDialog) {
+        if (!showCastDialog) viewModel.stopCastDiscovery()
     }
 
     var settingsMenu by remember { mutableStateOf(false) }
@@ -1066,14 +1082,15 @@ fun PlayerScreen(
         }
 
         if (showCastDialog) {
-            val groups = remember(dlnaRenderers, lanRenderers) {
-                buildCastDeviceGroups(dlnaRenderers, lanRenderers)
+            val groups = remember(dlnaRenderers, lanRenderers, chromecastRenderers) {
+                buildCastDeviceGroups(dlnaRenderers, lanRenderers, chromecastRenderers)
             }
             CastPickerDialog(
                 hazeState = playerHazeState,
                 groups = groups,
                 dlnaScanning = dlnaScanning,
                 lanScanning = lanScanning,
+                chromecastScanning = chromecastScanning,
                 connectedName = if (isCastActive) castDeviceName else null,
                 connectedProtocol = castProtocol,
                 preferredProtocol = { key -> castProtocolPrefs[key] },
@@ -1090,6 +1107,17 @@ fun PlayerScreen(
                     // Obsidian: la TV risolve in autonomia, no offline warning.
                     viewModel.castToLan(renderer)
                     showCastDialog = false
+                },
+                onCastToChromecast = { renderer ->
+                    // Chromecast serve lo stream via il proxy locale (online): come il DLNA,
+                    // l'offline non è direttamente raggiungibile dal ricevitore.
+                    if (isOfflinePlayback) {
+                        pendingOfflineChromecast = renderer
+                        showOfflineCastWarning = true
+                    } else {
+                        viewModel.castToChromecast(renderer)
+                        showCastDialog = false
+                    }
                 },
                 onStopCast = {
                     viewModel.stopCast()
@@ -1116,7 +1144,9 @@ fun PlayerScreen(
                         showOfflineCastWarning = false
                         showCastDialog = false
                         pendingOfflineRenderer?.let { viewModel.castToDlna(it, forceStreaming = true) }
+                        pendingOfflineChromecast?.let { viewModel.castToChromecast(it, forceStreaming = true) }
                         pendingOfflineRenderer = null
+                        pendingOfflineChromecast = null
                     }) {
                         Text("Continua")
                     }
@@ -1125,6 +1155,7 @@ fun PlayerScreen(
                     GlassDialogNeutralButton(onClick = {
                         showOfflineCastWarning = false
                         pendingOfflineRenderer = null
+                        pendingOfflineChromecast = null
                     }) {
                         Text("Annulla")
                     }
@@ -1372,25 +1403,35 @@ fun PlayerScreen(
     }
 }
 
-/** Raggruppa i renderer DLNA e Obsidian per IP in [CastDeviceGroup]. */
+/** Raggruppa i renderer DLNA, Obsidian e Chromecast per IP in [CastDeviceGroup]. */
 private fun buildCastDeviceGroups(
     dlna: List<DlnaRenderer>,
-    streamo: List<LanRenderer>
+    streamo: List<LanRenderer>,
+    chromecast: List<ChromecastRenderer>
 ): List<CastDeviceGroup> {
-    val ips = linkedSetOf<String>()
     val dlnaByIp = dlna.groupBy { normalizeIp(extractIp(it.controlUrl)) }
     val lanByIp = streamo.groupBy { normalizeIp(it.host) }
+    // Chromecast con IP noto → raggruppato per IP; con IP null → gruppo a sé (chiave unica).
+    val castWithIp = chromecast.filter { !it.ip.isNullOrBlank() }
+        .groupBy { normalizeIp(it.ip!!) }
+    val castNoIp = chromecast.filter { it.ip.isNullOrBlank() }
 
+    val ips = linkedSetOf<String>()
     ips.addAll(dlnaByIp.keys)
     ips.addAll(lanByIp.keys)
+    ips.addAll(castWithIp.keys)
 
-    return ips.mapNotNull { ip ->
+    val byIp = ips.mapNotNull { ip ->
         val d = dlnaByIp[ip]?.firstOrNull()
         val s = lanByIp[ip]?.firstOrNull()
-        val name = s?.friendlyName
-            ?: d?.friendlyName
-            ?: return@mapNotNull null
-        CastDeviceGroup(ip = ip, name = name, dlnaRenderer = d, lanRenderer = s)
+        val c = castWithIp[ip]?.firstOrNull()
+        val name = s?.friendlyName ?: d?.friendlyName ?: c?.friendlyName ?: return@mapNotNull null
+        CastDeviceGroup(ip = ip, name = name, dlnaRenderer = d, lanRenderer = s, chromecastRenderer = c)
+    }
+    // Chromecast senza IP ricavabile: una riga ciascuno (chiave IP fittizia per evitare
+    // collisioni nella preferenza "ip|name").
+    return byIp + castNoIp.mapIndexed { i, c ->
+        CastDeviceGroup(ip = "_cc$i", name = c.friendlyName, dlnaRenderer = null, lanRenderer = null, chromecastRenderer = c)
     }
 }
 

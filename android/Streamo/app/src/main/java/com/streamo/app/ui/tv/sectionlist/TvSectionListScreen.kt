@@ -59,7 +59,7 @@ fun TvSectionListScreen(
     LaunchedEffect(items.isEmpty()) {
         while (items.isEmpty()) {
             runCatching { loadingFocus.requestFocus() }
-            delay(80)
+            delay(16)
         }
     }
 
@@ -69,8 +69,21 @@ fun TvSectionListScreen(
     LaunchedEffect(items.size) {
         if (!didInitialFocus && items.isNotEmpty()) {
             didInitialFocus = true
-            delay(80)
-            runCatching { lastCardFocus.requestFocus() }
+            // Grid opens scrolled to the top, so the last card is likely below the fold and
+            // LazyVerticalGrid hasn't composed it yet — requestFocus() on an uncomposed item
+            // throws (swallowed by runCatching) and focus is left stranded. The spinner Box
+            // (which held focus) is disposed the instant items arrive, so any delay before the
+            // first attempt here is a gap where focus has nowhere to land and escapes to the
+            // nav rail (NavigationDrawer ties its open/closed state directly to real D-pad
+            // focus, so it stays visibly open until something reclaims it) — scroll the target
+            // into view, then retry immediately, every frame, no upfront delay.
+            gridState.scrollToItem(items.lastIndex)
+            repeat(30) {
+                if (runCatching { lastCardFocus.requestFocus() }.getOrDefault(false)) {
+                    return@LaunchedEffect
+                }
+                delay(16)
+            }
         }
     }
 

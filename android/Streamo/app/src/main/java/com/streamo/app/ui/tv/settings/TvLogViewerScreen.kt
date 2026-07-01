@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.streamo.app.provider.ProviderDebugLogger
 import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.tv.common.TvFocusable
+import com.streamo.app.ui.tv.common.tvFocusRing
 import kotlinx.coroutines.launch
 
 @Composable
@@ -148,6 +149,7 @@ private fun TvButton(text: String, focused: Boolean) {
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (focused) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.06f))
+            .tvFocusRing(focused, RoundedCornerShape(8.dp))
             .padding(horizontal = 24.dp, vertical = 12.dp)
     )
 }

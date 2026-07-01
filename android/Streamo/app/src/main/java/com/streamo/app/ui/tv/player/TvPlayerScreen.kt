@@ -90,6 +90,7 @@ import com.streamo.app.player.lancast.LanCommand
 import com.streamo.app.player.lancast.LanStatus
 import com.streamo.app.ui.player.PlayerViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
+import com.streamo.app.ui.tv.common.tvFocusRing
 import com.streamo.app.util.Format
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -1265,6 +1266,7 @@ private fun TvSettingsRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+                .tvFocusRing(focused, RoundedCornerShape(10.dp))
                 .padding(horizontal = 16.dp, vertical = 14.dp)
         ) {
             Icon(
@@ -1310,6 +1312,7 @@ private fun TvOptionRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+                .tvFocusRing(focused, RoundedCornerShape(10.dp))
                 .padding(horizontal = 16.dp, vertical = 14.dp)
         ) {
             Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {

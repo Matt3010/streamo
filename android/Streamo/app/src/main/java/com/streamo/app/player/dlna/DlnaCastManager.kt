@@ -193,7 +193,8 @@ class DlnaCastManager {
         renderer: DlnaRenderer,
         streamUrl: String,
         headers: Map<String, String>,
-        title: String
+        title: String,
+        upstreamClient: OkHttpClient? = null
     ): Boolean = withContext(Dispatchers.IO) {
         Log.d(TAG, "play su '${renderer.friendlyName}' url=$streamUrl")
         stopProxy()
@@ -202,7 +203,7 @@ class DlnaCastManager {
             Log.w(TAG, "nessun IP WiFi: impossibile avviare il proxy")
             return@withContext false
         }
-        val p = LocalHlsProxy(streamUrl, headers, host)
+        val p = LocalHlsProxy(streamUrl, headers, host, upstreamClient)
         val served = try {
             p.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
             p.streamUrl

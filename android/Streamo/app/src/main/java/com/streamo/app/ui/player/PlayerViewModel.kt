@@ -29,6 +29,7 @@ import com.streamo.app.player.PlaybackSessionHolder
 import com.streamo.app.player.cast.CastController
 import com.streamo.app.player.cast.CastMedia
 import com.streamo.app.player.cast.CastSession
+import com.streamo.app.player.chromecast.ChromecastRenderer
 import com.streamo.app.player.dlna.DlnaRenderer
 import com.streamo.app.player.lancast.LanRenderer
 import com.streamo.app.data.local.entity.HistoryEntry
@@ -184,13 +185,16 @@ class PlayerViewModel @Inject constructor(
     private fun episodeSubtitle(): String? =
         if (mediaType == "tv" && season > 0) _episodeTitle.value?.takeIf { it.isNotBlank() } else null
 
-    // --- Cast (DLNA + Obsidian) — delega al CastController app-scoped. ---
+    // --- Cast (DLNA + Obsidian + Chromecast) — delega al CastController app-scoped. ---
 
     val dlnaRenderers: StateFlow<List<DlnaRenderer>> = castController.dlnaRenderers
     val dlnaScanning: StateFlow<Boolean> = castController.dlnaScanning
 
     val lanRenderers: StateFlow<List<LanRenderer>> = castController.lanRenderers
     val lanScanning: StateFlow<Boolean> = castController.lanScanning
+
+    val chromecastRenderers: StateFlow<List<ChromecastRenderer>> = castController.chromecastRenderers
+    val chromecastScanning: StateFlow<Boolean> = castController.chromecastScanning
 
     /** Renderer DLNA su cui si trasmette QUESTO contenuto. */
     private val _dlnaConnected = MutableStateFlow<DlnaRenderer?>(null)
@@ -200,8 +204,15 @@ class PlayerViewModel @Inject constructor(
     private val _lanConnected = MutableStateFlow<LanRenderer?>(null)
     val lanConnected: StateFlow<LanRenderer?> = _lanConnected.asStateFlow()
 
-    /** True se questo contenuto è in cast (DLNA o Obsidian). */
-    val isCastActive: Boolean get() = _dlnaConnected.value != null || _lanConnected.value != null
+    /** Renderer Chromecast su cui si trasmette QUESTO contenuto. */
+    private val _chromecastConnected = MutableStateFlow<ChromecastRenderer?>(null)
+    val chromecastConnected: StateFlow<ChromecastRenderer?> = _chromecastConnected.asStateFlow()
+
+    /** True se questo contenuto è in cast (DLNA, Obsidian o Chromecast). */
+    val isCastActive: Boolean get() = anyCastConnected()
+
+    private fun anyCastConnected() =
+        _dlnaConnected.value != null || _lanConnected.value != null || _chromecastConnected.value != null
 
     private fun castMatchesThis(s: CastSession?): Boolean =
         s != null && s.media.tmdbId == tmdbId && s.media.mediaType == mediaType &&
@@ -213,6 +224,9 @@ class PlayerViewModel @Inject constructor(
     )
 
     fun discoverDlna() = castController.discover()
+
+    /** Ferma la discovery Cast continua quando la modale si chiude (risparmio batteria). */
+    fun stopCastDiscovery() = castController.stopDiscovery()
 
     /** Preferenze protocollo cast per dispositivo ("ip|name" → "streamo"|"dlna"). */
     val castProtocolPrefs: StateFlow<Map<String, String>> = settings.rendererProtocolPrefs
@@ -248,7 +262,8 @@ class PlayerViewModel @Inject constructor(
                     val src = resolution.sources.first()
                     val pos = player.currentPosition.coerceAtLeast(0L)
                     player.pause()
-                    castController.start(renderer, src.playlistUrl, src.headers, buildCastMedia(), pos)
+                    val upstream = if (resolution.viaProxy) warpTunnel.proxiedClient() else null
+                    castController.start(renderer, src.playlistUrl, src.headers, buildCastMedia(), pos, upstream)
                     _loading.value = false
                 } catch (e: Exception) {
                     _loading.value = false
@@ -259,8 +274,11 @@ class PlayerViewModel @Inject constructor(
         }
         val url = currentStreamUrl ?: return
         val pos = player.currentPosition.coerceAtLeast(0L)
+        // Stesso egress della riproduzione locale: con WARP il token vixcloud è IP-bound,
+        // un fetch diretto del proxy verrebbe rifiutato con 403.
+        val upstream = if (currentViaProxy) warpTunnel.proxiedClient() else null
         player.pause()
-        castController.start(renderer, url, currentHeaders, buildCastMedia(), pos)
+        castController.start(renderer, url, currentHeaders, buildCastMedia(), pos, upstream)
     }
 
     /** Avvia la trasmissione Obsidian (HTTP → app Obsidian sulla TV). */
@@ -276,6 +294,55 @@ class PlayerViewModel @Inject constructor(
                 _error.value = "Impossibile connettersi alla TV " +
                     "(${renderer.host}:${renderer.port}). Verifica che l'app sia " +
                     "aperta sulla TV e sulla stessa rete."
+            }
+        }
+    }
+
+    /** Avvia la trasmissione Chromecast (Google Cast + proxy HLS locale). Come il DLNA:
+     * serve uno stream online (il proxy gira sul telefono); l'offline non è raggiungibile. */
+    fun castToChromecast(renderer: ChromecastRenderer, forceStreaming: Boolean = false) {
+        if (currentIsOffline && !forceStreaming) return
+        if (currentIsOffline && forceStreaming) {
+            viewModelScope.launch {
+                _loading.value = true
+                _error.value = null
+                try {
+                    val resolution = if (mediaType == "tv" && season > 0) {
+                        resolver.episodeSource(tmdbId, title, releaseDate, season, episode)
+                    } else {
+                        resolver.movieSource(tmdbId, title, releaseDate)
+                    }
+                    if (resolution.sources.isEmpty()) {
+                        _loading.value = false
+                        return@launch
+                    }
+                    val src = resolution.sources.first()
+                    val pos = player.currentPosition.coerceAtLeast(0L)
+                    player.pause()
+                    val upstream = if (resolution.viaProxy) warpTunnel.proxiedClient() else null
+                    castController.startChromecast(renderer, src.playlistUrl, src.headers, buildCastMedia(), pos, upstream)
+                    _loading.value = false
+                } catch (e: Exception) {
+                    _loading.value = false
+                    _error.value = "Errore nel risolvere lo stream per il cast"
+                }
+            }
+            return
+        }
+        val url = currentStreamUrl ?: return
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        // Stesso egress della riproduzione locale: con WARP il token vixcloud è IP-bound,
+        // un fetch diretto del proxy verrebbe rifiutato con 403.
+        val upstream = if (currentViaProxy) warpTunnel.proxiedClient() else null
+        player.pause()
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            val ok = castController.startChromecast(renderer, url, currentHeaders, buildCastMedia(), pos, upstream)
+            _loading.value = false
+            if (!ok) {
+                _error.value = "Impossibile avviare la trasmissione su ${renderer.friendlyName}. " +
+                    "Verifica che il Chromecast sia sulla stessa rete Wi-Fi."
             }
         }
     }
@@ -492,7 +559,7 @@ class PlayerViewModel @Inject constructor(
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 // In trasmissione lo stato play arriva dal CastController, non dal locale.
-                if (_dlnaConnected.value == null && _lanConnected.value == null) _isPlaying.value = playing
+                if (!anyCastConnected()) _isPlaying.value = playing
             }
 
             override fun onPlayerError(e: PlaybackException) {
@@ -504,7 +571,7 @@ class PlayerViewModel @Inject constructor(
         // Posizione locale (solo quando NON stiamo trasmettendo questo contenuto).
         viewModelScope.launch {
             while (true) {
-                if (_dlnaConnected.value == null && _lanConnected.value == null) {
+                if (!anyCastConnected()) {
                     _currentPosition.value = player.currentPosition.coerceAtLeast(0L)
                     _bufferedPosition.value = player.bufferedPosition.coerceAtLeast(0L)
                 }
@@ -521,35 +588,44 @@ class PlayerViewModel @Inject constructor(
                         is CastSession.Dlna -> {
                             _dlnaConnected.value = s.renderer
                             _lanConnected.value = null
+                            _chromecastConnected.value = null
                         }
                         is CastSession.Lan -> {
                             _lanConnected.value = s.renderer
                             _dlnaConnected.value = null
+                            _chromecastConnected.value = null
+                        }
+                        is CastSession.Chromecast -> {
+                            _chromecastConnected.value = s.renderer
+                            _dlnaConnected.value = null
+                            _lanConnected.value = null
                         }
                         null -> {
                             _dlnaConnected.value = null
                             _lanConnected.value = null
+                            _chromecastConnected.value = null
                         }
                     }
                 } else {
                     _dlnaConnected.value = null
                     _lanConnected.value = null
+                    _chromecastConnected.value = null
                 }
             }
         }
         viewModelScope.launch {
             castController.position.collect {
-                if (_dlnaConnected.value != null || _lanConnected.value != null) _currentPosition.value = it
+                if (anyCastConnected()) _currentPosition.value = it
             }
         }
         viewModelScope.launch {
             castController.duration.collect {
-                if ((_dlnaConnected.value != null || _lanConnected.value != null) && it > 0) _duration.value = it
+                if (anyCastConnected() && it > 0) _duration.value = it
             }
         }
         viewModelScope.launch {
             castController.isPlaying.collect {
-                if (_dlnaConnected.value != null || _lanConnected.value != null) _isPlaying.value = it
+                if (anyCastConnected()) _isPlaying.value = it
             }
         }
         // Specchia il caricamento della TV: durante l'avvio cast il player locale è in pausa
@@ -557,7 +633,7 @@ class PlayerViewModel @Inject constructor(
         // dello spinner. Lo riusiamo come "buffering" così l'overlay di caricamento appare.
         viewModelScope.launch {
             castController.loading.collect {
-                if (_dlnaConnected.value != null || _lanConnected.value != null) _buffering.value = it
+                if (anyCastConnected()) _buffering.value = it
             }
         }
 
@@ -568,6 +644,7 @@ class PlayerViewModel @Inject constructor(
             when (s) {
                 is CastSession.Dlna -> _dlnaConnected.value = s.renderer
                 is CastSession.Lan -> _lanConnected.value = s.renderer
+                is CastSession.Chromecast -> _chromecastConnected.value = s.renderer
                 null -> {}
             }
             _loading.value = false

@@ -23,10 +23,18 @@ import java.util.concurrent.TimeUnit
 class LocalHlsProxy(
     private val masterUrl: String,
     private val headers: Map<String, String>,
-    private val hostAddress: String
+    private val hostAddress: String,
+    upstreamClient: OkHttpClient? = null,
+    // DLNA (LG webOS) sceglie da sola la variante peggiore: per quelle TV teniamo solo la
+    // variante a BANDWIDTH massimo. Chromecast/Shaka fa ABR da sé e vuole il master COMPLETO:
+    // trimmarlo a una sola variante demuxata rompe la riproduzione ai confini di discontinuità.
+    private val singleVariant: Boolean = true
 ) : NanoHTTPD(hostAddress, 0) { // porta 0 = effimera
 
-    private val http = OkHttpClient.Builder()
+    // Quando la risoluzione passa da WARP, il token vixcloud è legato all'IP di egress di
+    // Cloudflare: un fetch diretto (IP reale del telefono) viene rifiutato con 403. Riusa lo
+    // stesso client proxato della riproduzione locale così l'upstream esce dallo stesso IP.
+    private val http = upstreamClient ?: OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
@@ -42,18 +50,34 @@ class LocalHlsProxy(
         const val MIME_HLS = "application/vnd.apple.mpegurl"
     }
 
-    override fun serve(session: IHTTPSession): Response = try {
-        when (session.uri) {
-            "/stream.m3u8" -> serveResource(masterUrl)
-            "/r" -> {
-                val enc = session.parameters["u"]?.firstOrNull()
-                if (enc == null) notFound() else serveResource(decode(enc))
-            }
-            else -> notFound()
+    override fun serve(session: IHTTPSession): Response {
+        // Chromecast (Default Media Receiver = Shaka Player) fetcha playlist e segmenti via XHR
+        // e impone CORS: senza questi header i segmenti vengono bloccati e la riproduzione resta
+        // in buffering infinito. Le TV DLNA li ignorano, quindi è sicuro aggiungerli sempre.
+        if (session.method == Method.OPTIONS) {
+            return withCors(newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, ""))
         }
-    } catch (e: Exception) {
-        Log.w(TAG, "proxy serve error ${session.uri}", e)
-        newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "proxy error")
+        val resp = try {
+            when (session.uri) {
+                "/stream.m3u8" -> serveResource(masterUrl)
+                "/r" -> {
+                    val enc = session.parameters["u"]?.firstOrNull()
+                    if (enc == null) notFound() else serveResource(decode(enc))
+                }
+                else -> notFound()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "proxy serve error ${session.uri}", e)
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "proxy error")
+        }
+        return withCors(resp)
+    }
+
+    private fun withCors(resp: Response): Response = resp.apply {
+        addHeader("Access-Control-Allow-Origin", "*")
+        addHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+        addHeader("Access-Control-Allow-Headers", "Content-Type, Range")
+        addHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range")
     }
 
     /** Fetcha [upstreamUrl]: se è una playlist la riscrive, altrimenti la rilancia raw. */
@@ -80,23 +104,41 @@ class LocalHlsProxy(
             val rewritten = rewritePlaylist(body, URI(upstreamUrl))
             newFixedLengthResponse(Response.Status.OK, MIME_HLS, rewritten)
         } else {
-            // Segmenti / chiave: stream raw (chunked). Mantieni il content-type upstream.
+            // Segmenti / chiave. Il Default Media Receiver di Chromecast (Shaka) è molto più
+            // severo di ExoPlayer: vuole una risposta con Content-Length, non chunked. Se
+            // l'upstream dichiara la lunghezza, servila come fixed-length; altrimenti chunked.
             val mime = contentType.ifBlank { "application/octet-stream" }
+            val len = resp.body!!.contentLength()
             val stream = resp.body!!.byteStream()
-            newChunkedResponse(Response.Status.OK, mime, stream)
+            if (len >= 0) {
+                newFixedLengthResponse(Response.Status.OK, mime, stream, len)
+            } else {
+                newChunkedResponse(Response.Status.OK, mime, stream)
+            }
         }
     }
 
-    /** Riscrive gli URI della playlist. Per il master tiene solo la variante migliore. */
+    /**
+     * Riscrive gli URI della playlist. Per il master: con [singleVariant] tiene solo la variante
+     * migliore (DLNA), altrimenti riscrive il master COMPLETO proxando ogni variante (Chromecast).
+     * [rewriteMedia] proxa qualunque riga-URI, quindi va bene anche per un master multivariante.
+     */
     private fun rewritePlaylist(text: String, base: URI): String {
         val lines = text.lines()
         val isMaster = lines.any { it.trimStart().startsWith("#EXT-X-STREAM-INF") }
-        return if (isMaster) rewriteMasterKeepBest(lines, base) else rewriteMedia(lines, base)
+        if (!isMaster) {
+            val hasEndlist = lines.any { it.trimStart().startsWith("#EXT-X-ENDLIST") }
+            val type = lines.firstOrNull { it.trimStart().startsWith("#EXT-X-PLAYLIST-TYPE") }
+                ?.substringAfter(':')?.trim()
+            Log.d(TAG, "media playlist: endlist=$hasEndlist type=$type segmenti=${lines.count { it.trimStart().startsWith("#EXTINF") }}")
+        }
+        return if (isMaster && singleVariant) rewriteMasterKeepBest(lines, base)
+        else rewriteMedia(lines, base)
     }
 
     /** Media playlist (lista segmenti): riscrive ogni URI verso il proxy. */
-    private fun rewriteMedia(lines: List<String>, base: URI): String =
-        lines.joinToString("\n") { line ->
+    private fun rewriteMedia(lines: List<String>, base: URI): String {
+        val rewritten = lines.joinToString("\n") { line ->
             val trimmed = line.trim()
             when {
                 trimmed.isEmpty() -> line
@@ -105,6 +147,19 @@ class LocalHlsProxy(
                 else -> proxify(base.resolve(trimmed).toString())
             }
         }
+        // Chromecast/Shaka: una media playlist senza #EXT-X-ENDLIST è trattata come LIVE → la
+        // ricarica di continuo e va in errore al "live edge" dopo pochi secondi. I film vixcloud
+        // sono VOD: se manca ENDLIST e c'è almeno un segmento, forzalo così Shaka tratta lo
+        // stream come VOD. NON tocca il path DLNA (singleVariant=true, ramo keepBest).
+        val isMediaWithSegments = lines.any { it.trimStart().startsWith("#EXTINF") }
+        val hasEndlist = lines.any { it.trimStart().startsWith("#EXT-X-ENDLIST") }
+        return if (!singleVariant && isMediaWithSegments && !hasEndlist) {
+            Log.d(TAG, "media playlist senza ENDLIST: forzo VOD per Chromecast")
+            rewritten.trimEnd() + "\n#EXT-X-ENDLIST\n"
+        } else {
+            rewritten
+        }
+    }
 
     /**
      * Master multivariante: la DMR della TV (LG) sceglie da sola la variante e tende a

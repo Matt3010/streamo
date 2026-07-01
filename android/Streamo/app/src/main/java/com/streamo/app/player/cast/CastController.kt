@@ -8,12 +8,16 @@ import androidx.media3.session.MediaSession
 import com.streamo.app.MainActivity
 import com.streamo.app.player.PlaybackService
 import com.streamo.app.player.PlaybackSessionHolder
+import com.streamo.app.player.chromecast.ChromecastManager
+import com.streamo.app.player.chromecast.ChromecastRenderer
 import com.streamo.app.player.dlna.DlnaCastManager
 import com.streamo.app.player.dlna.DlnaRenderer
 import com.streamo.app.player.dlna.DlnaSessionPlayer
 import com.streamo.app.player.lancast.LanCastClient
 import com.streamo.app.player.lancast.LanRenderer
 import com.streamo.app.tmdb.TMDBImage
+import com.google.android.gms.cast.MediaStatus
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -52,6 +56,9 @@ sealed class CastSession {
     data class Lan(val renderer: LanRenderer, override val media: CastMedia) : CastSession() {
         override val rendererName: String get() = renderer.friendlyName
     }
+    data class Chromecast(val renderer: ChromecastRenderer, override val media: CastMedia) : CastSession() {
+        override val rendererName: String get() = renderer.friendlyName
+    }
 }
 
 /**
@@ -70,6 +77,7 @@ class CastController @Inject constructor(
 ) {
     private val dlna = DlnaCastManager()
     private val lanClient = LanCastClient()
+    private val chromecast = ChromecastManager(appContext)
     private val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
 
     // --- Renderer discovery ---
@@ -85,6 +93,9 @@ class CastController @Inject constructor(
 
     private val _lanScanning = MutableStateFlow(false)
     val lanScanning: StateFlow<Boolean> = _lanScanning.asStateFlow()
+
+    val chromecastRenderers: StateFlow<List<ChromecastRenderer>> = chromecast.renderers
+    val chromecastScanning: StateFlow<Boolean> = chromecast.scanning
 
     // --- Sessione e stato playback ---
 
@@ -144,12 +155,21 @@ class CastController @Inject constructor(
      */
     private var dlnaLaunchPolls = 0
 
+    /**
+     * Tick di polling in cui il RemoteMediaClient Chromecast è ancora null o IDLE non-finale:
+     * la sessione Cast sta ancora partendo (il load avviene in onSessionStarted). Oltre la
+     * soglia (~30s) la sessione non si è mai avviata → termina invece di restare in loading.
+     */
+    private var chromecastLaunchPolls = 0
+
     // --- Discovery ---
 
     fun discover() {
         scope.launch {
             _dlnaScanning.value = true
             _lanScanning.value = true
+            // Cast discovery è continua (callback MediaRouter): parte subito e si auto-aggiorna.
+            chromecast.startDiscovery()
             coroutineScope {
                 val dlnaJob = async { dlna.discover(appContext) }
                 val lanJob = async { lanClient.discover(appContext) }
@@ -158,7 +178,21 @@ class CastController @Inject constructor(
             }
             _dlnaScanning.value = false
             _lanScanning.value = false
+            // La discovery Cast non ha un "fine": chiudi la finestra dello spinner insieme a
+            // DLNA/Obsidian, altrimenti `chromecastScanning` resterebbe true per sempre e la
+            // modale mostrerebbe "Ricerca dispositivi…" all'infinito. La callback resta attiva.
+            chromecast.endScanningWindow()
         }
+    }
+
+    /**
+     * Ferma la discovery Cast continua (rimuove la callback MediaRouter). Da chiamare quando la
+     * modale di scelta cast si chiude: la discovery Cast è attiva (drain batteria/CPU) finché la
+     * callback è registrata, a differenza di DLNA/Obsidian che sono scansioni one-shot. NON
+     * influisce su una sessione cast già avviata (quella vive nel SessionManager).
+     */
+    fun stopDiscovery() {
+        chromecast.stopDiscovery()
     }
 
     // --- Start ---
@@ -169,10 +203,11 @@ class CastController @Inject constructor(
         streamUrl: String,
         headers: Map<String, String>,
         media: CastMedia,
-        startPositionMs: Long
+        startPositionMs: Long,
+        upstreamClient: okhttp3.OkHttpClient? = null
     ) {
         scope.launch {
-            val ok = dlna.play(renderer, streamUrl, headers, media.displayTitle)
+            val ok = dlna.play(renderer, streamUrl, headers, media.displayTitle, upstreamClient)
             if (!ok) return@launch
             if (startPositionMs > 5_000) {
                 dlna.seek(renderer, startPositionMs)
@@ -230,6 +265,37 @@ class CastController @Inject constructor(
         return true
     }
 
+    /**
+     * Avvia la trasmissione Chromecast (Google Cast SDK + proxy HLS locale).
+     * @return true se il proxy è partito e il route è stato selezionato; il load del media
+     * avviene poi in autonomia alla conferma della sessione Cast.
+     */
+    suspend fun startChromecast(
+        renderer: ChromecastRenderer,
+        streamUrl: String,
+        headers: Map<String, String>,
+        media: CastMedia,
+        startPositionMs: Long,
+        upstreamClient: okhttp3.OkHttpClient? = null
+    ): Boolean {
+        val ok = chromecast.play(renderer, streamUrl, headers, media, startPositionMs, upstreamClient)
+        if (!ok) return false
+        _position.value = startPositionMs
+        _duration.value = 0
+        // Sessione PRIMA di isPlaying — vedi nota in start(): il collector isPlaying del
+        // telefono è gated sul renderer connesso, impostato dal collector della sessione.
+        _session.value = CastSession.Chromecast(renderer, media)
+        _isPlaying.value = true
+        // loading DOPO la sessione, stesso motivo: lo StateFlow non riconsegna un valore
+        // invariato, quindi emetterlo prima del renderer connesso lo farebbe scartare.
+        _loading.value = true
+        chromecastLaunchPolls = 0
+        attachSession(media)
+        acquireLocks()
+        startPolling()
+        return true
+    }
+
     // --- Stop ---
 
     fun stop() {
@@ -246,6 +312,7 @@ class CastController @Inject constructor(
                 when (s) {
                     is CastSession.Dlna -> dlna.stop(s.renderer)
                     is CastSession.Lan -> lanClient.stop(s.renderer)
+                    is CastSession.Chromecast -> chromecast.stop()
                 }
             }
         }
@@ -270,6 +337,7 @@ class CastController @Inject constructor(
             when (s) {
                 is CastSession.Dlna -> if (play) dlna.resume(s.renderer) else dlna.pause(s.renderer)
                 is CastSession.Lan -> if (play) lanClient.resume(s.renderer) else lanClient.pause(s.renderer)
+                is CastSession.Chromecast -> if (play) chromecast.resume() else chromecast.pause()
             }
         }
         sessionPlayer?.refresh()
@@ -287,6 +355,7 @@ class CastController @Inject constructor(
             when (s) {
                 is CastSession.Dlna -> dlna.seek(s.renderer, pos)
                 is CastSession.Lan -> lanClient.seek(s.renderer, pos)
+                is CastSession.Chromecast -> chromecast.seek(pos)
             }
         }
     }
@@ -365,6 +434,60 @@ class CastController @Inject constructor(
                                 if (lanPollFailures >= 3) {
                                     stop()
                                     return@launch
+                                }
+                            }
+                            sessionPlayer?.refresh()
+                        }
+                        is CastSession.Chromecast -> {
+                            // RemoteMediaClient può essere null mentre la sessione Cast sta ancora
+                            // partendo (il load avviene in onSessionStarted). In attesa: loading.
+                            val state = chromecast.playerState()
+                            if (state == null) {
+                                // Sessione non ancora avviata: attendi, ma rinuncia dopo ~30s
+                                // (handshake fallito / device irraggiungibile), altrimenti loading
+                                // resterebbe per sempre — come lanLaunchPolls/dlnaLaunchPolls.
+                                chromecastLaunchPolls++
+                                if (chromecastLaunchPolls >= 30) {
+                                    stop()
+                                    return@launch
+                                }
+                                _loading.value = true
+                            } else {
+                                chromecast.positionInfo()?.let { (pos, dur) ->
+                                    _position.value = pos
+                                    if (dur > 0) _duration.value = dur
+                                }
+                                when (state) {
+                                    MediaStatus.PLAYER_STATE_PLAYING -> {
+                                        _isPlaying.value = true; _loading.value = false
+                                        chromecastLaunchPolls = 0
+                                    }
+                                    MediaStatus.PLAYER_STATE_PAUSED -> {
+                                        _isPlaying.value = false; _loading.value = false
+                                        chromecastLaunchPolls = 0
+                                    }
+                                    MediaStatus.PLAYER_STATE_BUFFERING -> {
+                                        _loading.value = true
+                                        chromecastLaunchPolls = 0
+                                    }
+                                    MediaStatus.PLAYER_STATE_IDLE -> {
+                                        // IDLE con IDLE_REASON_FINISHED (o ERROR) = fine reale.
+                                        // IDLE iniziale (prima del load) = ancora in avvio: conta
+                                        // come launch poll così un load che non parte mai termina.
+                                        val reason = chromecast.idleReason()
+                                        if (reason == MediaStatus.IDLE_REASON_FINISHED ||
+                                            reason == MediaStatus.IDLE_REASON_ERROR
+                                        ) {
+                                            stop()
+                                            return@launch
+                                        }
+                                        chromecastLaunchPolls++
+                                        if (chromecastLaunchPolls >= 30) {
+                                            stop()
+                                            return@launch
+                                        }
+                                        _loading.value = true
+                                    }
                                 }
                             }
                             sessionPlayer?.refresh()

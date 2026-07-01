@@ -67,6 +67,7 @@ import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.tvFocusFrame
 import com.streamo.app.ui.tv.common.TvMediaCard
 import com.streamo.app.ui.tv.common.TvSectionTitle
+import com.streamo.app.ui.tv.common.tvFocusRing
 import com.streamo.app.util.TVLogic
 
 /**
@@ -109,8 +110,13 @@ fun TvDetailScreen(
     // `item` alone: for a series `item` is set early while the spinner is still up
     // (loadSeason/resolveProvider keep isLoading true for seconds), so a retry keyed on
     // `item` expires before Play exists, leaving the nav rail to grab focus and pop open.
-    // During the NavHost swap the rail can still momentarily grab focus, so retry a few
-    // frames — but stop the instant Play has focus, so a quick D-pad move isn't yanked back.
+    // The instant contentReady flips, the spinner Box (which held real focus) is disposed
+    // and Play hasn't composed/laid out yet — any upfront delay here is a gap where focus
+    // has nowhere to land, so it escapes to the nav rail (androidx.tv.material3's
+    // NavigationDrawer ties its open/closed state directly to real D-pad focus, so once
+    // that happens it stays visibly open until something reclaims focus) and it stays open
+    // for as long as the gap lasts. So retry immediately, every frame, no upfront delay —
+    // but stop the instant Play has focus, so a quick D-pad move isn't yanked back.
     // Play is DISABLED when no provider is available ("Titolo non disponibile") — a disabled
     // node can't take focus, so requesting it leaves focus orphaned and the rail grabs it.
     // Fall back to the always-enabled Watchlist button in that case.
@@ -119,13 +125,11 @@ fun TvDetailScreen(
     val contentReady = !viewModel.isLoading && viewModel.item != null
     LaunchedEffect(contentReady, playEnabled) {
         if (contentReady) {
-            // Initial delay to let Compose settle the layout after content appears
-            delay(100)
-            repeat(15) {
+            repeat(30) {
                 if (playFocused || watchlistFocused) return@LaunchedEffect
                 val target = if (playEnabled) playFocusRequester else watchlistFocusRequester
                 runCatching { target.requestFocus() }
-                delay(60)
+                delay(16)
             }
         }
     }
@@ -635,6 +639,7 @@ private fun TvProviderPicker(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (focused) Color.White.copy(alpha = 0.15f) else Color.Transparent)
+                            .tvFocusRing(focused, RoundedCornerShape(10.dp))
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

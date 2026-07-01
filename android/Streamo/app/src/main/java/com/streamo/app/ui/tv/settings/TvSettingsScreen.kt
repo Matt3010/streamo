@@ -42,6 +42,7 @@ import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.downloads.formatBytes
 import com.streamo.app.ui.settings.SettingsViewModel
 import com.streamo.app.ui.tv.common.TvFocusable
+import com.streamo.app.ui.tv.common.tvFocusRing
 
 /**
  * TV Settings screen — D-pad focusable list of settings, each row showing a clear
@@ -100,6 +101,7 @@ fun TvSettingsScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -141,6 +143,7 @@ fun TvSettingsScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f))
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -160,6 +163,7 @@ fun TvSettingsScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (focused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -199,6 +203,7 @@ fun TvSettingsScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f))
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -218,6 +223,7 @@ fun TvSettingsScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (focused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -470,6 +476,7 @@ private fun RowContent(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+            .tvFocusRing(focused, RoundedCornerShape(10.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

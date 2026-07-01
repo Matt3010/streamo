@@ -73,11 +73,8 @@ data class AUEpisode(
     /** Episode number — AnimeUnity sends it as a string ("1", "12.5", …). */
     val number: String?,
     @SerializedName("scws_id") val scwsId: Int?,
-    @SerializedName("file_name") val fileName: String?,
-    val hidden: Int?
+    @SerializedName("file_name") val fileName: String?
 ) {
-    val isHidden: Boolean get() = (hidden ?: 0) != 0
-
     /** Integer episode number when parseable (drops fractional specials). */
     val numberInt: Int? get() = number?.toIntOrNull()
 }
