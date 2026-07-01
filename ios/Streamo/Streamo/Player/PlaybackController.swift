@@ -426,63 +426,19 @@ final class PlaybackController {
         let source = sources[sourceIndex]
         configureAudioSession()
 
-        let isOffline = request.offlineURL != nil
-        // Headers are only useful for remote provider requests (Referer /
-        // Origin for vixcloud). The local HLS server doesn't care, and
-        // attaching options at all interferes with the loopback codepath.
-        // Tag requests as 'player' so the proxy log distinguishes streaming
-        // from downloads (AVURLAsset propagates these to every sub-resource).
-        var streamHeaders = source.headers
-        streamHeaders["X-Streamo-Client"] = "player"
-        let options: [String: Any]? = isOffline ? nil : ["AVURLAssetHTTPHeaderFieldsKey": streamHeaders]
-        let maxHeight = AppSettings.shared.streamingMaxHeight
+        let route = PlaybackRouteBuilder.route(
+            for: request,
+            source: source,
+            loopbackForced: loopbackForced
+        )
+        usingLAN = route.usingLAN
 
-        // For offline playback, prefer a LAN URL (device IP + per-session token)
-        // so an AirPlay receiver can fetch the asset over Wi-Fi; the device
-        // itself reaches the same URL too. Fall back to the loopback URL with
-        // AirPlay off when there's no LAN address or after a LAN load failure
-        // (e.g. Local Network permission denied). See the .failed handler.
-        usingLAN = false
-        let offlinePlaybackURL: URL? = {
-            guard isOffline, let loopback = request.offlineURL else { return nil }
-            if !loopbackForced,
-               let relPath = Self.offlineRelativePath(from: loopback),
-               let lanURL = LocalHLSServer.shared.beginAirplaySession(relativePath: relPath) {
-                usingLAN = true
-                return lanURL
-            }
-            return loopback
-        }()
-        // When the source is a LocalHLSServer proxy URL (loopback host), add:
-        //  • c=player  → tag sub-resources/AirPlay in the proxy log.
-        //  • q=<h>     → make the proxy filter the master to ONLY that variant,
-        //                truly FORCING the quality (a bitrate/resolution cap
-        //                alone lets ABR still pick lower).
-        // ProviderResolver routes through the on-device proxy whenever WARP is
-        // on OR a streaming quality is set (so forced quality works in BOTH
-        // WARP and Diretto). A bare direct vixcloud source (Diretto + Auto) is
-        // played as-is, with only the resolution cap below.
-        let streamURL: URL = {
-            if isOffline { return offlinePlaybackURL ?? source.playlistURL }
-            guard Self.isLocalProxyURL(source.playlistURL) else { return source.playlistURL }
-            // The proxy URL targets LocalHLSServer on this device. Prefer the
-            // LAN IP so an AirPlay receiver can reach it; loopback (default, or
-            // forced after a LAN failure) works on-device but can't AirPlay.
-            var base = source.playlistURL
-            if !loopbackForced, let lan = Self.lanVariant(of: source.playlistURL) {
-                base = lan
-                usingLAN = true
-            }
-            var extra = ["c": "player"]
-            if maxHeight > 0 { extra["q"] = String(maxHeight) }
-            return Self.appendingQuery(extra, on: base)
-        }()
-        let asset = AVURLAsset(url: streamURL, options: options)
+        let asset = AVURLAsset(url: route.url, options: route.assetOptions)
         let item = AVPlayerItem(asset: asset)
         // Resolution cap for direct streaming (and a harmless extra ceiling
         // alongside the proxy filter). Auto = 0 → no cap.
-        if !isOffline, maxHeight > 0 {
-            item.preferredMaximumResolution = CGSize(width: maxHeight * 16 / 9, height: maxHeight)
+        if !route.isOffline, route.maxHeight > 0 {
+            item.preferredMaximumResolution = CGSize(width: route.maxHeight * 16 / 9, height: route.maxHeight)
         }
         let player = AVPlayer(playerItem: item)
         // AirPlay hands the *URL* to the receiver, so it only works when that URL
@@ -495,9 +451,8 @@ final class PlaybackController {
         // On-device sources (offline file or local proxy) are AirPlay-reachable
         // only on the LAN variant — loopback points the receiver at itself. A
         // direct vixcloud URL is reachable by the receiver as-is.
-        let externalAllowed = (isOffline || Self.isLocalProxyURL(source.playlistURL)) ? usingLAN : true
-        player.allowsExternalPlayback = externalAllowed
-        player.usesExternalPlaybackWhileExternalScreenIsActive = externalAllowed
+        player.allowsExternalPlayback = route.allowsExternalPlayback
+        player.usesExternalPlaybackWhileExternalScreenIsActive = route.allowsExternalPlayback
         self.player = player
 
         installTimeObserver(on: player)
@@ -506,18 +461,6 @@ final class PlaybackController {
         installTimeControlObserver(for: player)
         configureNowPlaying(request, player: player)
         play()
-    }
-
-    /// Append the given query items to a proxied stream URL (skipping any name
-    /// already present), preserving the existing query.
-    private static func appendingQuery(_ extra: [String: String], on url: URL) -> URL {
-        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        var items = comps.queryItems ?? []
-        for (name, value) in extra where !items.contains(where: { $0.name == name }) {
-            items.append(URLQueryItem(name: name, value: value))
-        }
-        comps.queryItems = items
-        return comps.url ?? url
     }
 
     private func advanceToNextSource() {
@@ -1089,34 +1032,6 @@ final class PlaybackController {
         didReachEnd = false
         // Revoke any AirPlay token so the download stops being LAN-reachable.
         LocalHLSServer.shared.endAirplaySession()
-    }
-
-    /// The `Downloads/`-relative path embedded in a `LocalHLSServer` playback
-    /// URL (loopback), used to re-issue the same asset on a LAN route. `path`
-    /// is percent-decoded; `beginAirplaySession` re-encodes the segments.
-    private static func offlineRelativePath(from url: URL) -> String? {
-        let path = url.path
-        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    /// LAN variant of a loopback proxy URL: same port/path/query (incl. the
-    /// `key`), only the host swapped to the device's shareable LAN IP, so an
-    /// AirPlay receiver can reach the on-device proxy. Returns nil when offline
-    /// / cellular-only (no LAN address → AirPlay is impossible anyway).
-    private static func lanVariant(of url: URL) -> URL? {
-        guard let host = LANAddress.currentShareableIPv4(),
-              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-        comps.host = host
-        return comps.url
-    }
-
-    /// Whether a streaming source is a `LocalHLSServer` proxy URL (loopback
-    /// host) — i.e. served on-device (WARP egress and/or forced quality) and
-    /// thus needing `c=`/`q=` appended + a LAN swap for AirPlay. A direct
-    /// vixcloud URL (Diretto + Auto) returns false and plays as-is.
-    private static func isLocalProxyURL(_ url: URL) -> Bool {
-        url.host == "127.0.0.1"
     }
 
     private func installTimeControlObserver(for player: AVPlayer) {

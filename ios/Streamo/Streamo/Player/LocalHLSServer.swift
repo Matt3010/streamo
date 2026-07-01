@@ -333,72 +333,13 @@ final class LocalHLSServer: @unchecked Sendable {
             resolvedPath = rest
         }
 
-        // Resolve and contain to documentsRoot.
-        let fileURL = documentsRoot.appendingPathComponent(resolvedPath).standardizedFileURL
-        let rootPath = documentsRoot.standardizedFileURL.path
-        guard fileURL.path.hasPrefix(rootPath + "/") || fileURL.path == rootPath else {
-            send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-            return
-        }
-
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue else {
-            send(status: "404 Not Found", on: connection, then: { connection.cancel() })
-            return
-        }
-
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-              let totalSize = (attrs[.size] as? NSNumber)?.int64Value else {
-            send(status: "500 Internal Server Error", on: connection, then: { connection.cancel() })
-            return
-        }
-
-        // Parse a Range header if present.
-        var rangeStart: Int64 = 0
-        var rangeEnd: Int64 = totalSize - 1
-        var isRange = false
-        for line in lines.dropFirst() {
-            if line.lowercased().hasPrefix("range:") {
-                let spec = line.dropFirst("range:".count).trimmingCharacters(in: .whitespaces)
-                guard spec.hasPrefix("bytes=") else { continue }
-                let pair = spec.dropFirst("bytes=".count).split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
-                if !pair.isEmpty, let s = Int64(pair[0]) {
-                    rangeStart = s
-                    if pair.count > 1, let e = Int64(pair[1]), e >= s {
-                        rangeEnd = min(e, totalSize - 1)
-                    } else {
-                        rangeEnd = totalSize - 1
-                    }
-                    isRange = true
-                }
-                break
+        switch LocalHLSFileResponse.make(resolvedPath: resolvedPath, documentsRoot: documentsRoot, requestLines: lines) {
+        case .success(let response):
+            sendHeaders(status: response.status, extra: response.headers, on: connection) { [weak self] in
+                self?.streamFile(at: response.fileURL, start: response.rangeStart, length: response.length, on: connection)
             }
-        }
-        if rangeStart < 0 || rangeStart > rangeEnd || rangeStart >= totalSize {
-            send(status: "416 Range Not Satisfiable", on: connection,
-                 extra: ["Content-Range": "bytes */\(totalSize)"],
-                 then: { connection.cancel() })
-            return
-        }
-
-        let length = rangeEnd - rangeStart + 1
-        // Treat "Range covers the whole file" as a normal 200 — Chrome adds
-        // `Range: bytes=0-` to most media requests, and a few HLS clients
-        // misbehave when manifest responses come back as 206.
-        let partial = isRange && (rangeStart != 0 || rangeEnd != totalSize - 1)
-        var extraHeaders: [String: String] = [
-            "Content-Type": Self.mimeType(forExtension: fileURL.pathExtension),
-            "Content-Length": "\(length)",
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "no-store",
-        ]
-        if partial {
-            extraHeaders["Content-Range"] = "bytes \(rangeStart)-\(rangeEnd)/\(totalSize)"
-        }
-
-        let status = partial ? "206 Partial Content" : "200 OK"
-        sendHeaders(status: status, extra: extraHeaders, on: connection) { [weak self] in
-            self?.streamFile(at: fileURL, start: rangeStart, length: length, on: connection)
+        case .failure(let error):
+            send(status: error.status, on: connection, extra: error.extra, then: { connection.cancel() })
         }
     }
 
@@ -629,23 +570,6 @@ final class LocalHLSServer: @unchecked Sendable {
         out.append(data)
         connection.send(content: out, contentContext: .finalMessage, isComplete: true,
                         completion: .contentProcessed { _ in connection.cancel() })
-    }
-
-    // MARK: - Helpers
-
-    private static func mimeType(forExtension ext: String) -> String {
-        switch ext.lowercased() {
-        case "m3u8", "m3u": return "application/vnd.apple.mpegurl"
-        case "ts": return "video/mp2t"
-        case "m4s", "mp4", "m4a", "m4v": return "video/mp4"
-        case "aac": return "audio/aac"
-        case "vtt": return "text/vtt"
-        case "webvtt": return "text/vtt"
-        case "key", "bin": return "application/octet-stream"
-        case "html", "htm": return "text/html; charset=utf-8"
-        case "js": return "application/javascript; charset=utf-8"
-        default: return "application/octet-stream"
-        }
     }
 
     enum ServerError: Error {

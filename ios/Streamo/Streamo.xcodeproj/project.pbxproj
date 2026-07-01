@@ -11,9 +11,6 @@
 		C0FFEE0000000000000000F3 /* WireProxyKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXCopyFilesBuildPhase section */
 		C0FFEE0000000000000000F4 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -33,14 +30,9 @@
 		C0FFEE0000000000000000F1 /* WireProxyKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = WireProxyKit.xcframework; path = Frameworks/WireProxyKit.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000006 /* Streamo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Streamo;
 			sourceTree = "<group>";
 		};
@@ -160,9 +152,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AA000000000000000000000C /* Debug */ = {
