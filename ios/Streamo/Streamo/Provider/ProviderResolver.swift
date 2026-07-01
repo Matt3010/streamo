@@ -16,7 +16,7 @@ enum ProxyClient: String, Sendable {
 /// `DetailViewModel` (it reads a confirmed mapping and `prime`s this cache on
 /// open, and saves the outcome after each resolve / manual confirm).
 ///
-/// Two modes, both fully on-device (no remote server):
+/// Network egress stays fully on-device (no remote server):
 ///  • **Diretto** — `ProviderClient`/`VixcloudClient` fetch straight from the
 ///    device IP, and playback URLs point at vixcloud directly.
 ///  • **WARP** — the same clients fetch through `WarpTunnel`'s proxied session
@@ -24,6 +24,8 @@ enum ProxyClient: String, Sendable {
 ///    URLs point at `LocalHLSServer`'s live-proxy routes, which fetch the
 ///    upstream through the WARP tunnel and rewrite the playlist. AirPlay keeps
 ///    working because the phone is the proxy.
+///  • **Diretto + qualità forzata** — network egress is direct, but playback
+///    still uses the local HLS proxy so the master playlist can be filtered.
 actor ProviderResolver {
     static let shared = ProviderResolver()
 
@@ -87,6 +89,27 @@ actor ProviderResolver {
         case unavailable   // WARP on but the tunnel won't start — fail closed.
     }
 
+    /// How a playable URL should be delivered after provider/vixcloud resolving.
+    /// WARP decides network egress; forced quality may still require the local
+    /// HLS proxy even when egress is direct.
+    private enum PlaybackDeliveryMode: Sendable {
+        case direct
+        case warp
+        case directForcedQuality
+
+        var usesWarp: Bool {
+            if case .warp = self { return true }
+            return false
+        }
+
+        var requiresLocalProxy: Bool {
+            switch self {
+            case .direct: return false
+            case .warp, .directForcedQuality: return true
+            }
+        }
+    }
+
     /// Point the provider/vixcloud clients at the WARP-proxied session when
     /// proxy mode is on and the tunnel comes up.
     ///
@@ -119,6 +142,18 @@ actor ProviderResolver {
         PlaybackResolution(sources: [], reason: .temporarilyUnavailable,
                            message: Self.warpUnavailableMessage,
                            providerTitle: nil, candidates: [], viaProxy: true)
+    }
+
+    private func playbackDeliveryMode(client: ProxyClient) async -> PlaybackDeliveryMode? {
+        switch await prepareWARP() {
+        case .unavailable:
+            return nil
+        case .proxied:
+            return .warp
+        case .direct:
+            let forceStreamingQuality = client == .player && AppSettings.shared.streamingMaxHeight > 0
+            return forceStreamingQuality ? .directForcedQuality : .direct
+        }
     }
 
     /// Resolve (or reuse cached) the provider title for a TMDB id.
@@ -161,33 +196,23 @@ actor ProviderResolver {
     // MARK: - Playable source
 
     func movieSource(tmdbId: Int, title: String, releaseDate: String?, client: ProxyClient) async -> PlaybackResolution {
-        let useProxy: Bool
-        switch await prepareWARP() {
-        case .unavailable: return warpUnavailableResolution()
-        case .direct: useProxy = false
-        case .proxied: useProxy = true
-        }
-        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .movie, title: title, releaseDate: releaseDate, forceRefresh: false, useProxy: useProxy)
+        guard let mode = await playbackDeliveryMode(client: client) else { return warpUnavailableResolution() }
+        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .movie, title: title, releaseDate: releaseDate, forceRefresh: false, useProxy: mode.usesWarp)
         guard let resolved = outcome.resolved else {
-            return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: useProxy)
+            return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: mode.usesWarp)
         }
         let embed = await provider.movieEmbed(providerTitleId: resolved.id)
-        return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates, useProxy: useProxy, client: client)
+        return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates, mode: mode)
     }
 
     func episodeSource(tmdbId: Int, title: String, releaseDate: String?, season: Int, episode: Int, client: ProxyClient) async -> PlaybackResolution {
-        let useProxy: Bool
-        switch await prepareWARP() {
-        case .unavailable: return warpUnavailableResolution()
-        case .direct: useProxy = false
-        case .proxied: useProxy = true
-        }
-        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .tv, title: title, releaseDate: releaseDate, forceRefresh: false, useProxy: useProxy)
+        guard let mode = await playbackDeliveryMode(client: client) else { return warpUnavailableResolution() }
+        let outcome = await resolveTitle(tmdbId: tmdbId, mediaType: .tv, title: title, releaseDate: releaseDate, forceRefresh: false, useProxy: mode.usesWarp)
         guard let resolved = outcome.resolved else {
-            return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: useProxy)
+            return PlaybackResolution(sources: [], reason: outcome.reason ?? .notFound, message: unavailableMessage(outcome.reason), providerTitle: nil, candidates: outcome.candidates, viaProxy: mode.usesWarp)
         }
         let embed = await provider.episodeEmbed(providerTitleId: resolved.id, slug: resolved.slug, season: season, episode: episode)
-        return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates, useProxy: useProxy, client: client)
+        return await finalize(embed: embed, resolved: resolved, candidates: outcome.candidates, mode: mode)
     }
 
     // MARK: - AnimeUnity (native catalog, no TMDB)
@@ -208,52 +233,45 @@ actor ProviderResolver {
     /// the entry id, slug and episode id. The video path (embed → vixcloud →
     /// WARP/LocalHLSServer) is identical to StreamingCommunity.
     func animeSource(animeId: Int, slug: String?, episodeId: Int, client: ProxyClient) async -> PlaybackResolution {
-        let useProxy: Bool
-        switch await prepareWARP() {
-        case .unavailable: return warpUnavailableResolution()
-        case .direct: useProxy = false
-        case .proxied: useProxy = true
-        }
+        guard let mode = await playbackDeliveryMode(client: client) else { return warpUnavailableResolution() }
         let embedUrl: String
         do {
             embedUrl = try await AnimeUnityClient.shared.embedURL(episodeId: episodeId, animeId: animeId, slug: slug)
         } catch {
             let msg = (error as? LocalizedError)?.errorDescription ?? "Episodio non disponibile."
-            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: msg, providerTitle: nil, candidates: [], viaProxy: useProxy)
+            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: msg, providerTitle: nil, candidates: [], viaProxy: mode.usesWarp)
         }
-        return await buildSources(embedUrl: embedUrl, useProxy: useProxy, client: client, providerTitle: nil, candidates: [])
+        return await buildSources(embedUrl: embedUrl, mode: mode, providerTitle: nil, candidates: [])
     }
 
     // MARK: - Finalize (embed → playable sources)
 
-    /// Fetch the embed and build playable sources. In WARP mode the sources are
-    /// `LocalHLSServer` proxy URLs (the phone fetches the upstream through the
-    /// tunnel and rewrites the playlist); otherwise they're direct vixcloud URLs.
-    private func finalize(embed: ProviderEmbedOutcome, resolved: ProviderResolvedTitle, candidates: [ProviderCandidate], useProxy: Bool, client: ProxyClient) async -> PlaybackResolution {
+    /// Fetch the embed and build playable sources. Sources use direct vixcloud
+    /// URLs unless WARP or a forced streaming quality requires `LocalHLSServer`.
+    private func finalize(embed: ProviderEmbedOutcome, resolved: ProviderResolvedTitle, candidates: [ProviderCandidate], mode: PlaybackDeliveryMode) async -> PlaybackResolution {
         guard let embedUrl = embed.embedUrl else {
-            return PlaybackResolution(sources: [], reason: embed.reason ?? .notFound, message: unavailableMessage(embed.reason), providerTitle: resolved, candidates: candidates, viaProxy: useProxy)
+            return PlaybackResolution(sources: [], reason: embed.reason ?? .notFound, message: unavailableMessage(embed.reason), providerTitle: resolved, candidates: candidates, viaProxy: mode.usesWarp)
         }
-        return await buildSources(embedUrl: embedUrl, useProxy: useProxy, client: client, providerTitle: resolved, candidates: candidates)
+        return await buildSources(embedUrl: embedUrl, mode: mode, providerTitle: resolved, candidates: candidates)
     }
 
     /// Shared embed → playable sources core, used by both StreamingCommunity and
     /// AnimeUnity (both end at a vixcloud embed URL). `providerTitle`/`candidates`
     /// are SC-only metadata (nil/[] for anime).
-    private func buildSources(embedUrl: String, useProxy: Bool, client: ProxyClient, providerTitle: ProviderResolvedTitle?, candidates: [ProviderCandidate]) async -> PlaybackResolution {
+    private func buildSources(embedUrl: String, mode: PlaybackDeliveryMode, providerTitle: ProviderResolvedTitle?, candidates: [ProviderCandidate]) async -> PlaybackResolution {
         let resolved = providerTitle
         let upstreamSources: [VixcloudClient.PlaybackSource]
         do {
             upstreamSources = try await vix.playbackSources(embedURL: embedUrl)
         } catch {
-            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: (error as? LocalizedError)?.errorDescription ?? "Riproduzione non disponibile.", providerTitle: resolved, candidates: candidates, viaProxy: useProxy)
+            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: (error as? LocalizedError)?.errorDescription ?? "Riproduzione non disponibile.", providerTitle: resolved, candidates: candidates, viaProxy: mode.usesWarp)
         }
 
         // Route through the on-device live proxy when WARP is on (hide IP) OR a
         // streaming quality is forced (the proxy filters the master to a single
         // variant — a true force, not just a cap). Diretto + Auto plays the
         // vixcloud URL directly (no extra hop).
-        let forcedQuality = client == .player && AppSettings.shared.streamingMaxHeight > 0
-        guard useProxy || forcedQuality else {
+        guard mode.requiresLocalProxy else {
             return PlaybackResolution(sources: upstreamSources, reason: nil, message: nil, providerTitle: resolved, candidates: candidates, viaProxy: false)
         }
 
@@ -268,7 +286,7 @@ actor ProviderResolver {
             // direct vixcloud — AVPlayer would fetch the stream from the device
             // IP, leaking it. Fail closed. With only forced-quality requested
             // (no WARP) the direct fallback is safe (it just loses the cap).
-            if useProxy { return warpUnavailableResolution() }
+            if mode.usesWarp { return warpUnavailableResolution() }
             return PlaybackResolution(sources: upstreamSources, reason: nil, message: nil, providerTitle: resolved, candidates: candidates, viaProxy: false)
         }
 
@@ -284,9 +302,9 @@ actor ProviderResolver {
 
         guard !proxied.isEmpty else {
             LocalHLSServer.shared.revokeLiveProxyToken(token)
-            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: "Stream non trovato nella pagina del player.", providerTitle: resolved, candidates: candidates, viaProxy: useProxy)
+            return PlaybackResolution(sources: [], reason: .temporarilyUnavailable, message: "Stream non trovato nella pagina del player.", providerTitle: resolved, candidates: candidates, viaProxy: mode.usesWarp)
         }
-        return PlaybackResolution(sources: proxied, reason: nil, message: nil, providerTitle: resolved, candidates: candidates, viaProxy: useProxy, liveProxyToken: token)
+        return PlaybackResolution(sources: proxied, reason: nil, message: nil, providerTitle: resolved, candidates: candidates, viaProxy: mode.usesWarp, liveProxyToken: token)
     }
 
     /// 128-bit URL-safe auth token for the on-device proxy session.
