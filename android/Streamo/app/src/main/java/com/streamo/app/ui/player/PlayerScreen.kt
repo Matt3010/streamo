@@ -196,6 +196,7 @@ fun PlayerScreen(
     var showOfflineCastWarning by remember { mutableStateOf(false) }
     var pendingOfflineRenderer by remember { mutableStateOf<com.streamo.app.player.dlna.DlnaRenderer?>(null) }
     var pendingOfflineChromecast by remember { mutableStateOf<ChromecastRenderer?>(null) }
+    val pendingCastSwitch by viewModel.pendingCastSwitch.collectAsState()
     var pendingLanRenderer by remember { mutableStateOf<com.streamo.app.player.lancast.LanRenderer?>(null) }
 
     val isCastActive = dlnaConnected != null || lanConnected != null || chromecastConnected != null
@@ -1157,6 +1158,32 @@ fun PlayerScreen(
                         pendingOfflineRenderer = null
                         pendingOfflineChromecast = null
                     }) {
+                        Text("Annulla")
+                    }
+                }
+            )
+        }
+
+        if (pendingCastSwitch != null) {
+            GlassAlertDialog(
+                onDismissRequest = { viewModel.cancelCastSwitch() },
+                hazeState = playerHazeState,
+                title = "Trasmissione già in corso",
+                text = {
+                    Text(
+                        "È già in corso una trasmissione su un altro contenuto. Interromperla e avviare questa?"
+                    )
+                },
+                confirmButton = {
+                    GlassDialogDestructiveButton(onClick = {
+                        viewModel.confirmCastSwitch()
+                        showCastDialog = false
+                    }) {
+                        Text("Interrompi e avvia")
+                    }
+                },
+                dismissButton = {
+                    GlassDialogNeutralButton(onClick = { viewModel.cancelCastSwitch() }) {
                         Text("Annulla")
                     }
                 }

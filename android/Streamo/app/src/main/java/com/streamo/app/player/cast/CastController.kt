@@ -503,6 +503,11 @@ class CastController @Inject constructor(
     // --- Session attachment (notifica media) ---
 
     private fun attachSession(media: CastMedia) {
+        // Rete di sicurezza: se una sessione precedente non è stata smontata (es. un chiamante
+        // ha avviato un nuovo cast senza passare da stop()), MediaSession.Builder rifiuta un ID
+        // duplicato ("streamo-cast") con IllegalStateException e crasha l'app.
+        runCatching { castMediaSession?.release() }
+        castMediaSession = null
         val artworkUri = media.poster
             ?.let { TMDBImage.url(it, TMDBImage.Size.W500) }
             ?.let { android.net.Uri.parse(it) }

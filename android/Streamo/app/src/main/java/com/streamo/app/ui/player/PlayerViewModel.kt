@@ -242,8 +242,52 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Trasmissione in sospeso in attesa di conferma: un'altra trasmissione è già attiva su un
+     * contenuto diverso e MediaSession non tollera due sessioni con lo stesso ID — bisogna
+     * fermare quella attuale prima di avviarne una nuova (mai farlo silenziosamente: l'utente
+     * deve scegliere se interrompere il cast in corso o annullare). */
+    sealed class PendingCastTarget {
+        data class Dlna(val renderer: DlnaRenderer, val forceStreaming: Boolean) : PendingCastTarget()
+        data class Lan(val renderer: LanRenderer) : PendingCastTarget()
+        data class Chromecast(val renderer: ChromecastRenderer, val forceStreaming: Boolean) : PendingCastTarget()
+    }
+
+    private val _pendingCastSwitch = MutableStateFlow<PendingCastTarget?>(null)
+    val pendingCastSwitch: StateFlow<PendingCastTarget?> = _pendingCastSwitch.asStateFlow()
+
+    /** True se è in corso un cast per un contenuto DIVERSO da questo (stesso device o un altro). */
+    private fun foreignCastActive(): Boolean {
+        val s = castController.session.value
+        return s != null && !castMatchesThis(s)
+    }
+
+    /** L'utente ha scelto di interrompere il cast in corso e avviare quello in sospeso. */
+    fun confirmCastSwitch() {
+        val target = _pendingCastSwitch.value ?: return
+        _pendingCastSwitch.value = null
+        castController.stop()
+        when (target) {
+            is PendingCastTarget.Dlna -> castToDlnaInternal(target.renderer, target.forceStreaming)
+            is PendingCastTarget.Lan -> castToLanInternal(target.renderer)
+            is PendingCastTarget.Chromecast -> castToChromecastInternal(target.renderer, target.forceStreaming)
+        }
+    }
+
+    /** L'utente ha annullato: il cast in corso resta attivo, il nuovo stream non parte. */
+    fun cancelCastSwitch() {
+        _pendingCastSwitch.value = null
+    }
+
     /** Avvia la trasmissione del contenuto corrente sul renderer e pausa il player locale. */
     fun castToDlna(renderer: DlnaRenderer, forceStreaming: Boolean = false) {
+        if (foreignCastActive()) {
+            _pendingCastSwitch.value = PendingCastTarget.Dlna(renderer, forceStreaming)
+            return
+        }
+        castToDlnaInternal(renderer, forceStreaming)
+    }
+
+    private fun castToDlnaInternal(renderer: DlnaRenderer, forceStreaming: Boolean = false) {
         if (currentIsOffline && !forceStreaming) return // file locale non raggiungibile dal TV
         if (currentIsOffline && forceStreaming) {
             viewModelScope.launch {
@@ -283,6 +327,14 @@ class PlayerViewModel @Inject constructor(
 
     /** Avvia la trasmissione Obsidian (HTTP → app Obsidian sulla TV). */
     fun castToLan(renderer: LanRenderer) {
+        if (foreignCastActive()) {
+            _pendingCastSwitch.value = PendingCastTarget.Lan(renderer)
+            return
+        }
+        castToLanInternal(renderer)
+    }
+
+    private fun castToLanInternal(renderer: LanRenderer) {
         viewModelScope.launch {
             val pos = player.currentPosition.coerceAtLeast(0L)
             player.pause()
@@ -301,6 +353,14 @@ class PlayerViewModel @Inject constructor(
     /** Avvia la trasmissione Chromecast (Google Cast + proxy HLS locale). Come il DLNA:
      * serve uno stream online (il proxy gira sul telefono); l'offline non è raggiungibile. */
     fun castToChromecast(renderer: ChromecastRenderer, forceStreaming: Boolean = false) {
+        if (foreignCastActive()) {
+            _pendingCastSwitch.value = PendingCastTarget.Chromecast(renderer, forceStreaming)
+            return
+        }
+        castToChromecastInternal(renderer, forceStreaming)
+    }
+
+    private fun castToChromecastInternal(renderer: ChromecastRenderer, forceStreaming: Boolean = false) {
         if (currentIsOffline && !forceStreaming) return
         if (currentIsOffline && forceStreaming) {
             viewModelScope.launch {

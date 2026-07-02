@@ -3,6 +3,7 @@ package com.streamo.app.player.dlna
 import android.net.Uri
 import android.os.Looper
 import androidx.media3.common.C
+import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -65,6 +66,12 @@ class DlnaSessionPlayer(
         val durUs = if (durMs > 0) durMs * 1000 else C.TIME_UNSET
         return State.Builder()
             .setAvailableCommands(commands)
+            // PLAYBACK_TYPE_REMOTE: la riproduzione avviene sulla TV, non sul telefono. Senza
+            // questo, il default (LOCAL) fa dichiarare alla MediaSession Media3 una sessione
+            // audio locale al framework, che allora reclama la route "Telefono" — deselezionando
+            // (a volte, per una race sull'handshake Cast) la route TV appena scelta e uccidendo
+            // la CastSession subito dopo l'avvio.
+            .setDeviceInfo(DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_REMOTE).build())
             .setPlaybackState(Player.STATE_READY)
             .setPlayWhenReady(isPlayingProvider(), Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setContentPositionMs(positionProvider().coerceAtLeast(0L))
