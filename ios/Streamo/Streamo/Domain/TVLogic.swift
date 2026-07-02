@@ -21,21 +21,19 @@ enum TVLogic {
         return position
     }
 
-    /// True when a YYYY-MM-DD string is strictly after today (local).
-    static func isFutureDate(_ dateStr: String?) -> Bool {
-        guard let parts = ymd(dateStr) else { return false }
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = .current
-        let today = cal.startOfDay(for: Date())
-        guard let date = cal.date(from: DateComponents(year: parts.0, month: parts.1, day: parts.2)) else { return false }
-        return cal.startOfDay(for: date) > today
+    /// Single source of truth for "counts as watched": a valid duration with
+    /// progress at or past `watchedThreshold`. The `duration > 0` guard is part
+    /// of the contract — never inline this check, it has been a source of
+    /// divergent bugs (a missing guard treats 0/0 as watched).
+    static func isWatched(position: Double, duration: Double) -> Bool {
+        duration > 0 && position >= duration * watchedThreshold
     }
 
-    private static func ymd(_ s: String?) -> (Int, Int, Int)? {
-        guard let s, s.count >= 10 else { return nil }
-        let comps = s.prefix(10).split(separator: "-")
-        guard comps.count == 3, let y = Int(comps[0]), let m = Int(comps[1]), let d = Int(comps[2]) else { return nil }
-        return (y, m, d)
+    /// True when a YYYY-MM-DD string is strictly after today (local).
+    /// Shares the single date parser/comparator in `Release`.
+    static func isFutureDate(_ dateStr: String?) -> Bool {
+        guard let date = Release.parseDate(dateStr) else { return false }
+        return Release.isFuture(date)
     }
 
     // MARK: - Episode counting
@@ -81,12 +79,6 @@ enum TVLogic {
         if season < lea.season { return total }
         if season > lea.season { return 0 }
         return min(total, lea.episode)
-    }
-
-    /// Episode count BEFORE (season, episode) — treats earlier episodes as watched.
-    static func episodesBefore(_ item: TmdbItem, season: Int, episode: Int) -> Int {
-        guard season > 0 else { return 0 }
-        return countEpisodesUpTo(item, season: season, episode: max(0, episode - 1))
     }
 
     // MARK: - Navigation

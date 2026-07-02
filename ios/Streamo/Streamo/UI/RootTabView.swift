@@ -1,5 +1,4 @@
 import SwiftUI
-import WidgetKit
 
 struct RootTabView: View {
     @Environment(Library.self) private var library
@@ -19,8 +18,8 @@ struct RootTabView: View {
             NavigationStack {
                 Group {
                     switch route {
-                    case .history:
-                        HistoryView().navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
+                    case .anime:
+                        AnimeCatalogView().navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
                     case .settings:
                         SettingsView()
                     case .downloads:
@@ -40,16 +39,11 @@ struct RootTabView: View {
             .toastOverlay()
         }
         .tint(Theme.red)   // reactive: re-tints native controls when the accent changes
-        .toastOverlay()
+        // While a sheet is up it has its own overlay (above); suppress this one
+        // so a toast from Settings/History/Downloads doesn't render twice.
+        .toastOverlay(enabled: nav.presentedSheet == nil)
         .task {
             DownloadManager.shared.configure(library: library)
-            let s = AppSettings.shared
-            LocalHLSServer.shared.setLANConfig(enabled: s.lanShareEnabled, token: s.lanToken, password: s.lanPassword)
-            if s.lanShareEnabled { BackgroundKeepAlive.shared.start() }
-            LANAutoShutoff.shared.reschedule()
-            // Honour a LAN toggle made from the Control Center control that
-            // launched (or returned to) the app, and seed the control's state.
-            LANShareCoordinator.applyPendingControlRequest()
             // Warm the WARP tunnel at launch so the first playback doesn't race
             // the WireGuard handshake (which can take seconds) and fail.
             if AppSettings.shared.providerProxyActive {
@@ -59,21 +53,21 @@ struct RootTabView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
-                WidgetCenter.shared.reloadAllTimelines()
                 // The tunnel may not survive suspension — flag it so the next
                 // start() re-probes and restarts instead of reusing a dead session.
                 Task { await WarpTunnel.shared.invalidate() }
             case .active:
-                LANShareCoordinator.applyPendingControlRequest()
-                // Re-validate (and restart if dead) before the user taps play.
+                // Re-validate and restart the tunnel before the user taps play.
+                // Retries with backoff: a single start() often failed after a
+                // long suspension (cold radio/handshake), leaving WARP down with
+                // no retry until a manual play fail-closed.
                 if AppSettings.shared.providerProxyActive {
-                    Task { try? await WarpTunnel.shared.start() }
+                    Task { await WarpTunnel.shared.reconnect() }
                 }
             default:
                 break
             }
         }
-        .onOpenURL { url in handleDeepLink(url) }
     }
 
     private var onlineTabs: some View {
@@ -102,15 +96,6 @@ struct RootTabView: View {
             .tag(AppNavigation.Tab.search)
 
             NavigationStack {
-                AnimeCatalogView()
-                    .navigationDestination(for: AUAnime.self) { AnimeDetailView(anime: $0) }
-                    .toolbarActions()
-                    .background { AmbientBackground() }
-            }
-            .tabItem { Label("Anime", systemImage: "sparkles.tv.fill") }
-            .tag(AppNavigation.Tab.anime)
-
-            NavigationStack {
                 WatchlistView()
                     .navigationDestination(for: MediaRef.self) { DetailView(ref: $0) }
                     .toolbarActions()
@@ -136,22 +121,4 @@ struct RootTabView: View {
         }
     }
 
-    /// streamo://open?type=tv&id=123&s=1&e=2 → open the title's detail.
-    private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "streamo",
-              let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-        let q = comps.queryItems ?? []
-        func value(_ name: String) -> String? { q.first { $0.name == name }?.value }
-        guard let id = value("id").flatMap(Int.init),
-              let typeRaw = value("type"), let type = MediaType(rawValue: typeRaw) else { return }
-        // Offline mode only renders Downloads, so a tab/stack-based open would
-        // silently land nowhere. Surface that to the user instead.
-        guard network.isOnline else {
-            ToastCenter.shared.show("Sei offline — apertura disponibile al ritorno della connessione")
-            return
-        }
-        let season = value("s").flatMap(Int.init) ?? 0
-        let episode = value("e").flatMap(Int.init) ?? 0
-        nav.open(MediaRef(tmdbId: id, mediaType: type, resumeSeason: season, resumeEpisode: episode))
-    }
 }

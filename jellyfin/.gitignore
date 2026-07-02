@@ -1,5 +1,0 @@
-.env
-jellyfin-data/
-addon-data/
-addon/node_modules/
-addon/dist/

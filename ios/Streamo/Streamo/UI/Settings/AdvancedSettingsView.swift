@@ -17,25 +17,11 @@ struct AdvancedSettingsView: View {
             warpSection
 
             Section {
-                TextField("Locale provider", text: $settings.providerLocale)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.system(.body, design: .monospaced))
-                    .onChange(of: settings.providerLocale) { _, _ in
-                        warpState = .idle
-                    }
-            } header: {
-                Text("Provider")
-            } footer: {
-                Text("Lascia `it` per il catalogo italiano. Cambialo solo se il mirror streamingcommunity che usi espone un path locale diverso.")
-            }
-
-            Section {
                 Button("Ricalcola libreria") { confirmRecalc = true }
             } header: {
                 Text("Manutenzione")
             } footer: {
-                Text("Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla cronologia e dalla lista, e aggiorna le statistiche e \"Continua a guardare\".")
+                Text("Rimuove i progressi rimasti appesi dei titoli che hai tolto dalla lista, e aggiorna le statistiche e \"Continua a guardare\".")
             }
         }
         .navigationTitle("Avanzate")
@@ -52,7 +38,7 @@ struct AdvancedSettingsView: View {
             }
             Button("Annulla", role: .cancel) {}
         } message: {
-            Text("Elimina i progressi dei titoli non più in cronologia né in lista. La cronologia e la lista non vengono toccate.")
+            Text("Elimina i progressi dei titoli non più in lista. La lista non viene toccata.")
         }
     }
 

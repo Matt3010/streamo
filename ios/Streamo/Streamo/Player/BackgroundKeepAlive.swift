@@ -4,14 +4,11 @@ import Observation
 
 /// Plays a zero-filled audio buffer in a loop so iOS doesn't suspend the
 /// process while something on-device needs to keep running in the background.
-/// Two independent features rely on it:
-///   - "Condivisione LAN" — keeps the LAN HTTP server reachable
-///   - active downloads — lets `DownloadManager` keep fetching segments after
-///     the user backgrounds the app
+/// Active downloads rely on it: it lets `DownloadManager` keep fetching
+/// segments after the user backgrounds the app.
 ///
-/// Each feature is a `Reason`. The engine runs while *any* reason is held and
-/// stops once the last one is released, so turning off LAN sharing doesn't
-/// kill a download in flight and vice-versa.
+/// Held via a `Reason`. The engine runs while *any* reason is held and stops
+/// once the last one is released.
 ///
 /// Trade-offs the user agreed to:
 ///   - the audio-in-use indicator appears in Control Center / lock screen
@@ -25,7 +22,6 @@ final class BackgroundKeepAlive {
     /// Why the keep-alive is being held. The engine runs while the set is
     /// non-empty.
     enum Reason: Hashable {
-        case lanShare
         case activeDownload
     }
 
@@ -38,15 +34,15 @@ final class BackgroundKeepAlive {
     private var observersInstalled = false
     /// True while the video player owns the audio session. PIP auto-start
     /// REQUIRES a non-mixable `.playback` session, but the keep-alive otherwise
-    /// runs `.mixWithOthers` (so the user's music survives a pure download / LAN
-    /// share). When the player is active we drop `.mixWithOthers` so PIP can
+    /// runs `.mixWithOthers` (so the user's music survives a background
+    /// download). When the player is active we drop `.mixWithOthers` so PIP can
     /// engage; the player's own audio keeps the process alive anyway.
     @ObservationIgnored private var playerActive = false
 
     private init() {}
 
     /// Tell the keep-alive whether the video player currently owns audio.
-    /// Re-applies the session category live so a download/LAN keep-alive that's
+    /// Re-applies the session category live so a download keep-alive that's
     /// already running can't leave a mixable session that blocks PIP.
     func setPlayerActive(_ active: Bool) {
         guard playerActive != active else { return }
@@ -56,7 +52,7 @@ final class BackgroundKeepAlive {
 
     /// Category policy: non-mixable movie playback while the player is active
     /// (PIP-eligible), mixable otherwise (don't stop the user's music for a
-    /// background download / LAN share).
+    /// background download).
     private func applySessionCategory() {
         let session = AVAudioSession.sharedInstance()
         if playerActive {
@@ -79,11 +75,6 @@ final class BackgroundKeepAlive {
             deactivate()
         }
     }
-
-    /// LAN-sharing entry points (kept for source compatibility with
-    /// `LANShareCoordinator` / `RootTabView`).
-    func start() { setReason(.lanShare, active: true) }
-    func stop() { setReason(.lanShare, active: false) }
 
     // MARK: - Engine
 
@@ -142,7 +133,7 @@ final class BackgroundKeepAlive {
     /// Calls, alarms, Siri, headphone unplug all generate `interruption`
     /// or `routeChange` notifications that can stop the audio engine. We
     /// re-arm ourselves on `.ended` so a phone call doesn't permanently
-    /// kill an in-flight download or the LAN server.
+    /// kill an in-flight download.
     private func installObservers() {
         guard !observersInstalled else { return }
         observersInstalled = true
@@ -166,7 +157,7 @@ final class BackgroundKeepAlive {
             // System paused our engine; remember we still want to be running.
             isActive = false
         case .ended:
-            // Try to resume — a reason (LAN / download) may still be held.
+            // Try to resume — a reason (e.g. active download) may still be held.
             reactivateIfNeeded()
         @unknown default:
             break

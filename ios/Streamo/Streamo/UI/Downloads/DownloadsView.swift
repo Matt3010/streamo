@@ -1,54 +1,16 @@
 import SwiftUI
-import UIKit
-
-private enum LANSharePreparation {
-    case ready(LANShareItem)
-    case missingLocalNetwork
-    case serverNotReady
-}
-
-private enum LANShareBuilder {
-    static func prepare(entry: DownloadEntry,
-                        key: String,
-                        settings: AppSettings) -> LANSharePreparation {
-        guard let ip = LANAddress.currentShareableIPv4() else {
-            return .missingLocalNetwork
-        }
-        let port = LocalHLSServer.shared.waitForReady(timeout: 0.5)
-        guard port != 0,
-              let playerURL = LocalHLSServer.lanURL(host: ip, port: port,
-                                                    token: settings.lanToken,
-                                                    relativePath: "\(key)/play.html"),
-              let manifestURL = LocalHLSServer.lanURL(host: ip, port: port,
-                                                      token: settings.lanToken,
-                                                      relativePath: "\(key)/master.m3u8") else {
-            return .serverNotReady
-        }
-        let title = LANShareItem.titleFor(entry: entry)
-        return .ready(LANShareItem(title: title,
-                                   url: playerURL.absoluteString,
-                                   manifestURL: manifestURL.absoluteString))
-    }
-}
 
 /// Offline downloads page. Movies are flat rows; TV series are grouped into one
 /// row that opens a per-season episode list. Completed items also show the
 /// viewing progress. Reached from the Home toolbar.
 struct DownloadsView: View {
     @Environment(Library.self) private var library
-    @Bindable private var settings = AppSettings.shared
     @State private var downloads = DownloadManager.shared
     @State private var pendingRequest: PlaybackRequest?
+    @State private var playbackPreparationTask: Task<Void, Never>?
+    @State private var playbackPreparationGeneration: UInt = 0
     @State private var pendingDelete: DownloadEntry?
     @State private var pendingDeleteSeries: SeriesDelete?
-    @State private var pendingShare: LANShareItem?
-    // Quick LAN-share toggle (toolbar). `lanIP`/`lanPort` are refreshed lazily
-    // so the menu and toast can show the reachable address without an async hop.
-    @State private var lanIP: String?
-    @State private var lanPort: UInt16 = 0
-    @State private var showLANQR = false
-    @State private var showLANPasswordPrompt = false
-    @State private var lanPasswordDraft = ""
 
     /// One row in the list: a movie, or a whole TV series (its episodes).
     private enum Item: Identifiable {
@@ -98,9 +60,8 @@ struct DownloadsView: View {
                         switch item {
                         case .movie(let e):
                             DownloadRow(entry: e, downloads: downloads, library: library,
-                                        onPlay: { pendingRequest = playRequest(e) },
-                                        onDelete: { pendingDelete = e },
-                                        onShare: shareAction(for: e))
+                                        onPlay: { preparePlayback { await playRequest(e) } },
+                                        onDelete: { pendingDelete = e })
                         case .series(let id, let title, let poster, let eps):
                             NavigationLink {
                                 SeriesDownloadsView(tmdbId: id, title: title)
@@ -120,30 +81,10 @@ struct DownloadsView: View {
         }
         .navigationTitle("Download")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { lanToolbarToggle } }
-        .task { if settings.lanShareEnabled { refreshLANInfo() } }
+        .onDisappear { cancelPlaybackPreparation() }
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
-        .sheet(item: $pendingShare) { LANShareSheet(item: $0) }
-        .sheet(isPresented: $showLANQR) {
-            if let ip = lanIP, lanPort != 0 {
-                LANIndexQRSheet(url: "http://\(ip):\(lanPort)/\(settings.lanToken)/")
-            }
-        }
-        .alert("Password Condivisione LAN", isPresented: $showLANPasswordPrompt) {
-            SecureField("Password", text: $lanPasswordDraft)
-                .textInputAutocapitalization(.never)
-            Button("Attiva") {
-                let pw = lanPasswordDraft.trimmingCharacters(in: .whitespaces)
-                guard !pw.isEmpty else { return }
-                settings.lanPassword = pw
-                enableLAN()
-            }
-            Button("Annulla", role: .cancel) {}
-        } message: {
-            Text("Imposta una password che verrà richiesta ai dispositivi sulla rete per accedere ai download.")
-        }
         .confirmationDialog("Eliminare questo download?",
-                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            isPresented: .isPresent($pendingDelete),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 if let e = pendingDelete { downloads.delete(e) }
@@ -152,7 +93,7 @@ struct DownloadsView: View {
             Button("Annulla", role: .cancel) { pendingDelete = nil }
         }
         .confirmationDialog("Eliminare tutti i download di \(pendingDeleteSeries?.title ?? "questa serie")?",
-                            isPresented: Binding(get: { pendingDeleteSeries != nil }, set: { if !$0 { pendingDeleteSeries = nil } }),
+                            isPresented: .isPresent($pendingDeleteSeries),
                             titleVisibility: .visible) {
             Button("Elimina tutti", role: .destructive) {
                 if let series = pendingDeleteSeries {
@@ -162,98 +103,6 @@ struct DownloadsView: View {
                 pendingDeleteSeries = nil
             }
             Button("Annulla", role: .cancel) { pendingDeleteSeries = nil }
-        }
-    }
-
-    // MARK: - Quick LAN-share toggle
-
-    /// Antenna button in the toolbar. A single tap flips LAN sharing on/off; a
-    /// long-press opens a menu with the reachable address, QR, auto-off and an
-    /// explicit "off". Saves the trip into Settings just to flip the switch.
-    @ViewBuilder
-    private var lanToolbarToggle: some View {
-        Menu {
-            if settings.lanShareEnabled {
-                Section(lanStatusLine) {
-                    if let ip = lanIP, lanPort != 0 {
-                        Button {
-                            UIPasteboard.general.string = "http://\(ip):\(lanPort)/\(settings.lanToken)/"
-                            ToastCenter.shared.show("URL copiato")
-                        } label: { Label("Copia URL (\(ip):\(lanPort))", systemImage: "doc.on.doc") }
-                        Button { showLANQR = true } label: { Label("Mostra QR", systemImage: "qrcode") }
-                    }
-                    Button(role: .destructive) { disableLAN() } label: {
-                        Label("Disattiva", systemImage: "antenna.radiowaves.left.and.right.slash")
-                    }
-                }
-            } else {
-                Button { toggleLAN() } label: {
-                    Label("Attiva condivisione LAN", systemImage: "antenna.radiowaves.left.and.right")
-                }
-            }
-        } label: {
-            Image(systemName: settings.lanShareEnabled
-                  ? "antenna.radiowaves.left.and.right"
-                  : "antenna.radiowaves.left.and.right.slash")
-            .foregroundStyle(settings.lanShareEnabled ? Theme.red : .secondary)
-        } primaryAction: {
-            toggleLAN()
-        }
-        .accessibilityLabel(settings.lanShareEnabled ? "Condivisione LAN attiva" : "Attiva condivisione LAN")
-    }
-
-    private func toggleLAN() {
-        if settings.lanShareEnabled {
-            disableLAN()
-        } else if settings.lanPassword.isEmpty {
-            lanPasswordDraft = ""
-            showLANPasswordPrompt = true
-        } else {
-            enableLAN()
-        }
-    }
-
-    private func enableLAN() {
-        LANShareCoordinator.setEnabled(true)
-        refreshLANInfo()
-        if let ip = lanIP, lanPort != 0 {
-            ToastCenter.shared.show("Condivisione LAN attiva — \(ip):\(lanPort)")
-        } else {
-            ToastCenter.shared.show("Condivisione LAN attiva")
-        }
-    }
-
-    private func disableLAN() {
-        LANShareCoordinator.setEnabled(false)
-        ToastCenter.shared.show("Condivisione LAN disattivata")
-    }
-
-    private func refreshLANInfo() {
-        lanIP = LANAddress.currentShareableIPv4()
-        lanPort = LocalHLSServer.shared.waitForReady(timeout: 0.5)
-    }
-
-    /// Section header for the active-share menu — adds the auto-off time when set.
-    private var lanStatusLine: String {
-        if let deadline = settings.lanShareDeadline, settings.lanShareAutoOffMinutes > 0 {
-            return "Attiva · si spegne \(deadline.formatted(date: .omitted, time: .shortened))"
-        }
-        return "Condivisione LAN attiva"
-    }
-
-    /// Returns the closure used by the row's "Condividi su LAN" menu item, or
-    /// nil when sharing is disabled (so the row hides the menu entry).
-    private func shareAction(for entry: DownloadEntry) -> (() -> Void)? {
-        guard settings.lanShareEnabled, entry.state == .completed else { return nil }
-        return {
-            switch LANShareBuilder.prepare(entry: entry, key: downloads.key(for: entry), settings: settings) {
-            case .ready(let item):
-                pendingShare = item
-            case .missingLocalNetwork:
-                ToastCenter.shared.show("Collega il telefono a una rete locale o attiva l'Hotspot personale")
-            case .serverNotReady:
-                ToastCenter.shared.show("Server non pronto, riprova")
-            }
         }
     }
 
@@ -279,8 +128,29 @@ struct DownloadsView: View {
         .padding(.vertical, 4)
     }
 
-    private func playRequest(_ e: DownloadEntry) -> PlaybackRequest? {
-        guard let url = downloads.offlineURL(for: e) else { return nil }
+    private func preparePlayback(
+        _ build: @escaping @MainActor () async -> PlaybackRequest?
+    ) {
+        playbackPreparationGeneration &+= 1
+        let generation = playbackPreparationGeneration
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor in
+            let prepared = await build()
+            guard !Task.isCancelled,
+                  playbackPreparationGeneration == generation else { return }
+            playbackPreparationTask = nil
+            pendingRequest = prepared
+        }
+    }
+
+    private func cancelPlaybackPreparation() {
+        playbackPreparationGeneration &+= 1
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+    }
+
+    private func playRequest(_ e: DownloadEntry) async -> PlaybackRequest? {
+        guard let url = await downloads.offlineURLAsync(for: e) else { return nil }
         let watched = library.progress(e.tmdbId, e.mediaType, season: e.season, episode: e.episode)
         return PlaybackRequest(tmdbId: e.tmdbId, mediaType: e.mediaType, title: e.title ?? "—",
                                releaseDate: e.releaseDate, poster: e.poster, backdrop: nil,
@@ -296,11 +166,11 @@ struct SeriesDownloadsView: View {
     let title: String
     @Environment(\.dismiss) private var dismiss
     @Environment(Library.self) private var library
-    @Bindable private var settings = AppSettings.shared
     @State private var downloads = DownloadManager.shared
     @State private var pendingRequest: PlaybackRequest?
+    @State private var playbackPreparationTask: Task<Void, Never>?
+    @State private var playbackPreparationGeneration: UInt = 0
     @State private var pendingDelete: DownloadEntry?
-    @State private var pendingShare: LANShareItem?
 
     var body: some View {
         let _ = library.version
@@ -313,9 +183,8 @@ struct SeriesDownloadsView: View {
                     ForEach(eps.sorted { $0.episode < $1.episode }, id: \.persistentModelID) { e in
                         DownloadRow(entry: e, downloads: downloads, library: library,
                                     episodeLabel: "Episodio \(e.episode)",
-                                    onPlay: { pendingRequest = playRequest(e) },
-                                    onDelete: { deleteOrConfirm(e) },
-                                    onShare: shareAction(for: e))
+                                    onPlay: { preparePlayback { await playRequest(e) } },
+                                    onDelete: { deleteOrConfirm(e) })
                     }
                 }
             }
@@ -323,30 +192,16 @@ struct SeriesDownloadsView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { cancelPlaybackPreparation() }
         .fullScreenCover(item: $pendingRequest) { PlayerScreen(request: $0) }
-        .sheet(item: $pendingShare) { LANShareSheet(item: $0) }
         .confirmationDialog("Eliminare questo episodio?",
-                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            isPresented: .isPresent($pendingDelete),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 if let e = pendingDelete { deleteEpisode(e) }
                 pendingDelete = nil
             }
             Button("Annulla", role: .cancel) { pendingDelete = nil }
-        }
-    }
-
-    private func shareAction(for entry: DownloadEntry) -> (() -> Void)? {
-        guard settings.lanShareEnabled, entry.state == .completed else { return nil }
-        return {
-            switch LANShareBuilder.prepare(entry: entry, key: downloads.key(for: entry), settings: settings) {
-            case .ready(let item):
-                pendingShare = item
-            case .missingLocalNetwork:
-                ToastCenter.shared.show("Collega il telefono a una rete locale o attiva l'Hotspot personale")
-            case .serverNotReady:
-                ToastCenter.shared.show("Server non pronto, riprova")
-            }
         }
     }
 
@@ -364,8 +219,29 @@ struct SeriesDownloadsView: View {
         }
     }
 
-    private func playRequest(_ e: DownloadEntry) -> PlaybackRequest? {
-        guard let url = downloads.offlineURL(for: e) else { return nil }
+    private func preparePlayback(
+        _ build: @escaping @MainActor () async -> PlaybackRequest?
+    ) {
+        playbackPreparationGeneration &+= 1
+        let generation = playbackPreparationGeneration
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor in
+            let prepared = await build()
+            guard !Task.isCancelled,
+                  playbackPreparationGeneration == generation else { return }
+            playbackPreparationTask = nil
+            pendingRequest = prepared
+        }
+    }
+
+    private func cancelPlaybackPreparation() {
+        playbackPreparationGeneration &+= 1
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+    }
+
+    private func playRequest(_ e: DownloadEntry) async -> PlaybackRequest? {
+        guard let url = await downloads.offlineURLAsync(for: e) else { return nil }
         let watched = library.progress(e.tmdbId, e.mediaType, season: e.season, episode: e.episode)
         return PlaybackRequest(tmdbId: e.tmdbId, mediaType: e.mediaType, title: e.title ?? "—",
                                releaseDate: e.releaseDate, poster: e.poster, backdrop: nil,
@@ -384,13 +260,12 @@ private struct DownloadRow: View {
     var episodeLabel: String? = nil
     var onPlay: () -> Void
     var onDelete: () -> Void
-    var onShare: (() -> Void)? = nil
 
     private var watchPct: Double {
         guard displayState == .completed,
-              let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode),
-              p.duration > 0 else { return 0 }
-        return min(100, max(0, p.position / p.duration * 100))
+              let p = library.progress(entry.tmdbId, entry.mediaType, season: entry.season, episode: entry.episode)
+        else { return 0 }
+        return Format.percent(position: p.position, duration: p.duration)
     }
 
     private var displayState: DownloadState {
@@ -405,7 +280,7 @@ private struct DownloadRow: View {
         HStack(spacing: 12) {
             if episodeLabel == nil { DownloadThumb(poster: entry.poster) }
             VStack(alignment: .leading, spacing: 4) {
-                Text(episodeLabel ?? (entry.title ?? "Senza titolo"))
+                Text(episodeLabel ?? (entry.title ?? UIText.untitled))
                     .font(.subheadline.weight(.semibold)).lineLimit(2)
                 HStack(spacing: 6) {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -433,9 +308,6 @@ private struct DownloadRow: View {
         .contextMenu {
             if displayState == .completed {
                 Button { onPlay() } label: { Label("Riproduci", systemImage: "play.fill") }
-            }
-            if let onShare {
-                Button { onShare() } label: { Label("Condividi su LAN", systemImage: "wifi") }
             }
             Button(role: .destructive) { onDelete() } label: { Label("Elimina download", systemImage: "trash") }
         }
@@ -535,151 +407,5 @@ private struct DownloadThumb: View {
         }
         .frame(width: 46, height: 69)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-    }
-}
-
-/// Payload for the LAN-share sheet — Identifiable so it can drive a
-/// `.sheet(item:)` binding. The primary `url` points at the in-browser player
-/// page; `manifestURL` is the raw `.m3u8` for VLC users.
-struct LANShareItem: Identifiable {
-    let title: String
-    let url: String
-    let manifestURL: String
-    var id: String { url }
-
-    static func titleFor(entry: DownloadEntry) -> String {
-        let base = entry.title ?? "Senza titolo"
-        guard entry.mediaType == .tv else { return base }
-        return "\(base) — S\(entry.season) E\(entry.episode)"
-    }
-}
-
-/// Sheet shown when the user picks "Condividi su LAN" on a specific download:
-/// title, scannable QR pointing at the browser player, plus the raw m3u8 link
-/// for VLC users underneath. Wrapped in a NavigationStack so a long title
-/// gets the inline-nav-bar truncation rather than clipping on small screens;
-/// dismiss is via the drag indicator / swipe-down.
-struct LANShareSheet: View {
-    let item: LANShareItem
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    QRCodeView(payload: item.url, size: 220)
-
-                    VStack(spacing: 6) {
-                        Text("Link browser")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .tracking(0.5)
-                        Text(item.url)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(3)
-                            .truncationMode(.middle)
-                            .padding(.horizontal)
-                    }
-
-                    Button {
-                        UIPasteboard.general.string = item.url
-                        ToastCenter.shared.show("Link copiato")
-                    } label: {
-                        Label("Copia link", systemImage: "doc.on.doc")
-                            .frame(maxWidth: 240)
-                    }
-                    .buttonStyle(BrandButtonStyle(kind: .primary, fullWidth: false))
-
-                    Divider().padding(.horizontal, 40)
-
-                    VStack(spacing: 8) {
-                        Text("Preferisci VLC?")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(item.manifestURL)
-                            .font(.system(.caption2, design: .monospaced))
-                            .textSelection(.enabled)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(3)
-                            .truncationMode(.middle)
-                            .padding(.horizontal)
-                        Button("Copia link VLC") {
-                            UIPasteboard.general.string = item.manifestURL
-                            ToastCenter.shared.show("Link VLC copiato")
-                        }
-                        .font(.footnote)
-                    }
-
-                    Text("Apri il link browser su Chrome / Edge / Safari sullo stesso Wi-Fi. Il VLC accetta il link .m3u8 (Media → Apri flusso di rete).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .padding(.vertical, 24)
-                .frame(maxWidth: .infinity)
-            }
-            .navigationTitle(item.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Chiudi") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-    }
-}
-
-/// QR + link for the LAN index page (`http://<ip>:<port>/<token>/`), shown from
-/// the Downloads toolbar's quick-share menu. Lists every shared download; from
-/// here a peer browses to a specific title.
-struct LANIndexQRSheet: View {
-    let url: String
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    QRCodeView(payload: url, size: 220)
-                    Text(url)
-                        .font(.system(.footnote, design: .monospaced))
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                        .truncationMode(.middle)
-                        .padding(.horizontal)
-                    Button {
-                        UIPasteboard.general.string = url
-                        ToastCenter.shared.show("URL copiato")
-                    } label: {
-                        Label("Copia URL", systemImage: "doc.on.doc")
-                            .frame(maxWidth: 240)
-                    }
-                    .buttonStyle(BrandButtonStyle(kind: .primary, fullWidth: false))
-                    Text("Inquadra il QR o apri il link su un dispositivo sulla stessa rete per vedere tutti i download condivisi.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .padding(.vertical, 24)
-                .frame(maxWidth: .infinity)
-            }
-            .navigationTitle("Condivisione LAN")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Chiudi") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
 }

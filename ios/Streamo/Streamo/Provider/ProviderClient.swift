@@ -366,9 +366,11 @@ actor ProviderClient {
         return parsed.absoluteString
     }
 
-    /// First capture group of `pattern` in `text`, or nil.
-    static func firstMatch(in text: String, pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+    /// First capture group of `pattern` in `text`, or nil. Shared regex
+    /// primitive — callers that need multiline matching pass `.dotMatchesLineSeparators`.
+    static func firstMatch(in text: String, pattern: String,
+                           options: NSRegularExpression.Options = [.caseInsensitive]) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
         let range = NSRange(text.startIndex..., in: text)
         guard let m = regex.firstMatch(in: text, range: range), m.numberOfRanges > 1,
               let r = Range(m.range(at: 1), in: text) else { return nil }

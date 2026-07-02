@@ -1,26 +1,32 @@
 import SwiftUI
 
-/// Shimmering placeholder box — port of the web `.skeleton` (animated gradient
-/// between surface and surface-hover, 1.4s loop).
+/// Static placeholder box with the same dark, glossy feel as the app cards.
 struct SkeletonBox: View {
     var cornerRadius: CGFloat = 10
-    @State private var animate = false
 
     var body: some View {
-        GeometryReader { geo in
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-                .overlay(
-                    LinearGradient(colors: [.clear, .white.opacity(0.10), .clear],
-                                   startPoint: .leading, endPoint: .trailing)
-                        .frame(width: geo.size.width * 0.7)
-                        .offset(x: animate ? geo.size.width * 1.2 : -geo.size.width * 1.2)
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(.secondarySystemBackground).opacity(0.78),
+                        Color(.tertiarySystemBackground).opacity(0.58),
+                        Color(.secondarySystemBackground).opacity(0.72),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        }
-        .onAppear {
-            withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) { animate = true }
-        }
+            )
+            .overlay(
+                LinearGradient(
+                    colors: [.white.opacity(0.08), .clear],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+                .clipShape(shape)
+            )
+            .overlay(shape.strokeBorder(.white.opacity(0.06)))
     }
 }
 
@@ -29,8 +35,10 @@ struct SkeletonCard: View {
     var width: CGFloat? = nil
 
     var body: some View {
-        SkeletonBox()
+        SkeletonBox(cornerRadius: 10)
             .aspectRatio(2.0/3.0, contentMode: .fit)
             .frame(width: width)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.06)))
     }
 }

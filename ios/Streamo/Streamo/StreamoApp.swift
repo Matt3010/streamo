@@ -12,6 +12,8 @@ struct StreamoApp: App {
     private let navigation = AppNavigation.shared
 
     init() {
+        Self.preparePersistentStoreDirectories()
+
         let schema = Schema([
             WatchlistEntry.self,
             ProgressEntry.self,
@@ -31,10 +33,17 @@ struct StreamoApp: App {
         _library = State(initialValue: Library(context: container.mainContext))
 
         // SwiftUI's pull-to-refresh spinner ignores `.tint`; color it via the
-        // UIKit appearance proxy so it shows the accent instead of grey.
-        let a = AppSettings.shared
+        // UIKit appearance proxy so it shows the brand accent instead of grey.
+        let a = AppSettings.defaultAccent
         UIRefreshControl.appearance().tintColor =
-            UIColor(red: a.accentR, green: a.accentG, blue: a.accentB, alpha: 1)
+            UIColor(red: a.r, green: a.g, blue: a.b, alpha: 1)
+    }
+
+    private static func preparePersistentStoreDirectories() {
+        let fm = FileManager.default
+        for url in fm.urls(for: .applicationSupportDirectory, in: .userDomainMask) {
+            try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        }
     }
 
     var body: some Scene {

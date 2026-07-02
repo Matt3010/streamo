@@ -1,10 +1,9 @@
 import Foundation
 import Observation
 
-/// Loads fresh TMDB details for every watchlist entry to
-/// derive whether a title is still unreleased (for the "Non usciti" filter) and
-/// to run the on-read status auto-flip. The per-card badge/status text is
-/// computed by `MediaCard` itself, so it's not done here.
+/// Loads fresh TMDB details for every watchlist entry to derive the per-card
+/// display values (year, rating, release note) and whether a title is still
+/// unreleased (so the card can dim upcoming titles).
 @MainActor
 @Observable
 final class WatchlistEnrichment {
@@ -40,8 +39,6 @@ final class WatchlistEnrichment {
     private struct Snapshot: Sendable {
         let tmdbId: Int
         let type: MediaType
-        let status: WatchlistStatus
-        let doneAired: Int?
     }
 
     /// Enrich the watchlist. By default only items not already enriched are
@@ -55,7 +52,7 @@ final class WatchlistEnrichment {
 
         let snapshots = entries
             .filter { force || extrasByKey[Self.key($0.tmdbId, $0.mediaType)] == nil }
-            .map { Snapshot(tmdbId: $0.tmdbId, type: $0.mediaType, status: $0.status, doneAired: $0.doneAiredEpisodes) }
+            .map { Snapshot(tmdbId: $0.tmdbId, type: $0.mediaType) }
         guard !snapshots.isEmpty else { return }
 
         // Fetch details concurrently (bounded) — one-at-a-time would make the
@@ -82,17 +79,6 @@ final class WatchlistEnrichment {
         let isUp = Release.isUpcoming(item, s.type)
         if isUp { upcoming.insert(k) } else { upcoming.remove(k) }
 
-        if s.type == .tv {
-            let watched = library.watchedEpisodeCount(s.tmdbId)
-            let resume = library.nextUnwatched(item: item)
-            let aired = TVLogic.airedEpisodesCount(item)
-            let doneAired = s.doneAired ?? 0
-            let implied = resume.map { TVLogic.episodesBefore(item, season: $0.season, episode: $0.episode) } ?? 0
-            autoFlipStatus(tmdbId: s.tmdbId, type: s.type, status: s.status,
-                           aired: aired, baseline: max(watched, doneAired, implied),
-                           doneAired: doneAired, library: library)
-        }
-
         // Cache the display values so the grid cell can hand them to MediaCard,
         // which then skips its own enrich() entirely while scrolling.
         extrasByKey[k] = Extras(
@@ -101,20 +87,5 @@ final class WatchlistEnrichment {
             releaseText: Release.compactStatus(item, s.type),
             isUpcoming: isUp
         )
-    }
-
-    /// On-read auto-flip (no background worker on device) — port of the web
-    /// watchlist read-path + maybeAutoCompleteWatchlist. The rule itself lives
-    /// in `WatchStatus.flipDecision` so the Home launch sweep
-    /// (`Library.autoFlipTvStatuses`) stays in lockstep with this pass.
-    private func autoFlipStatus(tmdbId: Int, type: MediaType, status: WatchlistStatus,
-                                aired: Int, baseline: Int, doneAired: Int, library: Library) {
-        switch WatchStatus.flipDecision(status: status, aired: aired, baseline: baseline, doneAired: doneAired) {
-        case .none: break
-        case .backfillDoneBaseline(let n), .toDone(let n):
-            library.setWatchlistStatus(tmdbId, type, .done, doneAiredEpisodes: n)
-        case .toInProgress:
-            library.setWatchlistStatus(tmdbId, type, .inProgress)
-        }
     }
 }

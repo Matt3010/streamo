@@ -7,6 +7,8 @@ struct DetailView: View {
     @State private var downloadUIVersion = 0
     @State private var locallyRemovedDownloadKeys = Set<String>()
     @State private var pendingRequest: PlaybackRequest?
+    @State private var playbackPreparationTask: Task<Void, Never>?
+    @State private var playbackPreparationGeneration: UInt = 0
     @State private var showPicker = false
     @State private var confirmRemoveFromList = false
     @State private var pendingDeleteDownload: DownloadEntry?
@@ -63,7 +65,6 @@ struct DetailView: View {
                 if model.extrasLoading {
                     extrasSkeleton
                 } else {
-                    if !model.reviews.isEmpty { reviewsSection }
                     if !model.recommendations.isEmpty { recommendationsSection }
                 }
             }
@@ -78,21 +79,16 @@ struct DetailView: View {
         .toolbar {
             if model.item != nil {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if let rank = model.rankBadge {
-                        MediaRankBadge(value: rank)
-                    }
-                    Menu {
-                        Button { markWatched() } label: { Label("Segna come visto", systemImage: "checkmark.circle") }
-                        Button { markUnwatched() } label: { Label("Segna come da vedere", systemImage: "arrow.uturn.backward.circle") }
-                        if ref.mediaType == .movie, let item = model.item {
-                            Divider()
+                    if ref.mediaType == .movie, let item = model.item {
+                        Menu {
                             movieDownloadButton(item)
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                        } label: { Image(systemName: "ellipsis.circle") }
+                    }
                 }
             }
         }
         .task { await reloadDetail() }
+        .onDisappear { cancelPlaybackPreparation() }
         .fullScreenCover(item: $pendingRequest) { req in
             PlayerScreen(request: req)
         }
@@ -107,7 +103,7 @@ struct DetailView: View {
             Button("Annulla", role: .cancel) {}
         }
         .confirmationDialog("Eliminare questo download?",
-                            isPresented: Binding(get: { pendingDeleteDownload != nil }, set: { if !$0 { pendingDeleteDownload = nil } }),
+                            isPresented: .isPresent($pendingDeleteDownload),
                             titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 if let dl = pendingDeleteDownload {
@@ -181,12 +177,12 @@ struct DetailView: View {
     @ViewBuilder
     private func releasedActions(for item: TmdbItem, inList: Bool) -> some View {
         let availability = model.providerAvailability
-        let offlineReady = primaryOfflineURL(for: item) != nil
+        let offlineReady = primaryOfflineAvailable(for: item)
         let ready = availability == .ready || offlineReady
 
         // Big red primary play button (full width), like the web.
         Button {
-            pendingRequest = primaryRequest(for: item)
+            preparePlayback { await primaryRequest(for: item) }
         } label: {
             HStack(spacing: 8) {
                 if availability == .resolving && !offlineReady { ProgressView().controlSize(.small).tint(.white) }
@@ -200,56 +196,58 @@ struct DetailView: View {
         // "Vai al prossimo" (TV) — jumps past the resume point.
         if ready, let next = nextAfterResume(item) {
             Button {
-                pendingRequest = request(for: item, season: next.season, episode: next.episode)
+                preparePlayback { await request(for: item, season: next.season, episode: next.episode) }
             } label: {
                 Text("Vai al prossimo")
             }
             .buttonStyle(BrandButtonStyle(kind: .secondary))
         }
 
-        bookmarkButton(item, inList: inList)
+        HStack(spacing: 10) {
+            bookmarkButton(item, inList: inList)
 
-        // Version picker / retry affordances when the auto-match isn't usable.
-        Group {
             if showVersionPicker {
-                Button {
+                compactIconButton(
+                    systemImage: model.providerMatchStatus == .failed ? "rectangle.stack.badge.plus" : "rectangle.stack",
+                    accessibilityLabel: model.providerMatchStatus == .failed ? "Scegli versione" : "Cambia versione"
+                ) {
                     showPicker = true
-                } label: {
-                    Label(model.providerMatchStatus == .failed ? "Scegli versione" : "Cambia versione",
-                          systemImage: "rectangle.stack")
                 }
-                .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
             } else if availability == .unavailable && !offlineReady {
-                Button {
+                compactIconButton(systemImage: "arrow.clockwise", accessibilityLabel: "Cerca versioni") {
                     Task { await model.refreshProvider(library: library) }
-                } label: {
-                    Label("Cerca versioni", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
             }
-            if let msg = model.providerMessage, availability != .ready && !offlineReady {
-                Text(msg).font(.footnote).foregroundStyle(.secondary)
+
+            if let trailer = model.trailerURL {
+                compactIconButton(systemImage: "play.rectangle", accessibilityLabel: "Trailer") {
+                    openURL(trailer)
+                }
             }
         }
 
-        if let trailer = model.trailerURL {
-            Button { openURL(trailer) } label: {
-                Label("Trailer", systemImage: "play.rectangle")
-            }
-            .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
+        if let msg = model.providerMessage, availability != .ready && !offlineReady {
+            Text(msg).font(.footnote).foregroundStyle(.secondary)
         }
 
-        if ref.mediaType == .movie, let p = movieResume(item), p.duration > 0,
+        if ref.mediaType == .movie, let p = movieProgress(item), p.duration > 0,
            Format.percentValue(position: p.position, duration: p.duration) > 0 {
+            let watched = TVLogic.isWatched(position: p.position, duration: p.duration)
             ProgressView(value: Format.percent(position: p.position, duration: p.duration), total: 100)
                 .tint(Theme.red)
             HStack {
-                Text("\(Format.time(p.position)) / \(Format.time(p.duration))")
-                    .font(.caption).foregroundStyle(.secondary)
+                if watched {
+                    Label("Completato", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.red)
+                } else {
+                    Text("\(Format.time(p.position)) / \(Format.time(p.duration))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("Riparti dall'inizio") {
+                Button(watched ? "Segna non visto" : "Riparti dall'inizio") {
                     library.removeProgress(item.id, .movie, season: 0, episode: 0)
-                    ToastCenter.shared.show("Progresso azzerato")
+                    ToastCenter.shared.show(watched ? "Film segnato come non visto" : "Progresso azzerato")
                 }
                 .font(.caption).buttonStyle(.borderless)
             }
@@ -265,11 +263,33 @@ struct DetailView: View {
                 ToastCenter.shared.show("Aggiunto alla lista")
             }
         } label: {
-            Label(inList ? "Nella lista" : "Aggiungi alla lista",
+            Label(inList ? "Nella lista" : UIText.addToList,
                   systemImage: inList ? "bookmark.fill" : "bookmark")
         }
         .buttonStyle(BrandButtonStyle(kind: inList ? .primary : .secondary))
-        .accessibilityLabel(inList ? "Rimuovi dalla lista" : "Aggiungi alla lista")
+        .accessibilityLabel(inList ? UIText.removeFromList : UIText.addToList)
+    }
+
+    private func compactIconButton(systemImage: String, accessibilityLabel: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background {
+                    LiquidGlassBackground(
+                        shape: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                        tint: Theme.red.opacity(0.08)
+                    )
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     /// "Disponibile: Esce il …" note for upcoming titles (port of upcomingAvailabilityStr).
@@ -277,37 +297,6 @@ struct DetailView: View {
         var s = model.releaseStatusText.trimmingCharacters(in: .whitespaces)
         if s.hasSuffix(".") { s.removeLast() }
         return s.isEmpty ? "Disponibile dopo l'uscita" : "Disponibile: \(s)"
-    }
-
-    // MARK: - Manual mark watched / unwatched
-
-    private func markWatched() {
-        guard let item = model.item else { return }
-        if ref.mediaType == .movie {
-            library.markMovieWatched(tmdbId: item.id, title: item.displayTitle, poster: item.posterPath)
-        } else if let last = TVLogic.effectiveLastEpisode(item) {
-            library.clearSeriesProgress(item.id)
-            library.markWatchedUpTo(tmdbId: item.id, season: last.season, episode: last.episode,
-                                    title: item.displayTitle, poster: item.posterPath)
-        }
-        if library.isInWatchlist(item.id, ref.mediaType) {
-            let aired = ref.mediaType == .tv ? TVLogic.airedEpisodesCount(item) : 0
-            library.setWatchlistStatus(item.id, ref.mediaType, .done, doneAiredEpisodes: aired)
-        }
-        ToastCenter.shared.show("Segnato come visto")
-    }
-
-    private func markUnwatched() {
-        guard let item = model.item else { return }
-        if ref.mediaType == .movie {
-            library.removeProgress(item.id, .movie, season: 0, episode: 0)
-        } else {
-            library.clearSeriesProgress(item.id)
-        }
-        if library.isInWatchlist(item.id, ref.mediaType) {
-            library.setWatchlistStatus(item.id, ref.mediaType, .todo)
-        }
-        ToastCenter.shared.show("Segnato come da vedere")
     }
 
     private func downloadStatusLabel(_ state: DownloadState, reconstructing: Bool = false) -> String {
@@ -438,7 +427,7 @@ struct DetailView: View {
         // A completed download always wins: even if the provider hasn't
         // resolved (or failed), the button is enabled and should describe the
         // target episode/movie instead of the resolver state.
-        if primaryOfflineURL(for: item) != nil { return primaryLabel(for: item) }
+        if primaryOfflineAvailable(for: item) { return primaryLabel(for: item) }
         switch model.providerAvailability {
         case .resolving: return "Caricamento…"
         case .unavailable: return model.providerMessage ?? "Non disponibile"
@@ -495,30 +484,60 @@ struct DetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Episodi", symbol: "play.square.stack.fill")
 
-            VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("STAGIONE")
                         .font(.caption2.weight(.semibold)).tracking(0.6)
                         .foregroundStyle(.secondary)
-                    Picker("Stagione", selection: Binding(
-                        get: { model.selectedSeason },
-                        set: { newValue in Task { await model.changeSeason(newValue) } }
-                    )) {
-                        ForEach(model.seasons, id: \.self) { Text("Stagione \($0)").tag($0) }
+                    Menu {
+                        ForEach(model.seasons, id: \.self) { season in
+                            Button {
+                                Task { await model.changeSeason(season) }
+                            } label: {
+                                if season == model.selectedSeason {
+                                    Label("Stagione \(season)", systemImage: "checkmark")
+                                } else {
+                                    Text("Stagione \(season)")
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Stagione \(model.selectedSeason)")
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.75))
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background {
+                            LiquidGlassBackground(
+                                shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                                tint: Theme.red.opacity(0.08)
+                            )
+                        }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(.white.opacity(0.14))
+                        )
                     }
-                    .pickerStyle(.menu)
-                    .tint(.white)
+                    .buttonStyle(.plain)
                 }
 
+                Spacer()
+
                 if seasonStats.total > 0 {
-                    Button {
+                    compactIconButton(
+                        systemImage: seasonStats.actionable == 0 ? "checkmark.circle" : "square.stack.3d.down.forward",
+                        accessibilityLabel: seasonStats.actionable == 0 ? "Stagione già in download" : "Scarica tutta la stagione"
+                    ) {
                         enqueueSelectedSeason(item)
-                    } label: {
-                        Label(seasonStats.actionable == 0 ? "Stagione già in download" : "Scarica tutta la stagione",
-                              systemImage: "square.stack.3d.down.forward")
                     }
-                    .buttonStyle(BrandButtonStyle(kind: .secondary, fullWidth: false))
                     .disabled(seasonStats.actionable == 0 || providerDisabled)
+                    .opacity(seasonStats.actionable == 0 || providerDisabled ? 0.45 : 1)
                 }
             }
             .padding(.horizontal)
@@ -538,7 +557,7 @@ struct DetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(model.episodes) { ep in
-                            let offlineReady = offlineURL(for: item, season: model.selectedSeason, episode: ep.episodeNumber) != nil
+                            let offlineReady = hasOfflineAsset(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
                             let disabled = providerDisabled && !offlineReady
                             EpisodeCard(
                                 episode: ep,
@@ -551,12 +570,12 @@ struct DetailView: View {
                             .opacity(disabled ? 0.5 : 1)
                             .onTapGesture {
                                 guard !disabled else { return }
-                                pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
+                                preparePlayback { await request(for: item, season: model.selectedSeason, episode: ep.episodeNumber) }
                             }
                             .contextMenu {
                                 if !disabled {
                                     Button {
-                                        pendingRequest = request(for: item, season: model.selectedSeason, episode: ep.episodeNumber)
+                                        preparePlayback { await request(for: item, season: model.selectedSeason, episode: ep.episodeNumber) }
                                     } label: { Label("Riproduci", systemImage: "play.fill") }
                                 }
                                 Button {
@@ -584,6 +603,30 @@ struct DetailView: View {
 
     // MARK: - CTA helpers
 
+    /// Serialize asynchronous request preparation. Starting another playback
+    /// target cancels and invalidates the previous one, so a slower offline
+    /// server startup can never present an earlier tap after a newer selection.
+    private func preparePlayback(
+        _ build: @escaping @MainActor () async -> PlaybackRequest?
+    ) {
+        playbackPreparationGeneration &+= 1
+        let generation = playbackPreparationGeneration
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor in
+            let prepared = await build()
+            guard !Task.isCancelled,
+                  playbackPreparationGeneration == generation else { return }
+            playbackPreparationTask = nil
+            pendingRequest = prepared
+        }
+    }
+
+    private func cancelPlaybackPreparation() {
+        playbackPreparationGeneration &+= 1
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+    }
+
     /// Same label format whether playback will use the provider or a local
     /// download — the user shouldn't have to read "Guarda offline" to know
     /// which coordinate is about to play.
@@ -597,15 +640,16 @@ struct DetailView: View {
             return "Guarda S\(target.season) E\(target.episode)"
         }
         if let p = movieResume(item) { return "Riprendi da \(Format.time(p.position))" }
+        if let p = movieProgress(item), TVLogic.isWatched(position: p.position, duration: p.duration) { return "Riguarda" }
         return "Guarda"
     }
 
-    private func primaryRequest(for item: TmdbItem) -> PlaybackRequest {
+    private func primaryRequest(for item: TmdbItem) async -> PlaybackRequest? {
         if ref.mediaType == .tv {
             let target = primaryPlaybackTarget(for: item)
-            return request(for: item, season: target.season, episode: target.episode)
+            return await request(for: item, season: target.season, episode: target.episode)
         }
-        return request(for: item, season: 0, episode: 0)
+        return await request(for: item, season: 0, episode: 0)
     }
 
     /// Build a playback request, seeding `startAt` from saved progress until the
@@ -613,7 +657,7 @@ struct DetailView: View {
     /// resumes. If a completed download exists for this coordinate, route it
     /// through the local `.movpkg` so the title plays in airplane mode too —
     /// otherwise we'd hit the provider needlessly.
-    private func request(for item: TmdbItem, season: Int, episode: Int) -> PlaybackRequest {
+    private func request(for item: TmdbItem, season: Int, episode: Int) async -> PlaybackRequest? {
         let s = ref.mediaType == .tv ? season : 0
         let e = ref.mediaType == .tv ? episode : 0
         let p = library.progress(item.id, ref.mediaType, season: s, episode: e)
@@ -621,7 +665,12 @@ struct DetailView: View {
         if let p, let resume = TVLogic.resumeStart(position: p.position, duration: p.duration) {
             startAt = resume
         }
-        let offlineURL = offlineURL(for: item, season: s, episode: e)
+        let offlineAvailable = hasOfflineAsset(for: item, season: s, episode: e)
+        let offlineURL = await offlineURLAsync(for: item, season: s, episode: e)
+        guard !offlineAvailable || offlineURL != nil else {
+            ToastCenter.shared.show("Riproduzione offline non disponibile. Riprova.")
+            return nil
+        }
         return PlaybackRequest(
             tmdbId: item.id, mediaType: ref.mediaType, title: item.displayTitle, releaseDate: item.primaryDate,
             poster: item.posterPath, backdrop: item.backdropPath,
@@ -629,13 +678,9 @@ struct DetailView: View {
         )
     }
 
-    private func primaryOfflineURL(for item: TmdbItem) -> URL? {
-        if ref.mediaType == .tv {
-            return offlineTarget(for: item).flatMap {
-                offlineURL(for: item, season: $0.season, episode: $0.episode)
-            }
-        }
-        return offlineURL(for: item, season: 0, episode: 0)
+    private func primaryOfflineAvailable(for item: TmdbItem) -> Bool {
+        if ref.mediaType == .tv { return offlineTarget(for: item) != nil }
+        return hasOfflineAsset(for: item, season: 0, episode: 0)
     }
 
     private func primaryPlaybackTarget(for item: TmdbItem) -> (season: Int, episode: Int) {
@@ -647,25 +692,32 @@ struct DetailView: View {
 
     private func offlineTarget(for item: TmdbItem) -> (season: Int, episode: Int)? {
         if ref.resumeSeason > 0, ref.resumeEpisode > 0,
-           offlineURL(for: item, season: ref.resumeSeason, episode: ref.resumeEpisode) != nil {
+           hasOfflineAsset(for: item, season: ref.resumeSeason, episode: ref.resumeEpisode) {
             return (ref.resumeSeason, ref.resumeEpisode)
         }
         if let next = library.nextUnwatched(item: item),
-           offlineURL(for: item, season: next.season, episode: next.episode) != nil {
+           hasOfflineAsset(for: item, season: next.season, episode: next.episode) {
             return next
         }
         return library.downloads()
-            .filter { $0.tmdbId == item.id && $0.mediaType == .tv && downloads.offlineURL(for: $0) != nil }
+            .filter { $0.tmdbId == item.id && $0.mediaType == .tv && downloads.hasOfflineAsset(for: $0) }
             .sorted { ($0.season, $0.episode) < ($1.season, $1.episode) }
             .first
             .map { ($0.season, $0.episode) }
     }
 
-    private func offlineURL(for item: TmdbItem, season: Int, episode: Int) -> URL? {
+    private func hasOfflineAsset(for item: TmdbItem, season: Int, episode: Int) -> Bool {
         let s = ref.mediaType == .tv ? season : 0
         let e = ref.mediaType == .tv ? episode : 0
-        return downloadFor(item.id, ref.mediaType, season: s, episode: e)
-            .flatMap { downloads.offlineURL(for: $0) }
+        guard let entry = downloadFor(item.id, ref.mediaType, season: s, episode: e) else { return false }
+        return downloads.hasOfflineAsset(for: entry)
+    }
+
+    private func offlineURLAsync(for item: TmdbItem, season: Int, episode: Int) async -> URL? {
+        let s = ref.mediaType == .tv ? season : 0
+        let e = ref.mediaType == .tv ? episode : 0
+        guard let entry = downloadFor(item.id, ref.mediaType, season: s, episode: e) else { return nil }
+        return await downloads.offlineURLAsync(for: entry)
     }
 
     /// Episode after the resume point (for "Vai al prossimo"), or nil.
@@ -675,9 +727,13 @@ struct DetailView: View {
     }
 
     private func movieResume(_ item: TmdbItem) -> ProgressEntry? {
-        guard let p = library.progress(item.id, .movie, season: 0, episode: 0),
+        guard let p = movieProgress(item),
               TVLogic.resumeStart(position: p.position, duration: p.duration) != nil else { return nil }
         return p
+    }
+
+    private func movieProgress(_ item: TmdbItem) -> ProgressEntry? {
+        library.progress(item.id, .movie, season: 0, episode: 0)
     }
 
     private func episodeProgressMap(_ item: TmdbItem) -> [Int: ProgressEntry] {
@@ -697,9 +753,9 @@ struct DetailView: View {
 
     /// Skeleton episode tile shown while a season's episodes load.
     private var episodeSkeleton: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             SkeletonBox(cornerRadius: 10).frame(width: 220, height: 220 * 9 / 16)
-            SkeletonBox(cornerRadius: 6).frame(width: 150, height: 12)
+            SkeletonBox(cornerRadius: 5).frame(width: 164, height: 12)
         }
         .frame(width: 220)
     }
@@ -707,12 +763,11 @@ struct DetailView: View {
     /// Skeleton shown while the TMDB detail loads (title + CTA + meta lines).
     private var detailSkeleton: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SkeletonBox(cornerRadius: 8).frame(width: 220, height: 30)
+            SkeletonBox(cornerRadius: 9).frame(width: 246, height: 32)
             SkeletonBox(cornerRadius: 14).frame(height: 50)
-            SkeletonBox(cornerRadius: 14).frame(height: 46)
-            SkeletonBox(cornerRadius: 6).frame(width: 160, height: 14)
-            SkeletonBox(cornerRadius: 6).frame(height: 14)
-            SkeletonBox(cornerRadius: 6).frame(width: 240, height: 14)
+            SkeletonBox(cornerRadius: 6).frame(width: 176, height: 13)
+            SkeletonBox(cornerRadius: 5).frame(height: 12)
+            SkeletonBox(cornerRadius: 5).frame(width: 238, height: 12)
         }
     }
 
@@ -735,19 +790,7 @@ struct DetailView: View {
         .ignoresSafeArea()
     }
 
-    private var reviewsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Recensioni", symbol: "text.bubble.fill")
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(model.reviews) { ReviewCard(review: $0) }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-
-    /// Placeholder shown while reviews/recommendations are still loading.
+    /// Placeholder shown while recommendations are still loading.
     private var extrasSkeleton: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Ti potrebbe piacere", symbol: "hand.thumbsup.fill")
@@ -790,6 +833,7 @@ private struct EpisodeCard: View {
     var downloads: DownloadManager? = nil
 
     private let w: CGFloat = 220
+    private var imageHeight: CGFloat { w * 9 / 16 }
 
     private var totalSeconds: Double {
         if let d = progress?.duration, d > 0 { return d }
@@ -797,7 +841,7 @@ private struct EpisodeCard: View {
     }
     private var watchedSeconds: Double { max(0, progress?.position ?? 0) }
     private var pct: Double { Format.percent(position: watchedSeconds, duration: totalSeconds) }
-    private var isWatched: Bool { totalSeconds > 0 && watchedSeconds >= totalSeconds * TVLogic.watchedThreshold }
+    private var isWatched: Bool { TVLogic.isWatched(position: watchedSeconds, duration: totalSeconds) }
     private var downloadPct: Double {
         guard let download else { return 0 }
         return min(100, max(0, (downloads?.progress(for: download) ?? download.progress) * 100))
@@ -821,24 +865,15 @@ private struct EpisodeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .bottom) {
-                still
-                LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
-                VStack(spacing: 4) {
-                    HStack(alignment: .bottom) {
-                        Text("\(episode.episodeNumber)").font(.title3.bold()).foregroundStyle(.white)
-                        Spacer()
-                        if let label = timeLabel {
-                            Text(label).font(.caption2.monospacedDigit()).foregroundStyle(.white.opacity(0.9))
-                        }
-                    }
-                    if watchedSeconds > 0 {
-                        ProgressBar(percent: pct)
-                    }
+            still
+                .frame(width: w, height: imageHeight)
+                .clipped()
+                .overlay {
+                    LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
                 }
-                .padding(8)
-            }
-            .frame(width: w, height: w * 9 / 16)
+                .overlay(alignment: .bottom) {
+                    episodeProgressOverlay
+                }
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -861,6 +896,33 @@ private struct EpisodeCard: View {
                 .lineLimit(2)
         }
         .frame(width: w)
+    }
+
+    private var episodeProgressOverlay: some View {
+        VStack(spacing: 5) {
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
+                Text("\(episode.episodeNumber)")
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                if let label = timeLabel {
+                    Text(label)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .allowsTightening(true)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            if watchedSeconds > 0 {
+                ProgressBar(percent: pct)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -940,67 +1002,6 @@ private struct EpisodeCard: View {
                 Image(systemName: "tv").foregroundStyle(.secondary)
             }
         }
-    }
-}
-
-/// Review card — port of the web watch.component review card (author, date,
-/// ★ rating, 360-char excerpt, "Leggi su TMDB" link).
-private struct ReviewCard: View {
-    let review: TmdbReview
-    @Environment(\.openURL) private var openURL
-    private let width: CGFloat = 300
-    private let height: CGFloat = 220
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(author).font(.subheadline.bold())
-                    if let d = dateText { Text(d).font(.caption2).foregroundStyle(.secondary) }
-                }
-                Spacer()
-                if let r = ratingText {
-                    Text("★ \(r)").font(.caption.weight(.semibold)).foregroundStyle(Color(red: 1, green: 0.76, blue: 0.03))
-                }
-            }
-            Text(excerpt)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(8)
-            Spacer(minLength: 0)
-            if let url = review.url.flatMap(URL.init(string:)) {
-                Button("Leggi su TMDB") { openURL(url) }
-                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.red)
-            }
-        }
-        .padding()
-        .frame(width: width, height: height, alignment: .topLeading)
-        .background {
-            LiquidGlassBackground(shape: RoundedRectangle(cornerRadius: 12, style: .continuous), tint: Theme.red.opacity(0.06))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.10)))
-    }
-
-    private var author: String {
-        review.authorDetails?.name?.nilIfEmpty
-            ?? review.authorDetails?.username?.nilIfEmpty
-            ?? review.author.nilIfEmpty ?? "Anonimo"
-    }
-
-    private var ratingText: String? {
-        guard let r = review.authorDetails?.rating else { return nil }
-        return String(format: "%.1f", r)
-    }
-
-    private var dateText: String? {
-        guard let raw = (review.updatedAt ?? review.createdAt), let d = Release.parseDate(raw) else { return nil }
-        return Release.longDate(d)
-    }
-
-    private var excerpt: String {
-        let t = review.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard t.count > 360 else { return t }
-        return String(t.prefix(357)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
     }
 }
 

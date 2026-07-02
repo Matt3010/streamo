@@ -38,7 +38,7 @@ struct CardItem: Identifiable, Equatable {
     init(tmdb item: TmdbItem, type: MediaType) {
         self.tmdbId = item.id
         self.mediaType = type
-        self.title = item.displayTitle.isEmpty ? "Senza titolo" : item.displayTitle
+        self.title = item.displayTitle.isEmpty ? UIText.untitled : item.displayTitle
         self.poster = item.posterPath
         self.year = item.year.map(String.init)
         self.rating = (item.voteAverage ?? 0) > 0 ? String(format: "%.1f", item.voteAverage!) : nil
@@ -50,7 +50,7 @@ struct CardItem: Identifiable, Equatable {
     init(progress p: ProgressEntry) {
         self.tmdbId = p.tmdbId
         self.mediaType = p.mediaType
-        self.title = p.title ?? "Senza titolo"
+        self.title = p.title ?? UIText.untitled
         self.poster = p.poster
         if p.mediaType == .tv { self.season = p.season; self.episode = p.episode }
         self.position = p.position
@@ -62,7 +62,7 @@ struct CardItem: Identifiable, Equatable {
     init(continue r: Library.ContinueRow) {
         self.tmdbId = r.tmdbId
         self.mediaType = r.mediaType
-        self.title = r.title ?? "Senza titolo"
+        self.title = r.title ?? UIText.untitled
         self.poster = r.poster
         self.backdrop = r.backdrop
         if r.mediaType == .tv { self.season = r.season; self.episode = r.episode }
@@ -74,7 +74,7 @@ struct CardItem: Identifiable, Equatable {
     init(watchlist e: WatchlistEntry) {
         self.tmdbId = e.tmdbId
         self.mediaType = e.mediaType
-        self.title = e.title ?? "Senza titolo"
+        self.title = e.title ?? UIText.untitled
         self.poster = e.poster
         self.status = e.status
     }
@@ -105,7 +105,7 @@ struct CardItem: Identifiable, Equatable {
     init(history h: HistoryEntry) {
         self.tmdbId = h.tmdbId
         self.mediaType = h.mediaType
-        self.title = h.title ?? "Senza titolo"
+        self.title = h.title ?? UIText.untitled
         self.poster = h.poster
         if h.mediaType == .tv { self.season = h.season; self.episode = h.episode }
     }
@@ -183,8 +183,8 @@ struct MediaCard: View {
         return "S\(s) E\(e)"
     }
     private var pct: Double {
-        guard let p = card.position, let d = card.duration, d > 0 else { return 0 }
-        return min(100, max(0, p / d * 100))
+        guard let p = card.position, let d = card.duration else { return 0 }
+        return Format.percent(position: p, duration: d)
     }
 
     var body: some View {
@@ -272,6 +272,9 @@ struct MediaCard: View {
                 Text(card.title)
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                     .lineLimit(aspectRatio > 1 ? 2 : 1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.88)
+                    .allowsTightening(true)
                     .shadow(color: .black.opacity(0.8), radius: 2)
                 if episodeBadge != nil || year != nil || rating != nil {
                     HStack(spacing: 6) {
@@ -295,7 +298,7 @@ struct MediaCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 10)
         .padding(.bottom, showProgress && pct > 0 ? 22 : 10)
     }
 
@@ -312,7 +315,7 @@ struct MediaCard: View {
         let needBackdrop = aspectRatio > 1 && (card.backdrop == nil || card.backdrop?.isEmpty == true)
         guard needYearRating || needPoster || needBackdrop else { return }
 
-        // Debounce: while flinging through a long grid (Cronologia / La mia
+        // Debounce: while flinging through a long grid (La mia
         // lista) a card may appear and disappear in well under this window. Its
         // `.task` is cancelled on disappear, so we never hit the network for
         // cards scrolled past — only ones that actually settle in view enrich.

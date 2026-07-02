@@ -1,63 +1,8 @@
 import Foundation
 
 /// "What's my status with this title" copy — port of the web `watch-status.ts`
-/// (formatTvStatusText / formatTvCaughtUpText / formatMovieRemaining).
+/// (formatMovieRemaining).
 enum WatchStatus {
-    // MARK: - On-read auto-flip decision
-
-    /// The status change a TV title should undergo on read, given the show's
-    /// aired-episode count and the user's progress. Pure so both the watchlist
-    /// enrichment pass and the Home launch sweep apply identical rules:
-    /// - `done` with no baseline → stamp the current aired count.
-    /// - `done` → `in_progress` once new episodes air beyond that baseline
-    ///   (this is what brings a finished series back into "Continua a guardare"
-    ///   when a new season drops).
-    /// - `todo`/`in_progress` → `done` once caught up with every aired episode.
-    enum FlipAction: Equatable {
-        case none
-        case backfillDoneBaseline(Int)   // stay done, stamp aired baseline
-        case toInProgress                // done → in_progress (new episodes aired)
-        case toDone(Int)                 // caught up → done, with aired baseline
-    }
-
-    static func flipDecision(status: WatchlistStatus, aired: Int, baseline: Int, doneAired: Int) -> FlipAction {
-        guard aired > 0 else { return .none }
-        if status == .done {
-            if doneAired == 0 { return .backfillDoneBaseline(aired) }
-            return aired > doneAired ? .toInProgress : .none
-        }
-        return baseline >= aired ? .toDone(aired) : .none
-    }
-
-    // MARK: - Status cycling (port of watchlist-status.util.ts)
-
-    /// Next status when the toggle button is tapped, and whether it needs a
-    /// confirmation ("Segna come visto"). Cycle: todo → in_progress → done → todo.
-    static func statusTransition(_ current: WatchlistStatus) -> (next: WatchlistStatus, requiresConfirm: Bool) {
-        switch current {
-        case .done: return (.todo, false)
-        case .inProgress: return (.done, true)
-        case .todo: return (.inProgress, false)
-        }
-    }
-
-    /// SF Symbol for the status toggle button, by current status.
-    static func statusIcon(_ status: WatchlistStatus) -> String {
-        switch status {
-        case .done: return "arrow.uturn.backward"
-        case .inProgress: return "checkmark"
-        case .todo: return "play.fill"
-        }
-    }
-
-    static func statusToast(_ title: String, _ newStatus: WatchlistStatus) -> String {
-        switch newStatus {
-        case .todo: return "\(title): rimesso in \"Da guardare\""
-        case .inProgress: return "\(title): spostato in \"In corso\""
-        case .done: return "\(title): segnato come visto"
-        }
-    }
-
     /// Movie "Mancano N min" / "Manca 1 min" / "Mancano X h Y min" remaining
     /// copy. Returns nil when not started or already finished.
     static func movieRemainingText(position: Double?, duration: Double?) -> String? {

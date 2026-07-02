@@ -22,12 +22,7 @@ enum TmdbImage {
     /// Returns a URL for a TMDB image path, or nil when the path is empty.
     /// Passes through values that are already absolute URLs.
     static func url(_ path: String?, _ size: TmdbImageSize) -> URL? {
-        guard let path, !path.isEmpty else { return nil }
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return URL(string: path)
-        }
-        let normalized = path.hasPrefix("/") ? path : "/\(path)"
-        return URL(string: "\(host)/\(size.rawValue)\(normalized)")
+        url(path, size.rawValue)
     }
 
     static func posterURL(_ path: String?, _ size: TmdbPosterSize) -> URL? {
@@ -38,6 +33,8 @@ enum TmdbImage {
         url(path, size.rawValue)
     }
 
+    /// Returns a URL for a TMDB image path, or nil when the path is empty.
+    /// Passes through values that are already absolute URLs.
     private static func url(_ path: String?, _ size: String) -> URL? {
         guard let path, !path.isEmpty else { return nil }
         if path.hasPrefix("http://") || path.hasPrefix("https://") {

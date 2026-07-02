@@ -81,86 +81,8 @@ final class DownloadManager {
                 }
             }
         }
-        refreshCatalog()
-        installLibraryObserver()
-        installLANProgressBridge()
         startNextIfIdle()
         syncDownloadKeepAlive()
-    }
-
-    /// Forward LAN-reported playback positions into `Library.saveProgress` so
-    /// "Continua a guardare", history, and the resume marker on the next
-    /// page-open match what was watched from the PC.
-    private func installLANProgressBridge() {
-        LocalHLSServer.shared.setProgressHandler { [weak self] report in
-            Task { @MainActor in
-                guard let self, let library = self.library else { return }
-                guard report.position > 15 else { return }
-                let type = MediaType(rawValue: report.mediaType) ?? .movie
-                library.saveProgress(
-                    tmdbId: report.tmdbId,
-                    type: type,
-                    season: report.season,
-                    episode: report.episode,
-                    position: report.position,
-                    duration: report.duration,
-                    title: report.title,
-                    poster: report.poster,
-                    backdrop: report.backdrop
-                )
-                library.saveHistory(
-                    tmdbId: report.tmdbId,
-                    type: type,
-                    season: report.season,
-                    episode: report.episode,
-                    title: report.title,
-                    poster: report.poster
-                )
-                // saveProgress bumps library.version → the observer rearm
-                // below picks it up and refreshes the LAN catalog.
-            }
-        }
-    }
-
-    /// Re-arm a one-shot observation on `library.version`: every time the
-    /// library mutates (in-app playback, LAN report, manual edits) we push a
-    /// fresh catalog snapshot so the next browser play.html load sees the
-    /// up-to-date resume position.
-    private func installLibraryObserver() {
-        guard let library else { return }
-        withObservationTracking {
-            _ = library.version
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                self?.refreshCatalog()
-                self?.installLibraryObserver()
-            }
-        }
-    }
-
-    /// Snapshot the current download list and hand it to `LocalHLSServer` so
-    /// the LAN-shared index page reflects the user's library and the browser
-    /// player can resume from the saved position.
-    func refreshCatalog() {
-        guard let library else { return }
-        let items = library.downloads().map { entry in
-            let p = library.progress(entry.tmdbId, entry.mediaType,
-                                     season: entry.season, episode: entry.episode)
-            return DownloadEntrySnapshot(
-                key: key(for: entry),
-                title: entry.title ?? "Senza titolo",
-                mediaType: entry.mediaTypeRaw,
-                season: entry.season,
-                episode: entry.episode,
-                episodeTitle: entry.episodeTitle,
-                poster: entry.poster,
-                backdrop: entry.backdrop,
-                isCompleted: entry.state == .completed,
-                position: p?.position ?? 0,
-                duration: p?.duration ?? 0
-            )
-        }
-        LocalHLSServer.shared.setCatalog(items)
     }
 
     // MARK: - Public actions
@@ -247,7 +169,6 @@ final class DownloadManager {
                 requeued += 1
             }
         }
-        refreshCatalog()
         startNextIfIdle()
         return inserted + requeued
     }
@@ -328,22 +249,42 @@ final class DownloadManager {
         awaitingFirstProgressSample.remove(k)
         runGenerationByKey[k] = nil
         library?.removeDownload(entry)
-        refreshCatalog()
         startNextIfIdle()
         syncDownloadKeepAlive()
     }
 
-    /// Loopback URL of a completed download, or nil if its files are missing
-    /// or the local HLS server failed to bind. AVPlayer plays this through
-    /// `LocalHLSServer` — which is why offline playback works in airplane
-    /// mode (loopback bypasses AVFoundation's network-presence preflight).
+    /// True when the completed download still has its local HLS manifest.
+    /// This deliberately does not depend on the loopback listener being ready,
+    /// so synchronous SwiftUI availability checks never block or flicker while
+    /// the server is starting.
+    func hasOfflineAsset(for entry: DownloadEntry) -> Bool {
+        guard entry.state == .completed else { return false }
+        let master = Self.downloadDirectory(for: key(for: entry)).appendingPathComponent("master.m3u8")
+        return FileManager.default.fileExists(atPath: master.path)
+    }
+
+    /// Non-blocking loopback URL probe. Playback launch paths should prefer
+    /// `offlineURLAsync(for:)`, which waits for the listener without blocking
+    /// the MainActor.
     func offlineURL(for entry: DownloadEntry) -> URL? {
+        guard hasOfflineAsset(for: entry) else { return nil }
+        let k = key(for: entry)
+        guard let port = LocalHLSServer.shared.boundPortIfReady() else {
+            Task { _ = try? await LocalHLSServer.shared.ensureRunning(timeout: 2.0) }
+            return nil
+        }
+        return LocalHLSServer.url(port: port, relativePath: "\(k)/master.m3u8")
+    }
+
+    /// Playback-safe variant: waits asynchronously for the loopback listener
+    /// instead of sleeping on the MainActor for up to two seconds.
+    func offlineURLAsync(for entry: DownloadEntry) async -> URL? {
         guard entry.state == .completed else { return nil }
         let k = key(for: entry)
         let master = Self.downloadDirectory(for: k).appendingPathComponent("master.m3u8")
-        guard FileManager.default.fileExists(atPath: master.path) else { return nil }
-        let port = LocalHLSServer.shared.waitForReady()
-        guard port != 0 else { return nil }
+        guard FileManager.default.fileExists(atPath: master.path),
+              let port = try? await LocalHLSServer.shared.ensureRunning(timeout: 2.0),
+              hasOfflineAsset(for: entry) else { return nil }
         return LocalHLSServer.url(port: port, relativePath: "\(k)/master.m3u8")
     }
 
@@ -371,7 +312,7 @@ final class DownloadManager {
         byteScanInFlight.insert(k)
         let dir = Self.downloadDirectory(for: k)
         Task.detached(priority: .utility) {
-            let total = Self.folderSize(dir)
+            let total = DownloadStorageInspector.folderSize(dir)
             await MainActor.run {
                 let shared = DownloadManager.shared
                 shared.byteScanInFlight.remove(k)
@@ -412,16 +353,6 @@ final class DownloadManager {
         liveSpeed[k] = nil
         speedSampleBytes[k] = nil
         speedSampleTime[k] = nil
-    }
-
-    private nonisolated static func folderSize(_ dir: URL) -> Int64 {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else {
-            return 0
-        }
-        return files.reduce(Int64(0)) { sum, url in
-            sum + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-        }
     }
 
     /// UI-facing state that prefers the current in-memory active slot over the
@@ -568,6 +499,11 @@ final class DownloadManager {
                 tmdbId: entry.tmdbId, title: entry.title ?? "", releaseDate: entry.releaseDate,
                 season: entry.season, episode: entry.episode, client: .download)
         }
+        defer {
+            if let token = resolution.liveProxyToken {
+                LocalHLSServer.shared.revokeLiveProxyToken(token)
+            }
+        }
         guard isCurrentRun(key: k, runID: runID), !Task.isCancelled else {
             debugLog("runDownload stale after resolve key=\(k) run=\(runID)")
             return
@@ -668,7 +604,6 @@ final class DownloadManager {
         runGenerationByKey[k] = nil
         activeKey = nil
         activeTask = nil
-        refreshCatalog()
         startNextIfIdle()
         syncDownloadKeepAlive()
     }
@@ -731,41 +666,7 @@ final class DownloadManager {
     /// though we don't persist every live tick into SwiftData.
     private func resumedProgress(forKey key: String, fallback: Double) -> Double {
         let dir = Self.downloadDirectory(for: key)
-        guard FileManager.default.fileExists(atPath: dir.path) else { return fallback }
-
-        let fm = FileManager.default
-        let directoryContents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
-        let playlists = directoryContents?.filter { $0.pathExtension.lowercased() == "m3u8" } ?? []
-        guard !playlists.isEmpty else { return fallback }
-
-        let master = dir.appendingPathComponent("master.m3u8")
-        let referencedTrackNames = (try? String(contentsOf: master, encoding: .utf8))
-            .map { HLSPlaylistParser.childPlaylistNames(in: $0) } ?? []
-        let referencedTracks = referencedTrackNames.map { dir.appendingPathComponent($0) }
-            .filter { fm.fileExists(atPath: $0.path) }
-        let trackPlaylists = playlists.filter { $0.lastPathComponent != "master.m3u8" }
-        let sources = !referencedTracks.isEmpty
-            ? referencedTracks
-            : (trackPlaylists.isEmpty
-                ? playlists.filter { $0.lastPathComponent == "master.m3u8" }
-                : trackPlaylists)
-        guard !sources.isEmpty else { return fallback }
-
-        var totalResources = 0
-        var completedResources = 0
-        for playlist in sources {
-            guard let text = try? String(contentsOf: playlist, encoding: .utf8) else {
-                continue
-            }
-            let resources = HLSPlaylistParser.resourceNames(in: text)
-            totalResources += resources.count
-            completedResources += resources.reduce(0) { partial, name in
-                partial + (fm.fileExists(atPath: dir.appendingPathComponent(name).path) ? 1 : 0)
-            }
-        }
-        guard totalResources > 0 else { return fallback }
-        let fraction = Double(completedResources) / Double(totalResources)
-        return max(fallback, min(1, fraction))
+        return DownloadStorageInspector.resumedProgress(in: dir, fallback: fallback)
     }
 
     // MARK: - Background keep-alive

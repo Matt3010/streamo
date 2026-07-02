@@ -20,6 +20,8 @@ actor VixcloudClient {
     ]
 
     private var session: URLSession
+    /// Embed page is third-party HTML behind WARP — longer than the API timeout.
+    private let requestTimeout: TimeInterval = 15
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -56,15 +58,10 @@ actor VixcloudClient {
         return urls.map { PlaybackSource(playlistURL: $0, headers: Self.playbackHeaders) }
     }
 
-    /// Raw embed HTML — for verifying the page structure on-device.
-    func debugEmbedHTML(embedURL: String) async -> String? {
-        try? await fetchHTML(embedURL)
-    }
-
     private func fetchHTML(_ urlString: String) async throws -> String {
         guard let url = URL(string: urlString) else { throw VixError.fetchFailed }
         var request = URLRequest(url: url)
-        request.timeoutInterval = 15
+        request.timeoutInterval = requestTimeout
         request.setValue("text/html,application/xhtml+xml,*/*", forHTTPHeaderField: "Accept")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -74,20 +71,6 @@ actor VixcloudClient {
     }
 
     // MARK: - Extraction
-
-    /// Build the HLS master playlist URL from the embed page HTML.
-    ///
-    /// Vixcloud embed pages expose a JS object roughly like:
-    /// ```
-    /// window.masterPlaylist = { params: { token: '…', expires: '…' }, url: 'https://vixcloud.co/playlist/<id>' }
-    /// window.canPlayFHD = true
-    /// ```
-    /// We extract `url`, `token`, `expires` (tolerant to quote style) and append
-    /// `&h=1` when FHD is allowed. Exposed as `static` so it's unit-testable
-    /// against a captured page without hitting the network.
-    static func buildPlaylistURL(fromEmbedHTML html: String) -> URL? {
-        buildPlaylistURLs(fromEmbedHTML: html).first
-    }
 
     private struct Stream: Decodable { let name: String?; let active: Bool?; let url: String? }
 
@@ -133,11 +116,9 @@ actor VixcloudClient {
     }
 
     private static func parseStreams(_ html: String) -> [Stream] {
-        guard let regex = try? NSRegularExpression(pattern: "window\\.streams\\s*=\\s*(\\[.*?\\])",
-                                                   options: [.caseInsensitive, .dotMatchesLineSeparators]),
-              let m = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: html),
-              let data = String(html[r]).data(using: .utf8) else { return [] }
+        guard let raw = ProviderClient.firstMatch(in: html, pattern: "window\\.streams\\s*=\\s*(\\[.*?\\])",
+                                                  options: [.caseInsensitive, .dotMatchesLineSeparators]),
+              let data = raw.data(using: .utf8) else { return [] }
         return (try? JSONDecoder().decode([Stream].self, from: data)) ?? []
     }
 

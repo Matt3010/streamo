@@ -83,6 +83,9 @@ struct AnimeCatalogView: View {
                             .overlay(alignment: .topTrailing) { dubBadge(anime) }
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        model.preserveSearchWhileOpeningResult()
+                    })
                     .task { await model.loadMoreIfNeeded(currentItem: anime) }
                 }
             }

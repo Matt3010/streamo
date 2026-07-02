@@ -9,35 +9,21 @@ import Network
 /// talks happily to a localhost server. Supports `Range:` requests so seeking
 /// inside a segment works.
 ///
-/// The same server can optionally accept connections from peers on the LAN
-/// (toggled via `AppSettings.lanShareEnabled`); LAN access is gated by a
-/// secret token baked into the URL path so a stale share link can be revoked
-/// by rotating the token.
+/// Over the LAN the server only accepts an active AirPlay session: a
+/// per-playback token (see `beginAirplaySession`) lets an AirPlay receiver
+/// fetch the playing download's files; everything else from a non-loopback
+/// peer is rejected.
 final class LocalHLSServer: @unchecked Sendable {
     static let shared = LocalHLSServer()
 
     private let queue = DispatchQueue(label: "com.streamo.localhls")
     private var listener: NWListener?
-    private var readyContinuations: [CheckedContinuation<UInt16, Error>] = []
     private var boundPort: UInt16 = 0
+    private var lastStartError: Error?
     /// Preferred fixed port so the shared LAN URL / QR stay valid across app
     /// launches (an ephemeral port changed every relaunch → stale links).
     private let preferredPort: UInt16 = 50321
     private var usingPreferredPort = false
-
-    /// LAN config — mutated from the main actor via `setLANConfig`, read by
-    /// every request handler running on `queue`.
-    private var lanEnabled: Bool = false
-    private var lanToken: String = ""
-    /// Required password for LAN peers (HTTP Basic Auth). Loopback (offline
-    /// playback on-device) is never asked for it.
-    private var lanPassword: String = ""
-    /// Snapshot of completed downloads, kept up-to-date by `DownloadManager`,
-    /// used to render the HTML index page served at `/<token>/`.
-    private var catalog: [DownloadEntrySnapshot] = []
-    /// Callback fired when a LAN viewer reports their playback position.
-    /// Wired by `DownloadManager.configure` to call `Library.saveProgress`.
-    private var progressHandler: (@Sendable (LANProgressReport) -> Void)?
 
     /// Password-less, per-playback token that lets an AirPlay receiver (or the
     /// device itself, dialing its own LAN IP) fetch download *files* — never the
@@ -48,13 +34,12 @@ final class LocalHLSServer: @unchecked Sendable {
     private var airplayToken: String = ""
     private var airplayPathPrefix: String = ""
 
-    /// Auth token for the live-proxy routes (`/playlist`, `/cdn`, …). When the
-    /// app plays through the on-device WARP proxy, the rewritten playlist embeds
-    /// this as `?key=` on every sub-resource so AirPlay receivers (no headers)
-    /// authenticate via the URL alone. Loopback (on-device) is always trusted;
-    /// LAN peers must present a matching `key`. Set by `ProviderResolver` when a
-    /// proxied session begins. Read on `queue`.
-    private var liveProxyToken: String = ""
+    /// Active auth leases for live-proxy routes (`/playlist`, `/cdn`, …).
+    /// Each resolved player/download owns one token embedded in every rewritten
+    /// URL. A set (rather than one global token) lets the old stream remain valid
+    /// while the next episode is being resolved and committed atomically.
+    /// Loopback is always trusted; LAN peers must present one active token.
+    private var liveProxyTokens = Set<String>()
 
     /// On-disk root the server reads from. Every download goes under a
     /// per-entry subfolder here.
@@ -67,23 +52,33 @@ final class LocalHLSServer: @unchecked Sendable {
 
     private init() {}
 
-    /// Start the listener if not already running. Returns the bound port.
-    /// Safe to call repeatedly — subsequent calls return the same port.
-    func ensureRunning() async throws -> UInt16 {
-        if boundPort != 0 { return boundPort }
-        return try await withCheckedThrowingContinuation { cont in
-            queue.async { [weak self] in
-                guard let self else { cont.resume(throwing: ServerError.cancelled); return }
-                if self.boundPort != 0 {
-                    cont.resume(returning: self.boundPort)
-                    return
-                }
-                self.readyContinuations.append(cont)
-                if self.listener == nil {
-                    self.startListenerOnQueue()
-                }
+    /// Start the listener if needed and wait asynchronously for a usable port.
+    /// The wait is bounded because an NWListener can remain in `.waiting`
+    /// during a transient network transition. Polling suspends the caller and
+    /// therefore never blocks the MainActor; callers that launch offline video
+    /// use a shorter timeout than the general startup path.
+    func ensureRunning(timeout: TimeInterval = 5.0) async throws -> UInt16 {
+        if let port = boundPortIfReady() { return port }
+
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.lastStartError = nil
+            if self.listener == nil {
+                self.startListenerOnQueue()
             }
         }
+
+        let deadline = Date().addingTimeInterval(max(0.1, timeout))
+        while Date() < deadline {
+            try Task.checkCancellation()
+            let snapshot: (UInt16, Error?) = queue.sync { (boundPort, lastStartError) }
+            if snapshot.0 != 0 { return snapshot.0 }
+            if let error = snapshot.1 { throw error }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        if let port = boundPortIfReady() { return port }
+        throw ServerError.timedOut
     }
 
     private func startListenerOnQueue() {
@@ -114,8 +109,7 @@ final class LocalHLSServer: @unchecked Sendable {
                 switch state {
                 case .ready:
                     if let port = listener.port { self.boundPort = port.rawValue }
-                    for c in self.readyContinuations { c.resume(returning: self.boundPort) }
-                    self.readyContinuations.removeAll()
+                    self.lastStartError = nil
                 case .failed(let err):
                     self.listener?.cancel()
                     self.listener = nil
@@ -124,8 +118,7 @@ final class LocalHLSServer: @unchecked Sendable {
                         // Fixed port unavailable — fall back to a random one.
                         self.startListenerOnQueue(preferred: false)
                     } else {
-                        for c in self.readyContinuations { c.resume(throwing: err) }
-                        self.readyContinuations.removeAll()
+                        self.lastStartError = err
                     }
                 default:
                     break
@@ -137,54 +130,23 @@ final class LocalHLSServer: @unchecked Sendable {
             if preferred {
                 startListenerOnQueue(preferred: false)
             } else {
-                for c in readyContinuations { c.resume(throwing: error) }
-                readyContinuations.removeAll()
+                lastStartError = error
             }
         }
     }
 
-    /// Loopback URL for a file under `Documents/Downloads/<relativePath>`.
-    func playbackURL(forRelativePath relativePath: String) async throws -> URL {
-        let port = try await ensureRunning()
-        guard let url = Self.url(port: port, relativePath: relativePath) else {
-            throw ServerError.invalidPath
-        }
-        return url
-    }
-
-    /// Synchronously waits up to `timeout` for the server to be ready and
-    /// returns the bound port (0 on timeout). Safe to call from `MainActor`:
-    /// `configure(library:)` warms the server up at launch so this almost
-    /// always returns immediately. We poll because the listener's ready
-    /// callback fires on a private queue we shouldn't block waiting for.
-    func waitForReady(timeout: TimeInterval = 2.0) -> UInt16 {
-        if let port = currentBoundPort() { return port }
-        // Kick off the bind if it hasn't started yet (idempotent).
-        Task.detached { _ = try? await self.ensureRunning() }
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let port = currentBoundPort() { return port }
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        return 0
-    }
-
-    private func currentBoundPort() -> UInt16? {
+    /// Non-blocking readiness probe for synchronous UI computations. Callers
+    /// that are about to start playback should use `ensureRunning()` instead of
+    /// polling/sleeping on the MainActor.
+    func boundPortIfReady() -> UInt16? {
         let port = queue.sync { boundPort }
         return port == 0 ? nil : port
     }
 
-    /// Build a loopback URL for a known port + path. Static so callers can
-    /// construct synchronously after `waitForReady` returns the port.
+    /// Build a loopback URL for a known ready port + path.
     static func url(port: UInt16, relativePath: String) -> URL? {
         let encoded = encodePathSegments(relativePath)
         return URL(string: "http://127.0.0.1:\(port)/\(encoded)")
-    }
-
-    /// LAN-shareable URL with the token baked into the path.
-    static func lanURL(host: String, port: UInt16, token: String, relativePath: String) -> URL? {
-        let encoded = encodePathSegments(relativePath)
-        return URL(string: "http://\(host):\(port)/\(token)/\(encoded)")
     }
 
     private static func encodePathSegments(_ relativePath: String) -> String {
@@ -203,15 +165,15 @@ final class LocalHLSServer: @unchecked Sendable {
     /// impossible there anyway), so the caller falls back to the loopback URL.
     func beginAirplaySession(relativePath: String) -> URL? {
         guard let host = LANAddress.currentShareableIPv4() else { return nil }
-        let port = waitForReady()
-        guard port != 0 else { return nil }
+        guard let port = boundPortIfReady() else { return nil }
         let token = Self.randomToken()
         let prefix = relativePath.lastIndex(of: "/").map { String(relativePath[...$0]) } ?? ""
         queue.sync {
             self.airplayToken = token
             self.airplayPathPrefix = prefix
         }
-        return Self.lanURL(host: host, port: port, token: token, relativePath: relativePath)
+        let encoded = Self.encodePathSegments(relativePath)
+        return URL(string: "http://\(host):\(port)/\(token)/\(encoded)")
     }
 
     /// Revoke the AirPlay token so the download is no longer reachable over the
@@ -225,10 +187,16 @@ final class LocalHLSServer: @unchecked Sendable {
 
     // MARK: - Live proxy (on-device WARP)
 
-    /// Set (or clear) the live-proxy auth token. Passing "" disables LAN access
-    /// to the proxy routes (loopback stays open).
-    func setLiveProxyToken(_ token: String) {
-        queue.async { [weak self] in self?.liveProxyToken = token }
+    /// Register/revoke one live-proxy lease. Registration is synchronous so the
+    /// returned URL is authorized before AVPlayer/HLSDownloader can request it.
+    func registerLiveProxyToken(_ token: String) {
+        guard !token.isEmpty else { return }
+        queue.sync { _ = liveProxyTokens.insert(token) }
+    }
+
+    func revokeLiveProxyToken(_ token: String) {
+        guard !token.isEmpty else { return }
+        queue.sync { _ = liveProxyTokens.remove(token) }
     }
 
     /// Map an upstream vixcloud / vix-content URL to the matching on-device
@@ -271,35 +239,6 @@ final class LocalHLSServer: @unchecked Sendable {
         let hi = UInt64.random(in: .min ... .max, using: &rng)
         let lo = UInt64.random(in: .min ... .max, using: &rng)
         return String(format: "%016llx%016llx", hi, lo)
-    }
-
-    // MARK: - LAN configuration
-
-    /// Update LAN sharing state. Pushed from `AppSettings` whenever the user
-    /// toggles the switch or rotates the token.
-    func setLANConfig(enabled: Bool, token: String, password: String) {
-        queue.async { [weak self] in
-            self?.lanEnabled = enabled
-            self?.lanToken = token
-            self?.lanPassword = password
-        }
-    }
-
-    /// Refresh the index page's catalog (called by `DownloadManager` when the
-    /// download list changes).
-    func setCatalog(_ items: [DownloadEntrySnapshot]) {
-        queue.async { [weak self] in
-            self?.catalog = items
-        }
-    }
-
-    /// Wire the LAN-progress reporter — invoked from `serveProgress` on the
-    /// listener's queue. The closure is responsible for hopping to MainActor
-    /// and calling `Library.saveProgress`.
-    func setProgressHandler(_ handler: @escaping @Sendable (LANProgressReport) -> Void) {
-        queue.async { [weak self] in
-            self?.progressHandler = handler
-        }
     }
 
     // MARK: - Connection handling
@@ -347,25 +286,26 @@ final class LocalHLSServer: @unchecked Sendable {
         let decoded = pathOnly.removingPercentEncoding ?? pathOnly
         let cleanPath = decoded.hasPrefix("/") ? String(decoded.dropFirst()) : decoded
 
-        // Decide whether this peer is loopback or LAN, and whether they're
-        // allowed in. LAN peers must present the token as the first path
-        // segment; we strip it before mapping to disk.
+        // Loopback gets unrestricted access; a non-loopback peer is only let in
+        // by an active AirPlay session (token as the first path segment, which
+        // we strip before mapping to disk).
         let loopback = isLoopback(connection)
 
         // Live-proxy routes take precedence (on-device WARP egress). They use a
         // `?key=` query token for non-loopback (AirPlay) auth — not the path
-        // token used for download files — so handle them before the LAN logic.
+        // token used for download files — so handle them before the file logic.
         // `rawCleanPath` keeps the percent-encoded tail so vixcloud signatures
         // and segment names pass through untouched.
         let rawCleanPath = pathOnly.hasPrefix("/") ? String(pathOnly.dropFirst()) : pathOnly
         if let upstream = Self.liveProxyUpstream(forPath: rawCleanPath, query: query) {
             let params = Self.parseQuery(query)
-            let authorized = loopback || (!liveProxyToken.isEmpty && params["key"] == liveProxyToken)
+            let authorized = loopback || params["key"].map { liveProxyTokens.contains($0) } == true
             guard authorized else {
                 send(status: "401 Unauthorized", on: connection, then: { connection.cancel() })
                 return
             }
             handleLiveProxy(upstream: upstream,
+                            token: params["key"] ?? "",
                             forceHeight: params["q"].flatMap { Int($0) } ?? 0,
                             client: params["c"] ?? "-",
                             requestLines: lines, on: connection)
@@ -373,161 +313,34 @@ final class LocalHLSServer: @unchecked Sendable {
         }
 
         let resolvedPath: String
-        let servesIndex: Bool
-        // AirPlay peers authenticate with the per-session token in the path and
-        // may fetch download files only — never the browser index / player UI.
-        var fileOnly = false
         if loopback {
             resolvedPath = cleanPath
-            servesIndex = false
         } else {
+            // The only non-loopback access allowed is an active AirPlay session:
+            // it presents the per-playback token as the first path segment and
+            // may fetch download files only, scoped to the playing item's folder.
             let segments = cleanPath.split(separator: "/", omittingEmptySubsequences: false)
             let first = segments.first.map(String.init) ?? ""
-            if !airplayToken.isEmpty, first == airplayToken {
-                // AirPlay receiver (or the device dialing its own LAN IP): no
-                // password, files only, scoped to the playing item's folder.
-                let rest = segments.dropFirst().joined(separator: "/")
-                guard airplayPathPrefix.isEmpty || rest.hasPrefix(airplayPathPrefix) else {
-                    send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-                    return
-                }
-                fileOnly = true
-                resolvedPath = rest
-                servesIndex = false
-            } else {
-                guard lanEnabled, !lanToken.isEmpty else {
-                    send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-                    return
-                }
-                guard first == lanToken else {
-                    send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-                    return
-                }
-                // Require a password (HTTP Basic Auth). A missing/empty configured
-                // password locks LAN access entirely; a wrong/absent header makes
-                // the browser show its native password prompt.
-                guard !lanPassword.isEmpty, basicAuthMatches(lines: lines) else {
-                    send(status: "401 Unauthorized", on: connection,
-                         extra: ["WWW-Authenticate": "Basic realm=\"Project Obsidian\", charset=\"UTF-8\""],
-                         then: { connection.cancel() })
-                    return
-                }
-                // Drop the token segment.
-                resolvedPath = segments.dropFirst().joined(separator: "/")
-                // Index page is served when the LAN peer asks for "/<token>/" or
-                // "/<token>" or "/<token>/index.html".
-                servesIndex = resolvedPath.isEmpty || resolvedPath == "index.html"
+            guard !airplayToken.isEmpty, first == airplayToken else {
+                send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
+                return
             }
-        }
-
-        if servesIndex {
-            serveIndex(on: connection)
-            return
-        }
-
-        // Two virtual routes for browser playback:
-        //   /<token>/hls.min.js     — the bundled hls.js library
-        //   /<token>/<key>/play.html — a player page wrapping that key
-        if !loopback, !fileOnly, resolvedPath == "hls.min.js" {
-            serveBundledHLSJS(on: connection)
-            return
-        }
-        if !loopback, !fileOnly, resolvedPath.hasSuffix("/play.html") {
-            let key = String(resolvedPath.dropLast("/play.html".count))
-            servePlayerPage(key: key, on: connection)
-            return
-        }
-        if !loopback, !fileOnly, resolvedPath.hasSuffix("/progress") {
-            let key = String(resolvedPath.dropLast("/progress".count))
-            serveProgress(key: key, query: query, on: connection)
-            return
-        }
-
-        // Resolve and contain to documentsRoot.
-        let fileURL = documentsRoot.appendingPathComponent(resolvedPath).standardizedFileURL
-        let rootPath = documentsRoot.standardizedFileURL.path
-        guard fileURL.path.hasPrefix(rootPath + "/") || fileURL.path == rootPath else {
-            send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
-            return
-        }
-
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue else {
-            send(status: "404 Not Found", on: connection, then: { connection.cancel() })
-            return
-        }
-
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-              let totalSize = (attrs[.size] as? NSNumber)?.int64Value else {
-            send(status: "500 Internal Server Error", on: connection, then: { connection.cancel() })
-            return
-        }
-
-        // Parse a Range header if present.
-        var rangeStart: Int64 = 0
-        var rangeEnd: Int64 = totalSize - 1
-        var isRange = false
-        for line in lines.dropFirst() {
-            if line.lowercased().hasPrefix("range:") {
-                let spec = line.dropFirst("range:".count).trimmingCharacters(in: .whitespaces)
-                guard spec.hasPrefix("bytes=") else { continue }
-                let pair = spec.dropFirst("bytes=".count).split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
-                if !pair.isEmpty, let s = Int64(pair[0]) {
-                    rangeStart = s
-                    if pair.count > 1, let e = Int64(pair[1]), e >= s {
-                        rangeEnd = min(e, totalSize - 1)
-                    } else {
-                        rangeEnd = totalSize - 1
-                    }
-                    isRange = true
-                }
-                break
+            let rest = segments.dropFirst().joined(separator: "/")
+            guard airplayPathPrefix.isEmpty || rest.hasPrefix(airplayPathPrefix) else {
+                send(status: "403 Forbidden", on: connection, then: { connection.cancel() })
+                return
             }
-        }
-        if rangeStart < 0 || rangeStart > rangeEnd || rangeStart >= totalSize {
-            send(status: "416 Range Not Satisfiable", on: connection,
-                 extra: ["Content-Range": "bytes */\(totalSize)"],
-                 then: { connection.cancel() })
-            return
+            resolvedPath = rest
         }
 
-        let length = rangeEnd - rangeStart + 1
-        // Treat "Range covers the whole file" as a normal 200 — Chrome adds
-        // `Range: bytes=0-` to most media requests, and a few HLS clients
-        // misbehave when manifest responses come back as 206.
-        let partial = isRange && (rangeStart != 0 || rangeEnd != totalSize - 1)
-        var extraHeaders: [String: String] = [
-            "Content-Type": Self.mimeType(forExtension: fileURL.pathExtension),
-            "Content-Length": "\(length)",
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "no-store",
-        ]
-        if partial {
-            extraHeaders["Content-Range"] = "bytes \(rangeStart)-\(rangeEnd)/\(totalSize)"
+        switch LocalHLSFileResponse.make(resolvedPath: resolvedPath, documentsRoot: documentsRoot, requestLines: lines) {
+        case .success(let response):
+            sendHeaders(status: response.status, extra: response.headers, on: connection) { [weak self] in
+                self?.streamFile(at: response.fileURL, start: response.rangeStart, length: response.length, on: connection)
+            }
+        case .failure(let error):
+            send(status: error.status, on: connection, extra: error.extra, then: { connection.cancel() })
         }
-
-        let status = partial ? "206 Partial Content" : "200 OK"
-        sendHeaders(status: status, extra: extraHeaders, on: connection) { [weak self] in
-            self?.streamFile(at: fileURL, start: rangeStart, length: length, on: connection)
-        }
-    }
-
-    /// True when the request carries an `Authorization: Basic` header whose
-    /// password component equals the configured LAN password. The username is
-    /// ignored (the browser still asks for one — any value works).
-    private func basicAuthMatches(lines: [String]) -> Bool {
-        guard let header = lines.dropFirst().first(where: { $0.lowercased().hasPrefix("authorization:") }) else {
-            return false
-        }
-        let value = header.drop(while: { $0 != ":" }).dropFirst().trimmingCharacters(in: .whitespaces)
-        guard value.lowercased().hasPrefix("basic ") else { return false }
-        let b64 = value.dropFirst("basic ".count).trimmingCharacters(in: .whitespaces)
-        guard let data = Data(base64Encoded: b64),
-              let creds = String(data: data, encoding: .utf8) else { return false }
-        // creds is "username:password" — compare only the password part.
-        guard let colon = creds.firstIndex(of: ":") else { return false }
-        let password = String(creds[creds.index(after: colon)...])
-        return password == lanPassword
     }
 
     /// Determine if the remote endpoint is on the loopback interface
@@ -549,100 +362,6 @@ final class LocalHLSServer: @unchecked Sendable {
         }
     }
 
-    private func serveBundledHLSJS(on connection: NWConnection) {
-        guard let url = Bundle.main.url(forResource: "hls.min", withExtension: "js"),
-              let data = try? Data(contentsOf: url) else {
-            send(status: "404 Not Found", on: connection, then: { connection.cancel() })
-            return
-        }
-        let extra: [String: String] = [
-            "Content-Type": "application/javascript; charset=utf-8",
-            "Content-Length": "\(data.count)",
-            // Same file every session — let the browser cache it aggressively.
-            "Cache-Control": "public, max-age=86400",
-        ]
-        sendHeaders(status: "200 OK", extra: extra, on: connection) {
-            connection.send(content: data, contentContext: .finalMessage, isComplete: true,
-                            completion: .contentProcessed { _ in connection.cancel() })
-        }
-    }
-
-    private func servePlayerPage(key: String, on connection: NWConnection) {
-        // Verify the download actually exists before serving the player — no
-        // point pointing a video tag at a 404.
-        let master = documentsRoot.appendingPathComponent(key).appendingPathComponent("master.m3u8")
-        guard FileManager.default.fileExists(atPath: master.path) else {
-            send(status: "404 Not Found", on: connection, then: { connection.cancel() })
-            return
-        }
-        let snapshot = catalog.first(where: { $0.key == key })
-        let title = snapshot.map { snap -> String in
-            if snap.mediaType == "tv" { return "\(snap.title) — S\(snap.season) E\(snap.episode)" }
-            return snap.title
-        } ?? key
-        // Resume rule mirrors the iOS app: seed startAt from saved progress
-        // (past 15s) until the title is *actually* finished (100%) — being past
-        // the "watched" threshold still resumes.
-        var startAt = 0.0
-        if let snap = snapshot,
-           let resume = TVLogic.resumeStart(position: snap.position, duration: snap.duration) {
-            startAt = resume
-        }
-        let html = Self.renderPlayerHTML(title: title, startAt: startAt)
-        let bodyData = Data(html.utf8)
-        let extra: [String: String] = [
-            "Content-Type": "text/html; charset=utf-8",
-            "Content-Length": "\(bodyData.count)",
-            "Cache-Control": "no-store",
-        ]
-        sendHeaders(status: "200 OK", extra: extra, on: connection) {
-            connection.send(content: bodyData, contentContext: .finalMessage, isComplete: true,
-                            completion: .contentProcessed { _ in connection.cancel() })
-        }
-    }
-
-    /// Sink for progress reports the browser player POSTs every few seconds.
-    /// Doubles as the "ended" signal: when the page unloads, fetch keepalive
-    /// fires one last update with the final position.
-    private func serveProgress(key: String, query: String, on connection: NWConnection) {
-        // Always reply quickly — these requests happen every ~10s and the
-        // browser doesn't care about the body.
-        defer {
-            let extra: [String: String] = [
-                "Content-Length": "0",
-                "Cache-Control": "no-store",
-            ]
-            sendHeaders(status: "204 No Content", extra: extra, on: connection) {
-                connection.cancel()
-            }
-        }
-
-        // key format: "<mediaTypeRaw>-<tmdbId>-<season>-<episode>"
-        let parts = key.split(separator: "-")
-        guard parts.count == 4,
-              let tmdbId = Int(parts[1]),
-              let season = Int(parts[2]),
-              let episode = Int(parts[3]) else { return }
-        let params = Self.parseQuery(query)
-        guard let position = params["p"].flatMap(Double.init),
-              let duration = params["d"].flatMap(Double.init),
-              position.isFinite, duration.isFinite else { return }
-
-        let snap = catalog.first(where: { $0.key == key })
-        let report = LANProgressReport(
-            tmdbId: tmdbId,
-            mediaType: String(parts[0]),
-            season: season,
-            episode: episode,
-            position: max(0, position),
-            duration: max(0, duration),
-            title: snap?.title,
-            poster: snap?.poster,
-            backdrop: snap?.backdrop
-        )
-        progressHandler?(report)
-    }
-
     private static func parseQuery(_ query: String) -> [String: String] {
         var out: [String: String] = [:]
         for pair in query.split(separator: "&") {
@@ -653,22 +372,6 @@ final class LocalHLSServer: @unchecked Sendable {
             out[k] = v
         }
         return out
-    }
-
-    private func serveIndex(on connection: NWConnection) {
-        let snapshot = catalog
-        let token = lanToken
-        let html = Self.renderIndexHTML(items: snapshot, token: token)
-        let bodyData = Data(html.utf8)
-        let extra: [String: String] = [
-            "Content-Type": "text/html; charset=utf-8",
-            "Content-Length": "\(bodyData.count)",
-            "Cache-Control": "no-store",
-        ]
-        sendHeaders(status: "200 OK", extra: extra, on: connection) {
-            connection.send(content: bodyData, contentContext: .finalMessage, isComplete: true,
-                            completion: .contentProcessed { _ in connection.cancel() })
-        }
     }
 
     /// Stream a (possibly partial) file via 64KB chunks, then close.
@@ -782,13 +485,12 @@ final class LocalHLSServer: @unchecked Sendable {
     /// quality-capped; everything else is passed through. The whole response is
     /// buffered — playlists are tiny and media segments are a few MB, matching
     /// the former Node proxy's per-segment behaviour.
-    private func handleLiveProxy(upstream: ProxyUpstream, forceHeight: Int, client: String,
+    private func handleLiveProxy(upstream: ProxyUpstream, token: String, forceHeight: Int, client: String,
                                  requestLines: [String], on connection: NWConnection) {
         guard let url = URL(string: upstream.url) else {
             send(status: "502 Bad Gateway", on: connection, then: { connection.cancel() })
             return
         }
-        let token = liveProxyToken
         let rangeHeader = Self.headerValue("range", in: requestLines)
         let acceptHeader = Self.headerValue("accept", in: requestLines) ?? "*/*"
 
@@ -870,266 +572,9 @@ final class LocalHLSServer: @unchecked Sendable {
                         completion: .contentProcessed { _ in connection.cancel() })
     }
 
-    // MARK: - Helpers
-
-    private static func mimeType(forExtension ext: String) -> String {
-        switch ext.lowercased() {
-        case "m3u8", "m3u": return "application/vnd.apple.mpegurl"
-        case "ts": return "video/mp2t"
-        case "m4s", "mp4", "m4a", "m4v": return "video/mp4"
-        case "aac": return "audio/aac"
-        case "vtt": return "text/vtt"
-        case "webvtt": return "text/vtt"
-        case "key", "bin": return "application/octet-stream"
-        case "html", "htm": return "text/html; charset=utf-8"
-        case "js": return "application/javascript; charset=utf-8"
-        default: return "application/octet-stream"
-        }
-    }
-
-    /// Tiny styled list of completed downloads, with one m3u8 link per entry.
-    /// VLC and Safari can paste the link directly; other browsers may need
-    /// hls.js, which is out of scope for this minimal index.
-    private static func renderIndexHTML(items: [DownloadEntrySnapshot], token: String) -> String {
-        let completed = items.filter { $0.isCompleted }
-        let movies = completed.filter { $0.mediaType == "movie" }
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        let tv = completed.filter { $0.mediaType == "tv" }
-            .sorted {
-                if $0.title != $1.title { return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-                if $0.season != $1.season { return $0.season < $1.season }
-                return $0.episode < $1.episode
-            }
-
-        func escape(_ s: String) -> String {
-            s.replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-                .replacingOccurrences(of: "\"", with: "&quot;")
-        }
-        func playerLink(for snap: DownloadEntrySnapshot) -> String {
-            "/\(token)/\(snap.key)/play.html"
-        }
-        func manifestLink(for snap: DownloadEntrySnapshot) -> String {
-            "/\(token)/\(snap.key)/master.m3u8"
-        }
-        func row(_ label: String, _ snap: DownloadEntrySnapshot) -> String {
-            """
-            <li>
-              <span class="t">\(label)</span>
-              <a class="primary" href="\(playerLink(for: snap))">Guarda</a>
-              <a class="alt" href="\(manifestLink(for: snap))">.m3u8 (VLC)</a>
-            </li>
-            """
-        }
-
-        var rows = ""
-        if !movies.isEmpty {
-            rows += "<h2>Film</h2><ul>"
-            for m in movies { rows += row(escape(m.title), m) }
-            rows += "</ul>"
-        }
-        if !tv.isEmpty {
-            let groups = Dictionary(grouping: tv, by: { $0.title })
-                .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
-            rows += "<h2>Serie TV</h2>"
-            for (title, episodes) in groups {
-                rows += "<h3>\(escape(title))</h3><ul>"
-                for e in episodes {
-                    let suffix = e.episodeTitle.map { " — \(escape($0))" } ?? ""
-                    let label = "S\(e.season) E\(e.episode)\(suffix)"
-                    rows += row(label, e)
-                }
-                rows += "</ul>"
-            }
-        }
-        if rows.isEmpty {
-            rows = "<p class=\"empty\">Nessun download disponibile.</p>"
-        }
-
-        return """
-        <!doctype html>
-        <html lang="it">
-        <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>Project Obsidian — Download condivisi</title>
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-                 background: #111; color: #eee; max-width: 760px; margin: 0 auto; padding: 24px 18px; }
-          h1 { margin: 0 0 4px; font-size: 22px; }
-          .hint { color: #999; font-size: 13px; margin: 0 0 18px; }
-          h2 { font-size: 16px; letter-spacing: .05em; text-transform: uppercase; color: #bbb;
-               margin: 24px 0 8px; }
-          h3 { font-size: 15px; margin: 16px 0 6px; color: #fff; }
-          ul { list-style: none; padding: 0; margin: 0; }
-          li { padding: 10px 0; border-bottom: 1px solid #222;
-               display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-          li .t { flex: 1 1 60%; min-width: 0; }
-          a { text-decoration: none; }
-          a.primary { background: #e50914; color: #fff;
-                      padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 13px; }
-          a.primary:hover { filter: brightness(1.1); }
-          a.alt { color: #999; font-size: 12px; }
-          a.alt:hover { color: #ccc; text-decoration: underline; }
-          .empty { color: #888; }
-        </style>
-        </head>
-        <body>
-        <h1>Project Obsidian — Download</h1>
-        <p class="hint">"Guarda" apre direttamente nel browser. Il link ".m3u8" è per VLC (Media → Apri flusso di rete).</p>
-        \(rows)
-        </body>
-        </html>
-        """
-    }
-
-    /// Minimal HTML player wrapping the bundled hls.js. The page lives at
-    /// `/<token>/<key>/play.html`, so relative `master.m3u8` resolves to
-    /// `/<token>/<key>/master.m3u8`, `../hls.min.js` to `/<token>/hls.min.js`,
-    /// and `progress?p=…&d=…` round-trips to the Library on the iOS side.
-    private static func renderPlayerHTML(title: String, startAt: Double) -> String {
-        let safe = title
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-        let resumeJS = startAt > 0 ? String(format: "%.3f", startAt) : "0"
-        return """
-        <!doctype html>
-        <html lang="it">
-        <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>\(safe) — Project Obsidian</title>
-        <style>
-          html, body { margin: 0; padding: 0; background: #000; height: 100%; }
-          body { display: flex; flex-direction: column; }
-          header { color: #ccc; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-                   padding: 8px 14px; display: flex; align-items: center; gap: 10px; }
-          header a { color: #888; text-decoration: none; }
-          header a:hover { color: #fff; }
-          .title { color: #fff; font-weight: 600; }
-          .stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
-          video { width: 100%; height: 100%; background: #000; }
-          .err { color: #fff; font: 14px/1.4 system-ui, sans-serif; padding: 24px; text-align: center; }
-        </style>
-        </head>
-        <body>
-        <header>
-          <a href="../">← Indietro</a>
-          <span class="title">\(safe)</span>
-        </header>
-        <div class="stage"><video id="v" controls autoplay playsinline></video></div>
-        <script src="../hls.min.js"></script>
-        <script>
-        (function () {
-          var v = document.getElementById("v");
-          var src = "master.m3u8";
-          var startAt = \(resumeJS);
-          var resumed = false;
-          function fail(msg) {
-            v.remove();
-            var e = document.createElement("div");
-            e.className = "err"; e.textContent = msg;
-            document.querySelector(".stage").appendChild(e);
-          }
-          function resumeIfNeeded() {
-            if (resumed || startAt <= 0) return;
-            resumed = true;
-            try { v.currentTime = startAt; } catch (_) {}
-          }
-          // Periodic + on-unload progress reporting. fetch with keepalive
-          // lets the last call survive the page closing so the saved
-          // position matches where the user actually stopped.
-          var lastSent = -1;
-          function reportProgress(force) {
-            var p = v.currentTime, d = v.duration;
-            if (!isFinite(p) || p < 0) return;
-            if (!isFinite(d) || d <= 0) d = 0;
-            if (!force && Math.abs(p - lastSent) < 3) return;
-            lastSent = p;
-            try {
-              fetch("progress?p=" + p.toFixed(3) + "&d=" + d.toFixed(3),
-                    { keepalive: true }).catch(function () {});
-            } catch (_) {}
-          }
-          setInterval(function () { reportProgress(false); }, 10000);
-          window.addEventListener("pagehide", function () { reportProgress(true); });
-          window.addEventListener("beforeunload", function () { reportProgress(true); });
-          v.addEventListener("pause", function () { reportProgress(true); });
-          v.addEventListener("ended", function () { reportProgress(true); });
-
-          // hls.js takes precedence over native because some browsers
-          // (Chrome on macOS Sonoma+) advertise HLS support via canPlayType
-          // but the actual decoder behaviour is inconsistent. hls.js via
-          // Media Source Extensions works uniformly everywhere.
-          if (window.Hls && Hls.isSupported()) {
-            var hls = new Hls({ enableWorker: true, lowLatencyMode: false, startPosition: startAt });
-            hls.loadSource(src);
-            hls.attachMedia(v);
-            hls.on(Hls.Events.MANIFEST_PARSED, function () {
-              v.play().catch(function () {});
-            });
-            hls.on(Hls.Events.ERROR, function (_e, data) {
-              if (data && data.fatal) {
-                fail("Errore HLS: " + (data.details || data.type) +
-                     (data.response ? " (HTTP " + data.response.code + ")" : ""));
-              }
-            });
-          } else if (v.canPlayType("application/vnd.apple.mpegurl") === "probably") {
-            // Safari path — native HLS, no hls.js needed. We require
-            // "probably" rather than the weaker "maybe" some Chromes report.
-            v.src = src;
-            v.addEventListener("loadedmetadata", resumeIfNeeded, { once: true });
-            v.play().catch(function () {});
-          } else {
-            fail("hls.js non caricato e nessun supporto HLS nativo. Controlla che la libreria sia raggiungibile e ricarica.");
-          }
-        })();
-        </script>
-        </body>
-        </html>
-        """
-    }
-
     enum ServerError: Error {
         case cancelled
         case invalidPath
+        case timedOut
     }
-}
-
-/// Sendable, thread-safe view of a download row used by the HTML index and
-/// the LAN-progress callback. The catalog is updated by `DownloadManager`
-/// whenever the library mutates.
-struct DownloadEntrySnapshot: Sendable {
-    let key: String
-    let title: String
-    let mediaType: String  // "movie" or "tv"
-    let season: Int
-    let episode: Int
-    let episodeTitle: String?
-    let poster: String?
-    let backdrop: String?
-    let isCompleted: Bool
-    /// Saved playback position (seconds) for this download, or 0 if none.
-    /// Refreshed by `DownloadManager` whenever the library changes so the
-    /// browser player can resume off the latest value without an async hop.
-    let position: Double
-    let duration: Double
-}
-
-/// Position update reported by a LAN viewer (browser player). Forwarded to
-/// `Library.saveProgress` on the main actor so "Continua a guardare" and
-/// history reflect off-device playback too.
-struct LANProgressReport: Sendable {
-    let tmdbId: Int
-    let mediaType: String
-    let season: Int
-    let episode: Int
-    let position: Double
-    let duration: Double
-    let title: String?
-    let poster: String?
-    let backdrop: String?
 }

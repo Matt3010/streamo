@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// A single overflow toolbar button (the brand-tinted "•••" glyph) that opens a
-/// native `Menu` with the utility actions: Download, Cronologia,
-/// Impostazioni. A `Menu` (rather than a popover) is used because its open/close
-/// is reliable and it dismisses cleanly before the destination sheet presents.
+/// native `Menu` with the utility actions. A `Menu` (rather than a popover) is
+/// used because its open/close is reliable and it dismisses cleanly before the
+/// destination sheet presents.
 ///
 /// The live download status (count badge, progress %, failure warning) is shown
 /// both on the collapsed button AND inside the Download row, so it's visible
@@ -48,12 +48,12 @@ struct ToolbarActions: ViewModifier {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button { nav.presentedSheet = .anime } label: {
+                            Label("Anime", systemImage: "sparkles.tv.fill")
+                        }
                         Button { nav.presentedSheet = .downloads } label: {
                             Label(downloadRowTitle(count: count, percent: percent, reconstructing: reconstructing),
                                   systemImage: failed ? "exclamationmark.triangle.fill" : "arrow.down.circle")
-                        }
-                        Button { nav.presentedSheet = .history } label: {
-                            Label("Cronologia", systemImage: "clock.arrow.circlepath")
                         }
                         Button { nav.presentedSheet = .settings } label: {
                             Label("Impostazioni", systemImage: "gearshape")

@@ -144,8 +144,9 @@ struct AnimeDetailView: View {
 
     private func episodeCell(_ ep: AUEpisode, coordinate: Int) -> some View {
         let prog = library.progress(anime.id, .tv, season: 1, episode: coordinate, source: .animeUnity)
-        let pct = (prog?.duration ?? 0) > 0 ? min(1, (prog?.position ?? 0) / prog!.duration) : 0
-        let watched = pct >= TVLogic.watchedThreshold
+        let pos = prog?.position ?? 0, dur = prog?.duration ?? 0
+        let pct = dur > 0 ? min(1, pos / dur) : 0
+        let watched = TVLogic.isWatched(position: pos, duration: dur)
         let inProgress = pct > 0 && !watched
         return Button {
             playEpisode(ep, coordinate: coordinate, resumeAt: watched ? 0 : (prog?.position ?? 0))

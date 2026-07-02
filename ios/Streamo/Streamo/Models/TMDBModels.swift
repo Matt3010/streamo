@@ -103,35 +103,6 @@ struct TmdbSeasonDetails: Codable, Sendable {
     let episodes: [TmdbEpisodeDetail]?
 }
 
-struct TmdbReviewAuthorDetails: Codable, Hashable, Sendable {
-    let username: String?
-    let name: String?
-    let avatarPath: String?
-    let rating: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case username, name, rating
-        case avatarPath = "avatar_path"
-    }
-}
-
-struct TmdbReview: Codable, Hashable, Identifiable, Sendable {
-    let id: String
-    let author: String
-    let content: String
-    let createdAt: String?
-    let updatedAt: String?
-    let url: String?
-    let authorDetails: TmdbReviewAuthorDetails?
-
-    enum CodingKeys: String, CodingKey {
-        case id, author, content, url
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-        case authorDetails = "author_details"
-    }
-}
-
 /// The big one — TMDB movie/tv item, used for both list cards and detail.
 struct TmdbItem: Codable, Hashable, Identifiable, Sendable {
     let id: Int

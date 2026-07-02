@@ -1,45 +1,23 @@
 import SwiftUI
 import UIKit
 
-/// Visual identity: dark background + a user-selectable accent (default = the
-/// web brand red #E50914). `red`/`redBright` are computed from the chosen
-/// accent in AppSettings, so picking a new colour re-tints the whole app —
-/// every view reading `Theme.red` in its body observes the accent and refreshes.
+/// Visual identity: dark background + a fixed brand accent (the web brand red
+/// #E50914). `red`/`redBright` derive from `AppSettings.defaultAccent`.
 enum Theme {
     /// The accent — historical name kept so existing call sites don't change.
     static var red: Color {
-        let s = AppSettings.shared
-        return Color(red: s.accentR, green: s.accentG, blue: s.accentB)
+        let a = AppSettings.defaultAccent
+        return Color(red: a.r, green: a.g, blue: a.b)
     }
     /// A lighter accent for the primary-button gradient's second stop.
     static var redBright: Color {
-        let s = AppSettings.shared
-        return Color(red: min(1, s.accentR + 0.22), green: min(1, s.accentG + 0.18), blue: min(1, s.accentB + 0.16))
+        let a = AppSettings.defaultAccent
+        return Color(red: min(1, a.r + 0.22), green: min(1, a.g + 0.18), blue: min(1, a.b + 0.16))
     }
     /// Very dark accent for the ambient page background wash (kept subtle).
     static var accentWash: Color {
-        let s = AppSettings.shared
-        return Color(red: s.accentR * 0.13, green: s.accentG * 0.13, blue: s.accentB * 0.13)
-    }
-
-    /// Preset swatches offered in Settings.
-    static let accentPresets: [Color] = [
-        Color(red: 0.898, green: 0.035, blue: 0.078),  // default red
-        Color(red: 1.0, green: 0.42, blue: 0.21),      // orange
-        Color(red: 0.96, green: 0.76, blue: 0.06),     // amber
-        Color(red: 0.20, green: 0.78, blue: 0.35),     // green
-        Color(red: 0.04, green: 0.52, blue: 1.0),      // blue
-        Color(red: 0.69, green: 0.32, blue: 0.87),     // purple
-        Color(red: 1.0, green: 0.18, blue: 0.57),      // pink
-    ]
-
-    /// Persist a chosen accent (extracts sRGB components from the Color).
-    static func setAccent(_ color: Color) {
-        let c = color.resolve(in: EnvironmentValues())
-        let s = AppSettings.shared
-        s.accentR = Double(c.red); s.accentG = Double(c.green); s.accentB = Double(c.blue)
-        UIRefreshControl.appearance().tintColor =
-            UIColor(red: CGFloat(c.red), green: CGFloat(c.green), blue: CGFloat(c.blue), alpha: 1)
+        let a = AppSettings.defaultAccent
+        return Color(red: a.r * 0.13, green: a.g * 0.13, blue: a.b * 0.13)
     }
 }
 
@@ -79,26 +57,6 @@ struct LiquidGlassBackground<S: Shape>: View {
         } else {
             shape.fill(.ultraThinMaterial)
         }
-    }
-}
-
-/// Popularity badge ("🔥 1.234") shown on the detail page — port of the web
-/// MediaRankBadge. `value` is the pre-formatted popularity string.
-struct MediaRankBadge: View {
-    let value: String
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "flame.fill").foregroundStyle(.orange)
-            Text(value).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background { LiquidGlassBackground(shape: Capsule(), tint: Theme.red.opacity(0.10)) }
-        .background(.black.opacity(0.28), in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
-        // Keep its intrinsic size so a long nav-bar title truncates instead of
-        // squashing / wrapping the pill.
-        .fixedSize()
     }
 }
 
