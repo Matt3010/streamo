@@ -1,12 +1,8 @@
 package com.streamo.app.ui.common
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -33,9 +29,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import coil.compose.AsyncImage
+import com.streamo.app.ui.theme.AppShapes
 
 @Composable
 fun MediaCard(
@@ -51,45 +46,15 @@ fun MediaCard(
     onClick: () -> Unit = {}
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.65f,
-            stiffness = 350f,
-            visibilityThreshold = 0.001f
-        ),
-        label = "scale"
-    )
-
-    val elevation by animateFloatAsState(
-        targetValue = if (isPressed) 16f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.7f,
-            stiffness = 300f,
-            visibilityThreshold = 0.1f
-        ),
-        label = "elevation"
-    )
-
-    val tintAlpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.25f else 0f,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = 400f,
-            visibilityThreshold = 0.01f
-        ),
-        label = "tint"
-    )
+    val pf = rememberPressFeedback(interactionSource)
 
     Column(
         modifier = modifier
             .width(width)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.shadowElevation = elevation
+                scaleX = pf.scale
+                scaleY = pf.scale
+                this.shadowElevation = pf.elevation
             }
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
@@ -97,7 +62,7 @@ fun MediaCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(aspectRatio)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(AppShapes.md)
                 .background(Color(0xFF1E1E1E))
         ) {
             if (posterUrl != null) {
@@ -114,7 +79,7 @@ fun MediaCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.White.copy(alpha = tintAlpha))
+                    .background(Color.White.copy(alpha = pf.tint))
             )
             // Overlay caller (badge ITA, ecc.) — dentro il poster clippato.
             overlayContent()
@@ -163,7 +128,7 @@ fun SkeletonCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(AppShapes.md)
                 .background(Color(0xFF1E1E1E))
         )
         Column(
@@ -175,7 +140,7 @@ fun SkeletonCard(
                 modifier = Modifier
                     .fillMaxWidth(0.7f)
                     .height(12.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppShapes.xs)
                     .background(Color(0xFF1E1E1E))
             )
             Box(

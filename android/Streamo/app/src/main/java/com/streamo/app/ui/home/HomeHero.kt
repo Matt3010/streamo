@@ -1,8 +1,11 @@
 package com.streamo.app.ui.home
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,10 +37,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import com.streamo.app.ui.common.LocalReducedEffects
+import com.streamo.app.ui.common.rememberPressFeedback
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
@@ -254,6 +260,7 @@ private fun HeroControls(
     onTogglePlay: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val reduced = LocalReducedEffects.current
     Box(modifier = modifier) {
         Row(
             modifier = Modifier.align(Alignment.Center),
@@ -263,15 +270,27 @@ private fun HeroControls(
                 val selected = index == currentPage
                 val width by animateDpAsState(
                     targetValue = if (selected) 22.dp else 7.dp,
+                    animationSpec = if (reduced) snap() else spring(dampingRatio = 0.75f, stiffness = 400f),
                     label = "indicatorWidth"
+                )
+                val dotInteractionSource = remember { MutableInteractionSource() }
+                val dotPf = rememberPressFeedback(
+                    interactionSource = dotInteractionSource,
+                    pressedScale = 0.85f,
+                    pressedElevation = 0f,
+                    pressedTint = 0f
                 )
                 Box(
                     modifier = Modifier
+                        .graphicsLayer(scaleX = dotPf.scale, scaleY = dotPf.scale)
                         .width(width)
                         .height(7.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = if (selected) 0.3f else 0.45f))
-                        .clickable { onPageSelected(index) }
+                        .clickable(
+                            interactionSource = dotInteractionSource,
+                            indication = null
+                        ) { onPageSelected(index) }
                 ) {
                     if (selected) {
                         // Cresce dalla dimensione del cap (7) al pieno (22):
@@ -289,13 +308,25 @@ private fun HeroControls(
             }
         }
 
+        val playInteractionSource = remember { MutableInteractionSource() }
+        val playPf = rememberPressFeedback(
+            interactionSource = playInteractionSource,
+            pressedScale = 0.85f,
+            pressedElevation = 0f,
+            pressedTint = 0f
+        )
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
+                .graphicsLayer(scaleX = playPf.scale, scaleY = playPf.scale)
                 .size(24.dp)
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.4f))
-                .clickable(onClick = onTogglePlay),
+                .clickable(
+                    interactionSource = playInteractionSource,
+                    indication = null,
+                    onClick = onTogglePlay
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(

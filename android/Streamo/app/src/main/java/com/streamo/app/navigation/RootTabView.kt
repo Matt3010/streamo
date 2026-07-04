@@ -1,36 +1,19 @@
 package com.streamo.app.navigation
 
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -48,13 +31,9 @@ import androidx.navigation.compose.rememberNavController
 import com.streamo.app.player.cast.CastBannerViewModel
 import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.common.DialogHostState
-import com.streamo.app.ui.common.GlassAlertDialog
-import com.streamo.app.ui.common.GlassDefaults
-import com.streamo.app.ui.common.GlassDialogDestructiveButton
-import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.LocalDialogHost
 import com.streamo.app.ui.common.LocalHazeState
-import com.streamo.app.ui.common.glassCapsule
+import com.streamo.app.ui.common.LocalReducedEffects
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
@@ -82,6 +61,8 @@ fun RootTabView() {
     val bottomInset = if (bottomBarVisible) with(density) { barHeightPx.toDp() } else 0.dp
     val hazeState = remember { HazeState() }
     val dialogHost = remember { DialogHostState() }
+    // "Modalità prestazioni": disabilita lo slide della navbar.
+    val reduced = LocalReducedEffects.current
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
@@ -143,14 +124,23 @@ fun RootTabView() {
                 }
             }
 
-            if (bottomBarVisible) {
+            // Navbar glass: slide dal basso quando appare/sparisce (apertura/chiusura
+            // player). Con la modalità prestazioni istantanea (None).
+            AnimatedVisibility(
+                visible = bottomBarVisible,
+                enter = if (reduced) EnterTransition.None else slideInVertically { it },
+                exit = if (reduced) ExitTransition.None else slideOutVertically { it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
                 GlassBottomBar(
                     hazeState = hazeState,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .onSizeChanged { barHeightPx = it.height },
+                    modifier = Modifier.onSizeChanged { barHeightPx = it.height },
                     selectedRoute = { tab -> currentDestination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true },
                     onSelect = { tab ->
+                        // Tab già attivo in cima allo stack: no-op. Altrimenti il
+                        // popUpTo+singoloTop ricrea la destinazione e riproduce la
+                        // transizione di navigazione come se si riaprisse la pagina.
+                        if (currentDestination?.hasRoute(tab.route::class) == true) return@GlassBottomBar
                         navController.navigate(tab.route) {
                             popUpTo(navController.graph.findStartDestination().id)
                             launchSingleTop = true
@@ -162,99 +152,4 @@ fun RootTabView() {
     }
 }
 
-/**
- * Bottom bar in stile "glass": definita in `GlassBottomBar.kt` e condivisa
- * fra telefono ([RootTabView]) e tablet in portrait ([TabletRootView]).
- */
-@Composable
-private fun CastBanner(
-    hazeState: HazeState,
-    dialogHost: DialogHostState,
-    title: String,
-    tvName: String,
-    isPlaying: Boolean,
-    onClick: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var showStopConfirm by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .glassCapsule(hazeState, GlassDefaults.Shape)
-    ) {
-        Row(
-            modifier = Modifier
-                .clickable(onClick = onClick)
-                .padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Cast,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Trasmissione su $tvName",
-                    color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            IconButton(onClick = onTogglePlay) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pausa" else "Riprendi",
-                    tint = Color.White
-                )
-            }
-            IconButton(onClick = { showStopConfirm = true }) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Interrompi",
-                    tint = Color.White
-                )
-            }
-        }
-    }
-
-    if (showStopConfirm) {
-        CompositionLocalProvider(
-            LocalHazeState provides hazeState,
-            LocalDialogHost provides dialogHost
-        ) {
-            GlassAlertDialog(
-                onDismissRequest = { showStopConfirm = false },
-                title = "Interrompi trasmissione",
-                text = { Text("Vuoi interrompere la trasmissione su $tvName?") },
-                confirmButton = {
-                    GlassDialogDestructiveButton(
-                        onClick = {
-                            showStopConfirm = false
-                            onStop()
-                        }
-                    ) {
-                        Text("Interrompi")
-                    }
-                },
-                dismissButton = {
-                    GlassDialogNeutralButton(onClick = { showStopConfirm = false }) {
-                        Text("Annulla")
-                    }
-                }
-            )
-        }
-    }
-}
+// CastBanner condiviso: vedi navigation/CastBanner.kt

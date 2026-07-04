@@ -3,8 +3,11 @@ package com.streamo.app.navigation
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,17 +19,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Animation
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Bookmark
@@ -34,7 +34,6 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -70,13 +69,10 @@ import androidx.navigation.compose.rememberNavController
 import com.streamo.app.player.cast.CastBannerViewModel
 import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.common.DialogHostState
-import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassDefaults
-import com.streamo.app.ui.common.GlassDialogDestructiveButton
-import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.LocalDialogHost
 import com.streamo.app.ui.common.LocalHazeState
-import com.streamo.app.ui.common.glassCapsule
+import com.streamo.app.ui.common.LocalReducedEffects
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
@@ -172,6 +168,8 @@ private fun TabletPortraitShell(
     var barHeightPx by remember { mutableStateOf(0) }
     val density = LocalDensity.current
     val bottomInset = if (chromeVisible) with(density) { barHeightPx.toDp() } else 0.dp
+    // "Modalità prestazioni": disabilita lo slide della navbar.
+    val reduced = LocalReducedEffects.current
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Sorgente del blur: tutto ciò che sta sotto la barra glass.
@@ -228,17 +226,27 @@ private fun TabletPortraitShell(
                         .padding(12.dp)
                 )
             }
+        }
 
-            // Navbar in basso, identica al telefono.
+        // Navbar in basso, identica al telefono: slide dal basso quando
+        // appare/sparisce (apertura/chiusura player). Renderizzata fuori dal
+        // `if (chromeVisible)` così l'AnimatedVisibility può animare l'uscita.
+        // Modalità prestazioni → None (istantanea).
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = if (reduced) EnterTransition.None else slideInVertically { it },
+            exit = if (reduced) ExitTransition.None else slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
             GlassBottomBar(
                 hazeState = hazeState,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .onSizeChanged { barHeightPx = it.height },
+                modifier = Modifier.onSizeChanged { barHeightPx = it.height },
                 selectedRoute = { tab ->
                     currentDestination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
                 },
                 onSelect = { tab ->
+                    // Tab già attivo in cima allo stack: no-op (vedi RootTabView).
+                    if (currentDestination?.hasRoute(tab.route::class) == true) return@GlassBottomBar
                     navController.navigate(tab.route) {
                         popUpTo(navController.graph.findStartDestination().id) {
                             saveState = true
@@ -265,6 +273,8 @@ private fun TabletLandscapeShell(
     dialogHost: DialogHostState,
     chromeVisible: Boolean
 ) {
+    // "Modalità prestazioni": disabilita il crossfade colore dei tab del rail.
+    val reduced = LocalReducedEffects.current
     Row(modifier = Modifier.fillMaxSize()) {
         if (chromeVisible) {
             NavigationRail(
@@ -276,7 +286,7 @@ private fun TabletLandscapeShell(
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .windowInsetsPadding(WindowInsets.systemBars)
                         .padding(vertical = 8.dp)
                 ) {
                     Column(
@@ -290,10 +300,7 @@ private fun TabletLandscapeShell(
                                 it.hasRoute(tab.route::class)
                             } == true
                             val accent = MaterialTheme.colorScheme.primary
-                            val contentColor by animateColorAsState(
-                                targetValue = if (selected) accent else Color.White.copy(alpha = 0.6f),
-                                label = "railTabContent"
-                            )
+                            val contentColor = rememberTabContentColor(selected, accent, reduced)
                             NavigationRailItem(
                                 icon = {
                                     Icon(
@@ -315,6 +322,8 @@ private fun TabletLandscapeShell(
                                 },
                                 selected = selected,
                                 onClick = {
+                                    // Tab già attivo in cima allo stack: no-op (vedi RootTabView).
+                                    if (currentDestination?.hasRoute(tab.route::class) == true) return@NavigationRailItem
                                     navController.navigate(tab.route) {
                                         popUpTo(navController.graph.findStartDestination().id) {
                                             saveState = true
@@ -325,9 +334,13 @@ private fun TabletLandscapeShell(
                                 },
                                 colors = NavigationRailItemDefaults.colors(
                                     selectedIconColor = accent,
-                                    unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                                    unselectedIconColor = Color.White.copy(alpha = GlassDefaults.MutedContentAlpha),
                                     selectedTextColor = accent,
-                                    unselectedTextColor = Color.White.copy(alpha = 0.6f),
+                                    unselectedTextColor = Color.White.copy(alpha = GlassDefaults.MutedContentAlpha),
+                                    // Indicatore Material standard della NavigationRailItem: alpha
+                                    // più bassa (0.15) della pillola custom della bottom bar (0.22,
+                                    // GlassDefaults.AccentTintAlpha) perché qui è un componente
+                                    // diverso — verificato visivamente (audit 2026-07), non un refuso.
                                     indicatorColor = accent.copy(alpha = 0.15f)
                                 )
                             )
@@ -388,96 +401,4 @@ private fun TabletLandscapeShell(
 }
 
 // `Arrangement` importato in cima (serve per spacedBy del rail).
-
-@Composable
-private fun CastBanner(
-    hazeState: HazeState,
-    dialogHost: DialogHostState,
-    title: String,
-    tvName: String,
-    isPlaying: Boolean,
-    onClick: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var showStopConfirm by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .glassCapsule(hazeState, GlassDefaults.Shape)
-    ) {
-        Row(
-            modifier = Modifier
-                .clickable(onClick = onClick)
-                .padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Cast,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Trasmissione su $tvName",
-                    color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            IconButton(onClick = onTogglePlay) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pausa" else "Riprendi",
-                    tint = Color.White
-                )
-            }
-            IconButton(onClick = { showStopConfirm = true }) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Interrompi",
-                    tint = Color.White
-                )
-            }
-        }
-    }
-
-    if (showStopConfirm) {
-        CompositionLocalProvider(
-            LocalHazeState provides hazeState,
-            LocalDialogHost provides dialogHost
-        ) {
-            GlassAlertDialog(
-                onDismissRequest = { showStopConfirm = false },
-                title = "Interrompi trasmissione",
-                text = { Text("Vuoi interrompere la trasmissione su $tvName?") },
-                confirmButton = {
-                    GlassDialogDestructiveButton(
-                        onClick = {
-                            showStopConfirm = false
-                            onStop()
-                        }
-                    ) {
-                        Text("Interrompi")
-                    }
-                },
-                dismissButton = {
-                    GlassDialogNeutralButton(onClick = { showStopConfirm = false }) {
-                        Text("Annulla")
-                    }
-                }
-            )
-        }
-    }
-}
+// CastBanner condiviso: vedi navigation/CastBanner.kt

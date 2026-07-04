@@ -1,6 +1,7 @@
 package com.streamo.app.ui.home
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -80,8 +82,17 @@ private fun Top10Card(
     // Sovrapposizione leggera: il poster copre solo il bordo destro del
     // numerale, così un "1" stretto resta quasi tutto visibile mentre un
     // "2"/"10" largo si estende più a sinistra e rimane intero.
+    // indication = null: la card interna (MediaCard) ha già il proprio
+    // press-feedback (scale/elevation/tint); un ripple qui duplicherebbe il
+    // feedback visivo nell'area di sovrapposizione. Il click sul Row resta
+    // solo per estendere il target al numerale, che la card non copre del tutto.
+    val rowInteractionSource = remember { MutableInteractionSource() }
     Row(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(
+            interactionSource = rowInteractionSource,
+            indication = null,
+            onClick = onClick
+        ),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(-PosterWidth * 0.2f)
     ) {

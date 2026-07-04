@@ -67,6 +67,10 @@ fun CacheManagementScreen(
     val windowSizeClass = LocalWindowSizeClass.current
     val entries by viewModel.entries.collectAsState(initial = emptyList())
     val streamingBytes by viewModel.streamingCacheBytes.collectAsState()
+    val tmdbBytes by viewModel.tmdbCacheBytes.collectAsState()
+    val tmdbCount by viewModel.tmdbCount.collectAsState()
+    val imageBytes by viewModel.imageCacheBytes.collectAsState()
+    val imageMaxBytes by viewModel.imageCacheMaxBytes.collectAsState()
 
     // Multi-select state, mirrored from the Downloads screen.
     var selectionMode by remember { mutableStateOf(false) }
@@ -87,6 +91,9 @@ fun CacheManagementScreen(
 
     var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
     var confirmClearStreaming by remember { mutableStateOf(false) }
+    var confirmClearTmdb by remember { mutableStateOf(false) }
+    var confirmClearImages by remember { mutableStateOf(false) }
+    var confirmClearAll by remember { mutableStateOf(false) }
 
     val totalDownloadBytes = remember(entries) { entries.sumOf { it.bytesDownloaded } }
 
@@ -136,6 +143,176 @@ fun CacheManagementScreen(
         ) {
             item {
                 GlassLargeTitle(if (selectionMode) "${selectedIds.size} selezionati" else "Spazio e cache")
+            }
+
+            // ————————————————————————————
+            // Svuota tutta la cache (master)
+            // ————————————————————————————
+            item {
+                SectionHeader("Svuota tutto")
+            }
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Svuota tutta la cache",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Rimuove segmenti streaming, metadati TMDB e immagini. " +
+                                "I download non sono toccati.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(onClick = { confirmClearAll = true }),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Svuota streaming, immagini e metadati",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ————————————————————————————
+            // Cache metadati (TMDB) — offline browsing
+            // ————————————————————————————
+            item {
+                SectionHeader("Cache metadati (TMDB)")
+            }
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Dimensione", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                formatBytes(tmdbBytes),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Voci", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "$tmdbCount",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Risposte TMDB su disco per navigare offline. Le voci scadono " +
+                                "automaticamente (da 1 ora a 30 giorni secondo il tipo); con " +
+                                "rete assente si usa la copia scaduta.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(onClick = {
+                                    if (tmdbBytes > 0L || tmdbCount > 0) confirmClearTmdb = true
+                                }),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = if (tmdbBytes > 0L || tmdbCount > 0) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Svuota cache metadati",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (tmdbBytes > 0L || tmdbCount > 0) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ————————————————————————————
+            // Cache immagini (Coil disk cache)
+            // ————————————————————————————
+            item {
+                SectionHeader("Cache immagini")
+            }
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Dimensione", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "${formatBytes(imageBytes)} / ${formatBytes(imageMaxBytes)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Poster e backdrop TMDB su disco. Permette di vedere le immagini " +
+                                "già caricate anche offline.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(onClick = {
+                                    if (imageBytes > 0L) confirmClearImages = true
+                                }),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = if (imageBytes > 0L) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Svuota cache immagini",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (imageBytes > 0L) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
             // ————————————————————————————
@@ -321,6 +498,72 @@ fun CacheManagementScreen(
             },
             dismissButton = {
                 GlassDialogNeutralButton(onClick = { confirmClearStreaming = false }) { Text("Annulla") }
+            }
+        )
+    }
+
+    if (confirmClearTmdb) {
+        GlassAlertDialog(
+            onDismissRequest = { confirmClearTmdb = false },
+            hazeState = LocalHazeState.current,
+            title = "Svuotare la cache metadati?",
+            text = { Text("Verranno rimosse $tmdbCount voci TMDB (${formatBytes(tmdbBytes)}). Al primo accesso online verranno riscaricate.") },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.clearTmdbCache()
+                        confirmClearTmdb = false
+                    }
+                ) {
+                    Text("Svuota")
+                }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(onClick = { confirmClearTmdb = false }) { Text("Annulla") }
+            }
+        )
+    }
+
+    if (confirmClearImages) {
+        GlassAlertDialog(
+            onDismissRequest = { confirmClearImages = false },
+            hazeState = LocalHazeState.current,
+            title = "Svuotare la cache immagini?",
+            text = { Text("Verranno rimossi poster e backdrop (${formatBytes(imageBytes)}). Saranno riscaricati al prossimo caricamento.") },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.clearImageCache()
+                        confirmClearImages = false
+                    }
+                ) {
+                    Text("Svuota")
+                }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(onClick = { confirmClearImages = false }) { Text("Annulla") }
+            }
+        )
+    }
+
+    if (confirmClearAll) {
+        GlassAlertDialog(
+            onDismissRequest = { confirmClearAll = false },
+            hazeState = LocalHazeState.current,
+            title = "Svuotare tutta la cache?",
+            text = { Text("Verranno rimossi segmenti streaming (${formatBytes(streamingBytes)}), metadati TMDB (${formatBytes(tmdbBytes)}) e immagini (${formatBytes(imageBytes)}). I download non sono toccati.") },
+            confirmButton = {
+                GlassDialogDestructiveButton(
+                    onClick = {
+                        viewModel.clearAllCaches()
+                        confirmClearAll = false
+                    }
+                ) {
+                    Text("Svuota tutto")
+                }
+            },
+            dismissButton = {
+                GlassDialogNeutralButton(onClick = { confirmClearAll = false }) { Text("Annulla") }
             }
         )
     }

@@ -44,6 +44,7 @@ class SettingsDataStore @Inject constructor(
         private val SEARCH_SORT_FIELD = stringPreferencesKey("search_sort_field")
         private val SEARCH_SORT_ORDER = stringPreferencesKey("search_sort_order")
         private val ANIMEUNITY_BASE_URL = stringPreferencesKey("animeunity_base_url")
+        private val TMDB_CACHE_ENABLED = booleanPreferencesKey("tmdb_cache_enabled")
 
         val defaultAccent = Triple(0.898f, 0.035f, 0.078f)
     }
@@ -74,7 +75,9 @@ class SettingsDataStore @Inject constructor(
     }
 
     /**
-     * Modalità prestazioni: disabilita blur (Haze) e animazioni della UI glass,
+     * Modalità prestazioni: disabilita blur (Haze) e **tutte le animazioni della UI**
+     * — transizioni di navigazione tra schermate, press-feedback delle card,
+     * crossfade colore dei tab, animazioni di modali e player, overscroll —
      * sostituendo il vetro con una tinta piatta semitrasparente. Utile su device
      * lenti. Default false (effetti attivi).
      */
@@ -158,6 +161,18 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setAutoDeleteWatched(value: Boolean) {
         context.dataStore.edit { it[AUTO_DELETE_WATCHED] = value }
+    }
+
+    // --- Cache TMDB offline ---
+    // Toggle globale della cache persistente delle risposte TMDB. I TTL restano
+    // costanti nel codice (vedi TmdbCacheTtl); questo disabilita solo la lettura
+    // e scrittura su disco (L1 in-memory resta per le prestazioni in-sessione).
+    val tmdbCacheEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[TMDB_CACHE_ENABLED] ?: true
+    }
+
+    suspend fun setTmdbCacheEnabled(value: Boolean) {
+        context.dataStore.edit { it[TMDB_CACHE_ENABLED] = value }
     }
 
     val accentColor: Flow<Triple<Float, Float, Float>> = context.dataStore.data.map { prefs ->

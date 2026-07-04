@@ -193,14 +193,15 @@ class HomeViewModel @Inject constructor(
 
     /** Toggle watchlist per l'hero: aggiunge se assente, rimuove se già presente. */
     fun toggleWatchlist(item: TmdbItem) {
+        val mediaType = item.mediaType ?: "movie"
         viewModelScope.launch {
-            if (repository.isInWatchlist(item.id)) {
-                repository.removeFromWatchlist(item.id)
+            if (repository.isInWatchlist(item.id, mediaType)) {
+                repository.removeFromWatchlist(item.id, mediaType)
             } else {
                 repository.addToWatchlist(
                     WatchlistEntry(
                         tmdbId = item.id,
-                        mediaType = item.mediaType ?: "movie",
+                        mediaType = mediaType,
                         title = item.displayTitle,
                         posterPath = item.posterPath
                     )

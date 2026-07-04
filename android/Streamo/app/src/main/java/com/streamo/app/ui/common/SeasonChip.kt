@@ -4,16 +4,19 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.streamo.app.ui.theme.AppShapes
 
 /**
  * Chip stagione selezionabile, stile glass button BrandSecondaryButton.
@@ -26,9 +29,19 @@ fun SeasonChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pf = rememberPressFeedback(
+        interactionSource = interactionSource,
+        pressedScale = 0.96f,
+        pressedElevation = 0f,
+        pressedTint = 0f,
+        scaleDampingRatio = 0.7f,
+        scaleStiffness = 400f
+    )
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .scale(pf.scale)
+            .clip(AppShapes.sm)
             .background(
                 if (selected) MaterialTheme.colorScheme.primary
                 else Color.White.copy(alpha = 0.08f)
@@ -37,10 +50,10 @@ fun SeasonChip(
                 if (selected) Modifier
                 else Modifier.border(
                     1.dp, Color.White.copy(alpha = 0.12f),
-                    RoundedCornerShape(8.dp)
+                    AppShapes.sm
                 )
             )
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(

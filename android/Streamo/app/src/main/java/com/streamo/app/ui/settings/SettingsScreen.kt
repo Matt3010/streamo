@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,15 +16,16 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -56,6 +58,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -75,6 +78,9 @@ import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.ResetDefaultRow
+import com.streamo.app.ui.common.rememberPressFeedback
+import com.streamo.app.ui.theme.AppShapes
 
 private fun hsvColor(h: Float, s: Float, v: Float): Color =
     Color(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))
@@ -250,7 +256,17 @@ fun SettingsScreen(
         Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxHeight()
+                // Su tablet landscape la larghezza disponibile è molto maggiore di
+                // quella di un form leggibile: senza un tetto le GlassCard si
+                // stirano a piena larghezza (audit 2026-07, verificato su
+                // emulatore tablet — vedi plans/ANIMATION_STYLE_AUDIT_PLAN.md §2.5).
+                // fillMaxHeight (non fillMaxSize) PRIMA di widthIn: fillMaxSize
+                // forzerebbe una larghezza esatta = parent, impedendo a widthIn
+                // di stringerla sotto quel valore.
+                .widthIn(max = 760.dp)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -281,12 +297,23 @@ fun SettingsScreen(
                     val currentColor = Color(accent.first, accent.second, accent.third)
                     var showPicker by remember { mutableStateOf(false) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        val editSwatchInteractionSource = remember { MutableInteractionSource() }
+                        val editSwatchPf = rememberPressFeedback(
+                            interactionSource = editSwatchInteractionSource,
+                            pressedScale = 0.9f,
+                            pressedElevation = 0f,
+                            pressedTint = 0f
+                        )
                         Box(
                             modifier = Modifier
+                                .graphicsLayer(scaleX = editSwatchPf.scale, scaleY = editSwatchPf.scale)
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(currentColor)
-                                .clickable { showPicker = true },
+                                .clickable(
+                                    interactionSource = editSwatchInteractionSource,
+                                    indication = null
+                                ) { showPicker = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -303,12 +330,23 @@ fun SettingsScreen(
                         ) {
                             presets.forEach { color ->
                                 val selected = color == currentColor
+                                val presetInteractionSource = remember { MutableInteractionSource() }
+                                val presetPf = rememberPressFeedback(
+                                    interactionSource = presetInteractionSource,
+                                    pressedScale = 0.9f,
+                                    pressedElevation = 0f,
+                                    pressedTint = 0f
+                                )
                                 Box(
                                     modifier = Modifier
+                                        .graphicsLayer(scaleX = presetPf.scale, scaleY = presetPf.scale)
                                         .size(36.dp)
                                         .clip(CircleShape)
                                         .background(color)
-                                        .clickable { viewModel.setAccentColor(color.red, color.green, color.blue) },
+                                        .clickable(
+                                            interactionSource = presetInteractionSource,
+                                            indication = null
+                                        ) { viewModel.setAccentColor(color.red, color.green, color.blue) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (selected) {
@@ -320,27 +358,11 @@ fun SettingsScreen(
                     }
                     val isDefaultAccent = accent == SettingsDataStore.defaultAccent
                     Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isDefaultAccent) Color.White.copy(alpha = 0.04f)
-                                else Color.White.copy(alpha = 0.08f)
-                            )
-                            .then(
-                                if (isDefaultAccent) Modifier
-                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                            )
-                            .clickable(enabled = !isDefaultAccent) { viewModel.resetAccentColor() }
-                            .padding(horizontal = 18.dp, vertical = 13.dp)
-                    ) {
-                        Text(
-                            "Ripristina rosso predefinito",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (isDefaultAccent) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            else MaterialTheme.colorScheme.error
-                        )
-                    }
+                    ResetDefaultRow(
+                        label = "Ripristina rosso predefinito",
+                        isDefault = isDefaultAccent,
+                        onClick = { viewModel.resetAccentColor() }
+                    )
 
                     // Color picker dialog — palette saturazione/luminosità + hue + RGB
                     if (showPicker) {
@@ -374,7 +396,7 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(180.dp)
-                                            .clip(RoundedCornerShape(10.dp))
+                                            .clip(AppShapes.md)
                                             .background(Brush.verticalGradient(listOf(Color.White, Color.Black)))
                                             .background(Brush.horizontalGradient(listOf(Color.White, hsvColor(hue, 1f, 1f))))
                                             .pointerInput(Unit) {
@@ -395,7 +417,7 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(28.dp)
-                                            .clip(RoundedCornerShape(8.dp))
+                                            .clip(AppShapes.sm)
                                             .background(Brush.horizontalGradient(listOf(
                                                 Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red
                                             )))
@@ -415,7 +437,7 @@ fun SettingsScreen(
 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
-                                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(pickerColor)
+                                            modifier = Modifier.size(40.dp).clip(AppShapes.sm).background(pickerColor)
                                         )
                                         Spacer(Modifier.width(12.dp))
                                         val fields = listOf("R" to rText, "G" to gText, "B" to bText)

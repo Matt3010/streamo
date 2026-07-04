@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
@@ -53,6 +52,7 @@ import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.provider.anime.AUEpisode
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.GlassFilterChip
+import com.streamo.app.ui.theme.AppShapes
 import com.streamo.app.util.TVLogic
 
 @Composable
@@ -153,7 +153,7 @@ fun AnimeDetailScreen(
                         Box(
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(AppShapes.sm)
                                 .background(Color.White.copy(alpha = 0.08f))
                         )
                     }
@@ -215,7 +215,7 @@ private fun AnimeHeader(
             modifier = Modifier
                 .width(120.dp)
                 .aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(AppShapes.md)
                 .background(Color.White.copy(alpha = 0.08f))
         ) {
             if (poster != null) {
@@ -261,7 +261,7 @@ private fun AnimeHeader(
             if (isDubbed) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppShapes.xs)
                         .background(Color.Black.copy(alpha = 0.55f))
                         .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
@@ -312,7 +312,7 @@ private fun EpisodeCell(
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(AppShapes.sm)
             .background(
                 if (watched) Color.White.copy(alpha = 0.08f)
                 else Color.White.copy(alpha = 0.18f)

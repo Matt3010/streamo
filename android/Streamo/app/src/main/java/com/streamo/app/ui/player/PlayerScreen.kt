@@ -51,7 +51,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -136,6 +135,7 @@ import com.streamo.app.ui.common.GlassDefaults
 import com.streamo.app.ui.common.glassCapsule
 import com.streamo.app.ui.player.cast.CastDeviceGroup
 import com.streamo.app.ui.player.cast.CastPickerDialog
+import com.streamo.app.ui.theme.AppShapes
 import com.streamo.app.util.Format
 import com.streamo.app.util.isTabletDevice
 import com.streamo.app.util.isTvDevice
@@ -562,8 +562,8 @@ fun PlayerScreen(
 
                 AnimatedVisibility(
                     visible = controlsVisible,
-                    enter = fadeIn(),
-                    exit = fadeOut()
+                    enter = if (reducedEffects) EnterTransition.None else fadeIn(tween(200)),
+                    exit = if (reducedEffects) ExitTransition.None else fadeOut(tween(200))
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         // Overlay scuro uniforme su tutto lo schermo
@@ -803,7 +803,7 @@ fun PlayerScreen(
                             else androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
                         )
                         .padding(horizontal = horizontalSafePadding, vertical = 16.dp)
-                        .glassCapsule(playerHazeState, RoundedCornerShape(24.dp))
+                        .glassCapsule(playerHazeState, AppShapes.xl)
                         .padding(horizontal = 24.dp, vertical = 8.dp)
                 ) {
                     val sliderInteractionSource = remember { MutableInteractionSource() }
@@ -863,7 +863,7 @@ fun PlayerScreen(
                             Box(
                                 modifier = Modifier
                                     .onSizeChanged { bubbleWidth = with(density) { it.width.toDp() } }
-                                    .glassCapsule(playerHazeState, RoundedCornerShape(12.dp))
+                                    .glassCapsule(playerHazeState, AppShapes.mdLg)
                                     .padding(horizontal = 12.dp, vertical = 5.dp)
                             ) {
                                 Text(
@@ -944,8 +944,8 @@ fun PlayerScreen(
         if (warpEnabled && error == null && !inPipMode && lanConnected == null) {
             AnimatedVisibility(
                 visible = controlsVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
+                enter = if (reducedEffects) EnterTransition.None else fadeIn(tween(200)),
+                exit = if (reducedEffects) ExitTransition.None else fadeOut(tween(200)),
                 modifier = Modifier
                     .align(Alignment.Center)
                     .offset(y = 64.dp)
@@ -981,8 +981,8 @@ fun PlayerScreen(
         val skipVisible = skipPrompt != null
         AnimatedVisibility(
             visible = skipVisible || showNextEpisodeButton,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = if (reducedEffects) EnterTransition.None else fadeIn(tween(200)),
+            exit = if (reducedEffects) ExitTransition.None else fadeOut(tween(200)),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(
@@ -1236,15 +1236,20 @@ fun PlayerScreen(
                         AnimatedContent(
                             targetState = settingsPanel,
                             transitionSpec = {
-                                // Entrando in un sotto-pannello: scorre da destra.
-                                // Tornando al menu principale: scorre da sinistra.
-                                val forward = initialState == null
-                                val dir = if (forward) 1 else -1
-                                (slideInHorizontally(tween(220)) { w -> dir * w } + fadeIn(tween(220)))
-                                    .togetherWith(
-                                        slideOutHorizontally(tween(220)) { w -> -dir * w } + fadeOut(tween(220))
-                                    )
-                                    .using(SizeTransform(clip = false) { _, _ -> tween(220) })
+                                if (reducedEffects) {
+                                    EnterTransition.None.togetherWith(ExitTransition.None)
+                                        .using(SizeTransform(clip = false) { _, _ -> snap() })
+                                } else {
+                                    // Entrando in un sotto-pannello: scorre da destra.
+                                    // Tornando al menu principale: scorre da sinistra.
+                                    val forward = initialState == null
+                                    val dir = if (forward) 1 else -1
+                                    (slideInHorizontally(tween(220)) { w -> dir * w } + fadeIn(tween(220)))
+                                        .togetherWith(
+                                            slideOutHorizontally(tween(220)) { w -> -dir * w } + fadeOut(tween(220))
+                                        )
+                                        .using(SizeTransform(clip = false) { _, _ -> tween(220) })
+                                }
                             },
                             label = "settingsPanel"
                         ) { panel ->

@@ -5,12 +5,18 @@ import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.offline.DownloadHelper
 import com.streamo.app.provider.ProviderResolver
+import com.streamo.app.provider.VixcloudClient
+import com.streamo.app.provider.warp.WarpTunnel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.OkHttpClient
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -25,9 +31,26 @@ import kotlin.coroutines.resume
 @Singleton
 class DownloadResolutionProbe @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val resolver: ProviderResolver
+    private val resolver: ProviderResolver,
+    private val warpTunnel: WarpTunnel
 ) {
     private val TAG = "DownloadResProbe"
+
+    // Client dedicato, non quello condiviso di DownloadInfrastructure: quello imposta
+    // "Accept: */*" che vixcloud rifiuta sugli endpoint HLS (vedi commento in
+    // ResolveAndDownloadWorker.resolveStreamKeys), facendo fallire il probe in modo
+    // silenzioso (heights vuoto → dialog mostra "Massima (—)").
+    private val plainClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    private fun upstreamFactory(baseClient: OkHttpClient): DataSource.Factory =
+        OkHttpDataSource.Factory(baseClient)
+            .setDefaultRequestProperties(VixcloudClient.playbackHeaders)
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
     suspend fun availableHeights(
         tmdbId: Int,
@@ -42,10 +65,18 @@ class DownloadResolutionProbe @Inject constructor(
             resolver.movieSource(tmdbId, title, null)
         }
         val streamUrl = resolution.sources.firstOrNull()?.playlistUrl ?: return emptyList()
-        return heightsFromManifest(streamUrl)
+        // Con WARP il token vixcloud è IP-bound: se la risoluzione è passata dal
+        // tunnel, il fetch del manifest deve uscire dalla stessa IP o vixcloud
+        // risponde 403 (vedi PlayerViewModel/ResolveAndDownloadWorker).
+        val baseClient = if (resolution.viaProxy) {
+            warpTunnel.proxiedClient() ?: plainClient
+        } else {
+            plainClient
+        }
+        return heightsFromManifest(streamUrl, upstreamFactory(baseClient))
     }
 
-    private suspend fun heightsFromManifest(streamUrl: String): List<Int> =
+    private suspend fun heightsFromManifest(streamUrl: String, upstreamFactory: DataSource.Factory): List<Int> =
         suspendCancellableCoroutine { continuation ->
             val mediaItem = MediaItem.Builder()
                 .setUri(streamUrl)
@@ -55,7 +86,7 @@ class DownloadResolutionProbe @Inject constructor(
                 context,
                 mediaItem,
                 DefaultRenderersFactory(context),
-                DownloadInfrastructure.httpDataSourceFactory
+                upstreamFactory
             )
             helper.prepare(object : DownloadHelper.Callback {
                 override fun onPrepared(helper: DownloadHelper) {

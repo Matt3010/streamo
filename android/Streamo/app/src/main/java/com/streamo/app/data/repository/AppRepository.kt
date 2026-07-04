@@ -28,10 +28,10 @@ class AppRepository @Inject constructor(
 ) {
     // Watchlist
     fun watchlist(): Flow<List<WatchlistEntry>> = watchlistDao.getAll()
-    suspend fun isInWatchlist(id: Int) = watchlistDao.getById(id) != null
-    fun watchlistExistsFlow(id: Int): Flow<Boolean> = watchlistDao.exists(id)
+    suspend fun isInWatchlist(id: Int, mediaType: String) = watchlistDao.getByKey(id, mediaType) != null
+    fun watchlistExistsFlow(id: Int, mediaType: String): Flow<Boolean> = watchlistDao.existsByKey(id, mediaType)
     suspend fun addToWatchlist(entry: WatchlistEntry) = watchlistDao.insert(entry)
-    suspend fun removeFromWatchlist(id: Int) = watchlistDao.deleteById(id)
+    suspend fun removeFromWatchlist(id: Int, mediaType: String) = watchlistDao.deleteByKey(id, mediaType)
 
     // Progress
     fun progress(): Flow<List<ProgressEntry>> = progressDao.getAll()

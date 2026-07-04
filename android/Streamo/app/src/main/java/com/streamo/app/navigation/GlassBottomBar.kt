@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +76,22 @@ internal sealed class Tab(
 internal val tabs = listOf(Tab.Home, Tab.Search, Tab.Anime, Tab.Watchlist)
 
 /**
+ * Colore icona/testo di un tab, animato fra accent (selezionato) e bianco
+ * tenue (non selezionato). Condiviso da [GlassBottomBar] (pillola, phone e
+ * tablet portrait) e dalla NavigationRail del tablet landscape in
+ * [TabletRootView] — stessa ricetta, un solo posto da cambiare.
+ */
+@Composable
+internal fun rememberTabContentColor(selected: Boolean, accent: Color, reduced: Boolean): Color {
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) accent else Color.White.copy(alpha = GlassDefaults.MutedContentAlpha),
+        animationSpec = if (reduced) snap() else tween(200),
+        label = "tabContentColor"
+    )
+    return contentColor
+}
+
+/**
  * Bottom bar in stile "glass": pillola flottante semitrasparente con bordo
  * sottile (token [GlassDefaults]). Ogni tab è un bottone a capsula; quello
  * selezionato si tinge di primary ed espande la label, gli altri restano icona
@@ -135,7 +152,7 @@ internal fun GlassBottomBar(
                             .width(pillWidth)
                             .height(tabHeight)
                             .clip(GlassDefaults.ChipShape)
-                            .background(accent.copy(alpha = 0.22f))
+                            .background(accent.copy(alpha = GlassDefaults.AccentTintAlpha))
                     )
                 }
                 Row(
@@ -144,10 +161,7 @@ internal fun GlassBottomBar(
                 ) {
                     tabs.forEachIndexed { i, tab ->
                         val selected = selectedRoute(tab)
-                        val contentColor by animateColorAsState(
-                            targetValue = if (selected) accent else Color.White.copy(alpha = 0.6f),
-                            label = "tabContent"
-                        )
+                        val contentColor = rememberTabContentColor(selected, accent, reduced)
                         Column(
                             modifier = Modifier
                                 .onGloballyPositioned { coords ->

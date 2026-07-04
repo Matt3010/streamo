@@ -274,10 +274,10 @@ private fun SearchHistoryDropdown(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(GlassDefaults.Shape)
             .background(
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-                RoundedCornerShape(14.dp)
+                GlassDefaults.Shape
             )
     ) {
         if (history.isEmpty()) {

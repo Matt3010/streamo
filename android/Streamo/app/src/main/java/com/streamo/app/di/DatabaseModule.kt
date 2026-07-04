@@ -30,7 +30,9 @@ object DatabaseModule {
                 AppDatabase.MIGRATION_9_10,
                 AppDatabase.MIGRATION_10_11,
                 AppDatabase.MIGRATION_11_12,
-                AppDatabase.MIGRATION_12_13
+                AppDatabase.MIGRATION_12_13,
+                AppDatabase.MIGRATION_13_14,
+                AppDatabase.MIGRATION_14_15
             )
             .build()
     }
@@ -52,4 +54,7 @@ object DatabaseModule {
 
     @Provides
     fun provideSearchHistoryDao(db: AppDatabase) = db.searchHistoryDao()
+
+    @Provides
+    fun provideTmdbCacheDao(db: AppDatabase) = db.tmdbCacheDao()
 }

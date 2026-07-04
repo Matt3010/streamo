@@ -111,7 +111,9 @@ fun WatchlistScreen(
                         positionSeconds = p?.positionSeconds ?: 0.0,
                         durationSeconds = p?.durationSeconds ?: 0.0,
                         onClick = { onNavigateToDetail(entry.tmdbId, entry.mediaType, p?.season ?: 0, p?.episode ?: 0) },
-                        onRemove = { entryToRemove = entry }
+                        onRemove = if (item.inWatchlist) {
+                            { entryToRemove = entry }
+                        } else null
                     )
                 }
             }
@@ -127,7 +129,7 @@ fun WatchlistScreen(
             confirmButton = {
                 GlassDialogDestructiveButton(
                     onClick = {
-                        viewModel.remove(entry.tmdbId)
+                        viewModel.remove(entry.tmdbId, entry.mediaType)
                         entryToRemove = null
                     }
                 ) {

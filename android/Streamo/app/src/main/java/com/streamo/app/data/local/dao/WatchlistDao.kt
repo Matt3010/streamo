@@ -13,8 +13,8 @@ interface WatchlistDao {
     @Query("SELECT * FROM watchlist ORDER BY addedAt DESC")
     fun getAll(): Flow<List<WatchlistEntry>>
 
-    @Query("SELECT * FROM watchlist WHERE tmdbId = :id LIMIT 1")
-    suspend fun getById(id: Int): WatchlistEntry?
+    @Query("SELECT * FROM watchlist WHERE tmdbId = :id AND mediaType = :mediaType LIMIT 1")
+    suspend fun getByKey(id: Int, mediaType: String): WatchlistEntry?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: WatchlistEntry)
@@ -22,9 +22,9 @@ interface WatchlistDao {
     @Delete
     suspend fun delete(entry: WatchlistEntry)
 
-    @Query("DELETE FROM watchlist WHERE tmdbId = :id")
-    suspend fun deleteById(id: Int)
+    @Query("DELETE FROM watchlist WHERE tmdbId = :id AND mediaType = :mediaType")
+    suspend fun deleteByKey(id: Int, mediaType: String)
 
-    @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE tmdbId = :id)")
-    fun exists(id: Int): Flow<Boolean>
+    @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE tmdbId = :id AND mediaType = :mediaType)")
+    fun existsByKey(id: Int, mediaType: String): Flow<Boolean>
 }

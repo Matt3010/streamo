@@ -1,12 +1,15 @@
 package com.streamo.app.ui.player.cast
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import com.streamo.app.ui.common.LocalReducedEffects
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cast
@@ -48,6 +50,7 @@ import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassDialogDestructiveButton
 import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassDialogPrimaryButton
+import com.streamo.app.ui.theme.AppShapes
 import com.streamo.app.player.lancast.LanRenderer
 import dev.chrisbanes.haze.HazeState
 
@@ -143,26 +146,31 @@ fun CastPickerDialog(
                     )
                 } else {
                     // Master-detail: lista device (A) <-> scelta metodo (B).
+                    val reducedEffects = LocalReducedEffects.current
                     AnimatedContent(
                         targetState = detailGroup,
                         transitionSpec = {
-                            // Direzione: in base a se stiamo andando verso il dettaglio o tornando indietro.
-                            val forward = targetState != null
-                            val slideIn = if (forward) {
-                                slideInHorizontally(animationSpec = tween(220)) { fullWidth -> fullWidth } +
-                                    fadeIn(animationSpec = tween(220))
+                            if (reducedEffects) {
+                                EnterTransition.None togetherWith ExitTransition.None
                             } else {
-                                slideInHorizontally(animationSpec = tween(220)) { fullWidth -> -fullWidth } +
-                                    fadeIn(animationSpec = tween(220))
+                                // Direzione: in base a se stiamo andando verso il dettaglio o tornando indietro.
+                                val forward = targetState != null
+                                val slideIn = if (forward) {
+                                    slideInHorizontally(animationSpec = tween(220)) { fullWidth -> fullWidth } +
+                                        fadeIn(animationSpec = tween(220))
+                                } else {
+                                    slideInHorizontally(animationSpec = tween(220)) { fullWidth -> -fullWidth } +
+                                        fadeIn(animationSpec = tween(220))
+                                }
+                                val slideOut = if (forward) {
+                                    slideOutHorizontally(animationSpec = tween(220)) { fullWidth -> -fullWidth } +
+                                        fadeOut(animationSpec = tween(220))
+                                } else {
+                                    slideOutHorizontally(animationSpec = tween(220)) { fullWidth -> fullWidth } +
+                                        fadeOut(animationSpec = tween(220))
+                                }
+                                slideIn togetherWith slideOut
                             }
-                            val slideOut = if (forward) {
-                                slideOutHorizontally(animationSpec = tween(220)) { fullWidth -> -fullWidth } +
-                                    fadeOut(animationSpec = tween(220))
-                            } else {
-                                slideOutHorizontally(animationSpec = tween(220)) { fullWidth -> fullWidth } +
-                                    fadeOut(animationSpec = tween(220))
-                            }
-                            slideIn togetherWith slideOut
                         },
                         label = "CastPickerMasterDetail"
                     ) { currentDetail ->
@@ -330,7 +338,7 @@ private fun CastDetailPanel(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(AppShapes.md)
                 .clickable(onClick = onBack)
                 .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -413,7 +421,7 @@ private fun DeviceHeaderRow(name: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(AppShapes.md)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -450,7 +458,7 @@ private fun ProtocolConnectRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 28.dp, top = 2.dp, bottom = 2.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(AppShapes.md)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

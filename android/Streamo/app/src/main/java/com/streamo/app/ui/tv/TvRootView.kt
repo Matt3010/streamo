@@ -66,6 +66,11 @@ private val tvNavItems = listOf(
  * TV root: persistent collapsible nav rail ([NavigationDrawer]) + [TvAppNavHost].
  * The rail collapses to icons and expands to labels on focus (canonical TV pattern).
  * It is hidden on the Player destination (immersive playback). No cast banner on TV.
+ *
+ * No Haze/glass blur anywhere in `ui/tv/` (verified in the 2026-07 animation/style
+ * audit, plans/ANIMATION_STYLE_AUDIT_PLAN.md §2.6): deliberate, not a missed port —
+ * 10-foot UIs conventionally avoid heavy blur-behind chrome. TV uses flat surfaces
+ * + focus rings instead (see TvSettingsScreen's dialog and TvFocusModifiers).
  */
 @Composable
 fun TvRootView() {
@@ -139,15 +144,20 @@ fun TvRootView() {
         return
     }
 
+    // Padding/spacing del drawer diversi da GlassBottomBar (12dp/6dp) e dalla rail
+    // tablet (8dp/4dp): non è drift da copia-incolla, sono tre componenti di
+    // navigazione diversi (pillola flottante, rail Material, drawer TV a schermo
+    // intero) — margini più larghi qui per il 10-foot UI. Rivisto in audit 2026-07
+    // §2.6, valori confermati intenzionali.
     NavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .padding(12.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 tvNavItems.forEachIndexed { index, item ->
                     val selected = selectedIndex == index

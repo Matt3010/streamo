@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -112,6 +111,7 @@ import com.streamo.app.util.TVLogic
 import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.common.contentPadding
 import com.streamo.app.ui.common.isLandscapeTablet
+import com.streamo.app.ui.theme.AppShapes
 import androidx.browser.customtabs.CustomTabsIntent
 import android.content.res.Configuration
 import android.net.Uri
@@ -169,6 +169,11 @@ fun DetailScreen(onBack: () -> Unit = {}) {
         derivedStateOf { navBarColor.copy(alpha = titleAlpha) }
     }
 
+    // Non usa GlassTopBarScaffold (a differenza delle altre schermate): il titolo
+    // collassante sotto calcola la sua traiettoria in pixel esatti agganciati alla
+    // geometria di GlassTopBar (posizione/centro della capsula freccia, 48dp+12dp+12dp),
+    // cosa che lo scaffold generico non espone. Verificato in audit (2026-07,
+    // plans/ANIMATION_STYLE_AUDIT_PLAN.md §2.4): divergenza intenzionale, non un refuso.
     Box(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize().hazeSource(detailHaze)) {
             if (viewModel.isLoading) {
@@ -571,7 +576,7 @@ private fun DetailScrollContent(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
+                                    .clip(AppShapes.hairline),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
                                 strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt,
@@ -913,7 +918,7 @@ private fun EpisodesSection(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(16f / 9f)
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(AppShapes.md)
                                 .background(Color(0xFF1E1E1E))
                         )
                         Column(modifier = Modifier.height(EPISODE_META_HEIGHT)) {
@@ -922,7 +927,7 @@ private fun EpisodesSection(
                                     .padding(top = 6.dp)
                                     .fillMaxWidth(0.7f)
                                     .height(14.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(AppShapes.xs)
                                     .background(Color(0xFF1E1E1E))
                             )
                             Box(
@@ -930,7 +935,7 @@ private fun EpisodesSection(
                                     .padding(top = 6.dp)
                                     .fillMaxWidth()
                                     .height(11.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(AppShapes.xs)
                                     .background(Color(0xFF1E1E1E))
                             )
                             Box(
@@ -938,7 +943,7 @@ private fun EpisodesSection(
                                     .padding(top = 4.dp)
                                     .fillMaxWidth(0.85f)
                                     .height(11.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(AppShapes.xs)
                                     .background(Color(0xFF1E1E1E))
                             )
                         }
@@ -1017,7 +1022,7 @@ private fun EpisodeCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(AppShapes.md)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             val stillUrl = episode.stillPath?.takeIf { it.isNotBlank() }
@@ -1223,7 +1228,7 @@ private fun ReviewCard(review: TmdbReview, onShowFull: () -> Unit) {
             .height(170.dp)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(12.dp)
+                shape = AppShapes.mdLg
             )
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1400,7 +1405,7 @@ private fun SkeletonBox(
         modifier = modifier
             .then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .height(height)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(AppShapes.xs)
             .background(MaterialTheme.colorScheme.surfaceVariant)
     )
 }

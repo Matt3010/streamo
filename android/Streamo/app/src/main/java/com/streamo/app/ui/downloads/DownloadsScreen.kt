@@ -2,10 +2,13 @@ package com.streamo.app.ui.downloads
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import com.streamo.app.ui.common.LocalReducedEffects
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -26,7 +29,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
@@ -81,6 +83,7 @@ import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ImagePlaceholder
 import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.common.contentPadding
+import com.streamo.app.ui.theme.AppShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -404,7 +407,7 @@ private fun DownloadManagerRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
+                                    .clip(AppShapes.hairline),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = Color.DarkGray,
                                 drawStopIndicator = {}
@@ -414,7 +417,7 @@ private fun DownloadManagerRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
+                                    .clip(AppShapes.hairline),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = Color.DarkGray
                             )
@@ -610,7 +613,7 @@ private fun SeriesDownloadGroupRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                                .clip(AppShapes.hairline),
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = Color.DarkGray,
                             drawStopIndicator = {}
@@ -620,7 +623,7 @@ private fun SeriesDownloadGroupRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                                .clip(AppShapes.hairline),
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = Color.DarkGray
                         )
@@ -652,10 +655,11 @@ internal fun SelectionCheckbox(
     selected: Boolean,
     onToggle: () -> Unit
 ) {
+    val reduced = LocalReducedEffects.current
     AnimatedVisibility(
         visible = selectionMode,
-        enter = fadeIn() + expandHorizontally(),
-        exit = fadeOut() + shrinkHorizontally()
+        enter = if (reduced) EnterTransition.None else fadeIn() + expandHorizontally(),
+        exit = if (reduced) ExitTransition.None else fadeOut() + shrinkHorizontally()
     ) {
         Checkbox(
             checked = selected,
@@ -666,7 +670,7 @@ internal fun SelectionCheckbox(
 
 @Composable
 internal fun PosterThumb(posterPath: String?, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = AppShapes.sm
     if (posterPath.isNullOrBlank()) {
         ImagePlaceholder(
             label = "",

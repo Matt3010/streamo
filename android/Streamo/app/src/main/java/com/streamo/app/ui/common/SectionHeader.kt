@@ -3,14 +3,12 @@ package com.streamo.app.ui.common
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -24,8 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import com.streamo.app.ui.theme.AppShapes
 
 @Composable
 fun SectionHeader(
@@ -35,16 +32,19 @@ fun SectionHeader(
     onClick: (() -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f)
+    val pf = rememberPressFeedback(
+        interactionSource = interactionSource,
+        pressedScale = 0.97f,
+        pressedElevation = 0f,
+        pressedTint = 0f,
+        scaleDampingRatio = 0.7f,
+        scaleStiffness = 400f
     )
 
     Row(
         modifier = modifier
             .padding(horizontal = 16.dp)
-            .scale(scale)
+            .scale(pf.scale)
             .then(if (onClick != null) Modifier.clickable(interactionSource = interactionSource, indication = null, onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -53,7 +53,7 @@ fun SectionHeader(
                 .size(30.dp)
                 .background(
                     color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(8.dp)
+                    shape = AppShapes.sm
                 ),
             contentAlignment = Alignment.Center
         ) {

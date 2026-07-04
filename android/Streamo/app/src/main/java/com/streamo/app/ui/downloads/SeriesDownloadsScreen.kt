@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -75,7 +74,10 @@ import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.LocalHazeState
+import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.common.SeasonChip
+import com.streamo.app.ui.common.contentPadding
+import com.streamo.app.ui.theme.AppShapes
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -434,6 +436,7 @@ private fun AllEpisodesContent(
     onNavigateToPlayer: (Int, String, Int, Int, String, String?, String?) -> Unit,
     onNavigateToDetail: (Int, String, Int, Int) -> Unit
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -521,7 +524,12 @@ private fun AllEpisodesContent(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp + LocalBottomBarPadding.current),
+                contentPadding = PaddingValues(
+                    start = windowSizeClass.contentPadding,
+                    end = windowSizeClass.contentPadding,
+                    top = 8.dp,
+                    bottom = 8.dp + LocalBottomBarPadding.current
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
@@ -642,7 +650,7 @@ internal fun EpisodeDownloadCard(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(AppShapes.sm)
                                 .background(Color.Black.copy(alpha = 0.35f))
                         )
                         Icon(
@@ -735,7 +743,7 @@ internal fun EpisodeDownloadCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
+                            .clip(AppShapes.hairline),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.DarkGray,
                         drawStopIndicator = {}
@@ -745,7 +753,7 @@ internal fun EpisodeDownloadCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
+                            .clip(AppShapes.hairline),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.DarkGray
                     )
@@ -808,6 +816,7 @@ private fun DownloadedOnlyContent(
     onNavigateToPlayer: (Int, String, Int, Int, String, String?, String?) -> Unit,
     onNavigateToDetail: (Int, String, Int, Int) -> Unit
 ) {
+    val windowSizeClass = LocalWindowSizeClass.current
     if (entries.isEmpty()) {
         Box(
             modifier = Modifier
@@ -826,7 +835,12 @@ private fun DownloadedOnlyContent(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, top = 16.dp + topPadding, end = 16.dp, bottom = 16.dp + LocalBottomBarPadding.current),
+            contentPadding = PaddingValues(
+                start = windowSizeClass.contentPadding,
+                top = 16.dp + topPadding,
+                end = windowSizeClass.contentPadding,
+                bottom = 16.dp + LocalBottomBarPadding.current
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {

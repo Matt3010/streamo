@@ -62,11 +62,8 @@ object NetworkModule {
     @Singleton
     fun provideTMDBApi(retrofit: Retrofit): TMDBApi = retrofit.create(TMDBApi::class.java)
 
-    @Provides
-    @Singleton
-    fun provideTMDBClient(api: TMDBApi, settings: SettingsDataStore): TMDBClient {
-        return TMDBClient(api, settings)
-    }
+    // TMDBClient ha costruttore @Inject: Hilt risolve api, settings, TmdbCacheDao, Gson
+    // automaticamente (i provider sono in DatabaseModule e NetworkModule.provideGson).
 
     // --- AnimeUnity (catalogo nativo, separato da TMDB) ---
 

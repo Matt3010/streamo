@@ -24,7 +24,10 @@ enum class WatchlistStatusFilter { ALL, TODO, IN_PROGRESS, DONE }
 data class WatchlistItem(
     val entry: WatchlistEntry,
     val progress: ProgressEntry?,
-    val status: WatchStatus
+    val status: WatchStatus,
+    /** False per titoli derivati solo dal progress (non flaggati in watchlist):
+     *  la card non mostra "Rimuovi dalla lista" perché non c'è una entry da toglere. */
+    val inWatchlist: Boolean = true
 )
 
 @HiltViewModel
@@ -42,13 +45,36 @@ class WatchlistViewModel @Inject constructor(
         repository.watchlist(),
         repository.progress()
     ) { entries, progressList ->
-        entries.map { entry ->
+        // Titoli flaggati in watchlist (hanno stato TODO anche senza progress).
+        val watchlistKeys = entries
+            .map { watchKey(it.tmdbId, it.mediaType) }
+            .toHashSet()
+        val fromWatchlist = entries.map { entry ->
             val latest = progressList
                 .filter { it.tmdbId == entry.tmdbId && it.mediaType == entry.mediaType }
                 .maxByOrNull { it.updatedAt }
             WatchlistItem(entry, latest, statusOf(latest))
         }
+        // Titoli guardati MAI flaggati in watchlist: derivano una entry fittizia
+        // dal progress più recente, così compaiono nei filtri "In corso"/"Visto".
+        val fromProgress = progressList
+            .filter { watchKey(it.tmdbId, it.mediaType) !in watchlistKeys }
+            .groupBy { watchKey(it.tmdbId, it.mediaType) }
+            .map { (_, rows) ->
+                val latest = rows.maxByOrNull { it.updatedAt }!!
+                val entry = WatchlistEntry(
+                    tmdbId = latest.tmdbId,
+                    mediaType = latest.mediaType,
+                    title = latest.title,
+                    posterPath = latest.posterPath
+                )
+                WatchlistItem(entry, latest, statusOfProgressOnly(latest), inWatchlist = false)
+            }
+            .sortedByDescending { it.progress?.updatedAt ?: 0L }
+        fromWatchlist + fromProgress
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private fun watchKey(tmdbId: Int, mediaType: String) = "$tmdbId|$mediaType"
 
     val items: StateFlow<List<WatchlistItem>> = combine(
         allItems,
@@ -80,6 +106,20 @@ class WatchlistViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Status per titoli NON in watchlist (derivati solo dal progress). Mai TODO:
+     * "Da guardare" ha senso solo per entry flaggate; un titolo con progress è
+     * stato aperto → almeno IN_PROGRESS, oppure DONE se oltre la soglia.
+     */
+    private fun statusOfProgressOnly(progress: ProgressEntry): WatchStatus =
+        if (progress.durationSeconds > 0 &&
+            progress.positionSeconds >= progress.durationSeconds * TVLogic.WATCHED_THRESHOLD
+        ) {
+            WatchStatus.DONE
+        } else {
+            WatchStatus.IN_PROGRESS
+        }
+
     fun setType(type: WatchlistType) {
         _selectedType.value = type
     }
@@ -88,9 +128,9 @@ class WatchlistViewModel @Inject constructor(
         _selectedStatus.value = status
     }
 
-    fun remove(id: Int) {
+    fun remove(id: Int, mediaType: String) {
         viewModelScope.launch {
-            repository.removeFromWatchlist(id)
+            repository.removeFromWatchlist(id, mediaType)
         }
     }
 }

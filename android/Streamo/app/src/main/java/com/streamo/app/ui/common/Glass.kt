@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
+import com.streamo.app.ui.theme.AppShapes
 
 /**
  * Token del linguaggio "glass": tinta bianca semitrasparente + bordo sottile
@@ -61,8 +62,26 @@ object GlassDefaults {
     /** Bordo sottile, appena percettibile. */
     val Border = Color.White.copy(alpha = 0.12f)
 
+    /**
+     * Alpha della tinta accento su sfondo scuro per "elemento selezionato"
+     * (es. pillola tab attiva in [com.streamo.app.navigation.GlassBottomBar]).
+     * La `NavigationRailItem` del tablet landscape usa deliberatamente un
+     * valore diverso (0.15f, indicatore Material standard) perché è un
+     * componente diverso — vedi commento in `TabletRootView.kt`.
+     */
+    val AccentTintAlpha = 0.22f
+
+    /** Alpha del testo/icona di un tab non selezionato. */
+    val MutedContentAlpha = 0.6f
+
+    /** Raggio di blur Haze per capsule piccole (navbar, top bar, seek bar player). */
+    val BlurRadiusChrome = 24.dp
+
+    /** Raggio di blur Haze per superfici grandi (dialog/modali a schermo intero). */
+    val BlurRadiusDialog = 36.dp
+
     /** Angoli arrotondati brand (come i bottoni hero). */
-    val Shape = RoundedCornerShape(14.dp)
+    val Shape = AppShapes.lg
 
     /** Forma a capsula per chip e filtri. */
     val ChipShape = RoundedCornerShape(50)

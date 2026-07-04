@@ -96,7 +96,7 @@ fun Modifier.glassCapsule(hazeState: HazeState?, shape: androidx.compose.ui.grap
         hazeState != null -> clipped.hazeEffect(state = hazeState) {
             backgroundColor = Color.Black
             tints = listOf(HazeTint(Color.Black.copy(alpha = 0.35f)))
-            blurRadius = 24.dp
+            blurRadius = GlassDefaults.BlurRadiusChrome
             noiseFactor = 0f
         }
         else -> clipped.background(GlassDefaults.NavbarFill)

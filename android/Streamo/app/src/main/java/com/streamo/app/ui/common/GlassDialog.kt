@@ -345,7 +345,7 @@ private fun AnimatedVisibilityScope.GlassDialogContent(
             else -> Modifier.hazeEffect(state = hazeState) {
                 backgroundColor = Color.Black
                 tints = listOf(HazeTint(Color.Black.copy(alpha = 0.55f)))
-                blurRadius = 36.dp
+                blurRadius = GlassDefaults.BlurRadiusDialog
                 noiseFactor = 0f
             }
         }

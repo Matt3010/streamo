@@ -42,10 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -80,6 +77,7 @@ import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.SectionHeader
+import com.streamo.app.ui.common.rememberPressFeedback
 import com.streamo.app.ui.common.SkeletonCard
 import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.common.cardWidth
@@ -158,7 +156,9 @@ fun HomeScreen(
                         item {
                             HomeHero(
                                 items = viewModel.heroItems,
-                                isInWatchlist = { item -> watchlist.any { it.tmdbId == item.id } },
+                                isInWatchlist = { item ->
+                                    watchlist.any { it.tmdbId == item.id && it.mediaType == (item.mediaType ?: "movie") }
+                                },
                                 onPlay = { item ->
                                     val mediaType = item.mediaType ?: "movie"
                                     if (mediaType == "tv") {
@@ -440,10 +440,13 @@ private fun AnimatedActionIcon(
     failedCount: Int = 0
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.82f else 1f,
-        animationSpec = spring(dampingRatio = 0.4f, stiffness = 300f)
+    val pf = rememberPressFeedback(
+        interactionSource = interactionSource,
+        pressedScale = 0.82f,
+        pressedElevation = 0f,
+        pressedTint = 0f,
+        scaleDampingRatio = 0.4f,
+        scaleStiffness = 300f
     )
 
     // Box esterno: ospita icona (+ eventuale % a destra) e, in overlay assoluto,
@@ -451,7 +454,7 @@ private fun AnimatedActionIcon(
     // il badge non viene clippato dal bordo.
     Box(
         modifier = Modifier
-            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .graphicsLayer(scaleX = pf.scale, scaleY = pf.scale)
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .padding(horizontal = 8.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center

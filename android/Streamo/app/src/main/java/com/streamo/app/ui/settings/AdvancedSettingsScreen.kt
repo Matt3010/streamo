@@ -11,12 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -58,6 +59,7 @@ import com.streamo.app.ui.common.GlassDialogDestructiveButton
 import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
 import com.streamo.app.ui.common.GlassTopBarScaffold
+import com.streamo.app.ui.common.ResetDefaultRow
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -141,7 +143,15 @@ fun AdvancedSettingsScreen(
         Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxHeight()
+                // Tetto di larghezza su tablet landscape: senza, le GlassCard si
+                // stirano a piena larghezza (audit 2026-07, verificato su
+                // emulatore tablet — vedi plans/ANIMATION_STYLE_AUDIT_PLAN.md §2.5).
+                // fillMaxHeight (non fillMaxSize) prima di widthIn: altrimenti la
+                // larghezza esatta forzata da fillMaxSize impedirebbe la stretta.
+                .widthIn(max = 760.dp)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -182,30 +192,14 @@ fun AdvancedSettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     val isDefaultKey = localTmdbKey == BuildConfig.DEFAULT_TMDB_API_KEY
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isDefaultKey) Color.White.copy(alpha = 0.04f)
-                                else Color.White.copy(alpha = 0.08f)
-                            )
-                            .then(
-                                if (isDefaultKey) Modifier
-                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                            )
-                            .clickable(enabled = !isDefaultKey) {
-                                localTmdbKey = BuildConfig.DEFAULT_TMDB_API_KEY
-                                viewModel.resetTmdbApiKey()
-                            }
-                            .padding(horizontal = 18.dp, vertical = 13.dp)
-                    ) {
-                        Text(
-                            "Ripristina chiave predefinita",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (isDefaultKey) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            else MaterialTheme.colorScheme.error
-                        )
-                    }
+                    ResetDefaultRow(
+                        label = "Ripristina chiave predefinita",
+                        isDefault = isDefaultKey,
+                        onClick = {
+                            localTmdbKey = BuildConfig.DEFAULT_TMDB_API_KEY
+                            viewModel.resetTmdbApiKey()
+                        }
+                    )
                 }
             }
 
@@ -235,30 +229,14 @@ fun AdvancedSettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     val isDefaultLocale = localLocale == "it"
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isDefaultLocale) Color.White.copy(alpha = 0.04f)
-                                else Color.White.copy(alpha = 0.08f)
-                            )
-                            .then(
-                                if (isDefaultLocale) Modifier
-                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                            )
-                            .clickable(enabled = !isDefaultLocale) {
-                                localLocale = "it"
-                                viewModel.resetProviderLocale()
-                            }
-                            .padding(horizontal = 18.dp, vertical = 13.dp)
-                    ) {
-                        Text(
-                            "Ripristina \"it\"",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (isDefaultLocale) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            else MaterialTheme.colorScheme.error
-                        )
-                    }
+                    ResetDefaultRow(
+                        label = "Ripristina \"it\"",
+                        isDefault = isDefaultLocale,
+                        onClick = {
+                            localLocale = "it"
+                            viewModel.resetProviderLocale()
+                        }
+                    )
                 }
             }
 
@@ -289,30 +267,14 @@ fun AdvancedSettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     val isDefaultAuUrl =
                         localAuUrl == SettingsViewModel.DEFAULT_ANIMEUNITY_BASE_URL
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isDefaultAuUrl) Color.White.copy(alpha = 0.04f)
-                                else Color.White.copy(alpha = 0.08f)
-                            )
-                            .then(
-                                if (isDefaultAuUrl) Modifier
-                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                            )
-                            .clickable(enabled = !isDefaultAuUrl) {
-                                localAuUrl = SettingsViewModel.DEFAULT_ANIMEUNITY_BASE_URL
-                                viewModel.resetAnimeUnityBaseUrl()
-                            }
-                            .padding(horizontal = 18.dp, vertical = 13.dp)
-                    ) {
-                        Text(
-                            "Ripristina dominio predefinito",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (isDefaultAuUrl) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            else MaterialTheme.colorScheme.error
-                        )
-                    }
+                    ResetDefaultRow(
+                        label = "Ripristina dominio predefinito",
+                        isDefault = isDefaultAuUrl,
+                        onClick = {
+                            localAuUrl = SettingsViewModel.DEFAULT_ANIMEUNITY_BASE_URL
+                            viewModel.resetAnimeUnityBaseUrl()
+                        }
+                    )
                 }
             }
 
@@ -377,7 +339,7 @@ fun AdvancedSettingsScreen(
                         Button(
                             onClick = { viewModel.verifyEgress() },
                             enabled = egressEnabled,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = GlassDefaults.Shape,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White.copy(alpha = 0.08f),
                                 contentColor = Color.White,

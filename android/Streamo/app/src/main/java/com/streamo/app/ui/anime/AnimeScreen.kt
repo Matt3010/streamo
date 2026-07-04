@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items as rowItems
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -60,6 +59,7 @@ import com.streamo.app.ui.common.MediaCard
 import com.streamo.app.ui.common.ProgressMediaCard
 import com.streamo.app.ui.common.SectionHeader
 import com.streamo.app.ui.common.SkeletonCard
+import com.streamo.app.ui.theme.AppShapes
 import com.streamo.app.ui.common.cardWidth
 import com.streamo.app.ui.common.contentPadding
 import com.streamo.app.ui.common.itemSpacing
@@ -229,7 +229,7 @@ private fun AnimeSearchField(query: String, onQueryChange: (String) -> Unit) {
         textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { /* live search, debounce gestito nel VM */ }),
-        shape = RoundedCornerShape(14.dp),
+        shape = AppShapes.lg,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = Color.White.copy(alpha = 0.06f),
             unfocusedContainerColor = Color.White.copy(alpha = 0.06f),
@@ -293,7 +293,7 @@ private fun AnimeCatalogCard(anime: AUAnime, onClick: () -> Unit) {
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(6.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppShapes.xs)
                         .background(Color.Black.copy(alpha = 0.55f))
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -39,8 +38,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.streamo.app.BuildConfig
 import com.streamo.app.R
 import com.streamo.app.ui.common.AmbientBackground
-import com.streamo.app.ui.downloads.formatBytes
 import com.streamo.app.ui.settings.SettingsViewModel
+import com.streamo.app.ui.theme.AppShapes
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.tvFocusRing
 
@@ -51,6 +50,7 @@ import com.streamo.app.ui.tv.common.tvFocusRing
 @Composable
 fun TvSettingsScreen(
     onNavigateToDebugLogs: () -> Unit = {},
+    onNavigateToCacheManagement: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val streamingQuality by viewModel.streamingQualityWifi.collectAsState()
@@ -61,8 +61,6 @@ fun TvSettingsScreen(
     val stats by viewModel.stats.collectAsState()
     val message by viewModel.message.collectAsState()
     val confirmRecalc by viewModel.confirmRecalc.collectAsState()
-    val streamingBytes by viewModel.streamingCacheBytes.collectAsState()
-    val confirmClearStreaming by viewModel.confirmClearStreaming.collectAsState()
 
     var showStreamingPicker by remember { mutableStateOf(false) }
 
@@ -87,6 +85,9 @@ fun TvSettingsScreen(
                 "720" to "720p",
                 "480" to "480p"
             )
+            // Tint di fuoco White@12% (non GlassDefaults.Container, White@8%, usato
+            // dal mobile): scelta deliberata, un contrasto più alto serve a leggibilità
+            // a 3 metri — audit 2026-07 §2.6, non un refuso.
             options.forEach { (token, label) ->
                 val selected = streamingQuality == token
                 TvFocusable(
@@ -99,9 +100,9 @@ fun TvSettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(AppShapes.sm)
                             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
+                            .tvFocusRing(focused, AppShapes.sm)
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -141,9 +142,9 @@ fun TvSettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(AppShapes.sm)
                             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f))
-                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
+                            .tvFocusRing(focused, AppShapes.sm)
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -154,6 +155,10 @@ fun TvSettingsScreen(
                         )
                     }
                 }
+                // Riempimento error pieno (non solo testo come GlassDialogDestructiveButton
+                // mobile): coerente con la convenzione TV "focus = colore pieno, non a
+                // fuoco = dimmed" usata da ogni TvFocusable di questo file (righe 101,143),
+                // non un refuso — audit 2026-07 §2.6, divergenza intenzionale dal mobile.
                 TvFocusable(
                     onClick = { viewModel.recalculateLibrary() },
                     modifier = Modifier.weight(1f)
@@ -161,9 +166,9 @@ fun TvSettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(AppShapes.sm)
                             .background(if (focused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
-                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
+                            .tvFocusRing(focused, AppShapes.sm)
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -178,65 +183,7 @@ fun TvSettingsScreen(
         }
     }
 
-    // Clear streaming cache confirmation dialog
-    if (confirmClearStreaming) {
-        TvSettingsDialog(
-            title = "Svuotare la cache streaming?",
-            onDismiss = { viewModel.dismissClearStreamingDialog() }
-        ) {
-            Text(
-                text = "Verranno rimossi i segmenti della riproduzione online (${formatBytes(streamingBytes)}).",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TvFocusable(
-                    onClick = { viewModel.dismissClearStreamingDialog() },
-                    modifier = Modifier.weight(1f)
-                ) { focused ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f))
-                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "Annulla",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (focused) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                TvFocusable(
-                    onClick = { viewModel.clearStreamingCache() },
-                    modifier = Modifier.weight(1f)
-                ) { focused ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (focused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
-                            .tvFocusRing(focused, RoundedCornerShape(8.dp))
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "Svuota",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White
-                        )
-                    }
-                }
-            }
-        }
-    }
+    // Clear streaming cache confirmation dialog — moved to TvCacheManagementScreen.
 
     Column(
         modifier = Modifier
@@ -323,8 +270,8 @@ fun TvSettingsScreen(
 
         SettingsValueRow(
             label = "Spazio e cache",
-            value = "Streaming: ${formatBytes(streamingBytes)}",
-            onClick = { viewModel.showClearStreamingDialog() }
+            value = "Streaming, immagini e metadati",
+            onClick = onNavigateToCacheManagement
         )
 
         if (stats.isNotBlank()) {
@@ -474,9 +421,9 @@ private fun RowContent(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(AppShapes.md)
             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-            .tvFocusRing(focused, RoundedCornerShape(10.dp))
+            .tvFocusRing(focused, AppShapes.md)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -494,7 +441,11 @@ private fun TvSettingsDialog(
         Column(
             modifier = Modifier
                 .widthIn(min = 400.dp, max = 600.dp)
-                .clip(RoundedCornerShape(16.dp))
+                // Raggio allineato a GlassDefaults.Shape/AppShapes.lg (14dp, stesso
+                // valore del dialog mobile GlassDialog) — audit 2026-07 §2.6. Il
+                // riempimento resta piatto (niente Haze) perché il 10-foot UI TV
+                // evita il blur pesante: divergenza intenzionale, non un refuso.
+                .clip(AppShapes.lg)
                 .background(Color(0xFF1A1A1A))
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)

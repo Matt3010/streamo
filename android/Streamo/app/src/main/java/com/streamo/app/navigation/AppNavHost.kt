@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -20,6 +21,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.streamo.app.ui.common.LocalReducedEffects
 import com.streamo.app.ui.anime.AnimeDetailScreen
 import com.streamo.app.ui.anime.AnimeScreen
 import com.streamo.app.ui.continuewatching.ContinueWatchingScreen
@@ -44,24 +46,50 @@ fun AppNavHost(
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(LocalNavController provides navController) {
+    // "Modalità prestazioni": disabilita ogni transizione di navigazione.
+    val reduced = LocalReducedEffects.current
     NavHost(
         navController = navController,
         startDestination = startDestination,
         modifier = modifier,
         // Cambio tab: il contenuto scorre verso sinistra/destra in base all'ordine
-        // dei tab (Home 0 · Cerca 1 · Lista 2). Forward verso Detail/Player resta
-        // istantaneo (None) — solo il pop anima, vedi più sotto.
+        // dei tab (Home 0 · Cerca 1 · Anime 2 · Lista 3). Forward verso schermate
+        // non-tab (Player, Impostazioni, Cronologia, Download, …) fade + slide-up;
+        // Detail/AnimeDetail hanno la loro scale+fade (vedi sotto). Solo il pop
+        // verso tab usa lo slide simmetrico; il pop da Detail/Player resta classico.
+        // Con `reduced` tutto è None (navigazione istantanea).
+        //
+        // Tabella categorie di transizione (audit animazioni 2026-07, vedi
+        // plans/ANIMATION_STYLE_AUDIT_PLAN.md §1.3): i valori sotto sono
+        // deliberatamente diversi fra loro, non refusi da unificare.
+        //   · Cambio tab (dir != 0): slide orizzontale + fade, 300ms, simmetrico
+        //     push/pop — stesso "verso" percepito in entrambe le direzioni.
+        //   · Push in avanti verso schermate non-tab (dir == 0, forward): fade +
+        //     slide-up leggero, 260ms enter / 220ms exit — l'ingresso è
+        //     leggermente più lento dell'uscita per dare peso all'apertura.
+        //   · Pop verso schermate non-tab (dir == 0, indietro): slide orizzontale
+        //     + fade, 350ms — più lento e con motion orizzontale (non verticale)
+        //     per allinearsi al gesto "indietro" del sistema (swipe dal bordo).
+        //   · Detail/AnimeDetail (vedi detailEnterTransition/detailExitTransition
+        //     sotto): scale+fade 280ms enter / 220ms exit in push; 200ms fade
+        //     piatto (nessuna scala) in pop, perché il pop mostra già l'anteprima
+        //     della schermata precedente e non serve un effetto "apertura".
         enterTransition = {
             val dir = tabDirection(initialState, targetState)
-            if (dir != 0) {
-                slideInHorizontally(tween(300)) { full -> dir * full } + fadeIn(tween(300))
-            } else EnterTransition.None
+            when {
+                reduced -> EnterTransition.None
+                dir != 0 -> slideInHorizontally(tween(300)) { full -> dir * full } + fadeIn(tween(300))
+                else -> fadeIn(tween(260, easing = FastOutSlowInEasing)) +
+                    slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it / 10 }
+            }
         },
         exitTransition = {
             val dir = tabDirection(initialState, targetState)
-            if (dir != 0) {
-                slideOutHorizontally(tween(300)) { full -> -dir * full } + fadeOut(tween(300))
-            } else ExitTransition.None
+            when {
+                reduced -> ExitTransition.None
+                dir != 0 -> slideOutHorizontally(tween(300)) { full -> -dir * full } + fadeOut(tween(300))
+                else -> fadeOut(tween(220))
+            }
         },
         // Solo i pop animano: su Android 13+ la gesture "indietro" usa queste
         // transizioni in modo seekable e mostra l'anteprima della schermata
@@ -72,13 +100,19 @@ fun AppNavHost(
         // altrimenti (back da Detail/Player) resta l'animazione di pop classica.
         popEnterTransition = {
             val dir = tabDirection(initialState, targetState)
-            if (dir != 0) slideInHorizontally(tween(300)) { full -> dir * full } + fadeIn(tween(300))
-            else slideInHorizontally(animationSpec = tween(350)) { -it / 4 } + fadeIn(tween(350))
+            when {
+                reduced -> EnterTransition.None
+                dir != 0 -> slideInHorizontally(tween(300)) { full -> dir * full } + fadeIn(tween(300))
+                else -> slideInHorizontally(animationSpec = tween(350)) { -it / 4 } + fadeIn(tween(350))
+            }
         },
         popExitTransition = {
             val dir = tabDirection(initialState, targetState)
-            if (dir != 0) slideOutHorizontally(tween(300)) { full -> -dir * full } + fadeOut(tween(300))
-            else slideOutHorizontally(animationSpec = tween(350)) { it } + fadeOut(tween(350))
+            when {
+                reduced -> ExitTransition.None
+                dir != 0 -> slideOutHorizontally(tween(300)) { full -> -dir * full } + fadeOut(tween(300))
+                else -> slideOutHorizontally(animationSpec = tween(350)) { it } + fadeOut(tween(350))
+            }
         }
     ) {
         composable<NavRoutes.Home> {
@@ -128,18 +162,18 @@ fun AppNavHost(
             )
         }
         composable<NavRoutes.AnimeDetail>(
-            enterTransition = { detailEnterTransition() },
-            exitTransition = { detailExitTransition() },
-            popEnterTransition = { fadeIn(tween(200)) },
-            popExitTransition = { fadeOut(tween(200)) }
+            enterTransition = { detailEnterTransition(reduced) },
+            exitTransition = { detailExitTransition(reduced) },
+            popEnterTransition = { if (reduced) EnterTransition.None else fadeIn(tween(200)) },
+            popExitTransition = { if (reduced) ExitTransition.None else fadeOut(tween(200)) }
         ) {
             AnimeDetailScreen(onBack = { navController.popBackStack() })
         }
         composable<NavRoutes.Detail>(
-            enterTransition = { detailEnterTransition() },
-            exitTransition = { detailExitTransition() },
-            popEnterTransition = { fadeIn(tween(200)) },
-            popExitTransition = { fadeOut(tween(200)) }
+            enterTransition = { detailEnterTransition(reduced) },
+            exitTransition = { detailExitTransition(reduced) },
+            popEnterTransition = { if (reduced) EnterTransition.None else fadeIn(tween(200)) },
+            popExitTransition = { if (reduced) ExitTransition.None else fadeOut(tween(200)) }
         ) {
             DetailScreen(
                 onBack = { navController.popBackStack() }
@@ -276,8 +310,9 @@ private fun tabDirection(from: NavBackStackEntry, to: NavBackStackEntry): Int {
 private fun isDetailRoute(entry: NavBackStackEntry): Boolean =
     entry.destination.hasRoute(NavRoutes.Detail::class)
 
-/** Scale + Fade transition for Detail screen */
-private fun detailEnterTransition(): EnterTransition {
+/** Scale + Fade transition for Detail screen. `reduced` → None (modalità prestazioni). */
+private fun detailEnterTransition(reduced: Boolean): EnterTransition {
+    if (reduced) return EnterTransition.None
     return scaleIn(
         animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         initialScale = 0.92f
@@ -287,7 +322,8 @@ private fun detailEnterTransition(): EnterTransition {
     )
 }
 
-private fun detailExitTransition(): ExitTransition {
+private fun detailExitTransition(reduced: Boolean): ExitTransition {
+    if (reduced) return ExitTransition.None
     return scaleOut(
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         targetScale = 0.95f

@@ -9,12 +9,14 @@ import com.streamo.app.data.local.dao.HistoryDao
 import com.streamo.app.data.local.dao.ProgressDao
 import com.streamo.app.data.local.dao.ProviderMappingDao
 import com.streamo.app.data.local.dao.SearchHistoryDao
+import com.streamo.app.data.local.dao.TmdbCacheDao
 import com.streamo.app.data.local.dao.WatchlistDao
 import com.streamo.app.data.local.entity.DownloadEntry
 import com.streamo.app.data.local.entity.HistoryEntry
 import com.streamo.app.data.local.entity.ProgressEntry
 import com.streamo.app.data.local.entity.ProviderMappingEntity
 import com.streamo.app.data.local.entity.SearchHistoryEntry
+import com.streamo.app.data.local.entity.TmdbCacheEntry
 import com.streamo.app.data.local.entity.WatchlistEntry
 
 @Database(
@@ -24,14 +26,63 @@ import com.streamo.app.data.local.entity.WatchlistEntry
         HistoryEntry::class,
         ProviderMappingEntity::class,
         DownloadEntry::class,
-        SearchHistoryEntry::class
+        SearchHistoryEntry::class,
+        TmdbCacheEntry::class
     ],
-    version = 13,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
+        /**
+         * `watchlist` ora ha chiave composita (tmdbId, mediaType): un film e una
+         * serie possono condividere lo stesso tmdbId (spazi ID TMDB separati), e la
+         * vecchia PK solo su tmdbId li faceva collidere (l'aggiunta dell'uno
+         * sovrascriveva/segnava come presente l'altro).
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE watchlist_new (
+                        tmdbId INTEGER NOT NULL,
+                        mediaType TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        posterPath TEXT,
+                        addedAt INTEGER NOT NULL,
+                        PRIMARY KEY(tmdbId, mediaType)
+                    )""".trimIndent()
+                )
+                db.execSQL(
+                    """INSERT OR IGNORE INTO watchlist_new (tmdbId, mediaType, title, posterPath, addedAt)
+                       SELECT tmdbId, mediaType, title, posterPath, addedAt FROM watchlist""".trimIndent()
+                )
+                db.execSQL("DROP TABLE watchlist")
+                db.execSQL("ALTER TABLE watchlist_new RENAME TO watchlist")
+            }
+        }
+
+        /**
+         * Tabella `tmdb_cache`: cache persistente TTL delle risposte TMDB per la
+         * navigazione offline. Chiave unica per richiesta, `type` per cancellazione
+         * selettiva, payload JSON + fetchedAt + ttlSeconds per la freschezza.
+         */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS tmdb_cache (
+                        key TEXT NOT NULL PRIMARY KEY,
+                        type TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        fetchedAt INTEGER NOT NULL,
+                        ttlSeconds INTEGER NOT NULL
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tmdb_cache_key ON tmdb_cache(key)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tmdb_cache_type ON tmdb_cache(type)")
+            }
+        }
+
         /**
          * Aggiunge a `progress` le colonne per il resume degli anime: l'id episodio
          * AnimeUnity e lo slug (per l'header Referer dell'embed vixcloud). Permette di
@@ -154,4 +205,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun providerMappingDao(): ProviderMappingDao
     abstract fun downloadDao(): DownloadDao
     abstract fun searchHistoryDao(): SearchHistoryDao
+    abstract fun tmdbCacheDao(): TmdbCacheDao
 }

@@ -16,6 +16,7 @@ import com.streamo.app.ui.tv.library.TvLibraryScreen
 import com.streamo.app.ui.tv.player.TvPlayerScreen
 import com.streamo.app.ui.tv.search.TvSearchScreen
 import com.streamo.app.ui.tv.sectionlist.TvSectionListScreen
+import com.streamo.app.ui.tv.settings.TvCacheManagementScreen
 import com.streamo.app.ui.tv.settings.TvLogViewerScreen
 import com.streamo.app.ui.tv.settings.TvSettingsScreen
 import com.streamo.app.ui.tv.anime.TvAnimeScreen
@@ -123,7 +124,13 @@ fun TvAppNavHost(
             }
             composable<NavRoutes.Settings> {
                 TvSettingsScreen(
-                    onNavigateToDebugLogs = { navController.navigate(NavRoutes.DebugLogs) }
+                    onNavigateToDebugLogs = { navController.navigate(NavRoutes.DebugLogs) },
+                    onNavigateToCacheManagement = { navController.navigate(NavRoutes.CacheManagement) }
+                )
+            }
+            composable<NavRoutes.CacheManagement> {
+                TvCacheManagementScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable<NavRoutes.DebugLogs> {

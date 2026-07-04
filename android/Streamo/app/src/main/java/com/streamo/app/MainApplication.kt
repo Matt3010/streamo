@@ -2,6 +2,8 @@ package com.streamo.app
 
 import android.app.Application
 import android.util.Log
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.streamo.app.download.DownloadInfrastructure
 import com.streamo.app.download.DownloadStateSyncer
 import com.streamo.app.download.MediaDownloadService
@@ -11,17 +13,28 @@ import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailabilityLight
 import com.streamo.app.player.lancast.LanCastService
+import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.isTvDevice
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val TAG = "MediaDownload"
 
 @UnstableApi
 @HiltAndroidApp
-class MainApplication : Application() {
+class MainApplication : Application(), ImageLoaderFactory {
 
     @Inject lateinit var downloadStateSyncer: DownloadStateSyncer
+    @Inject lateinit var imageLoader: ImageLoader
+    @Inject lateinit var tmdbClient: TMDBClient
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun newImageLoader(): ImageLoader = imageLoader
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +51,12 @@ class MainApplication : Application() {
         Log.d(TAG, "DownloadInfrastructure initialized")
         downloadStateSyncer.attach(DownloadInfrastructure.downloadManager)
         Log.d(TAG, "DownloadStateSyncer attached")
+
+        // Best-effort: rimuove le righe TMDB scadute dalla cache offline.
+        appScope.launch {
+            runCatching { tmdbClient.purgeExpired() }
+                .onFailure { Log.d(TAG, "TMDB cache purge failed: ${it.message}") }
+        }
 
         // Remove any stale downloads left behind by the old DownloadService approach.
         // The new ResolveAndDownloadWorker handles downloading directly via HlsDownloader.

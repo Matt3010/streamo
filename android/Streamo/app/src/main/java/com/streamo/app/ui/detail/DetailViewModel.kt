@@ -141,7 +141,7 @@ class DetailViewModel @Inject constructor(
             reviews = revsDeferred.await().take(10)
             extrasLoading = false
 
-            _isInWatchlist.value = repository.isInWatchlist(tmdbId)
+            _isInWatchlist.value = repository.isInWatchlist(tmdbId, mediaType)
         }
     }
 
@@ -149,7 +149,7 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             val current = item ?: return@launch
             if (_isInWatchlist.value) {
-                repository.removeFromWatchlist(tmdbId)
+                repository.removeFromWatchlist(tmdbId, mediaType)
                 _isInWatchlist.value = false
             } else {
                 repository.addToWatchlist(
