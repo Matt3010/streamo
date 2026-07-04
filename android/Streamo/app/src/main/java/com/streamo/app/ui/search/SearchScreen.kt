@@ -44,7 +44,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +70,6 @@ import com.streamo.app.ui.common.GlassAlertDialog
 import com.streamo.app.ui.common.GlassDefaults
 import com.streamo.app.ui.common.GlassDialogDestructiveButton
 import com.streamo.app.ui.common.GlassDialogNeutralButton
-import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.ui.common.GlassFilterChip
 import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.MediaCard
@@ -448,6 +446,8 @@ private fun SortPickerDialog(
     onSortChange: (SortField, SortOrder) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val isDefault = field == SortField.POPULARITY && order == SortOrder.DESC
+
     GlassAlertDialog(
         onDismissRequest = onDismiss,
         title = "Ordina per",
@@ -486,10 +486,19 @@ private fun SortPickerDialog(
             }
         },
         confirmButton = {
-            GlassDialogPrimaryButton(onClick = onDismiss) {
+            GlassDialogNeutralButton(onClick = onDismiss) {
                 Text("Chiudi")
             }
-        }
+        },
+        dismissButton = if (!isDefault) {
+            {
+                GlassDialogDestructiveButton(
+                    onClick = { onSortChange(SortField.POPULARITY, SortOrder.DESC) }
+                ) {
+                    Text("Resetta")
+                }
+            }
+        } else null
     )
 }
 
@@ -647,17 +656,14 @@ private fun GenrePickerDialog(
             }
         },
         confirmButton = {
-            GlassDialogPrimaryButton(onClick = onDismiss) {
+            GlassDialogNeutralButton(onClick = onDismiss) {
                 Text("Chiudi")
             }
         },
         dismissButton = if (hasSelection) {
             {
-                TextButton(onClick = onClear) {
-                    Text(
-                        text = "Cancella filtri",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                GlassDialogDestructiveButton(onClick = onClear) {
+                    Text("Cancella filtri")
                 }
             }
         } else null

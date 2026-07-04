@@ -26,12 +26,5 @@
   "24": "MainApplication",
   "25": ".provideImageLoader",
   "26": "TmdbCacheTtl.kt",
-  "27": "Shape.kt",
-  "28": "SettingsScreen",
-  "29": "WatchlistViewModel",
-  "30": "Int",
-  "31": "List",
-  "32": "Modifier",
-  "33": "String",
-  "34": "TmdbGenre"
+  "27": "Shape.kt"
 }
