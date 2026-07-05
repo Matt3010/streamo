@@ -371,6 +371,10 @@ fix(download): preserve quality preference on mobile data
 docs: add WARP setup notes
 ```
 
+## License
+
+This project is released under the MIT License. See `LICENSE`.
+
 ## Troubleshooting
 
 ### Android: Hilt or KSP errors after renaming
