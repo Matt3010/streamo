@@ -6,7 +6,7 @@ Personal cross-platform media app for browsing a TMDB catalog, resolving playabl
 - a native iOS app built with SwiftUI and SwiftData;
 - a shared Go module, compiled with gomobile, that exposes a userspace WARP proxy to both platforms.
 
-> Legal note: the app uses TMDB metadata and third-party providers to resolve sources. Content availability and streaming legality depend on the providers, selected content, and local laws.
+> Legal note: the app uses TMDB metadata and third-party providers to resolve sources. Content availability and streaming legality depend on the providers, selected content, and local laws. The authors do not endorse copyright infringement or unlawful use; users are solely responsible for complying with applicable laws.
 
 ## Features
 
@@ -374,6 +374,8 @@ docs: add WARP setup notes
 ## License
 
 This project is released under the MIT License. See `LICENSE`.
+
+This software is provided for personal and educational use. The authors are not responsible for how it is used, for third-party content accessed through it, or for any consequences resulting from unlawful or improper use.
 
 ## Troubleshooting
 
