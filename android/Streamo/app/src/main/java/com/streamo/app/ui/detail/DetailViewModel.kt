@@ -151,6 +151,7 @@ class DetailViewModel @Inject constructor(
             if (_isInWatchlist.value) {
                 repository.removeFromWatchlist(tmdbId, mediaType)
                 _isInWatchlist.value = false
+                infoMessage = "Rimosso dalla lista"
             } else {
                 repository.addToWatchlist(
                     WatchlistEntry(
@@ -161,6 +162,7 @@ class DetailViewModel @Inject constructor(
                     )
                 )
                 _isInWatchlist.value = true
+                infoMessage = "Aggiunto alla lista"
             }
         }
     }

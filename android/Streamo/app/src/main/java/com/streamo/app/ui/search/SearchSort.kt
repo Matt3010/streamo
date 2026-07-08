@@ -22,7 +22,7 @@ enum class SortOrder(val suffix: String, val label: String) {
     DESC("desc", "Decrescente");
 
     companion object {
-        fun fromKey(s: String?): SortOrder = if (s == "asc") ASC else DESC
+        fun fromKey(s: String?): SortOrder = entries.firstOrNull { it.name == s } ?: DESC
     }
 }
 

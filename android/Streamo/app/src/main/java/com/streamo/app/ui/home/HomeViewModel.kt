@@ -197,6 +197,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             if (repository.isInWatchlist(item.id, mediaType)) {
                 repository.removeFromWatchlist(item.id, mediaType)
+                infoMessage = "Rimosso dalla lista"
             } else {
                 repository.addToWatchlist(
                     WatchlistEntry(
@@ -206,7 +207,15 @@ class HomeViewModel @Inject constructor(
                         posterPath = item.posterPath
                     )
                 )
+                infoMessage = "Aggiunto alla lista"
             }
         }
+    }
+
+    /** Messaggio one-shot mostrato come toast dalla UI; azzerare dopo l'uso. */
+    var infoMessage by mutableStateOf<String?>(null)
+
+    fun consumeInfoMessage() {
+        infoMessage = null
     }
 }

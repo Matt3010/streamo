@@ -227,7 +227,7 @@ fun GlassDialogDestructiveButton(
  * uscita può completarsi anche se il composable chiamante abbandona la composizione.
  */
 @Stable
-private class DialogHandle {
+internal class DialogHandle {
     val visible = MutableTransitionState(false).apply { targetState = true }
     var remove: (() -> Unit)? = null
 }
@@ -377,10 +377,10 @@ private fun AnimatedVisibilityScope.GlassDialogContent(
     }
 }
 
-private fun scrimEnter(reduced: Boolean): EnterTransition =
+internal fun scrimEnter(reduced: Boolean): EnterTransition =
     if (reduced) EnterTransition.None else fadeIn(tween(220))
 
-private fun scrimExit(reduced: Boolean): ExitTransition =
+internal fun scrimExit(reduced: Boolean): ExitTransition =
     if (reduced) ExitTransition.None else fadeOut(tween(180))
 
 private fun cardEnter(reduced: Boolean): EnterTransition =

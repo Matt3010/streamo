@@ -1,7 +1,7 @@
 {
   ".claude/settings.local.json": {
-    "mtime": 1783166522.3310034,
-    "ast_hash": "c47d55e5abd31f1ec790b6b6f75cd6a8",
+    "mtime": 1783168280.045195,
+    "ast_hash": "a91fa457bfbc2c784eadfa2e4952c6d0",
     "semantic_hash": ""
   },
   "androidx/tv/material3/NavigationDrawer.kt": {
@@ -25,9 +25,9 @@
     "semantic_hash": "ea064cda50fcfabdcb859f7bf8138c8a"
   },
   "app/src/main/java/com/streamo/app/MainApplication.kt": {
-    "mtime": 1783032208.9996607,
+    "mtime": 1783168830.9004495,
     "ast_hash": "d2e5a3cadcc160a4c7965f851a889b33",
-    "semantic_hash": "d2e5a3cadcc160a4c7965f851a889b33"
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/data/backup/BackupManager.kt": {
     "mtime": 1780574299.13161,
@@ -160,14 +160,9 @@
     "semantic_hash": "4071d542cdf3bbbf11d15c64020ed810"
   },
   "app/src/main/java/com/streamo/app/download/DownloadInfrastructure.kt": {
-    "mtime": 1782742202.2703083,
-    "ast_hash": "4e5706f7d58f4c6928524f03e31134d2",
-    "semantic_hash": "4e5706f7d58f4c6928524f03e31134d2"
-  },
-  "app/src/main/java/com/streamo/app/download/DownloadManagerSingleton.kt": {
-    "mtime": 1780574299.1406336,
-    "ast_hash": "68efd847053b5465f54dd7394f32ba08",
-    "semantic_hash": "68efd847053b5465f54dd7394f32ba08"
+    "mtime": 1783168492.6911142,
+    "ast_hash": "7e84fd02ec519e020b14471bb5b8a6b1",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/download/DownloadQuality.kt": {
     "mtime": 1780608443.9832888,
@@ -189,15 +184,10 @@
     "ast_hash": "9cc6dbc86bf688306e8833752f1a9c89",
     "semantic_hash": "9cc6dbc86bf688306e8833752f1a9c89"
   },
-  "app/src/main/java/com/streamo/app/download/DownloadStateSyncer.kt": {
-    "mtime": 1781094424.2984138,
-    "ast_hash": "4c887a13b7ff19c52be11b4aa29fe1c3",
-    "semantic_hash": "4c887a13b7ff19c52be11b4aa29fe1c3"
-  },
   "app/src/main/java/com/streamo/app/download/MediaDownloadService.kt": {
-    "mtime": 1781094424.2999272,
-    "ast_hash": "d7ec6e138834853d4a56b2e33f349ed6",
-    "semantic_hash": "d7ec6e138834853d4a56b2e33f349ed6"
+    "mtime": 1783168501.0733156,
+    "ast_hash": "9797541290e76534ac21c7e6c2a12c2b",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/download/ResolveAndDownloadWorker.kt": {
     "mtime": 1782670621.4716403,
@@ -205,9 +195,9 @@
     "semantic_hash": "46a7d5e754a9b872eb464db6c6fb90be"
   },
   "app/src/main/java/com/streamo/app/navigation/AppNavHost.kt": {
-    "mtime": 1783152400.535609,
-    "ast_hash": "b5cbfee5aa3e92245d0d65b0aeda3b22",
-    "semantic_hash": "b5cbfee5aa3e92245d0d65b0aeda3b22"
+    "mtime": 1783170825.65438,
+    "ast_hash": "aabd67d188e3cdab711d8ef2debc948f",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/navigation/CastBanner.kt": {
     "mtime": 1783152541.7038496,
@@ -225,19 +215,19 @@
     "semantic_hash": "045633248e299c63d10dbf579098f9cc"
   },
   "app/src/main/java/com/streamo/app/navigation/NavRoutes.kt": {
-    "mtime": 1783022367.711516,
-    "ast_hash": "305e41445fa1d9d047036dbcd38c1bc5",
-    "semantic_hash": "305e41445fa1d9d047036dbcd38c1bc5"
+    "mtime": 1783170831.0771134,
+    "ast_hash": "5aa73e0d947c38e5fed55b2a3f1151c3",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/navigation/RootTabView.kt": {
-    "mtime": 1783152623.0362706,
-    "ast_hash": "aa103ef3ba68885bef4e5e8d9565329a",
-    "semantic_hash": "aa103ef3ba68885bef4e5e8d9565329a"
+    "mtime": 1783173011.0600407,
+    "ast_hash": "6a1500788bd6af37414ccc1ecc5bccaf",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/navigation/TabletRootView.kt": {
-    "mtime": 1783153699.0316594,
-    "ast_hash": "9e4341971d861d713d841e62327947ed",
-    "semantic_hash": "9e4341971d861d713d841e62327947ed"
+    "mtime": 1783173056.9502404,
+    "ast_hash": "552a3857881c98896ecdae2fb2a9440d",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/player/PipController.kt": {
     "mtime": 1780574299.143633,
@@ -445,9 +435,9 @@
     "semantic_hash": "0e79c397db22395cd9daa713feaaf881"
   },
   "app/src/main/java/com/streamo/app/ui/common/GlassDialog.kt": {
-    "mtime": 1783153753.498186,
-    "ast_hash": "52e09332d5f31189eba71cae5be71b55",
-    "semantic_hash": "52e09332d5f31189eba71cae5be71b55"
+    "mtime": 1783172932.912851,
+    "ast_hash": "aa2c3fb29b1c7ccc4cea6fee364e5fde",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/ui/common/GlassTopBar.kt": {
     "mtime": 1783153746.945906,
@@ -500,44 +490,29 @@
     "semantic_hash": "f715164f167ab4cbb9c5001ecdf22883"
   },
   "app/src/main/java/com/streamo/app/ui/detail/DetailScreen.kt": {
-    "mtime": 1783154036.8967617,
-    "ast_hash": "833d2e28046c1ef827c4e76e0f5dfc69",
-    "semantic_hash": "833d2e28046c1ef827c4e76e0f5dfc69"
+    "mtime": 1783172083.444474,
+    "ast_hash": "e5fcbd1f079e503349701c5c1f5d938d",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/ui/detail/DetailViewModel.kt": {
     "mtime": 1783158577.012299,
     "ast_hash": "5b489fbf4d775bf4b40aa5e8d2c4cc5b",
     "semantic_hash": "5b489fbf4d775bf4b40aa5e8d2c4cc5b"
   },
-  "app/src/main/java/com/streamo/app/ui/detail/TestScreen.kt": {
-    "mtime": 1780574299.1516888,
-    "ast_hash": "35db099b8c65fc7d616ee9340fd5dc8d",
-    "semantic_hash": "35db099b8c65fc7d616ee9340fd5dc8d"
-  },
   "app/src/main/java/com/streamo/app/ui/downloads/DownloadQualityDialog.kt": {
-    "mtime": 1782073726.5504951,
-    "ast_hash": "ac73458e914f3aea05eb9e1e4bf71f32",
-    "semantic_hash": "ac73458e914f3aea05eb9e1e4bf71f32"
-  },
-  "app/src/main/java/com/streamo/app/ui/downloads/DownloadsScreen.kt": {
-    "mtime": 1783153268.3596056,
-    "ast_hash": "6055281c2616051ccba068b8b838db0d",
-    "semantic_hash": "6055281c2616051ccba068b8b838db0d"
+    "mtime": 1783172041.6365204,
+    "ast_hash": "5de95ad9cf437b3221489338d5ac8373",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/ui/downloads/DownloadsViewModel.kt": {
     "mtime": 1781273880.7206967,
     "ast_hash": "39c3b3021511eb087d3eef0def4e1f19",
     "semantic_hash": "39c3b3021511eb087d3eef0def4e1f19"
   },
-  "app/src/main/java/com/streamo/app/ui/downloads/SeriesDownloadsScreen.kt": {
-    "mtime": 1783154742.5486298,
-    "ast_hash": "a19dfc6ed9d07aecbaba117f77c70d29",
-    "semantic_hash": "a19dfc6ed9d07aecbaba117f77c70d29"
-  },
   "app/src/main/java/com/streamo/app/ui/downloads/SeriesDownloadsViewModel.kt": {
-    "mtime": 1781273955.2883122,
-    "ast_hash": "a62c68fbd26827775d0dd934672228c9",
-    "semantic_hash": "a62c68fbd26827775d0dd934672228c9"
+    "mtime": 1783170240.3629744,
+    "ast_hash": "1b6b0df8de2384b7437cded7ddcbb722",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/ui/history/HistoryScreen.kt": {
     "mtime": 1781729059.3363843,
@@ -555,9 +530,9 @@
     "semantic_hash": "eb47c042011178b6855e294cc53e183b"
   },
   "app/src/main/java/com/streamo/app/ui/home/HomeScreen.kt": {
-    "mtime": 1783158574.1003883,
-    "ast_hash": "3c009ec50ffafd33d74e24bc5b8dcb20",
-    "semantic_hash": "3c009ec50ffafd33d74e24bc5b8dcb20"
+    "mtime": 1783172103.5426521,
+    "ast_hash": "29a03786fa828f32eaac84588a6df7cc",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/ui/home/HomeSection.kt": {
     "mtime": 1781093586.8719037,
@@ -595,8 +570,8 @@
     "semantic_hash": "d3fd7892ba0883e89f677af77549746e"
   },
   "app/src/main/java/com/streamo/app/ui/search/SearchScreen.kt": {
-    "mtime": 1783167790.0181715,
-    "ast_hash": "b1ab29c53add6e6230129c459101cf20",
+    "mtime": 1783167957.8287978,
+    "ast_hash": "9da58d6d9ead7cae9bac6c104cb78932",
     "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/ui/search/SearchSort.kt": {
@@ -795,9 +770,9 @@
     "semantic_hash": "73b0e3538b580a2d45790b24e366bc11"
   },
   "app/src/main/java/com/streamo/app/util/Release.kt": {
-    "mtime": 1780574299.1627486,
-    "ast_hash": "140916f3e4959b6523263573489d9b48",
-    "semantic_hash": "140916f3e4959b6523263573489d9b48"
+    "mtime": 1783168592.3795269,
+    "ast_hash": "2f00f16adfb3da4a8ae399490f5fec61",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/streamo/app/util/TVLogic.kt": {
     "mtime": 1780574299.1637478,
@@ -855,7 +830,7 @@
     "semantic_hash": "670ea5edc5d670af243bd2639fe58dc9"
   },
   "CLAUDE.md": {
-    "mtime": 1783166258.6601257,
+    "mtime": 1783185067.9748328,
     "ast_hash": "351ded4237d9eafa9236ffe3569e44b8",
     "semantic_hash": ""
   },
@@ -940,8 +915,28 @@
     "semantic_hash": "9ee591be72fb336861a8044086054daa"
   },
   ".claude/settings.json": {
-    "mtime": 1783166258.6601257,
+    "mtime": 1783185067.9758315,
     "ast_hash": "598cb075410bcd95220ac90bbb60344a",
+    "semantic_hash": ""
+  },
+  "app/src/main/java/com/streamo/app/download/DownloadStateSyncer.kt": {
+    "mtime": 1783168990.8688724,
+    "ast_hash": "fc90ab4e96ee9ddec30e556ee10edf12",
+    "semantic_hash": ""
+  },
+  "app/src/main/java/com/streamo/app/ui/common/GlassBottomSheet.kt": {
+    "mtime": 1783187231.783831,
+    "ast_hash": "f8a2739d18805eca3a488f9ea887de51",
+    "semantic_hash": ""
+  },
+  "app/src/main/java/com/streamo/app/ui/downloads/DownloadsSheet.kt": {
+    "mtime": 1783187335.143072,
+    "ast_hash": "a7a1a9b7bda4689c43d569744d2cad83",
+    "semantic_hash": ""
+  },
+  "app/src/main/java/com/streamo/app/ui/downloads/SeriesDownloadsSheet.kt": {
+    "mtime": 1783187242.7940547,
+    "ast_hash": "ab58ab966b54f37698dbdf36df4f6a1c",
     "semantic_hash": ""
   }
 }

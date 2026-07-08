@@ -191,12 +191,6 @@ private fun TabletPortraitShell(
             }
         }
 
-        // Modali glass: fuori dalla hazeSource root così possono sfocare
-        // l'app sottostante come la navbar.
-        dialogHost.dialogs.forEach { dialog ->
-            dialog.content(hazeState)
-        }
-
         if (chromeVisible) {
             // Banner trasmissione sopra la navbar (BottomCenter, con offset
             // bottomInset così non si sovrappone alla pillola).
@@ -256,6 +250,13 @@ private fun TabletPortraitShell(
                     }
                 }
             )
+        }
+
+        // Modali glass: fuori dalla hazeSource root così possono sfocare
+        // l'app sottostante come la navbar. Dopo la navbar in z-order, così un
+        // bottom sheet alto la copre invece di finirci sotto.
+        dialogHost.dialogs.forEach { dialog ->
+            dialog.content(hazeState)
         }
     }
 }

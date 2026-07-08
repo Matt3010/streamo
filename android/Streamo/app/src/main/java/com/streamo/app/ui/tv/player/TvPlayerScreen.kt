@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,15 +39,16 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionOff
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -95,6 +97,7 @@ import com.streamo.app.util.Format
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * TV Player screen. Reuses [PlayerViewModel] unchanged — feature parity with the
@@ -134,6 +137,7 @@ fun TvPlayerScreen(
     val error by viewModel.error.collectAsState()
     val playbackEnded by viewModel.playbackEnded.collectAsState()
     val nextAvailable by viewModel.nextEpisodeAvailable.collectAsState()
+    val previousAvailable by viewModel.previousEpisodeAvailable.collectAsState()
 
     val audioTracks by viewModel.audioTracks.collectAsState()
     val subtitleTracks by viewModel.subtitleTracks.collectAsState()
@@ -164,6 +168,10 @@ fun TvPlayerScreen(
     // timeline preview moves, but NO seek happens until the user releases the D-pad.
     var scrubbing by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(0L) }
+    // Ancora della "corsa" di scrub corrente (riancorata al cambio direzione): delta mostrato
+    // dall'indicatore "±N secondi" (scrubPositionMs - scrubStartPositionMs) e punto di rewind
+    // quando un HOLD viene confermato (annulla i salti a blocchi della fase ambigua).
+    var scrubStartPositionMs by remember { mutableLongStateOf(0L) }
     // Posizione committata in attesa che il player la raggiunga (-1 = nessuna). Dopo il
     // commit lo scrub finisce ma `currentPosition` resta sul valore VECCHIO finché il seek
     // non atterra (il player era in pausa durante lo scrub e il polling lo aggiorna ~1s
@@ -226,11 +234,16 @@ fun TvPlayerScreen(
     // Il gap tra eventi distingue i due: breve = parte di un hold, lungo = pressione separata.
     // repeatCount NON è affidabile (molti telecomandi TV mandano coppie DOWN/UP con count 0).
     val maxPos = { if (duration > 0L) duration else Long.MAX_VALUE }
-    val onScrubKey: (Int, Boolean) -> Unit = { dir, _ ->
+    val onScrubKey: (Int, Boolean) -> Unit = { dir, isRepeat ->
         val now = android.os.SystemClock.uptimeMillis()
         if (!scrubbing) {
             captureFrame()
-            val from = currentPosition.coerceIn(0L, maxPos())
+            // Se un seek committato è ancora in volo, riparti dal SUO target, non dalla
+            // posizione (stantia) del player: senza questo un tap subito dopo un commit
+            // faceva rimbalzare la barra alla posizione vecchia.
+            val from = (if (pendingSeekMs >= 0L) pendingSeekMs else currentPosition)
+                .coerceIn(0L, maxPos())
+            scrubStartPositionMs = from
             scrubPositionMs = (from + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
             scrubbing = true
             pendingSeekMs = -1L
@@ -240,22 +253,57 @@ fun TvPlayerScreen(
             viewModel.beginScrub()
         } else {
             val gap = now - lastScrubKeyMs.longValue
-            if (gap in 16L..250L) {
-                // Evento fitto = parte di un hold.
-                scrubKeyIntervalMs.longValue = gap
-                scrubRepeatStreak++
-                if (scrubRepeatStreak >= HOLD_ENGAGE_STREAK) {
-                    scrubHold = true
-                } else if (!scrubHold) {
-                    // Ancora ambiguo (potrebbe essere doppio tap veloce): salto secco anche qui.
+            // Riconoscimento HOLD, in ordine di affidabilità:
+            //  (a) flag di autorepeat del sistema (repeatCount>0) — affidabile su emulatore,
+            //      tastiera e telecomandi che lo riportano: l'hold parte già al PRIMO
+            //      autorepeat, quindi niente salti a blocchi prima dello scorrimento graduale;
+            //  (b) ripiego sul gap breve tra eventi, per i telecomandi che mandano coppie
+            //      DOWN/UP con repeatCount sempre 0 (serve la streak per non scambiare un
+            //      doppio tap rapido per un hold).
+            when {
+                dir != scrubDir -> {
+                    // Cambio direzione: nuova "corsa" — riancora l'indicatore ±N (e il punto
+                    // di rewind dell'hold) alla posizione corrente e torna al regime TAP.
+                    scrubStartPositionMs = scrubPositionMs
+                    scrubRepeatStreak = 0
+                    scrubHold = false
                     scrubPositionMs = (scrubPositionMs + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
                 }
-                // Da hold confermato in poi NON saltare: avanza il ticker.
-            } else {
-                // Gap lungo = pressione discreta separata: nuovo salto secco, azzera l'hold.
-                scrubPositionMs = (scrubPositionMs + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
-                scrubRepeatStreak = 0
-                scrubHold = false
+                gap < 16L -> {
+                    // Doppione same-frame (alcuni telecomandi mandano eventi appaiati): ignora,
+                    // niente doppio salto.
+                }
+                isRepeat || gap <= 250L -> {
+                    // Misura la cadenza dei repeat solo su gap plausibili: il PRIMO autorepeat
+                    // arriva dopo il lungo delay iniziale (~450ms) e non è la vera cadenza.
+                    if (gap in 16L..400L) scrubKeyIntervalMs.longValue = gap
+                    scrubRepeatStreak++
+                    // Con flag affidabile basta 1 evento; col solo gap serve [HOLD_ENGAGE_STREAK].
+                    val engage = if (isRepeat) 1 else HOLD_ENGAGE_STREAK
+                    if (scrubRepeatStreak >= engage) {
+                        if (!scrubHold) {
+                            scrubHold = true
+                            // Cadenza non ancora misurata (hold via flag al 1° repeat): semina un
+                            // default prudente così il ticker non committa troppo presto.
+                            if (scrubKeyIntervalMs.longValue == 0L) scrubKeyIntervalMs.longValue = 150L
+                            // HOLD confermato: da qui i secondi scorrono GRADUALMENTE dal punto
+                            // attuale (ticker). NIENTE rewind all'ancora: col fast-path via flag
+                            // l'hold parte al 1° autorepeat, quindi c'è UN solo scatto iniziale
+                            // (+10) da cui proseguire. Riavvolgere darebbe il rimbalzo
+                            // avanti→indietro; il primo scatto resta come primo "gradino" del seek.
+                        }
+                    } else if (!scrubHold) {
+                        // Ancora ambiguo (potrebbe essere doppio tap veloce): salto secco anche qui.
+                        scrubPositionMs = (scrubPositionMs + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
+                    }
+                    // Da hold confermato in poi NON saltare: avanza il ticker.
+                }
+                else -> {
+                    // Gap lungo senza flag di repeat = pressione discreta separata: salto secco.
+                    scrubPositionMs = (scrubPositionMs + dir * TAP_SEEK_MS).coerceIn(0L, maxPos())
+                    scrubRepeatStreak = 0
+                    scrubHold = false
+                }
             }
         }
         scrubDir = dir
@@ -277,14 +325,14 @@ fun TvPlayerScreen(
 
     // Azzera il target in attesa quando il player lo raggiunge (tolleranza per il sync di
     // ExoPlayer CLOSEST_SYNC), con una rete di sicurezza temporale se il seek atterra lontano.
-    LaunchedEffect(pendingSeekMs, currentPosition) {
+    // Keyed SOLO su pendingSeekMs: prima era keyed anche su currentPosition, quindi ogni tick
+    // di polling rilanciava l'effetto e il delay dei 5s non scadeva mai in riproduzione.
+    LaunchedEffect(pendingSeekMs) {
         if (pendingSeekMs >= 0L) {
-            if (kotlin.math.abs(currentPosition - pendingSeekMs) < 2_000L) {
-                pendingSeekMs = -1L
-            } else {
-                delay(5_000)
-                pendingSeekMs = -1L
+            withTimeoutOrNull(5_000L) {
+                while (kotlin.math.abs(currentPosition - pendingSeekMs) >= 2_000L) delay(100)
             }
+            pendingSeekMs = -1L
         }
     }
 
@@ -295,49 +343,47 @@ fun TvPlayerScreen(
         pendingSeekMs >= 0L -> pendingSeekMs
         else -> currentPosition
     }
-
-    // Sessione di scrub: muove la barra di preview in modo continuo e fluido (ticker 50ms,
-    // passo accelerato), indipendente dalla cadenza dei key-repeat. Il player resta in pausa
-    // sul frame congelato. Due soglie sul gap dall'ultimo evento tasto:
-    //  - advanceGap: oltre questa SMETTE di avanzare (la barra si ferma quasi subito al
-    //    rilascio, niente overshoot);
-    //  - commitGap: oltre questa committa il seek UNA volta.
-    // Entrambe adattive: cortissime una volta che gli autorepeat fluiscono (≈ intervallo
-    // misurato), lunghe (SCRUB_IDLE_MS) prima del primo repeat per coprirne il ritardo.
-    // Niente dipendenza da ACTION_UP (su molti telecomandi TV è una coppia per ogni repeat).
+    // Sessione di scrub: ticker ad alta frequenza ([SCRUB_TICK_MS] ≈ 60fps) che, mentre il
+    // D-pad è tenuto premuto, avanza la preview in modo CONTINUO e fluido a velocità crescente
+    // (vedi [scrubSpeedMsPerSec]). Così la barra scorre liscia; il contatore ±N invece mostra
+    // i secondi arrotondati a blocchi (vedi TvSkipIndicator), quindi non "striscia" secondo per
+    // secondo. Il player resta in pausa sul frame congelato. Il rilascio si rileva dal gap
+    // dall'ultimo evento tasto (non da ACTION_UP, su molti telecomandi TV è una coppia per
+    // repeat): oltre advanceGap SMETTE di avanzare (stop netto, poco overshoot), oltre commitGap
+    // committa il seek UNA volta.
     LaunchedEffect(scrubbing) {
         if (scrubbing) {
-            var elapsed = 0L
+            var wasHold = false
+            var holdStartMs = 0L
             while (isActive) {
                 delay(SCRUB_TICK_MS)
                 val now = android.os.SystemClock.uptimeMillis()
                 val gap = now - lastScrubKeyMs.longValue
                 val interval = scrubKeyIntervalMs.longValue
+                // All'ingresso in HOLD (anche dopo un cambio direzione) riparti dalla velocità
+                // minima: niente accelerazione ereditata dalla corsa precedente.
+                if (scrubHold && !wasHold) holdStartMs = now
+                wasHold = scrubHold
                 if (!scrubHold) {
                     // Regime TAP: nessuna animazione. La barra è già al salto secco; aspetta
                     // altri tap (che si accumulano) e committa quando gli eventi cessano.
                     // L'idle lungo copre il ritardo del primo autorepeat, così un hold non
-                    // viene committato come tap prima che il ticker continuo possa partire.
+                    // viene committato come tap prima che il regime HOLD possa partire.
                     if (gap > SCRUB_IDLE_MS) {
                         commitScrubNow()
                         break
                     }
                 } else {
-                    // Regime HOLD: scorrimento continuo animato + rilascio rapido (soglie strette).
-                    val advanceGap = maxOf(interval + 40L, 80L)
-                    val commitGap = maxOf(interval + 130L, 180L)
+                    // Regime HOLD: scorrimento continuo accelerato.
+                    val advanceGap = maxOf(interval + 40L, 90L)
+                    val commitGap = maxOf(interval * 2 + 130L, 180L)
                     if (gap > commitGap) {
                         commitScrubNow()
                         break
                     }
                     if (scrubDir != 0 && duration > 0L && gap <= advanceGap) {
-                        // Se un repeat atteso è già MANCATO (gap oltre la cadenza), il tasto è
-                        // probabilmente appena rilasciato: avanza col passo minimo (accel 1) così
-                        // la "coda" prima dello stop è impercettibile, niente overshoot di secondi.
-                        val releasing = gap > interval
-                        val step = if (releasing) scrubStepMs(0L, duration) else scrubStepMs(elapsed, duration)
+                        val step = scrubSpeedMsPerSec(now - holdStartMs) * SCRUB_TICK_MS / 1000L
                         scrubPositionMs = (scrubPositionMs + scrubDir * step).coerceIn(0L, duration)
-                        elapsed += SCRUB_TICK_MS
                     }
                 }
             }
@@ -709,11 +755,12 @@ fun TvPlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TvCircleButton(
-                            icon = Icons.Filled.Replay10,
-                            contentDescription = "Indietro di 10 secondi",
+                            icon = Icons.Filled.SkipPrevious,
+                            contentDescription = "Episodio precedente",
                             size = 64.dp,
                             iconSize = 38.dp,
-                            onClick = { captureFrame(); viewModel.seekBack() }
+                            enabled = viewModel.mediaType == "tv" && previousAvailable,
+                            onClick = { viewModel.playPreviousEpisode() }
                         )
                         TvCircleButton(
                             icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -724,13 +771,35 @@ fun TvPlayerScreen(
                             onClick = { viewModel.togglePlayPause() }
                         )
                         TvCircleButton(
-                            icon = Icons.Filled.Forward10,
-                            contentDescription = "Avanti di 10 secondi",
+                            icon = Icons.Filled.SkipNext,
+                            contentDescription = "Episodio successivo",
                             size = 64.dp,
                             iconSize = 38.dp,
-                            onClick = { captureFrame(); viewModel.seekForward() }
+                            enabled = viewModel.mediaType == "tv" && nextAvailable,
+                            onClick = { viewModel.playNextEpisode() }
                         )
                     }
+                }
+
+                // Skip indicator: visibile per TUTTO lo scrub, hold compreso — in hold il
+                // delta si aggiorna ad ogni tick del ticker, quindi i secondi scorrono
+                // gradualmente invece di sparire quando parte lo scorrimento continuo.
+                // Derived straight from the existing scrub state — no parallel tracking.
+                AnimatedVisibility(
+                    visible = scrubbing,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150)),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = (-120).dp)
+                ) {
+                    val deltaMs = scrubPositionMs - scrubStartPositionMs
+                    TvSkipIndicator(
+                        // Arrotondato a blocchi da 10s: la barra scorre fluida ma i secondi di
+                        // skip restano a scatti (non "strisciano" secondo per secondo).
+                        seconds = ((kotlin.math.abs(deltaMs) / 10_000L) * 10L).toInt(),
+                        direction = if (deltaMs < 0) -1 else 1
+                    )
                 }
 
                 // Bottom: focusable seek bar (display only). Lo scrub L/R è gestito dal root
@@ -759,7 +828,7 @@ fun TvPlayerScreen(
 
                 // Next-episode pill (TV series, near the end / once ended).
                 val progressFraction = if (duration > 0) currentPosition.toFloat() / duration else 0f
-                if (nextAvailable && (playbackEnded || progressFraction >= 0.95f)) {
+                if (nextAvailable && (playbackEnded || progressFraction >= 0.98f)) {
                     TvFocusable(
                         onClick = { viewModel.playNextEpisode() },
                         modifier = Modifier
@@ -931,8 +1000,8 @@ private fun TvSeekBar(
     }
 }
 
-/** Periodo del ticker di scrub: ogni 50ms avanza la posizione di preview (20 step/sec). */
-private const val SCRUB_TICK_MS = 50L
+/** Periodo del ticker di scrub: ~16ms (≈60fps) così l'avanzamento della barra è fluido. */
+private const val SCRUB_TICK_MS = 16L
 
 /** Salto secco e istantaneo di una singola pressione discreta del D-pad (no animazione). */
 private const val TAP_SEEK_MS = 10_000L
@@ -952,26 +1021,17 @@ private const val HOLD_ENGAGE_STREAK = 2
 private const val SCRUB_IDLE_MS = 600L
 
 /**
- * Passo (ms di video) avanzato per ogni tick di [SCRUB_TICK_MS] mentre il D-pad è tenuto
- * premuto. Parte lento per il controllo fine e accelera con la durata della pressione; la
- * base scala con la lunghezza del contenuto, così i film lunghi si attraversano in tempi
- * umani senza che le clip brevi schizzino via. Profilo simile a Jellyfin/Wholphin.
+ * Velocità di scorrimento (ms di video al secondo) mentre il D-pad è tenuto premuto, crescente
+ * col tempo di pressione come i player TV: parte controllabile e accelera fino a un tetto alto
+ * per attraversare in fretta timeline lunghe. Il contatore ±N è arrotondato a blocchi da 10s,
+ * quindi la barra scorre fluida ma i "secondi di skip" restano a scatti.
  */
-private fun scrubStepMs(elapsedMs: Long, durationMs: Long): Long {
-    val durMin = durationMs / 60_000L
-    val base = when {
-        durMin < 15 -> 150L
-        durMin < 45 -> 300L
-        durMin < 120 -> 500L
-        else -> 800L
-    }
-    val accel = when {
-        elapsedMs < 1200L -> 1L
-        elapsedMs < 3000L -> 3L
-        elapsedMs < 6000L -> 7L
-        else -> 14L
-    }
-    return base * accel
+private fun scrubSpeedMsPerSec(heldMs: Long): Long = when {
+    heldMs < 500L -> 10_000L    // 10s/s
+    heldMs < 1200L -> 25_000L   // 25s/s
+    heldMs < 2500L -> 60_000L   // 1min/s
+    heldMs < 4500L -> 150_000L  // 2.5min/s
+    else -> 300_000L            // 5min/s (tetto)
 }
 
 /** Badge "maschera IP" mostrato quando WARP è attivo (sfondo scuro, regola CLAUDE.md). */
@@ -1005,11 +1065,13 @@ private fun TvCircleButton(
     modifier: Modifier = Modifier,
     size: androidx.compose.ui.unit.Dp = 48.dp,
     iconSize: androidx.compose.ui.unit.Dp = 28.dp,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    enabled: Boolean = true
 ) {
     TvFocusable(
         onClick = onClick,
         modifier = modifier,
+        enabled = enabled,
         focusRequester = focusRequester,
         scaleOnFocus = 1.12f
     ) { focused ->
@@ -1023,10 +1085,35 @@ private fun TvCircleButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = if (focused) Color.Black else Color.White,
+                tint = when {
+                    !enabled -> Color.White.copy(alpha = 0.4f)
+                    focused -> Color.Black
+                    else -> Color.White
+                },
                 modifier = Modifier.size(iconSize)
             )
         }
+    }
+}
+
+/** Transient "±N secondi" bubble for the D-pad tap-jump scrub (dark scrim per CLAUDE.md). */
+@Composable
+private fun TvSkipIndicator(seconds: Int, direction: Int, modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(horizontal = 18.dp, vertical = 10.dp)
+    ) {
+        Icon(
+            imageVector = if (direction < 0) Icons.Filled.FastRewind else Icons.Filled.FastForward,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(22.dp)
+        )
+        Text(text = if (direction < 0) "-$seconds" else "+$seconds", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }
 

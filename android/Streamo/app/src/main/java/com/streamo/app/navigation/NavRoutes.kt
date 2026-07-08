@@ -57,16 +57,6 @@ sealed class NavRoutes {
     data class AdvancedSettings(val scrollToWarp: Boolean = false) : NavRoutes()
 
     @Serializable
-    data object Downloads : NavRoutes()
-
-    @Serializable
-    data class SeriesDownloads(
-        val tmdbId: Int,
-        val title: String,
-        val showAllEpisodes: Boolean = false
-    ) : NavRoutes()
-
-    @Serializable
     data object ContinueWatching : NavRoutes()
 
     /** TV-only: collapsed Watchlist + History + Continue Watching. */

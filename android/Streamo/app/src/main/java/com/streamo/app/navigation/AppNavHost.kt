@@ -26,8 +26,6 @@ import com.streamo.app.ui.anime.AnimeDetailScreen
 import com.streamo.app.ui.anime.AnimeScreen
 import com.streamo.app.ui.continuewatching.ContinueWatchingScreen
 import com.streamo.app.ui.detail.DetailScreen
-import com.streamo.app.ui.downloads.DownloadsScreen
-import com.streamo.app.ui.downloads.SeriesDownloadsScreen
 import com.streamo.app.ui.history.HistoryScreen
 import com.streamo.app.ui.home.HomeScreen
 import com.streamo.app.ui.player.PlayerScreen
@@ -211,43 +209,6 @@ fun AppNavHost(
             val route: NavRoutes.AdvancedSettings = backStackEntry.toRoute()
             AdvancedSettingsScreen(
                 scrollToWarp = route.scrollToWarp,
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable<NavRoutes.Downloads> {
-            DownloadsScreen(
-                onNavigateToDetail = { tmdbId, mediaType, season, episode ->
-                    navController.navigate(
-                        NavRoutes.Detail(tmdbId, mediaType, season, episode)
-                    )
-                },
-                onNavigateToPlayer = { tmdbId, mediaType, season, episode, title, poster, releaseDate ->
-                    navController.navigate(
-                        NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate)
-                    )
-                },
-                onNavigateToSeriesDownloads = { tmdbId, title ->
-                    navController.navigate(
-                        NavRoutes.SeriesDownloads(tmdbId, title, showAllEpisodes = false)
-                    )
-                },
-                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings(scrollToWarp = true)) },
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable<NavRoutes.SeriesDownloads> {
-            SeriesDownloadsScreen(
-                onNavigateToDetail = { tmdbId, mediaType, season, episode ->
-                    navController.navigate(
-                        NavRoutes.Detail(tmdbId, mediaType, season, episode)
-                    )
-                },
-                onNavigateToPlayer = { tmdbId, mediaType, season, episode, title, poster, releaseDate ->
-                    navController.navigate(
-                        NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate)
-                    )
-                },
-                onNavigateToAdvanced = { navController.navigate(NavRoutes.AdvancedSettings(scrollToWarp = true)) },
                 onBack = { navController.popBackStack() }
             )
         }

@@ -44,6 +44,10 @@ class ProviderClient @Inject constructor(
         private const val LINK_SOURCE_URL =
             "https://api.telegra.ph/getPage/Link-Aggiornato-StreamingCommunity-09-29?return_content=true"
         private const val REQUEST_TIMEOUT_MS = 8000L
+        // ponytail: realistic desktop Chrome UA — bare "Mozilla/5.0" is a bot fingerprint; upgrade to a full browser string.
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/126.0.0.0 Safari/537.36"
 
         const val STRONG_MATCH_THRESHOLD = 170
         const val MIN_CANDIDATE_SCORE = 40
@@ -180,7 +184,7 @@ class ProviderClient @Inject constructor(
             val request = Request.Builder()
                 .url(LINK_SOURCE_URL)
                 .header("Accept", "application/json")
-                .header("User-Agent", "Mozilla/5.0")
+                .header("User-Agent", USER_AGENT)
                 .build()
             val response = activeClient.newCall(request).execute()
             if (!response.isSuccessful) {
@@ -496,7 +500,7 @@ class ProviderClient @Inject constructor(
                     .url(url)
                     .header("Accept", accept)
                     .header("Referer", "") // no-referrer like the web
-                    .header("User-Agent", "Mozilla/5.0")
+                    .header("User-Agent", USER_AGENT)
                     .build()
                 ProviderDebugLogger.log("HTTP GET $url")
                 val response = activeClient.newCall(request).execute()

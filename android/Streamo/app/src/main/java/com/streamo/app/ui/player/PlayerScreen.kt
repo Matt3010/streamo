@@ -11,7 +11,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -22,6 +28,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.Canvas
@@ -54,6 +61,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Audiotrack
@@ -67,11 +76,10 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -99,8 +107,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -147,7 +157,8 @@ import dev.chrisbanes.haze.hazeSource
 @Composable
 fun PlayerScreen(
     onBack: () -> Unit,
-    onNextEpisode: () -> Unit = {}
+    onNextEpisode: () -> Unit = {},
+    onPreviousEpisode: () -> Unit = {}
 ) {
     val viewModel: PlayerViewModel = hiltViewModel()
     val context = LocalContext.current
@@ -164,6 +175,7 @@ fun PlayerScreen(
     val buffering by viewModel.buffering.collectAsState()
     val sources by viewModel.sources.collectAsState()
     val nextAvailable by viewModel.nextEpisodeAvailable.collectAsState()
+    val previousAvailable by viewModel.previousEpisodeAvailable.collectAsState()
     val seekingManually by viewModel.seekingManually.collectAsState()
     val playbackEnded by viewModel.playbackEnded.collectAsState()
     val audioTracks by viewModel.audioTracks.collectAsState()
@@ -254,6 +266,49 @@ fun PlayerScreen(
             } catch (_: Exception) { /* surface non valida → fallback nero */ }
         }
     }
+
+    // Double-tap-to-skip (mobile only, YouTube-style): a rapid streak of taps on the same
+    // edge accumulates ±10s PER TAP — 2 taps = 10s, 3 = 20s, 4 = 30s… I tap accumulano solo
+    // il totale mostrato dalla bolla; il seek VERO è UNO solo, debounced, alla fine della
+    // raffica (altrimenti ogni tap ricaricherebbe il decoder e l'accumulo si perderebbe).
+    // Un tap singolo isolato (ovunque) toggla i controlli dopo il double-tap timeout.
+    // Tutto stato UI effimero — niente ViewModel, niente da persistere.
+    var streakSide by remember { mutableIntStateOf(0) }   // 0 none, -1 left, +1 right
+    var streakCount by remember { mutableIntStateOf(0) }
+    var streakLastMs by remember { mutableLongStateOf(0L) }
+    var skipAccumSeconds by remember { mutableIntStateOf(0) }
+    var skipDirection by remember { mutableIntStateOf(0) } // -1 back, +1 forward; never reset to 0
+    var skipIndicatorVisible by remember { mutableStateOf(false) }
+
+    // Un effetto per entrambi gli esiti, keyed su (streakCount, streakSide): ogni nuovo tap
+    // cambia streakCount → cancella e riavvia il delay (= debounce). Solo quando NON arriva
+    // un altro tap entro la finestra scatta l'azione.
+    LaunchedEffect(streakCount, streakSide) {
+        when {
+            streakCount == 1 -> {
+                // Tap singolo isolato → toggle controlli.
+                delay(DOUBLE_TAP_TIMEOUT_MS)
+                controlsVisible = !controlsVisible
+                if (controlsVisible) controlsPulse += 1
+                streakSide = 0
+                streakCount = 0
+            }
+            streakSide != 0 && streakCount >= 2 -> {
+                // Raffica di skip: aspetta che i tap finiscano, poi UN UNICO seek del totale.
+                delay(SKIP_COMMIT_DEBOUNCE_MS)
+                captureFrame()
+                viewModel.seekBy(skipDirection * skipAccumSeconds * 1000L)
+                streakSide = 0
+                streakCount = 0
+            }
+        }
+    }
+
+    // Hide the skip bubble shortly after the last skip tap of a streak.
+    LaunchedEffect(skipAccumSeconds, skipDirection) {
+        delay(SKIP_INDICATOR_FADE_MS)
+        skipIndicatorVisible = false
+    }
     // Stato della timeline issato qui (non dentro i bottom controls) così il
     // freeze-frame può restare visibile per TUTTO lo scrub (drag + seek), mascherando
     // il bordo verde del decoder-flush sulla destra.
@@ -261,7 +316,14 @@ fun PlayerScreen(
     var isSeeking by remember { mutableStateOf(false) }
     // Non sincronizzare la posizione mentre la durata è ancora sconosciuta: il resume
     // position (es. 20 min) diviso per duration=0 faceva apparire la barra piena.
-    LaunchedEffect(position, duration) { if (!isSeeking && duration > 0) sliderValue = position }
+    // Non sovrascrivere sliderValue durante una raffica di skip (la barra segue il target
+    // ottimistico tap-per-tap) né mentre il seek è in volo (la posizione del player non è
+    // ancora al target): senza questi guard la barra restava ferma fino a fine skip e poi
+    // poteva rimbalzare indietro per un tick di polling stantio.
+    LaunchedEffect(position, duration) {
+        val skipStreakActive = streakSide != 0 && streakCount >= 2
+        if (!isSeeking && !skipStreakActive && !seekingManually && duration > 0) sliderValue = position
+    }
 
     // Show the frozen frame whenever we'd otherwise see black/green: while dragging the
     // slider, during a manual seek (decoder flush), or while buffering.
@@ -543,18 +605,54 @@ fun PlayerScreen(
 
         if (!inPipMode) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Area tappabile per mostrare/nascondere i controlli.
-                // Sta dietro a tutti i controlli in z-order; i pulsanti intercettano
-                // il tocco prima, quindi il toggle scatta solo su aree vuote.
+                // Area tappabile: mostra/nascondi i controlli (tap singolo) + skip ±10s ai
+                // bordi (raffica di tap, stile YouTube). Sta dietro a tutti i controlli in
+                // z-order; i pulsanti intercettano il tocco prima. Terzo centrale = nessun
+                // skip (solo toggle). Ogni tap della raffica oltre il primo aggiunge 10s al
+                // totale mostrato (2=10s, 3=20s, 4=30s…); il seek unico parte debounced a
+                // fine raffica (vedi LaunchedEffect), così i tap multipli non ricaricano.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            controlsVisible = !controlsVisible
-                            if (controlsVisible) controlsPulse += 1
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    val side = when {
+                                        offset.x < size.width / 3f -> -1
+                                        offset.x > size.width * 2f / 3f -> 1
+                                        else -> 0
+                                    }
+                                    val now = android.os.SystemClock.uptimeMillis()
+                                    // Finestra di continuazione: 300ms per il 1°→2° tap (soglia
+                                    // double-tap), 400ms per i successivi (debounce di commit).
+                                    val window = if (streakCount == 1) DOUBLE_TAP_TIMEOUT_MS
+                                    else SKIP_COMMIT_DEBOUNCE_MS
+                                    val continuing = streakCount > 0 &&
+                                        side == streakSide &&
+                                        now - streakLastMs < window
+                                    if (continuing) {
+                                        streakCount += 1
+                                    } else {
+                                        streakSide = side
+                                        streakCount = 1
+                                    }
+                                    streakLastMs = now
+                                    if (side != 0 && streakCount >= 2) {
+                                        // Accumula SOLO il totale per la bolla: nessun seek qui.
+                                        // skipAccumSeconds = totale cumulato (10, 20, 30…).
+                                        skipDirection = side
+                                        skipAccumSeconds = (streakCount - 1) * 10
+                                        skipIndicatorVisible = true
+                                        // Timeline ottimistica: la barra e il tempo avanzano
+                                        // subito ad ogni tap (stile YouTube), il seek vero
+                                        // arriva debounced a fine raffica.
+                                        if (duration > 0) {
+                                            sliderValue = (position + side * skipAccumSeconds * 1000L)
+                                                .coerceIn(0L, duration)
+                                        }
+                                    }
+                                }
+                            )
                         }
                 )
 
@@ -730,17 +828,22 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val canGoPrevious = viewModel.mediaType == "tv" && previousAvailable
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
                                 .glassCapsule(playerHazeState, CircleShape)
-                                .clickable { resetControls(); captureFrame(); viewModel.seekBack() },
+                                .clickable(enabled = canGoPrevious) {
+                                    resetControls()
+                                    viewModel.playPreviousEpisode()
+                                    onPreviousEpisode()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Replay10,
-                                contentDescription = "Indietro di 10 secondi",
-                                tint = Color.White,
+                                imageVector = Icons.Filled.SkipPrevious,
+                                contentDescription = "Episodio precedente",
+                                tint = Color.White.copy(alpha = if (canGoPrevious) 1f else 0.35f),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -768,17 +871,22 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                        val canGoNext = viewModel.mediaType == "tv" && nextAvailable
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
                                 .glassCapsule(playerHazeState, CircleShape)
-                                .clickable { resetControls(); captureFrame(); viewModel.seekForward() },
+                                .clickable(enabled = canGoNext) {
+                                    resetControls()
+                                    viewModel.playNextEpisode()
+                                    onNextEpisode()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Forward10,
-                                contentDescription = "Avanti di 10 secondi",
-                                tint = Color.White,
+                                imageVector = Icons.Filled.SkipNext,
+                                contentDescription = "Episodio successivo",
+                                tint = Color.White.copy(alpha = if (canGoNext) 1f else 0.35f),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -954,6 +1062,23 @@ fun PlayerScreen(
             }
         }
 
+        // Skip indicator (double-tap edge gesture): sibling of the WARP badge, NON gated
+        // su warpEnabled — deve apparire sempre, anche con WARP spento. Fuori dai controlli
+        // così resta visibile a controlli nascosti. skipDirection mai resettato a 0 (no flip).
+        // Posizione: stesso livello verticale del transport row (centro), orizzontalmente nel
+        // gap tra il bordo esterno della timeline e il bordo esterno del bottone skip episodio
+        // — più verso l'esterno (inset 60dp dal bordo timeline).
+        AnimatedVisibility(
+            visible = skipIndicatorVisible,
+            enter = if (reducedEffects) EnterTransition.None else fadeIn(tween(200)),
+            exit = if (reducedEffects) ExitTransition.None else fadeOut(tween(200)),
+            modifier = Modifier
+                .align(if (skipDirection < 0) Alignment.CenterStart else Alignment.CenterEnd)
+                .padding(horizontal = horizontalSafePadding + 60.dp)
+        ) {
+            SkipIndicator(direction = skipDirection, seconds = skipAccumSeconds)
+        }
+
         // Buffering spinner: single source of truth, centered, drawn above the
         // controls so it occupies the (now empty) play/pause slot without overlap.
         if (buffering && !loading && error == null) {
@@ -972,7 +1097,7 @@ fun PlayerScreen(
         val progressFraction = if (duration > 0) position.toFloat() / duration.toFloat() else 0f
         // Show only near the very end of the episode (or once it ended), so the prompt
         // doesn't linger for minutes.
-        val showNextEpisodeButton = nextAvailable && (playbackEnded || progressFraction >= 0.95f)
+        val showNextEpisodeButton = nextAvailable && (playbackEnded || progressFraction >= 0.98f)
         val safeBottom = with(LocalDensity.current) { WindowInsets.safeDrawing.getBottom(this).toDp() }
 
         // Skip intro / credits + prossimo episodio. Galleggiano sopra la barra
@@ -1575,5 +1700,86 @@ private fun WarpBadge(modifier: Modifier = Modifier) {
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = "Maschera IP attiva (WARP)", color = muted, fontSize = 12.sp)
+    }
+}
+
+private const val DOUBLE_TAP_TIMEOUT_MS = 300L
+private const val SKIP_COMMIT_DEBOUNCE_MS = 400L
+private const val SKIP_INDICATOR_FADE_MS = 700L
+
+/**
+ * Indicatore di skip stile YouTube (rif. video di riferimento): "+N"/"−N" verso il centro,
+ * due chevron sovrapposti ("»") verso il bordo esterno, con un'onda di opacità che viaggia
+ * nella direzione dello skip e si ripete in loop finché l'indicatore è visibile — non un
+ * singolo flash per tap. NESSUNO sfondo/scrim — solo ombra sul testo, dato che è overlay
+ * diretto sul video e non un badge su poster/still.
+ */
+@Composable
+private fun SkipIndicator(direction: Int, seconds: Int, modifier: Modifier = Modifier) {
+    // Onda: i due chevron pulsano alternati (sfasati di mezzo periodo); quello interno
+    // (lato testo) anticipa, così la pulsazione sembra viaggiare verso il bordo esterno.
+    val wave = rememberInfiniteTransition(label = "skipChevronWave")
+    val innerAlpha by wave.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            tween(durationMillis = 350, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "innerChevron"
+    )
+    val outerAlpha by wave.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            tween(durationMillis = 350, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse,
+            initialStartOffset = StartOffset(175)
+        ),
+        label = "outerChevron"
+    )
+    val chevron = if (direction < 0) Icons.AutoMirrored.Filled.KeyboardArrowLeft
+    else Icons.AutoMirrored.Filled.KeyboardArrowRight
+    val shadow = Shadow(color = Color.Black.copy(alpha = 0.6f), blurRadius = 12f)
+
+    val text: @Composable () -> Unit = {
+        Text(
+            text = if (direction < 0) "-$seconds" else "+$seconds",
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            style = androidx.compose.ui.text.TextStyle(shadow = shadow)
+        )
+    }
+    val chevronIcon: @Composable (Float) -> Unit = { alpha ->
+        Icon(imageVector = chevron, contentDescription = null, tint = Color.White.copy(alpha = alpha), modifier = Modifier.size(26.dp))
+    }
+    // Overlap negativo: le icone Material hanno molto padding interno, -14dp porta i due
+    // glifi quasi a contatto come il "»" del riferimento.
+    val chevrons: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy((-14).dp)) {
+            if (direction < 0) {
+                chevronIcon(outerAlpha)
+                chevronIcon(innerAlpha)
+            } else {
+                chevronIcon(innerAlpha)
+                chevronIcon(outerAlpha)
+            }
+        }
+    }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (direction < 0) {
+            chevrons()
+            Spacer(Modifier.width(10.dp))
+            text()
+        } else {
+            text()
+            Spacer(Modifier.width(10.dp))
+            chevrons()
+        }
     }
 }

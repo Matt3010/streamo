@@ -87,12 +87,6 @@ fun RootTabView() {
                 }
             }
 
-            // Modali glass: renderizzate fuori dalla hazeSource root così la loro
-            // superficie può sfocare l'app sottostante come la navbar.
-            dialogHost.dialogs.forEach { dialog ->
-                dialog.content(hazeState)
-            }
-
             // Banner trasmissione: visibile mentre si naviga l'app (non sul player),
             // se c'è un cast in corso. Cliccabile per tornare ai controlli.
             if (bottomBarVisible) {
@@ -147,6 +141,13 @@ fun RootTabView() {
                         }
                     }
                 )
+            }
+
+            // Modali glass: renderizzate fuori dalla hazeSource root così la loro
+            // superficie può sfocare l'app sottostante come la navbar. Dopo la navbar
+            // in z-order, così un bottom sheet alto la copre invece di finirci sotto.
+            dialogHost.dialogs.forEach { dialog ->
+                dialog.content(hazeState)
             }
         }
     }

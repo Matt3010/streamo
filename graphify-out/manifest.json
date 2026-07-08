@@ -1,12 +1,12 @@
 {
   "android/Streamo/.claude/settings.json": {
-    "mtime": 1783166258.6601257,
+    "mtime": 1783185067.9758315,
     "ast_hash": "598cb075410bcd95220ac90bbb60344a",
     "semantic_hash": ""
   },
   "android/Streamo/.claude/settings.local.json": {
-    "mtime": 1783166522.3310034,
-    "ast_hash": "c47d55e5abd31f1ec790b6b6f75cd6a8",
+    "mtime": 1783456959.3685744,
+    "ast_hash": "4cfddd1e19ea13b0434d2b3a7721d923",
     "semantic_hash": ""
   },
   "android/Streamo/.gradle/8.10.2/dependencies-accessors/6f6cbf1fb0bb44c33d429a87f635df6927ce3531/sources/org/gradle/accessors/dm/LibrariesForLibs.java": {
@@ -17,16 +17,6 @@
   "android/Streamo/.gradle/8.10.2/dependencies-accessors/6f6cbf1fb0bb44c33d429a87f635df6927ce3531/sources/org/gradle/accessors/dm/LibrariesForLibsInPluginsBlock.java": {
     "mtime": 1782851006.038947,
     "ast_hash": "c5db12dda86dd3200dbf0b97fad56b42",
-    "semantic_hash": ""
-  },
-  "android/Streamo/.gradle/8.10.2/dependencies-accessors/93de31d8c7854c6913a62fe3c4f99fb6df1c5466/sources/org/gradle/accessors/dm/LibrariesForLibs.java": {
-    "mtime": 1781729424.7038805,
-    "ast_hash": "b6df9b9ea72e50f5d94f86a7e5a963e6",
-    "semantic_hash": ""
-  },
-  "android/Streamo/.gradle/8.10.2/dependencies-accessors/93de31d8c7854c6913a62fe3c4f99fb6df1c5466/sources/org/gradle/accessors/dm/LibrariesForLibsInPluginsBlock.java": {
-    "mtime": 1781729424.70688,
-    "ast_hash": "94d8b8ff08530932df2f789e1abc7eb8",
     "semantic_hash": ""
   },
   "android/Streamo/.gradle/8.10.2/dependencies-accessors/dc0f321dd142720a956c3706c51e5bb19e7d33fa/sources/org/gradle/accessors/dm/LibrariesForLibs.java": {
@@ -60,7 +50,7 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/MainApplication.kt": {
-    "mtime": 1783032208.9996607,
+    "mtime": 1783168830.9004495,
     "ast_hash": "d2e5a3cadcc160a4c7965f851a889b33",
     "semantic_hash": ""
   },
@@ -195,13 +185,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/download/DownloadInfrastructure.kt": {
-    "mtime": 1782742202.2703083,
-    "ast_hash": "4e5706f7d58f4c6928524f03e31134d2",
-    "semantic_hash": ""
-  },
-  "android/Streamo/app/src/main/java/com/streamo/app/download/DownloadManagerSingleton.kt": {
-    "mtime": 1780574299.1406336,
-    "ast_hash": "68efd847053b5465f54dd7394f32ba08",
+    "mtime": 1783347536.8184023,
+    "ast_hash": "7e84fd02ec519e020b14471bb5b8a6b1",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/download/DownloadQuality.kt": {
@@ -225,13 +210,13 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/download/DownloadStateSyncer.kt": {
-    "mtime": 1781094424.2984138,
-    "ast_hash": "4c887a13b7ff19c52be11b4aa29fe1c3",
+    "mtime": 1783168990.8688724,
+    "ast_hash": "fc90ab4e96ee9ddec30e556ee10edf12",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/download/MediaDownloadService.kt": {
-    "mtime": 1781094424.2999272,
-    "ast_hash": "d7ec6e138834853d4a56b2e33f349ed6",
+    "mtime": 1783347536.819402,
+    "ast_hash": "9797541290e76534ac21c7e6c2a12c2b",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/download/ResolveAndDownloadWorker.kt": {
@@ -240,8 +225,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/navigation/AppNavHost.kt": {
-    "mtime": 1783152400.535609,
-    "ast_hash": "b5cbfee5aa3e92245d0d65b0aeda3b22",
+    "mtime": 1783347536.819904,
+    "ast_hash": "aabd67d188e3cdab711d8ef2debc948f",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/navigation/CastBanner.kt": {
@@ -260,18 +245,18 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/navigation/NavRoutes.kt": {
-    "mtime": 1783022367.711516,
-    "ast_hash": "305e41445fa1d9d047036dbcd38c1bc5",
+    "mtime": 1783347536.819904,
+    "ast_hash": "5aa73e0d947c38e5fed55b2a3f1151c3",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/navigation/RootTabView.kt": {
-    "mtime": 1783152623.0362706,
-    "ast_hash": "aa103ef3ba68885bef4e5e8d9565329a",
+    "mtime": 1783347536.819904,
+    "ast_hash": "6a1500788bd6af37414ccc1ecc5bccaf",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/navigation/TabletRootView.kt": {
-    "mtime": 1783153699.0316594,
-    "ast_hash": "9e4341971d861d713d841e62327947ed",
+    "mtime": 1783347536.820907,
+    "ast_hash": "552a3857881c98896ecdae2fb2a9440d",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/player/PipController.kt": {
@@ -370,8 +355,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/provider/ProviderClient.kt": {
-    "mtime": 1782670621.4716403,
-    "ast_hash": "eb7cddcc75c23a6a9762fcdbafbfc95d",
+    "mtime": 1783347650.1463249,
+    "ast_hash": "24593f460e5fde8f5c712ea3b0f4abaa",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/provider/ProviderDebugLogger.kt": {
@@ -390,8 +375,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/provider/VixcloudClient.kt": {
-    "mtime": 1782670621.4726403,
-    "ast_hash": "22e44ebcbf9ddf830d8ddcae7e1b1890",
+    "mtime": 1783347660.2240005,
+    "ast_hash": "a272e542daeca363bc64e9f991d9eadb",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/provider/anime/AnimeModels.kt": {
@@ -480,8 +465,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/common/GlassDialog.kt": {
-    "mtime": 1783153753.498186,
-    "ast_hash": "52e09332d5f31189eba71cae5be71b55",
+    "mtime": 1783347536.821907,
+    "ast_hash": "aa2c3fb29b1c7ccc4cea6fee364e5fde",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/common/GlassTopBar.kt": {
@@ -535,28 +520,18 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/detail/DetailScreen.kt": {
-    "mtime": 1783154036.8967617,
-    "ast_hash": "833d2e28046c1ef827c4e76e0f5dfc69",
+    "mtime": 1783347536.821907,
+    "ast_hash": "e5fcbd1f079e503349701c5c1f5d938d",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/detail/DetailViewModel.kt": {
-    "mtime": 1783158577.012299,
-    "ast_hash": "5b489fbf4d775bf4b40aa5e8d2c4cc5b",
-    "semantic_hash": ""
-  },
-  "android/Streamo/app/src/main/java/com/streamo/app/ui/detail/TestScreen.kt": {
-    "mtime": 1780574299.1516888,
-    "ast_hash": "35db099b8c65fc7d616ee9340fd5dc8d",
+    "mtime": 1783347536.822907,
+    "ast_hash": "88deaef8ef5fedfe0cb0c22a2b047f6e",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/DownloadQualityDialog.kt": {
-    "mtime": 1782073726.5504951,
-    "ast_hash": "ac73458e914f3aea05eb9e1e4bf71f32",
-    "semantic_hash": ""
-  },
-  "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/DownloadsScreen.kt": {
-    "mtime": 1783153268.3596056,
-    "ast_hash": "6055281c2616051ccba068b8b838db0d",
+    "mtime": 1783347536.822907,
+    "ast_hash": "03d8dfb704b5636823c13c3c6c2aa84f",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/DownloadsViewModel.kt": {
@@ -564,14 +539,9 @@
     "ast_hash": "39c3b3021511eb087d3eef0def4e1f19",
     "semantic_hash": ""
   },
-  "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/SeriesDownloadsScreen.kt": {
-    "mtime": 1783154742.5486298,
-    "ast_hash": "a19dfc6ed9d07aecbaba117f77c70d29",
-    "semantic_hash": ""
-  },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/SeriesDownloadsViewModel.kt": {
-    "mtime": 1781273955.2883122,
-    "ast_hash": "a62c68fbd26827775d0dd934672228c9",
+    "mtime": 1783347536.823907,
+    "ast_hash": "1b6b0df8de2384b7437cded7ddcbb722",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/history/HistoryScreen.kt": {
@@ -580,8 +550,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/history/HistoryViewModel.kt": {
-    "mtime": 1782744681.8172073,
-    "ast_hash": "e4e402dc3aa8a065c2cb11d356b2ac3d",
+    "mtime": 1783347536.8249068,
+    "ast_hash": "4feab4c2924420628310b59ee6b302db",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/home/HomeHero.kt": {
@@ -590,8 +560,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/home/HomeScreen.kt": {
-    "mtime": 1783158574.1003883,
-    "ast_hash": "3c009ec50ffafd33d74e24bc5b8dcb20",
+    "mtime": 1783347536.8249068,
+    "ast_hash": "cd9f3a244d2ff4f4a4e445ee3fad5672",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/home/HomeSection.kt": {
@@ -600,8 +570,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/home/HomeViewModel.kt": {
-    "mtime": 1783158572.8565855,
-    "ast_hash": "4dbb49b2dac851b56078d24a785bb5a4",
+    "mtime": 1783347536.8249068,
+    "ast_hash": "649d7bc17ada5d5ac6ba7facb26301ce",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/home/Top10Row.kt": {
@@ -610,13 +580,13 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/player/PlayerScreen.kt": {
-    "mtime": 1783153371.9135857,
-    "ast_hash": "69ce8c0ec7bd40264e2a9c6b8d793e5c",
+    "mtime": 1783347536.8264089,
+    "ast_hash": "9e93a0b9c33e2c5b5db603656cccccb5",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/player/PlayerViewModel.kt": {
-    "mtime": 1783026812.391704,
-    "ast_hash": "1e4d1551aa7e58fc7a3e35023c539e47",
+    "mtime": 1783347536.8264089,
+    "ast_hash": "e295d853cfabbe7161a5dcf9c4d33bda",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/player/cast/CastDeviceGroup.kt": {
@@ -635,8 +605,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/search/SearchSort.kt": {
-    "mtime": 1782742202.273308,
-    "ast_hash": "fc6407af16521d3e171e40bc5e3b44ec",
+    "mtime": 1783347536.8274117,
+    "ast_hash": "7facc4c6eb667c4e73ed990944c74c4e",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/search/SearchViewModel.kt": {
@@ -770,8 +740,8 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/tv/player/TvPlayerScreen.kt": {
-    "mtime": 1782914463.2746177,
-    "ast_hash": "d34ad46b906b37884698611bb8956c2b",
+    "mtime": 1783347536.8279145,
+    "ast_hash": "7a81787e9a27ce2b5a437427e827a371",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/ui/tv/search/TvSearchScreen.kt": {
@@ -830,13 +800,13 @@
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/util/Release.kt": {
-    "mtime": 1780574299.1627486,
-    "ast_hash": "140916f3e4959b6523263573489d9b48",
+    "mtime": 1783347536.8279145,
+    "ast_hash": "2f00f16adfb3da4a8ae399490f5fec61",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/main/java/com/streamo/app/util/TVLogic.kt": {
-    "mtime": 1780574299.1637478,
-    "ast_hash": "e867e95a4c5185357805f5bc50e9b85f",
+    "mtime": 1783347536.8289168,
+    "ast_hash": "ac3aca8a6c9c459cc9a1a9e301f7fde3",
     "semantic_hash": ""
   },
   "android/Streamo/app/src/test/java/com/streamo/app/ExampleUnitTest.kt": {
@@ -1310,7 +1280,7 @@
     "semantic_hash": ""
   },
   "android/Streamo/CLAUDE.md": {
-    "mtime": 1783166258.6601257,
+    "mtime": 1783185067.9748328,
     "ast_hash": "351ded4237d9eafa9236ffe3569e44b8",
     "semantic_hash": ""
   },
@@ -1402,6 +1372,421 @@
   "ios/Streamo/Streamo/Assets.xcassets/AppIcon.appiconset/AppIcon.png": {
     "mtime": 1780568400.5183644,
     "ast_hash": "850196a64a88b1dbf77507475dc35174",
+    "semantic_hash": ""
+  },
+  "android/Streamo/app/src/main/java/com/streamo/app/ui/common/GlassBottomSheet.kt": {
+    "mtime": 1783347536.820907,
+    "ast_hash": "fbd43aad768694a7236161570a56c0c4",
+    "semantic_hash": ""
+  },
+  "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/DownloadsSheet.kt": {
+    "mtime": 1783347536.823907,
+    "ast_hash": "bbb27ac1c4346cbd02d4d931a31e0931",
+    "semantic_hash": ""
+  },
+  "android/Streamo/app/src/main/java/com/streamo/app/ui/downloads/SeriesDownloadsSheet.kt": {
+    "mtime": 1783347536.823907,
+    "ast_hash": "1ee717b1cc8ca27d037b939b999746f9",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/package.json": {
+    "mtime": 1783353121.3282285,
+    "ast_hash": "e965bf6973066112f3d1165a5c323fa2",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/src/config.ts": {
+    "mtime": 1783353142.9658098,
+    "ast_hash": "7316f7ab42e5e7c86cbbc24d70d12094",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/src/server.ts": {
+    "mtime": 1783359413.499947,
+    "ast_hash": "21f4ced29111b3076a233436c2d74084",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/src/vix/fetch.ts": {
+    "mtime": 1783353214.6218007,
+    "ast_hash": "918782353b3c304c4c73d04290bd72e0",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/src/vix/resolve.ts": {
+    "mtime": 1783353300.3073375,
+    "ast_hash": "25739e4a7d9bef59f092b59c493d9be3",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/src/vix/rewrite.ts": {
+    "mtime": 1783353386.5882525,
+    "ast_hash": "8f94a37ad3de3a04bd7cfce817d23670",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/src/vix/session.ts": {
+    "mtime": 1783353274.6908984,
+    "ast_hash": "0cf6c9cfa233e8040f0969c96d599554",
+    "semantic_hash": ""
+  },
+  "vidaaos-proxy/tsconfig.json": {
+    "mtime": 1783353130.713876,
+    "ast_hash": "2c5b2888819981bc5cfc0ee304d5a8d9",
+    "semantic_hash": ""
+  },
+  "vidaaos/package.json": {
+    "mtime": 1783351305.003278,
+    "ast_hash": "15a22f2ae30ad9e2af171f99d59cf156",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/app.tsx": {
+    "mtime": 1783456791.9873219,
+    "ast_hash": "a540d07b2a6c2d5d7aea8873717b5c98",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/ConfirmDialog.tsx": {
+    "mtime": 1783362045.2630265,
+    "ast_hash": "656794265a610550c2cb61aac923bf86",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/EpisodeCard.tsx": {
+    "mtime": 1783354598.551932,
+    "ast_hash": "6aff8f5d0edde10352624482656b128c",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/Icon.tsx": {
+    "mtime": 1783463399.0950804,
+    "ast_hash": "3f94d6404056b101066a744cd886a2d1",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/ImmersiveRow.tsx": {
+    "mtime": 1783464291.4365249,
+    "ast_hash": "df025f4a216171e179d750d4137a93e8",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/MediaCard.tsx": {
+    "mtime": 1783461421.3260632,
+    "ast_hash": "6f7cf190e13a43e3df108ce0bf1e82c8",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/OptionOverlay.tsx": {
+    "mtime": 1783362061.127663,
+    "ast_hash": "4a8495a483f541f8942feb7405b5bf52",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/ProgressMediaCard.tsx": {
+    "mtime": 1783461426.3577259,
+    "ast_hash": "3c62f559e4f08b96bdbc71468f7e5e1d",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/SectionRow.tsx": {
+    "mtime": 1783462728.3650775,
+    "ast_hash": "4bad2ff658667a22eba1322c360e7eff",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/SkeletonCard.tsx": {
+    "mtime": 1783354547.6039548,
+    "ast_hash": "4cca1c5699cc476369f81ffd3084d045",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/components/Spinner.tsx": {
+    "mtime": 1783354534.0764973,
+    "ast_hash": "b76dae99aa681597e0424891961e5500",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/backup.ts": {
+    "mtime": 1783353226.8043208,
+    "ast_hash": "618163395d112f4fe09e9be22ca4c1f5",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/db.ts": {
+    "mtime": 1783353120.3266466,
+    "ast_hash": "0bbeb9ca8afe921fe3e87e13d0dfb2c1",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/provider/ProviderClient.ts": {
+    "mtime": 1783353589.7775044,
+    "ast_hash": "330e2a354a8f149b79ef96a9907d74e3",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/provider/ProviderResolver.ts": {
+    "mtime": 1783353661.6314917,
+    "ast_hash": "49dbc34c93399ce9be23a3d870b2128c",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/provider/VixcloudClient.ts": {
+    "mtime": 1783359084.9926157,
+    "ast_hash": "784b633913e44aec793e3fc85d8560bb",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/provider/inertia.ts": {
+    "mtime": 1783353509.5365455,
+    "ast_hash": "f1829eed60e9a5b9a0cfc263ecc77be6",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/provider/models.ts": {
+    "mtime": 1783353480.7709818,
+    "ast_hash": "b8d257d67150f7dc5407d6f4bce4883c",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/provider/scoring.ts": {
+    "mtime": 1783356275.5447285,
+    "ast_hash": "f429bf797cca235617d261a7a4b59784",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/repositories.ts": {
+    "mtime": 1783359849.3915462,
+    "ast_hash": "b0002ae5a8c3bc12e8b84a723f980a32",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/settings.ts": {
+    "mtime": 1783353213.185848,
+    "ast_hash": "cb6e7ab01f984d2a812cb572a92c8117",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/tmdb/TMDBClient.ts": {
+    "mtime": 1783356433.6654778,
+    "ast_hash": "d7c79e30800b70709931c440743931f7",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/tmdb/TMDBImage.ts": {
+    "mtime": 1783353132.675384,
+    "ast_hash": "00fcc53b68e553499e7f4d518cf47611",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/tmdb/TmdbCacheKey.ts": {
+    "mtime": 1783353123.308329,
+    "ast_hash": "b9307f351555c506441dc1c341f271d2",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/tmdb/TmdbCacheTtl.ts": {
+    "mtime": 1783353111.478192,
+    "ast_hash": "094346fb2c52f7a564b7a66bab0d21df",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/data/tmdb/dto.ts": {
+    "mtime": 1783353103.3449693,
+    "ast_hash": "a82124e06e66dce0c03bb7fa31f58e5d",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/i18n/strings.ts": {
+    "mtime": 1783463765.121498,
+    "ast_hash": "ec3ceeb1bc7576036d757502ba276047",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/main.tsx": {
+    "mtime": 1783459131.4504993,
+    "ast_hash": "908dcfaefe8f7296ba3f98e00beaf0c0",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/player/ControlsOverlay.tsx": {
+    "mtime": 1783362026.9198177,
+    "ast_hash": "53018fe88aefd82c9c17762e9bb3f310",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/player/FrozenFrame.ts": {
+    "mtime": 1783358100.9565687,
+    "ast_hash": "2de7487e95b09f591591e82d73c743c9",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/player/PlayerStore.ts": {
+    "mtime": 1783461878.6055605,
+    "ast_hash": "a0d93844f7cc0f28a39f1a225a1912e0",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/player/Scrubber.ts": {
+    "mtime": 1783358745.586305,
+    "ast_hash": "34ccce7e772772f7af6026e40c65ac3f",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/player/SettingsOverlay.tsx": {
+    "mtime": 1783362068.6769772,
+    "ast_hash": "411d1096339ee06f9437bc1509c6dd40",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/router/BackHandler.ts": {
+    "mtime": 1783351450.7775836,
+    "ast_hash": "f4a7f32911ed302411c65a60d4c042a7",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/router/Router.tsx": {
+    "mtime": 1783351797.1956396,
+    "ast_hash": "37b369e574f853c3860193660b8382d1",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/router/routes.ts": {
+    "mtime": 1783351423.0909042,
+    "ast_hash": "b84b597f4900d1dea974f384f51dd03a",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/AnimeDetailScreen.tsx": {
+    "mtime": 1783355357.0605595,
+    "ast_hash": "ea071c166f75f8fa8f1c57e456bd2d6c",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/AnimeScreen.tsx": {
+    "mtime": 1783355347.2380288,
+    "ast_hash": "6a46ac37bfad7422e4e6371d924c648b",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/CacheManagementScreen.tsx": {
+    "mtime": 1783360100.8646655,
+    "ast_hash": "304d9334f4ddb8030e93181bb2cc87c5",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/DetailScreen.tsx": {
+    "mtime": 1783464379.887955,
+    "ast_hash": "2689cfa14130c846369a569b77804df4",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/HomeScreen.tsx": {
+    "mtime": 1783462740.775782,
+    "ast_hash": "c372c842d2c00e10fa420bd615302816",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/LibraryScreen.tsx": {
+    "mtime": 1783463608.562892,
+    "ast_hash": "876da0767284b329833b2508b2b4616a",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/PlayerScreen.tsx": {
+    "mtime": 1783358533.359225,
+    "ast_hash": "91a4d96c976ba643234c20fca45f529f",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/ScreenSwitch.tsx": {
+    "mtime": 1783360019.0757525,
+    "ast_hash": "8d82814b25c5e0597e50d2d423a74951",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/SearchScreen.tsx": {
+    "mtime": 1783463736.8498955,
+    "ast_hash": "735a05fdba2017d853788008bd28e9b1",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/SectionListScreen.tsx": {
+    "mtime": 1783460789.325058,
+    "ast_hash": "4a34bc2859f2bc104210b88d46a619a8",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/screens/SettingsScreen.tsx": {
+    "mtime": 1783360080.658773,
+    "ast_hash": "f3d188bfe8dcb92ee07dc4fbab012441",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/shell/AmbientBackground.tsx": {
+    "mtime": 1783351472.1963556,
+    "ast_hash": "58f2686e86ebe7433a0484f6750eaf6a",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/shell/Drawer.tsx": {
+    "mtime": 1783456925.3685217,
+    "ast_hash": "26de49ef06e4f8bb8e2d14bfdae11d52",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/spatial/FocusContext.ts": {
+    "mtime": 1783351313.775205,
+    "ast_hash": "b7af09f887e82cdd9beb076c111c2e5e",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/spatial/Focusable.tsx": {
+    "mtime": 1783455834.2656164,
+    "ast_hash": "bb958268c3b999dc71aba8230a962f89",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/spatial/SpatialRoot.tsx": {
+    "mtime": 1783351778.9221284,
+    "ast_hash": "ca97fd72504f836ad3775999845bb6be",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/spatial/focusRing.ts": {
+    "mtime": 1783351377.9138434,
+    "ast_hash": "404114e3212c8cdda4cc6a5ed993490e",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/spatial/useFocusContext.ts": {
+    "mtime": 1783351327.2095213,
+    "ast_hash": "eadcc77a06e267cac8114ac2a8d92cc9",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/spatial/useFocusable.ts": {
+    "mtime": 1783458937.5244007,
+    "ast_hash": "c4f979e54794af3e6f44fe1294b1b22b",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/state/DetailStore.ts": {
+    "mtime": 1783461856.3024898,
+    "ast_hash": "c2942d0048afccc6d105191e23f2ceb2",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/state/HomeStore.ts": {
+    "mtime": 1783462062.4069266,
+    "ast_hash": "3b04e87cf4de8f986227cea9c34c56bd",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/state/LibraryStore.ts": {
+    "mtime": 1783354626.2164261,
+    "ast_hash": "0691aa5df8904a8cd256416a7fdccbfc",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/state/SearchStore.ts": {
+    "mtime": 1783354637.989631,
+    "ast_hash": "0d2375796045c8663c6c73322537baa5",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/state/homeSections.ts": {
+    "mtime": 1783463411.2008233,
+    "ast_hash": "c5714a436dbb971c44c16fdabbe6912c",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/device.ts": {
+    "mtime": 1783360937.783281,
+    "ast_hash": "159ff4aa0784691382b73e24fb7d2659",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/format.ts": {
+    "mtime": 1783353264.9908228,
+    "ast_hash": "1085991e2d73d81b782f0df1f02799b1",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/request.ts": {
+    "mtime": 1783359444.2250829,
+    "ast_hash": "ab54a2f80eaad7bb181c109642677c0a",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/theme.ts": {
+    "mtime": 1783362106.3312814,
+    "ast_hash": "b26b34ffc59bb65cf1fe6be6a7d6daab",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/tmdbToTvlogic.ts": {
+    "mtime": 1783354398.6721427,
+    "ast_hash": "88ccd6d25e82afcc7d31527d6782f1e9",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/tvlogic.ts": {
+    "mtime": 1783356317.3998425,
+    "ast_hash": "eaf936eef30e108f842da7ed6390b834",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/util/version.ts": {
+    "mtime": 1783359892.528164,
+    "ast_hash": "f2aa1942bbd3aa038b2511b5abf05789",
+    "semantic_hash": ""
+  },
+  "vidaaos/src/vite-env.d.ts": {
+    "mtime": 1783356442.9160995,
+    "ast_hash": "9f44ec1aa191d92b5bd709baa6fbf668",
+    "semantic_hash": ""
+  },
+  "vidaaos/tsconfig.json": {
+    "mtime": 1783351142.4207387,
+    "ast_hash": "487658a83d0b81b27683803884eae8c0",
+    "semantic_hash": ""
+  },
+  "vidaaos/vite.config.ts": {
+    "mtime": 1783359458.993804,
+    "ast_hash": "d7e0cd07aaf7c4551683a819bf905c2e",
+    "semantic_hash": ""
+  },
+  "vidaaos/index.html": {
+    "mtime": 1783351164.3267412,
+    "ast_hash": "2778da65197b330d847b729c50ae2b19",
     "semantic_hash": ""
   }
 }

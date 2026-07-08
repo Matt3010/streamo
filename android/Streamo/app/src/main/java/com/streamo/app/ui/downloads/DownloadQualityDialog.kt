@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -21,26 +22,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.streamo.app.download.DownloadQualityPref
-import com.streamo.app.ui.common.GlassAlertDialog
-import com.streamo.app.ui.common.GlassDialogNeutralButton
-import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.download.DownloadQualityRequest
 import com.streamo.app.download.NetworkType
-import dev.chrisbanes.haze.HazeState
+import com.streamo.app.ui.common.GlassBottomSheet
+import com.streamo.app.ui.common.GlassDialogNeutralButton
+import com.streamo.app.ui.common.GlassDialogPrimaryButton
 
 /**
- * Modale di scelta qualità download (preferenza "Chiedi"). Elenca le risoluzioni rilevate
- * (o un set standard se non rilevate) più "Massima". Permette di salvare la scelta come
+ * Modale di scelta qualità download (preferenza "Chiedi"), bottom sheet draggabile
+ * (stile pannello impostazioni player YouTube). Elenca le risoluzioni rilevate (o un
+ * set standard se non rilevate) più "Massima". Permette di salvare la scelta come
  * preferenza per la rete corrente. La qualità scelta è un tetto massimo, non garantito.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadQualityDialog(
     request: DownloadQualityRequest,
     onConfirm: (pref: DownloadQualityPref, savePreference: Boolean) -> Unit,
-    onDismiss: () -> Unit,
-    hazeState: HazeState? = null
+    onDismiss: () -> Unit
 ) {
     // Opzioni: risoluzioni reali (se rilevate) + "Massima"; fallback su set standard.
     val options: List<DownloadQualityPref> = remember(request.heights) {
@@ -60,88 +63,98 @@ fun DownloadQualityDialog(
         NetworkType.MOBILE -> "rete mobile"
     }
 
-    GlassAlertDialog(
-        onDismissRequest = onDismiss,
-        hazeState = hazeState,
-        title = "Qualità download",
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    GlassBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                text = "Qualità download",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            Text(
+                text = "Scegli la qualità massima. È un tetto: se quella esatta non è " +
+                    "disponibile verrà scaricata la più vicina inferiore.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (request.heights.isEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Scegli la qualità massima. È un tetto: se quella esatta non è " +
-                        "disponibile verrà scaricata la più vicina inferiore.",
+                    text = "Risoluzioni non rilevate: mostro le opzioni standard.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (request.heights.isEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Risoluzioni non rilevate: mostro le opzioni standard.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (request.appliesToAll) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "La scelta verrà applicata a tutti gli episodi.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+            }
+            if (request.appliesToAll) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "La scelta verrà applicata a tutti gli episodi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
 
-                // Risoluzione reale del massimo variant rilevato dal probe, usata per
-    // annotare la riga "Massima" con la risoluzione effettivamente scaricata
-    // (es. "Massima (1080p)"). Null = non ancora rilevata, fallback "Massima (—)".
-    val maxHeightLabel: String = remember(request.heights) {
-        request.heights.firstOrNull()?.let { "($it p)" } ?: "(—)"
-    }
+            // Risoluzione reale del massimo variant rilevato dal probe, usata per
+            // annotare la riga "Massima" con la risoluzione effettivamente scaricata
+            // (es. "Massima (1080p)"). Null = non ancora rilevata, fallback "Massima (—)".
+            val maxHeightLabel: String = remember(request.heights) {
+                request.heights.firstOrNull()?.let { "($it p)" } ?: "(—)"
+            }
 
-    options.forEach { opt ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selected = opt }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = selected == opt,
-                            onClick = { selected = opt }
-                        )
-                        Spacer(modifier = Modifier.padding(start = 4.dp))
-                        // "Massima" mostra la risoluzione del variant migliore
-                        // rilevato, così l'utente sa cosa scarica davvero.
-                        val rowLabel = if (opt is DownloadQualityPref.Max) {
-                            "Massima $maxHeightLabel"
-                        } else opt.label()
-                        Text(rowLabel)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
+            options.forEach { opt ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { savePref = !savePref }
+                        .clickable { selected = opt }
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Checkbox(checked = savePref, onCheckedChange = { savePref = it })
+                    RadioButton(
+                        selected = selected == opt,
+                        onClick = { selected = opt }
+                    )
                     Spacer(modifier = Modifier.padding(start = 4.dp))
-                    Text("Salva come preferenza per $netLabel")
+                    // "Massima" mostra la risoluzione del variant migliore
+                    // rilevato, così l'utente sa cosa scarica davvero.
+                    val rowLabel = if (opt is DownloadQualityPref.Max) {
+                        "Massima $maxHeightLabel"
+                    } else opt.label()
+                    Text(rowLabel)
                 }
             }
-        },
-        confirmButton = {
-            GlassDialogPrimaryButton(onClick = { onConfirm(selected, savePref) }) {
-                Text("Scarica")
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { savePref = !savePref }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = savePref, onCheckedChange = { savePref = it })
+                Spacer(modifier = Modifier.padding(start = 4.dp))
+                Text("Salva come preferenza per $netLabel")
             }
-        },
-        dismissButton = {
-            GlassDialogNeutralButton(onClick = onDismiss) {
-                Text("Annulla")
+
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            ) {
+                GlassDialogNeutralButton(onClick = onDismiss) {
+                    Text("Annulla")
+                }
+                GlassDialogPrimaryButton(onClick = { onConfirm(selected, savePref) }) {
+                    Text("Scarica")
+                }
             }
         }
-    )
+    }
 }

@@ -29,6 +29,11 @@ class VixcloudClient @Inject constructor(
     fun resetClient() { activeClient = client }
 
     companion object {
+        // ponytail: realistic desktop Chrome UA — bare "Mozilla/5.0" is a bot fingerprint; upgrade to a full browser string.
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/126.0.0.0 Safari/537.36"
+
         /** Headers vixcloud expects (the web proxy spoofed these on the playlist). */
         val playbackHeaders: Map<String, String> = mapOf(
             "Referer" to "https://vixcloud.co/",
@@ -89,7 +94,7 @@ class VixcloudClient @Inject constructor(
             val request = Request.Builder()
                 .url(urlString)
                 .header("Accept", "text/html,application/xhtml+xml,*/*")
-                .header("User-Agent", "Mozilla/5.0")
+                .header("User-Agent", USER_AGENT)
                 .build()
             val response = activeClient.newCall(request).execute()
             if (!response.isSuccessful) {

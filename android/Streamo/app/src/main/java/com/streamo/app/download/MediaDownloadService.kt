@@ -28,19 +28,9 @@ class MediaDownloadService : DownloadService(
 ) {
 
     override fun onCreate() {
-        Log.d(TAG, "MediaDownloadService onCreate - start")
-        try {
-            // Ensure infrastructure is initialized before super.onCreate calls getDownloadManager()
-            if (!DownloadManagerSingleton.isInitialized()) {
-                Log.w(TAG, "DownloadInfrastructure not initialized yet, initializing now")
-                DownloadInfrastructure.initialize(applicationContext)
-            }
-            super.onCreate()
-            Log.d(TAG, "MediaDownloadService onCreate - success")
-        } catch (e: Exception) {
-            Log.e(TAG, "MediaDownloadService onCreate - CRASH", e)
-            throw e
-        }
+        // DownloadInfrastructure is initialized in MainApplication.onCreate() before
+        // DownloadService.start(), so getDownloadManager() can safely read it here.
+        super.onCreate()
     }
 
     override fun getDownloadManager(): DownloadManager {

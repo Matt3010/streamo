@@ -48,6 +48,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -70,6 +72,7 @@ import com.streamo.app.navigation.LocalNavController
 import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassBottomSheet
 import com.streamo.app.ui.common.GlassDialogDestructiveButton
 import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassTopBarScaffold
@@ -83,6 +86,7 @@ import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.common.cardWidth
 import com.streamo.app.ui.common.contentPadding
 import com.streamo.app.ui.common.itemSpacing
+import com.streamo.app.ui.downloads.DownloadsSheet
 import com.streamo.app.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,9 +102,18 @@ fun HomeScreen(
     val navController = LocalNavController.current
     var showRemoveDialog by remember { mutableStateOf(false) }
     var entryToRemove by remember { mutableStateOf<ProgressEntry?>(null) }
+    var showDownloadsSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadIfNeeded()
+    }
+
+    val toastContext = LocalContext.current
+    LaunchedEffect(viewModel.infoMessage) {
+        viewModel.infoMessage?.let {
+            Toast.makeText(toastContext, it, Toast.LENGTH_SHORT).show()
+            viewModel.consumeInfoMessage()
+        }
     }
 
     GlassTopBarScaffold(
@@ -119,7 +132,7 @@ fun HomeScreen(
             AnimatedActionIcon(
                 icon = Icons.Outlined.Download,
                 contentDescription = "Download",
-                onClick = { navController.navigate(NavRoutes.Downloads) },
+                onClick = { showDownloadsSheet = true },
                 badgeCount = viewModel.activeDownloads.collectAsState().value.size,
                 activePercent = viewModel.activeDownloadsPercent.collectAsState().value,
                 failedCount = viewModel.failedDownloadsCount.collectAsState().value
@@ -285,6 +298,27 @@ fun HomeScreen(
                 }
             }
         )
+    }
+
+    // Pannello Download: bottom sheet draggabile (come le impostazioni del player
+    // YouTube), non più una schermata separata.
+    if (showDownloadsSheet) {
+        GlassBottomSheet(onDismissRequest = { showDownloadsSheet = false }) {
+            DownloadsSheet(
+                onNavigateToDetail = onNavigateToDetail,
+                onNavigateToPlayer = { tmdbId, mediaType, s, e, title, poster, releaseDate ->
+                    showDownloadsSheet = false
+                    navController.navigate(
+                        NavRoutes.Player(tmdbId, mediaType, s, e, title, poster, releaseDate)
+                    )
+                },
+                onNavigateToAdvanced = {
+                    showDownloadsSheet = false
+                    navController.navigate(NavRoutes.AdvancedSettings(scrollToWarp = true))
+                },
+                onClose = { showDownloadsSheet = false }
+            )
+        }
     }
 }
 

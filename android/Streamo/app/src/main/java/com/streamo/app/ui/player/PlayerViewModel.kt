@@ -501,6 +501,9 @@ class PlayerViewModel @Inject constructor(
     private val _nextEpisodeAvailable = MutableStateFlow(false)
     val nextEpisodeAvailable: StateFlow<Boolean> = _nextEpisodeAvailable.asStateFlow()
 
+    private val _previousEpisodeAvailable = MutableStateFlow(false)
+    val previousEpisodeAvailable: StateFlow<Boolean> = _previousEpisodeAvailable.asStateFlow()
+
     private val _seekingManually = MutableStateFlow(false)
     val seekingManually: StateFlow<Boolean> = _seekingManually.asStateFlow()
 
@@ -546,6 +549,10 @@ class PlayerViewModel @Inject constructor(
 
     private var skipSegments: IntroSkipClient.Segments? = null
     private var didFetchSkipSegments = false
+    /** Token monotono: invalida i risultati di un fetch skip-segments avviato per
+     *  un episodio precedente se `resetSkipState()` è già scattato per il nuovo
+     *  episodio prima che il fetch risolvesse (mirror di [seekToken]). */
+    private var skipFetchGeneration = 0L
     private var introDismissed = false
     private var creditsDismissed = false
 
@@ -750,6 +757,11 @@ class PlayerViewModel @Inject constructor(
         _playbackEnded.value = false
         ProviderDebugLogger.clear()
         resetSkipState()
+        // Evita che, durante il gap prima dello STATE_READY del nuovo episodio,
+        // il poll a 1s e updateSkipPrompt() confrontino la posizione/durata
+        // dell'episodio precedente con soglie (90% crediti, 95% prossimo episodio).
+        _duration.value = 0L
+        _currentPosition.value = 0L
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
@@ -792,7 +804,7 @@ class PlayerViewModel @Inject constructor(
                     val resumePos = pendingResumePositionMs
                     pendingResumePositionMs = 0
                     playStreamFromUrl(downloadEntry.streamUrl, emptyMap(), forceOffline = true, startPositionMs = resumePos)
-                    checkNextEpisode()
+                    checkAdjacentEpisodes()
                     return@launch
                 }
 
@@ -821,7 +833,7 @@ class PlayerViewModel @Inject constructor(
                 sourceIndex = 0
                 _sources.value = resolution.sources
                 loadCurrentSource()
-                checkNextEpisode()
+                checkAdjacentEpisodes()
 
                 // Save provider mapping for future reuse
                 resolution.providerTitle?.let { resolved ->
@@ -1037,6 +1049,25 @@ class PlayerViewModel @Inject constructor(
         performSeek { player.seekForward() }
     }
 
+    /**
+     * Seek relativo di un importo arbitrario (ms, negativo = indietro). Usato dallo skip
+     * mobile a raffica: i tap accumulano il totale e questo fa UN UNICO seek alla fine
+     * (debounce), invece di N seek da 10s che ricaricherebbero il decoder a ogni tap.
+     */
+    fun seekBy(deltaMs: Long) {
+        if (isCastActive) {
+            castController.seekBy(deltaMs)
+            return
+        }
+        performSeek {
+            val maxPos = player.duration.coerceAtLeast(0L)
+            val target = player.currentPosition + deltaMs
+            player.seekTo(
+                if (maxPos > 0L) target.coerceIn(0L, maxPos) else target.coerceAtLeast(0L)
+            )
+        }
+    }
+
     fun seekTo(positionMs: Long) {
         // Cast: il seek lo esegue il dispositivo remoto (debounce gestito dal CastController).
         if (isCastActive) {
@@ -1089,6 +1120,7 @@ class PlayerViewModel @Inject constructor(
     // MARK: - Skip intro / credits
 
     private fun resetSkipState() {
+        skipFetchGeneration++
         didFetchSkipSegments = false
         introDismissed = false
         creditsDismissed = false
@@ -1098,12 +1130,13 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun maybeFetchSkipSegments() {
-        // Skip per offline, TMDB id assente, o anime (id AnimeUnity non è TMDB →
-        // TheIntroDB non ha skip data; niente next-episode TMDB).
-        if (didFetchSkipSegments || _isOfflinePlayback.value || tmdbId <= 0 ||
-            mediaType == "anime"
-        ) return
+        // Skip per TMDB id assente o anime (id AnimeUnity non è TMDB → TheIntroDB
+        // non ha skip data; niente next-episode TMDB). L'offline NON è escluso:
+        // serve solo una chiamata di rete per i metadata, non per lo stream video,
+        // quindi funziona anche per i download finché il device ha connessione.
+        if (didFetchSkipSegments || tmdbId <= 0 || mediaType == "anime") return
         didFetchSkipSegments = true
+        val generation = skipFetchGeneration
         val durationMs = _duration.value.takeIf { it > 0 }
         viewModelScope.launch {
             val segs = introSkipClient.fetch(
@@ -1113,8 +1146,10 @@ class PlayerViewModel @Inject constructor(
                 episode = episode,
                 durationMs = durationMs
             )
-            // L'episodio potrebbe essere cambiato durante la richiesta.
-            if (didFetchSkipSegments) {
+            // L'episodio potrebbe essere cambiato durante la richiesta: se
+            // resetSkipState() è scattato nel frattempo, skipFetchGeneration
+            // non coincide più e scartiamo questo risultato stale.
+            if (generation == skipFetchGeneration) {
                 skipSegments = segs
                 updateSkipPrompt()
             }
@@ -1131,9 +1166,10 @@ class PlayerViewModel @Inject constructor(
         val introEndSec = segs?.introEndMs?.let { it / 1000.0 }
         val creditsStartSec = segs?.creditsStartMs?.let { it / 1000.0 }
 
-        // Fallback al 90% se TheIntroDB non ha credits data
+        // Nessuna stima sulla durata totale: senza un timestamp reale da TheIntroDB
+        // non sappiamo dove iniziano i crediti (varia troppo da episodio a episodio),
+        // quindi niente pulsante piuttosto che uno che scatta a un punto casuale.
         val effectiveCreditsStart = creditsStartSec
-            ?: if (durSec.isFinite() && durSec > 0) durSec * TVLogic.WATCHED_THRESHOLD else null
 
         val newPrompt: SkipPrompt?
         val newSegment: SkipSegment?
@@ -1193,9 +1229,23 @@ class PlayerViewModel @Inject constructor(
         load()
     }
 
-    private fun checkNextEpisode() {
+    fun playPreviousEpisode() {
+        if (mediaType != "tv" || season == 0) return
+        val prev = TVLogic.previousEpisode(tmdbItem ?: return, season, episode) ?: return
+        saveCurrentProgress()
+        season = prev.first
+        episode = prev.second
+        _currentSeason.value = season
+        _currentEpisode.value = episode
+        savedStateHandle["resumeSeason"] = season
+        savedStateHandle["resumeEpisode"] = episode
+        load()
+    }
+
+    private fun checkAdjacentEpisodes() {
         val item = tmdbItem ?: return
         _nextEpisodeAvailable.value = TVLogic.nextEpisode(item, season, episode) != null
+        _previousEpisodeAvailable.value = TVLogic.previousEpisode(item, season, episode) != null
     }
 
     private fun onPlaybackEnded() {

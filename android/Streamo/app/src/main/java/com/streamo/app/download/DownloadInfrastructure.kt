@@ -116,7 +116,5 @@ object DownloadInfrastructure {
             _httpDataSourceFactory!!,
             downloadExecutor
         )
-
-        DownloadManagerSingleton.initialize(_downloadManager!!)
     }
 }

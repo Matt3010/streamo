@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamo.app.data.local.entity.DownloadEntry
@@ -19,6 +18,9 @@ import com.streamo.app.download.DownloadQueueManager
 import com.streamo.app.download.ResolveAndDownloadWorker
 import com.streamo.app.tmdb.TMDBClient
 import com.streamo.app.util.TVLogic
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,12 +29,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
 
+/**
+ * Non è più una destinazione NavController (il pannello download serie ora vive come
+ * bottom sheet inline in Detail/DownloadsSheet): tmdbId/title/showAllEpisodes arrivano
+ * via assisted injection invece che da SavedStateHandle. [hiltViewModel] con una `key`
+ * diversa per serie crea un'istanza fresca ogni volta.
+ */
 @UnstableApi
-@HiltViewModel
-class SeriesDownloadsViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+@HiltViewModel(assistedFactory = SeriesDownloadsViewModel.Factory::class)
+class SeriesDownloadsViewModel @AssistedInject constructor(
+    @Assisted val tmdbId: Int,
+    @Assisted val title: String,
+    @Assisted val showAllEpisodes: Boolean,
     private val repository: AppRepository,
     private val client: TMDBClient,
     private val qualityGate: DownloadQualityGate,
@@ -41,9 +50,11 @@ class SeriesDownloadsViewModel @Inject constructor(
     private val queueManager: DownloadQueueManager
 ) : ViewModel() {
 
-    val tmdbId: Int = checkNotNull(savedStateHandle["tmdbId"])
-    val title: String = checkNotNull(savedStateHandle["title"])
-    val showAllEpisodes: Boolean = savedStateHandle["showAllEpisodes"] ?: false
+    @AssistedFactory
+    interface Factory {
+        fun create(tmdbId: Int, title: String, showAllEpisodes: Boolean): SeriesDownloadsViewModel
+    }
+
     private var seriesPosterPath: String? = null
 
     private val _warpChangedEntry = MutableStateFlow<Pair<DownloadEntry, Boolean>?>(null)

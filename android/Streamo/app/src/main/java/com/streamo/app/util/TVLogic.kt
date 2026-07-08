@@ -93,6 +93,21 @@ object TVLogic {
         return future?.let { Pair(it.seasonNumber, 1) }
     }
 
+    /**
+     * Mirror of [nextEpisode]: the previous episode's (season, episode) coordinate, or null
+     * if [season]/[episode] is already the earliest aired episode (S1E1 in practice).
+     */
+    fun previousEpisode(item: TmdbItem, season: Int, episode: Int): Pair<Int, Int>? {
+        if (episode > 1) {
+            return Pair(season, episode - 1)
+        }
+        val past = item.seasons.orEmpty()
+            .filter { it.seasonNumber < season && airedEpisodesInSeason(item, it.seasonNumber) > 0 }
+            .sortedByDescending { it.seasonNumber }
+            .firstOrNull()
+        return past?.let { Pair(it.seasonNumber, airedEpisodesInSeason(item, it.seasonNumber)) }
+    }
+
     fun airedEpisodeList(episodes: List<TmdbEpisodeDetail>, item: TmdbItem, season: Int): List<TmdbEpisodeDetail> {
         val sorted = episodes.sortedBy { it.episodeNumber }
         val lea = effectiveLastEpisode(item)

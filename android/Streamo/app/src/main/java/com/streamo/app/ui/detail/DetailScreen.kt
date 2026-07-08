@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -93,11 +94,13 @@ import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.common.BrandButton
 import com.streamo.app.ui.common.BrandIconButton
 import com.streamo.app.ui.common.GlassAlertDialog
+import com.streamo.app.ui.common.GlassBottomSheet
 import com.streamo.app.ui.common.GlassDialog
 import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassDialogPrimaryButton
 import com.streamo.app.ui.common.GlassTopBar
 import com.streamo.app.ui.common.LocalHazeState
+import com.streamo.app.ui.downloads.SeriesDownloadsSheet
 import androidx.compose.material3.TextButton
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -288,6 +291,7 @@ private fun DetailContent(
     val configuration = LocalConfiguration.current
     val isLandscapeTablet = windowSizeClass.isLandscapeTablet(configuration.orientation)
     val horizontalPadding = windowSizeClass.contentPadding
+    var showSeriesDownloadsSheet by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         // Hero più alto su tablet landscape per un look cinematografico stile TV;
@@ -417,7 +421,8 @@ private fun DetailContent(
                         scrollState = scrollState,
                         horizontalPadding = horizontalPadding,
                         isLandscapeTablet = isLandscapeTablet,
-                        backdropPx = backdropPx
+                        backdropPx = backdropPx,
+                        onDownloadSeries = { showSeriesDownloadsSheet = true }
                     )
                 }
             }
@@ -488,8 +493,33 @@ private fun DetailContent(
                     DownloadQualityDialog(
                         request = req,
                         onConfirm = { pref, save -> viewModel.confirmQuality(pref, save) },
-                        onDismiss = { viewModel.dismissQuality() },
-                        hazeState = LocalHazeState.current
+                        onDismiss = { viewModel.dismissQuality() }
+                    )
+                }
+            }
+
+            // Gestione download serie: bottom sheet draggabile (come le impostazioni
+            // del player YouTube), non più una schermata separata.
+            if (showSeriesDownloadsSheet) {
+                val navController = LocalNavController.current
+                GlassBottomSheet(onDismissRequest = { showSeriesDownloadsSheet = false }) {
+                    SeriesDownloadsSheet(
+                        tmdbId = viewModel.tmdbId,
+                        title = item.title ?: item.name ?: "",
+                        showAllEpisodes = true,
+                        onClose = { showSeriesDownloadsSheet = false },
+                        leadingIcon = Icons.Filled.Close,
+                        leadingDesc = "Chiudi",
+                        onNavigateToPlayer = { tmdbId, mediaType, s, e, title, poster, releaseDate ->
+                            showSeriesDownloadsSheet = false
+                            navController.navigate(
+                                NavRoutes.Player(tmdbId, mediaType, s, e, title, poster, releaseDate)
+                            )
+                        },
+                        onNavigateToAdvanced = {
+                            showSeriesDownloadsSheet = false
+                            navController.navigate(NavRoutes.AdvancedSettings(scrollToWarp = true))
+                        }
                     )
                 }
             }
@@ -505,7 +535,8 @@ private fun DetailScrollContent(
     scrollState: androidx.compose.foundation.ScrollState,
     horizontalPadding: androidx.compose.ui.unit.Dp,
     isLandscapeTablet: Boolean,
-    backdropPx: Float
+    backdropPx: Float,
+    onDownloadSeries: () -> Unit
 ) {
     // Spazio sopra i metadati così cadono sul terzo inferiore della copertina.
     // Su tablet landscape l'hero è più alto (500dp) → serve più spinta verso il basso.
@@ -660,13 +691,7 @@ private fun DetailScrollContent(
                             BrandIconButton(
                                 onClick = {
                                     if (viewModel.isTV) {
-                                        navController.navigate(
-                                            NavRoutes.SeriesDownloads(
-                                                viewModel.tmdbId,
-                                                item.title ?: item.name ?: "",
-                                                showAllEpisodes = true
-                                            )
-                                        )
+                                        onDownloadSeries()
                                     } else {
                                         viewModel.enqueueDownload()
                                     }

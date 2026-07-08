@@ -1,13 +1,18 @@
 package com.streamo.app.ui.downloads
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import com.streamo.app.ui.common.LocalReducedEffects
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -23,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,24 +38,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -78,23 +75,31 @@ import com.streamo.app.ui.common.GlassCard
 import com.streamo.app.ui.common.GlassDialogDestructiveButton
 import com.streamo.app.ui.common.GlassDialogNeutralButton
 import com.streamo.app.ui.common.GlassLargeTitle
-import com.streamo.app.ui.common.GlassTopBarScaffold
 import com.streamo.app.ui.common.LocalHazeState
 import com.streamo.app.ui.common.ImagePlaceholder
 import com.streamo.app.ui.common.LocalWindowSizeClass
 import com.streamo.app.ui.common.contentPadding
 import com.streamo.app.ui.theme.AppShapes
 
+/**
+ * Pannello "Download" generale, come contenuto di un `ModalBottomSheet` (non più una
+ * destinazione NavController). Toccare una serie TV non naviga più altrove: sostituisce
+ * il contenuto dello stesso sheet con [SeriesDownloadsSheet] (drill-down in place, come i
+ * sotto-menu delle impostazioni di YouTube), con una freccia indietro che torna qui.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DownloadsScreen(
+fun DownloadsSheet(
     onNavigateToDetail: (Int, String, Int, Int) -> Unit = { _, _, _, _ -> },
     onNavigateToPlayer: (Int, String, Int, Int, String, String?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
-    onNavigateToSeriesDownloads: (Int, String) -> Unit = { _, _ -> },
     onNavigateToAdvanced: () -> Unit = {},
-    onBack: () -> Unit = {},
+    onClose: () -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
+    // Drill-down: quando valorizzato, questo sheet mostra la serie invece della lista generale.
+    var selectedSeries by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    BackHandler(enabled = selectedSeries != null) { selectedSeries = null }
+
     val windowSizeClass = LocalWindowSizeClass.current
     val entries by viewModel.entries.collectAsState(initial = emptyList())
     val warpChangedEntry by viewModel.warpChangedEntry.collectAsState()
@@ -119,204 +124,245 @@ fun DownloadsScreen(
 
     var entryToDelete by remember { mutableStateOf<DownloadEntry?>(null) }
 
-    GlassTopBarScaffold(
-        onLeading = if (selectionMode) { { exitSelection() } } else onBack,
-        leadingIcon = if (selectionMode) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
-        leadingDesc = if (selectionMode) "Annulla selezione" else "Indietro",
-        actions = if (selectionMode) {
-            {
-                val allIds = entries.map { it.id }
-                val allSelected = allIds.isNotEmpty() && allIds.all { it in selectedIds }
-                Text(
-                    "Tutti",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Checkbox(
-                    checked = allSelected,
-                    onCheckedChange = {
-                        selectedIds.clear()
-                        if (!allSelected) selectedIds.addAll(allIds)
-                    }
-                )
-                IconButton(
-                    onClick = { confirmBulkDelete = true },
-                    enabled = selectedIds.isNotEmpty()
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = "Elimina selezionati",
-                        tint = if (selectedIds.isNotEmpty()) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+    // Transizione push/pop (stessa ricetta di CastPickerDialog): slide+fade in avanti
+    // entrando nel drill-down di una serie, indietro tornando alla lista generale.
+    val reducedEffects = LocalReducedEffects.current
+    AnimatedContent(
+        targetState = selectedSeries,
+        transitionSpec = {
+            if (reducedEffects) {
+                EnterTransition.None togetherWith ExitTransition.None
+            } else {
+                val forward = targetState != null
+                val slideIn = if (forward) {
+                    slideInHorizontally(animationSpec = tween(220)) { it } + fadeIn(tween(220))
+                } else {
+                    slideInHorizontally(animationSpec = tween(220)) { -it } + fadeIn(tween(220))
                 }
-            }
-        } else null
-    ) { topPadding ->
-        if (entries.isEmpty()) {
-            Text(
-                text = "Nessun download.",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = topPadding)
-                    .padding(24.dp),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            // Film come righe singole, serie TV raggruppate per tmdbId.
-            val movies = remember(entries) {
-                entries.filter { it.mediaType != "tv" }.sortedBy { it.id }
-            }
-            val tvGroups = remember(entries) {
-                entries.filter { it.mediaType == "tv" }
-                    .groupBy { it.tmdbId }
-                    .map { (_, group) -> group.sortedWith(compareBy({ it.season }, { it.episode })) }
-                    .sortedBy { it.first().id }
-            }
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(start = windowSizeClass.contentPadding, top = 16.dp + topPadding, end = windowSizeClass.contentPadding, bottom = 16.dp + LocalBottomBarPadding.current),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                item {
-                    GlassLargeTitle(if (selectionMode) "${selectedIds.size} selezionati" else "Download")
+                val slideOut = if (forward) {
+                    slideOutHorizontally(animationSpec = tween(220)) { -it } + fadeOut(tween(220))
+                } else {
+                    slideOutHorizontally(animationSpec = tween(220)) { it } + fadeOut(tween(220))
                 }
-                items(movies, key = { it.id }) { entry ->
-                    DownloadManagerRow(
-                        entry = entry,
-                        selectionMode = selectionMode,
-                        selected = entry.id in selectedIds,
-                        onToggleSelection = {
-                            if (entry.id in selectedIds) selectedIds.remove(entry.id)
-                            else selectedIds.add(entry.id)
-                        },
-                        onLongPress = {
-                            if (!selectionMode) {
-                                selectionMode = true
-                                selectedIds.add(entry.id)
-                            }
-                        },
-                        onStop = { viewModel.stop(entry) },
-                        onRestart = { viewModel.restart(entry) },
-                        onDelete = { entryToDelete = entry }
-                    )
-                }
-                tvGroups.forEach { group ->
-                    val head = group.first()
-                    val groupIds = group.map { it.id }
-                    item(key = "series_${head.tmdbId}") {
-                        SeriesDownloadGroupRow(
-                            entries = group,
-                            selectionMode = selectionMode,
-                            selected = groupIds.all { it in selectedIds },
-                            onToggleSelection = {
-                                if (groupIds.all { it in selectedIds }) selectedIds.removeAll(groupIds)
-                                else { selectedIds.removeAll(groupIds); selectedIds.addAll(groupIds) }
-                            },
-                            onLongPress = {
-                                if (!selectionMode) {
-                                    selectionMode = true
-                                    selectedIds.addAll(groupIds)
+                slideIn togetherWith slideOut
+            }
+        },
+        label = "DownloadsSheetDrillDown"
+    ) { current ->
+        if (current == null) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                SheetHeaderRow(
+                    onLeading = { if (selectionMode) exitSelection() else onClose() },
+                    leadingIcon = Icons.Filled.Close,
+                    leadingDesc = if (selectionMode) "Annulla selezione" else "Chiudi",
+                    actions = if (selectionMode) {
+                        {
+                            val allIds = entries.map { it.id }
+                            val allSelected = allIds.isNotEmpty() && allIds.all { it in selectedIds }
+                            Text(
+                                "Tutti",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Checkbox(
+                                checked = allSelected,
+                                onCheckedChange = {
+                                    selectedIds.clear()
+                                    if (!allSelected) selectedIds.addAll(allIds)
                                 }
-                            },
-                            onClick = { onNavigateToSeriesDownloads(head.tmdbId, head.title) }
-                        )
+                            )
+                            IconButton(
+                                onClick = { confirmBulkDelete = true },
+                                enabled = selectedIds.isNotEmpty()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = "Elimina selezionati",
+                                    tint = if (selectedIds.isNotEmpty()) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else null
+                )
+
+                if (entries.isEmpty()) {
+                    Text(
+                        text = "Nessun download.",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    // Film come righe singole, serie TV raggruppate per tmdbId.
+                    val movies = remember(entries) {
+                        entries.filter { it.mediaType != "tv" }.sortedBy { it.id }
+                    }
+                    val tvGroups = remember(entries) {
+                        entries.filter { it.mediaType == "tv" }
+                            .groupBy { it.tmdbId }
+                            .map { (_, group) -> group.sortedWith(compareBy({ it.season }, { it.episode })) }
+                            .sortedBy { it.first().id }
+                    }
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(start = windowSizeClass.contentPadding, top = 8.dp, end = windowSizeClass.contentPadding, bottom = 16.dp + LocalBottomBarPadding.current),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
+                            GlassLargeTitle(if (selectionMode) "${selectedIds.size} selezionati" else "Download")
+                        }
+                        items(movies, key = { it.id }) { entry ->
+                            DownloadManagerRow(
+                                entry = entry,
+                                selectionMode = selectionMode,
+                                selected = entry.id in selectedIds,
+                                onToggleSelection = {
+                                    if (entry.id in selectedIds) selectedIds.remove(entry.id)
+                                    else selectedIds.add(entry.id)
+                                },
+                                onLongPress = {
+                                    if (!selectionMode) {
+                                        selectionMode = true
+                                        selectedIds.add(entry.id)
+                                    }
+                                },
+                                onStop = { viewModel.stop(entry) },
+                                onRestart = { viewModel.restart(entry) },
+                                onDelete = { entryToDelete = entry }
+                            )
+                        }
+                        tvGroups.forEach { group ->
+                            val head = group.first()
+                            val groupIds = group.map { it.id }
+                            item(key = "series_${head.tmdbId}") {
+                                SeriesDownloadGroupRow(
+                                    entries = group,
+                                    selectionMode = selectionMode,
+                                    selected = groupIds.all { it in selectedIds },
+                                    onToggleSelection = {
+                                        if (groupIds.all { it in selectedIds }) selectedIds.removeAll(groupIds)
+                                        else { selectedIds.removeAll(groupIds); selectedIds.addAll(groupIds) }
+                                    },
+                                    onLongPress = {
+                                        if (!selectionMode) {
+                                            selectionMode = true
+                                            selectedIds.addAll(groupIds)
+                                        }
+                                    },
+                                    onClick = { selectedSeries = head.tmdbId to head.title }
+                                )
+                            }
+                        }
                     }
                 }
             }
-        }
 
-    }
-
-// Confirm delete dialog
-entryToDelete?.let { entry ->
-    GlassAlertDialog(
-        onDismissRequest = { entryToDelete = null },
-        hazeState = LocalHazeState.current,
-        title = "Elimina download",
-        text = { Text("Vuoi eliminare il download di \"${entry.title}\"?") },
-        confirmButton = {
-            GlassDialogDestructiveButton(
-                onClick = {
-                    viewModel.remove(entry)
-                    entryToDelete = null
-                }
-            ) {
-                Text("Elimina")
-            }
-        },
-        dismissButton = {
-            GlassDialogNeutralButton(onClick = { entryToDelete = null }) {
-                Text("Annulla")
-            }
-        }
-    )
-}
-
-// Confirm bulk delete dialog (multi-select)
-if (confirmBulkDelete) {
-    val count = selectedIds.size
-    GlassAlertDialog(
-        onDismissRequest = { confirmBulkDelete = false },
-        hazeState = LocalHazeState.current,
-        title = "Elimina download",
-        text = { Text("Vuoi eliminare $count download selezionati?") },
-        confirmButton = {
-            GlassDialogDestructiveButton(
-                onClick = {
-                    viewModel.removeMany(selectedIds.toList())
-                    confirmBulkDelete = false
-                    exitSelection()
-                }
-            ) {
-                Text("Elimina")
-            }
-        },
-        dismissButton = {
-            GlassDialogNeutralButton(onClick = { confirmBulkDelete = false }) {
-                Text("Annulla")
-            }
-        }
-    )
-}
-
-// WARP state changed warning dialog
-warpChangedEntry?.let { (entry, currentWarp) ->
-    GlassAlertDialog(
-        onDismissRequest = { viewModel.clearWarpWarning() },
-        hazeState = LocalHazeState.current,
-        title = "WARP cambiato",
-        text = {
-            Column {
-                Text(
-                    if (currentWarp)
-                        "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
-                    else
-                        "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
+            // Confirm delete dialog
+            entryToDelete?.let { entry ->
+                GlassAlertDialog(
+                    onDismissRequest = { entryToDelete = null },
+                    hazeState = LocalHazeState.current,
+                    title = "Elimina download",
+                    text = { Text("Vuoi eliminare il download di \"${entry.title}\"?") },
+                    confirmButton = {
+                        GlassDialogDestructiveButton(
+                            onClick = {
+                                viewModel.remove(entry)
+                                entryToDelete = null
+                            }
+                        ) {
+                            Text("Elimina")
+                        }
+                    },
+                    dismissButton = {
+                        GlassDialogNeutralButton(onClick = { entryToDelete = null }) {
+                            Text("Annulla")
+                        }
+                    }
                 )
-                Spacer(Modifier.height(12.dp))
-                TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
-                    Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Impostazioni WARP")
-                }
             }
-        },
-        confirmButton = {
-            GlassDialogDestructiveButton(onClick = { viewModel.restartAnyway(entry) }) {
-                Text("Scarica di nuovo")
+
+            // Confirm bulk delete dialog (multi-select)
+            if (confirmBulkDelete) {
+                val count = selectedIds.size
+                GlassAlertDialog(
+                    onDismissRequest = { confirmBulkDelete = false },
+                    hazeState = LocalHazeState.current,
+                    title = "Elimina download",
+                    text = { Text("Vuoi eliminare $count download selezionati?") },
+                    confirmButton = {
+                        GlassDialogDestructiveButton(
+                            onClick = {
+                                viewModel.removeMany(selectedIds.toList())
+                                confirmBulkDelete = false
+                                exitSelection()
+                            }
+                        ) {
+                            Text("Elimina")
+                        }
+                    },
+                    dismissButton = {
+                        GlassDialogNeutralButton(onClick = { confirmBulkDelete = false }) {
+                            Text("Annulla")
+                        }
+                    }
+                )
             }
-        },
-        dismissButton = {
-            GlassDialogNeutralButton(onClick = { viewModel.clearWarpWarning() }) {
-                Text("Annulla")
+
+            // WARP state changed warning dialog
+            warpChangedEntry?.let { (entry, currentWarp) ->
+                GlassAlertDialog(
+                    onDismissRequest = { viewModel.clearWarpWarning() },
+                    hazeState = LocalHazeState.current,
+                    title = "WARP cambiato",
+                    text = {
+                        Column {
+                            Text(
+                                if (currentWarp)
+                                    "Questo download è stato avviato senza WARP. Ora WARP è attivo: verrà scaricato di nuovo da capo."
+                                else
+                                    "Questo download è stato avviato con WARP. Ora WARP è disattivo: verrà scaricato di nuovo da capo."
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(onClick = { viewModel.clearWarpWarning(); onNavigateToAdvanced() }) {
+                                Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Impostazioni WARP")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        GlassDialogDestructiveButton(onClick = { viewModel.restartAnyway(entry) }) {
+                            Text("Scarica di nuovo")
+                        }
+                    },
+                    dismissButton = {
+                        GlassDialogNeutralButton(onClick = { viewModel.clearWarpWarning() }) {
+                            Text("Annulla")
+                        }
+                    }
+                )
             }
+        } else {
+            val (tmdbId, title) = current
+            SeriesDownloadsSheet(
+                tmdbId = tmdbId,
+                title = title,
+                showAllEpisodes = false,
+                onClose = { selectedSeries = null },
+                leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                leadingDesc = "Torna ai download",
+                onNavigateToDetail = onNavigateToDetail,
+                onNavigateToPlayer = onNavigateToPlayer,
+                onNavigateToAdvanced = onNavigateToAdvanced
+            )
         }
-    )
-}
+    }
 }
 
 /** Etichetta piatta: "S1 Episodio 3 - Titolo" per le serie, solo titolo per i film. */

@@ -69,12 +69,27 @@ class HistoryViewModel @Inject constructor(
             progressByKey[coordinate(e.tmdbId, e.mediaType, e.season, e.episode)]
 
         // Count each watched coordinate once, matching iOS totalWatchSeconds.
+        // Use the frozen history snapshot when present (it survives progress
+        // deletions — markUnwatched, "Continua a guardare" removal, S0E0 cleanup —
+        // which would otherwise zero a row's contribution even though the history
+        // row is still there). Fall back to the live ProgressEntry only for legacy
+        // rows without a snapshot. Same criterion as buildSections, so the total
+        // stays consistent with the per-card bars.
         val countedCoordinates = mutableSetOf<String>()
         val totalWatch = entries.sumOf { e ->
             val key = coordinate(e.tmdbId, e.mediaType, e.season, e.episode)
             if (!countedCoordinates.add(key)) return@sumOf 0.0
-            val p = progressFor(e) ?: return@sumOf 0.0
-            watchTimeSeconds(p.positionSeconds, p.durationSeconds)
+            val pos: Double
+            val dur: Double
+            if (e.durationSeconds > 0) {
+                pos = e.progressSeconds
+                dur = e.durationSeconds
+            } else {
+                val p = progressFor(e) ?: return@sumOf 0.0
+                pos = p.positionSeconds
+                dur = p.durationSeconds
+            }
+            watchTimeSeconds(pos, dur)
         }
 
         val filtered = when (activeFilter) {

@@ -7,23 +7,23 @@ import java.util.Date
 import java.util.Locale
 
 object Release {
-    private val calendar: Calendar get() = Calendar.getInstance()
-
     private val longFmt = SimpleDateFormat("d MMMM yyyy", Locale.ITALIAN)
     private val shortFmt = SimpleDateFormat("d MMM", Locale.ITALIAN)
+    private val isoFmt = SimpleDateFormat("yyyy-MM-dd", Locale.ITALIAN)
 
     fun parseDate(s: String?): Date? {
         if (s.isNullOrEmpty() || s.length < 10) return null
-        val p = s.substring(0, 10).split("-")
-        if (p.size != 3) return null
-        val y = p[0].toIntOrNull() ?: return null
-        val m = p[1].toIntOrNull() ?: return null
-        val d = p[2].toIntOrNull() ?: return null
-        return calendar.apply { set(y, m - 1, d, 0, 0, 0); set(Calendar.MILLISECOND, 0) }.time
+        return try {
+            isoFmt.parse(s.substring(0, 10))
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun isFuture(d: Date): Boolean {
-        val today = calendar.apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.time
+        val today = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.time
         return d > today
     }
 
