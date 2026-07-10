@@ -1,0 +1,1444 @@
+/* Streamo VIDAA — design tokens + base styles.
+   Mirrors Android ui/tv visual language: flat dark surfaces, white focus
+   rings + scale, dark scrims. No blur/glass (safe on older VIDAA Chromium).
+   1dp == 1px (1080p TV). */
+
+:root {
+  /* surfaces — match Android ui/theme/Color.kt (DarkBackground/DarkSurface/
+     DarkSurfaceVariant) */
+  --surface-0: #050505;
+  --surface-1: #121212;
+  --surface-2: #1e1e1e;
+  --surface-3: #2a2a2a;
+  --on-surface: #ffffff;
+  --on-surface-variant: #b0b0b0;
+  /* --primary/--primary-on default to Android's BrandRed (#e50914) and are
+     overridden at runtime from the user's accent setting — see util/theme.ts */
+  --primary: #e50914;
+  --primary-on: #ffffff;
+  --error: #ff5252;
+
+  /* scrims */
+  --scrim-45: rgba(0, 0, 0, 0.45);
+  --scrim-60: rgba(0, 0, 0, 0.6);
+  --scrim-70: rgba(0, 0, 0, 0.7);
+  --scrim-left: linear-gradient(90deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 60%);
+  --scrim-bottom: linear-gradient(0deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 50%);
+
+  /* focus */
+  --focus-ring: #ffffff;
+  --focus-fill: rgba(255, 255, 255, 0.12);
+  --focus-fill-strong: rgba(255, 255, 255, 0.18);
+  --focus-tween: 150ms ease;
+
+  /* layout — horizontal content padding matches Android TV WindowSizeClass.Expanded
+     contentPadding (32dp). 16px read as "too close to the edges" on a 1080p TV. */
+  --rail-h-pad: 32px;
+  --rail-gap: 14px;
+  --drawer-width: 288px;
+  --drawer-collapsed: 88px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--surface-0);
+  color: var(--on-surface);
+  font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  overflow: hidden;
+  /* TV: no scroll bounce, no selection, no touch callouts */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#app {
+  position: relative;
+}
+
+/* ---- Focusable primitives ---- */
+.focusable {
+  transition: transform var(--focus-tween), background-color var(--focus-tween);
+}
+
+/* scale on focus (posters/cards grow 1.05–1.08) */
+.focusable.f-focus.scale {
+  transform: scale(var(--scale, 1.08));
+}
+
+/* 3px white ring around content (posters/stills). box-shadow spread instead of
+   outline: on old VIDAA Chromium, outline does NOT follow border-radius (renders
+   square around a rounded card). box-shadow always respects border-radius, no
+   layout shift. Mirrors Android's rounded border focus. */
+.focusable.f-focus.frame {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* 2px white edge ring (chips/rows/buttons) */
+.focusable.f-focus.ring {
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* optional white@12% fill on focus (settings rows, chips) */
+.focusable.f-focus.fill {
+  background-color: var(--focus-fill);
+}
+
+/* ---- App shell ---- */
+.app-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  background: var(--surface-0);
+}
+
+.ambient {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-0);
+  z-index: 0;
+}
+
+.drawer {
+  position: relative;
+  z-index: 2;
+  width: var(--drawer-width);
+  flex: 0 0 var(--drawer-width);
+  display: flex;
+  flex-direction: column;
+  padding: 32px 16px 16px;
+  gap: 8px;
+  transition: width 220ms cubic-bezier(0.2, 0, 0, 1), flex-basis 220ms cubic-bezier(0.2, 0, 0, 1);
+  overflow: hidden;
+}
+
+.drawer.collapsed {
+  width: var(--drawer-collapsed);
+  flex-basis: var(--drawer-collapsed);
+}
+
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 256px;
+  flex: 0 0 56px;
+  height: 56px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: var(--on-surface);
+  font-size: 16px;
+  font-weight: 500;
+  cursor: default;
+  transition: width 220ms cubic-bezier(0.2, 0, 0, 1), background-color 150ms ease, color 150ms ease;
+}
+
+.drawer-item .icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drawer-item .label {
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateX(0);
+  transition: max-width 220ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms ease, transform 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.drawer.collapsed .drawer-item .label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+.drawer.collapsed .drawer-item {
+  width: 56px;
+}
+
+.drawer.collapsed .drawer-item:not(.active) {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.drawer-item.active {
+  color: var(--on-surface);
+  background: rgba(30, 30, 30, 0.4);
+}
+
+.drawer-item.f-focus.ring {
+  box-shadow: none;
+}
+
+.drawer-item.f-focus.fill,
+.drawer-item.active.f-focus.fill {
+  background: #e6e1e5;
+  color: #313033;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ---- Rails (ImmersiveRow) ---- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.rail:first-child {
+  padding-top: 24px;
+}
+
+.rail:last-child {
+  padding-bottom: 32px;
+}
+
+.rail-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 var(--rail-h-pad);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--on-surface);
+}
+
+.rail-title .icon-badge {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-on);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Material icon inside the section badge — 16px, inherits primary-on (Android
+   SectionHeader: 30dp primary box + 16dp onPrimary icon). */
+.rail-title .icon-badge svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* Inline icons inside buttons/chips (Material glyph, currentColor). */
+.inline-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+
+.rail-row {
+  display: flex;
+  gap: var(--rail-gap);
+  padding: 12px var(--rail-h-pad);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+}
+
+.rail-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- Cards ---- */
+.card-poster {
+  width: 140px;
+  aspect-ratio: 2 / 3;
+  border-radius: 9px;
+  background: var(--surface-2);
+  background-size: cover;
+  background-position: center;
+  flex: 0 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ponytail: focus ring hugs the poster only, not the wrapper+label. The wrapper
+   (.card-focus) would draw a wide rectangle (cell width + label height); drawing
+   the box-shadow on the poster itself keeps it the card's 2/3 rect. */
+.card-focus.f-focus .card-poster,
+.card-focus.f-focus .card-still {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Android brings the label to Color.White when the card is focused. */
+.card-focus.f-focus .card-label {
+  color: var(--on-surface);
+}
+
+.card-still {
+  width: 260px;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+  background: var(--surface-2);
+  background-size: cover;
+  background-position: center;
+  flex: 0 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+
+.progress-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: transparent;
+}
+
+.progress-bar > .fill {
+  height: 100%;
+  background: var(--primary);
+}
+
+.card-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 45%);
+}
+
+/* Android TvProgressMediaCard: lighter bottom scrim (Black@0.5) on the poster.
+   Separate from .card-gradient (@0.75, episode stills) so the progress card stays
+   lighter and the S/E badge + progress bar stay legible above it. */
+.progress-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 45%);
+}
+
+/* Android TvProgressMediaCard "X min rimasti" subtitle under the title. */
+.card-sublabel {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Grid (search/sectionlist/anime) ---- */
+/* Android GridCells.Fixed(5): exactly 5 columns, spacing 14dp (TvSearchScreen /
+   TvSectionListScreen). Cards fill their cell (grid-5 .card-poster width:100%) so
+   the 5 posters are large, not ~9-10 small ones. */
+.grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  padding: 16px var(--rail-h-pad);
+}
+
+/* ponytail: .card-poster/.card-label are fixed 140px for horizontal rails. In the
+   grid let them fill the cell — otherwise the poster sits at 140px leaving the
+   rest of the cell empty. */
+.grid-5 .card-poster,
+.grid-5 .card-label {
+  width: 100%;
+}
+
+/* SectionList / "Altro" grid: same 140px poster size as the home rails, not the
+   larger 5-column grid used by Search. */
+.grid-home {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 140px);
+  gap: 14px;
+  padding: 16px var(--rail-h-pad);
+  justify-content: start;
+}
+
+.grid-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- AnimeUnity ---- */
+.anime-screen { padding-bottom: 32px; }
+.anime-heading { margin: 24px var(--rail-h-pad) 12px; font-size: 26px; font-weight: 700; }
+.anime-search-wrap { display: block; margin: 0 var(--rail-h-pad) 16px; border-radius: 8px; }
+.anime-search { width: 100%; height: 48px; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 0 14px; color: #fff; background: var(--surface-2); font: inherit; }
+.anime-search:focus { outline: none; border-color: var(--primary); }
+.anime-grid .anime-dub { left: auto; right: 6px; }
+.anime-message { min-height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--on-surface-variant); text-align: center; }
+.anime-message .focusable { padding: 10px 20px; border-radius: 8px; color: var(--on-surface); }
+.anime-detail-screen { padding: 24px var(--rail-h-pad) 32px; }
+.anime-detail-header { display: flex; gap: 20px; min-height: 180px; margin-bottom: 18px; }
+.anime-detail-poster { width: 120px; height: 180px; border-radius: 10px; background: var(--surface-2) center/cover; flex: 0 0 auto; }
+.anime-detail-meta { flex: 1; color: var(--on-surface-variant); line-height: 1.45; }
+.anime-detail-title { color: #fff; font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+.anime-detail-meta p { max-width: 700px; color: rgba(255,255,255,.72); margin: 10px 0; }
+.anime-detail-meta .badge { position: static; display: inline-block; margin-top: 8px; }
+.back-btn { height: 44px; padding: 12px 16px; border-radius: 22px; white-space: nowrap; }
+.anime-windows { display: flex; gap: 8px; margin: 10px 0 18px; }
+.anime-window { padding: 8px 16px; border-radius: 20px; }
+.anime-window.selected { background: var(--primary); color: var(--primary-on); }
+.anime-episodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 12px; }
+.anime-episode { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; font-weight: 600; }
+.anime-episode span { line-height: 1; font-variant-numeric: tabular-nums; }
+.anime-episode.watched { background: rgba(255,255,255,.08); }
+.anime-episode.watched::after { content: '✓'; position: absolute; top: 4px; right: 6px; font-size: 12px; }
+.anime-episode i { position: absolute; bottom: 0; left: 0; height: 3px; width: 0; }
+.anime-episode.progress i { width: 45%; background: var(--primary); }
+
+/* ---- Player ---- */
+.player-root {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  z-index: 5;
+}
+
+.player-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.player-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--scrim-45);
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.player-controls.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 48px 48px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.player-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.player-sub {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 4px;
+}
+
+.player-transport {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.player-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 48px 32px;
+}
+
+.circle-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+/* Android TvCircleButton: focused = solid white circle + black icon (wins over the
+   generic .focusable.f-focus.fill). .md/.lg sizes stay 64/88. */
+.circle-btn.f-focus.fill {
+  background: #fff;
+  color: #000;
+}
+
+/* ponytail: disabled transport button (Android TvCircleButton enabled=false) —
+   same circle, icon at 40% opacity, NOT focusable (Norigin skips focusable=false). */
+.circle-btn.disabled {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.circle-btn.lg {
+  width: 88px;
+  height: 88px;
+}
+
+.circle-btn.md {
+  width: 64px;
+  height: 64px;
+}
+
+.seekbar {
+  position: relative;
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 12px 0;
+  transition: height 160ms ease;
+}
+
+.seekbar.focused {
+  height: 6px;
+}
+
+/* Android TvSeekBar buffered track (White@0.55) between the base track and the
+   played fill. */
+.seekbar > .buffer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 3px;
+}
+
+.seekbar > .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--primary);
+  border-radius: 3px;
+}
+
+.seekbar > .thumb {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.seekbar.focused > .thumb {
+  opacity: 1;
+}
+
+.time-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+/* ---- Detail hero ---- */
+/* Android TvDetailScreen: backdrop is a background layer (fillMaxWidth height 560dp,
+   anchored top) with two scrims; all content scrolls in one column above/below it.
+   Absolute top:0 inside the .screen scroll container scrolls away with the content. */
+.detail-hero {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 560px;
+  z-index: 0;
+  background-size: cover;
+  background-position: center top;
+}
+
+.detail-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim-left), var(--scrim-bottom);
+}
+
+.detail-content {
+  position: relative;
+  z-index: 1;
+  padding: 196px 48px 48px;
+}
+
+/* ---- Overlays (provider picker, dialogs, settings) ---- */
+.overlay-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--scrim-70);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay-card {
+  /* Android TV dialogs: Color(0xFF1A1A1A), 24dp content inset. */
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 400px;
+  max-width: 600px;
+}
+
+.overlay-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  color: var(--on-surface);
+}
+
+/* ---- Stub screens ---- */
+.stub {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--on-surface-variant);
+  font-size: 24px;
+}
+
+.stub .hint {
+  font-size: 14px;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+
+/* ---- Spinner ---- */
+.spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+  font-size: 20px;
+}
+
+/* ---- Skeleton shimmer ---- */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2),
+    var(--surface-3),
+    var(--surface-2)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ---- Card focus wrapper ---- */
+.card-focus {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+
+.badge.year-badge {
+  top: auto;
+  bottom: 6px;
+  left: 6px;
+}
+
+/* ---- Empty row ---- */
+.empty-row {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--rail-h-pad);
+  height: 60px;
+  color: var(--on-surface-variant);
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+/* ---- Altro (more) trailing card ---- */
+/* Reuses .card-poster so the "Altro" card has the exact same footprint as a
+   MediaCard. The icon sits centered inside the poster and the label below it
+   matches the other cards in the rail. */
+.altro-poster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-surface-variant);
+}
+
+.card-focus.f-focus .altro-poster {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--on-surface);
+}
+
+/* ---- Episode still overlays ---- */
+/* Android TvEpisodeCard: episode number as plain white text (no pill), status keeps
+   the dark pill. Separated so only the status retains the background. */
+.episode-status {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+
+.episode-num {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: none;
+  padding: 0;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Android: play icon (44dp) centered on the still, shown only in focus. */
+.episode-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.card-focus.f-focus .episode-play {
+  opacity: 1;
+}
+
+/* Android: episode name (labelMedium, white/80%) + overview (2-line clamp, white/55%)
+   below the still. min-height reserves 2 lines so cards stay baseline-aligned even
+   when overview is empty. */
+.episode-name {
+  margin-top: 6px;
+  width: 260px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-focus.f-focus .episode-name {
+  color: #fff;
+}
+
+.episode-overview {
+  margin-top: 2px;
+  width: 260px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.55);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 27px; /* reserve 2 lines: baseline-aligned even without overview */
+}
+
+/* ---- Overlay rows & dialog actions ---- */
+.overlay-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--on-surface);
+}
+
+.overlay-message {
+  font-size: 15px;
+  color: var(--on-surface-variant);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.overlay-row .row-label {
+  flex: 1 1 auto;
+}
+
+.overlay-row .check {
+  margin-left: auto;
+  color: var(--primary);
+}
+
+.overlay-row.selected .row-label {
+  color: var(--primary);
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.overlay-actions .focusable {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--on-surface-variant);
+}
+
+.btn-confirm {
+  background: var(--primary);
+  color: var(--primary-on);
+}
+
+.btn-confirm.destructive {
+  background: var(--error);
+  color: #fff;
+}
+
+.btn-confirm.f-focus.fill {
+  background: var(--primary);
+}
+
+.btn-confirm.destructive.f-focus.fill {
+  background: var(--error);
+}
+
+/* ---- Detail screen ---- */
+.detail-screen {
+  background: var(--surface-0);
+  /* Detail content/rails align to 48dp (Android detail contentPadding), overriding
+     the 32px Home default — scoped here so Home is untouched. */
+  --rail-h-pad: 48px;
+}
+
+/* Rails on the detail screen must stack above the absolute-positioned hero
+   (z-index: 0). Without this, the backdrop can paint over the season chips /
+   episode cards when the detail content above them is short enough that the
+   rail starts inside the 560px hero area. */
+.detail-screen .rail {
+  position: relative;
+  z-index: 1;
+}
+
+.detail-title {
+  font-size: 36px;
+  font-weight: 700;
+  margin-top: 0;
+  max-width: 70vw;
+  line-height: 1.1;
+}
+
+.detail-meta {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 16px;
+}
+
+.detail-genres {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.detail-actions .focusable {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  justify-content: center;
+}
+
+.play-btn {
+  background: var(--primary);
+  color: var(--primary-on);
+}
+
+.play-btn.f-focus.fill {
+  background: #fff;
+  color: #000;
+}
+
+.wl-btn {
+  color: var(--on-surface);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.wl-btn.f-focus.fill {
+  background: #fff;
+  color: #000;
+}
+
+.detail-overview {
+  margin-top: 20px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 60vw;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Android TvDetailScreen: cast as a single "Cast: name, name, …" line. */
+.detail-cast-line {
+  margin-top: 12px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 60vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.season-chips {
+  display: flex;
+  gap: 10px;
+  padding: 8px var(--rail-h-pad);
+  overflow-x: auto;
+}
+
+.season-chip {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.season-chip.selected {
+  background: var(--primary);
+  color: var(--primary-on);
+}
+
+.season-chip.f-focus.fill {
+  background: #fff;
+  color: #000;
+}
+
+/* ---- Search ---- */
+.search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px var(--rail-h-pad) 16px;
+}
+
+.search-input-wrap {
+  display: block;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0;
+}
+
+.search-input {
+  width: 100%;
+  padding: 16px 18px;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--on-surface);
+  font-size: 18px;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 8px 18px;
+  border-radius: 999px;
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* selected: primary fill wins over the focus fill (specificity); focus of a
+   non-selected chip uses the generic .focusable.f-focus.fill + .ring (subtle
+   White@0.12 + ring), matching Android's White@0.18 — NOT the full-white season chip. */
+.filter-chip.selected,
+.filter-chip.selected.f-focus.fill {
+  background: var(--primary);
+  color: var(--primary-on);
+  border-color: transparent;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 var(--rail-h-pad);
+}
+
+.recent-row {
+  padding: 14px 18px;
+  border-radius: 10px;
+  color: var(--on-surface);
+  font-size: 16px;
+}
+
+/* ---- Section list header ---- */
+.section-header {
+  padding: 28px var(--rail-h-pad) 12px;
+  font-size: 24px;
+}
+
+/* ---- Back / retry buttons ---- */
+.back-btn,
+.retry-btn {
+  flex: 0 0 auto;
+  padding: 12px 22px;
+  border-radius: 10px;
+  color: var(--on-surface);
+  font-size: 16px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.retry-btn {
+  margin-top: 16px;
+}
+
+/* ---- Infinite-scroll sentinel ---- */
+.sentinel {
+  height: 1px;
+  width: 100%;
+}
+
+/* ---- Drawer focus category (non-focusable container of drawer items) ---- */
+.drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---- Hide scrollbars on all scroll containers (TV: D-pad scrolls, no bar) ---- */
+.screen,
+.content,
+.drawer-list,
+.rail-row,
+.season-chips,
+.overlay-list,
+.recent-list {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge legacy */
+}
+.screen::-webkit-scrollbar,
+.content::-webkit-scrollbar,
+.drawer-list::-webkit-scrollbar,
+.rail-row::-webkit-scrollbar,
+.season-chips::-webkit-scrollbar,
+.overlay-list::-webkit-scrollbar,
+.recent-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- Player: frozen frame + spinner + error ---- */
+.frozen-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  background: #000;
+  object-fit: contain;
+}
+
+.player-buffer-spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* ponytail: Circular spinner (Android CircularProgressIndicator equivalent),
+   not text. White arc on a translucent ring, centered by .player-buffer-spinner. */
+.player-spinner {
+  width: 56px;
+  height: 56px;
+  border: 4px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: player-spin 0.9s linear infinite;
+}
+
+@keyframes player-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.player-error {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--scrim-70);
+  color: var(--on-surface);
+  font-size: 22px;
+}
+
+/* ---- Player: top bar actions + badges + next-pill ---- */
+.player-top-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.warp-badge {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 999px;
+}
+
+.next-pill {
+  position: absolute;
+  top: -34px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.next-pill.f-focus.fill {
+  background: #fff;
+  color: #000;
+  border-color: transparent;
+}
+
+/* Android TvSkipIndicator: "±N secondi" bubble centered 120px above the middle
+   while scrubbing (dark scrim pill, FastRewind/FastForward icon). */
+.skip-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translateY(-120px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 10px 18px;
+  border-radius: 999px;
+}
+
+/* ---- Player: settings overlay ---- */
+.settings-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.settings-card {
+  width: 440px;
+  max-height: 520px;
+  margin: 48px 48px 48px 0;
+  align-self: center;
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 20px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.settings-card::-webkit-scrollbar {
+  display: none;
+}
+
+.overlay-row .row-value {
+  margin-left: auto;
+  color: var(--on-surface-variant);
+  font-size: 14px;
+}
+
+.overlay-row .check {
+  margin-left: auto;
+  color: var(--primary);
+}
+
+/* keep the seekbar thumb invisible until the bar is focused (handled by class) */
+.seekbar {
+  width: 100%;
+  cursor: default;
+}
+
+/* ---- Settings + Cache management ---- */
+.settings-screen {
+  background: var(--surface-0);
+}
+
+.settings-scroll {
+  padding: 24px 48px 64px;
+}
+
+.settings-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.settings-header-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.settings-section-header {
+  margin: 24px 0 10px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  color: var(--on-surface);
+  font-size: 16px;
+}
+
+.settings-row + .settings-row {
+  margin-top: 4px;
+}
+
+.settings-row .row-label {
+  flex: 1 1 auto;
+}
+
+.settings-row .row-value {
+  color: var(--on-surface-variant);
+  font-size: 14px;
+}
+
+.settings-status {
+  padding: 0 16px 4px;
+  color: var(--on-surface-variant);
+  font-size: 14px;
+}
+
+.settings-api-key-row {
+  cursor: text;
+}
+
+.settings-api-key-input {
+  flex: 0 0 360px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface-2);
+  color: var(--on-surface);
+  font: inherit;
+  letter-spacing: 0.08em;
+}
+
+.settings-api-key-input:focus {
+  border-color: var(--primary);
+}
+
+.settings-api-key-dialog .settings-api-key-input {
+  width: 100%;
+}
+
+.settings-api-key-input-wrap {
+  border-radius: 8px;
+}
+
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+}
+
+.row-subtitle {
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+.toggle-switch {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  position: relative;
+  transition: background 150ms ease;
+}
+
+.toggle-switch.on {
+  background: var(--primary);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 150ms ease;
+}
+
+.toggle-switch.on .toggle-knob {
+  transform: translateX(20px);
+}
+
+.tmdb-attribution {
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+  opacity: 0.8;
+}
+
+/* ---- Toast ---- */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: var(--surface-3);
+  color: var(--on-surface);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 22px;
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}

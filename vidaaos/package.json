@@ -1,0 +1,24 @@
+{
+  "name": "streamo-vidaaos",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@noriginmedia/norigin-spatial-navigation-core": "^3.2.0",
+    "dexie": "^4.0.8",
+    "hls.js": "^1.5.13",
+    "@preact/signals": "^2.0.1",
+    "preact": "^10.22.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.1",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}
