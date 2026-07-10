@@ -1,16 +1,16 @@
-# Graph Report - Streamo  (2026-07-09)
+# Graph Report - Streamo  (2026-07-08)
 
 ## Corpus Check
-- 177 files · ~132,825 words
+- 177 files · ~132,489 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2121 nodes · 4162 edges · 180 communities (111 shown, 69 thin omitted)
+- 2118 nodes · 4152 edges · 171 communities (106 shown, 65 thin omitted)
 - Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 457 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `dfe24819`
+- Built from commit: `2698bf27`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -104,15 +104,12 @@
 - [[_COMMUNITY_Cluster 86|Cluster 86]]
 - [[_COMMUNITY_Cluster 87|Cluster 87]]
 - [[_COMMUNITY_Cluster 88|Cluster 88]]
-- [[_COMMUNITY_ProgressMediaCard|ProgressMediaCard]]
 - [[_COMMUNITY_Cluster 90|Cluster 90]]
 - [[_COMMUNITY_Cluster 91|Cluster 91]]
 - [[_COMMUNITY_Cluster 92|Cluster 92]]
 - [[_COMMUNITY_Cluster 93|Cluster 93]]
 - [[_COMMUNITY_Cluster 94|Cluster 94]]
 - [[_COMMUNITY_Cluster 95|Cluster 95]]
-- [[_COMMUNITY_AnimeScreen|AnimeScreen]]
-- [[_COMMUNITY_String|String]]
 - [[_COMMUNITY_Cluster 98|Cluster 98]]
 - [[_COMMUNITY_Cluster 99|Cluster 99]]
 - [[_COMMUNITY_Cluster 100|Cluster 100]]
@@ -142,7 +139,6 @@
 - [[_COMMUNITY_Piano Modali glass con blur reale (inline overlay)|Piano: Modali glass con blur reale (inline overlay)]]
 - [[_COMMUNITY_Piano Allineare Salta intro all'implementazione iOS|Piano: Allineare "Salta intro" all'implementazione iOS]]
 - [[_COMMUNITY_PlayerViewModel.kt|PlayerViewModel.kt]]
-- [[_COMMUNITY_Top10Card|Top10Card]]
 - [[_COMMUNITY_Repository Guidelines|Repository Guidelines]]
 - [[_COMMUNITY_Streamo single-module app Gradle project structure|Streamo single-module :app Gradle project structure]]
 - [[_COMMUNITY_warpkit.aar (Cloudflare WARP tunnel via wireproxykit)|warpkit.aar (Cloudflare WARP tunnel via wireproxykit)]]
@@ -181,16 +177,11 @@
 - [[_COMMUNITY_Continue Watching dedupe issue (last episode of last season watched)|Continue Watching dedupe issue (last episode of last season watched)]]
 - [[_COMMUNITY_Download stopplay control fix|Download stop/play control fix]]
 - [[_COMMUNITY_Skeleton flicker on switching season in series detail|Skeleton flicker on switching season in series detail]]
-- [[_COMMUNITY_ContinueWatchingViewModel|ContinueWatchingViewModel]]
 - [[_COMMUNITY_HeroControls|HeroControls]]
-- [[_COMMUNITY_Size|Size]]
-- [[_COMMUNITY_SeasonChip|SeasonChip]]
-- [[_COMMUNITY_.computeStats|.computeStats]]
-- [[_COMMUNITY_Uri|Uri]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `Text` - 122 edges
-2. `PlayerViewModel` - 89 edges
+2. `PlayerViewModel` - 86 edges
 3. `TmdbItem` - 55 edges
 4. `DownloadEntry` - 47 edges
 5. `AppRepository` - 46 edges
@@ -209,8 +200,8 @@
   app/src/main/java/com/streamo/app/navigation/AppNavHost.kt → app/src/main/java/com/streamo/app/ui/anime/AnimeDetailScreen.kt
 - `AppNavHost()` --calls--> `AnimeScreen()`  [INFERRED]
   app/src/main/java/com/streamo/app/navigation/AppNavHost.kt → app/src/main/java/com/streamo/app/ui/anime/AnimeScreen.kt
-- `AppNavHost()` --calls--> `ContinueWatchingScreen()`  [INFERRED]
-  app/src/main/java/com/streamo/app/navigation/AppNavHost.kt → app/src/main/java/com/streamo/app/ui/continuewatching/ContinueWatchingScreen.kt
+- `AppNavHost()` --calls--> `DetailScreen()`  [INFERRED]
+  app/src/main/java/com/streamo/app/navigation/AppNavHost.kt → app/src/main/java/com/streamo/app/ui/detail/DetailScreen.kt
 
 ## Import Cycles
 - None detected.
@@ -220,27 +211,27 @@
 - **Style token consolidation (Shape + Alpha + BlurRadius tokens)** — plans_animation_style_audit_plan_shape_tokens, plans_animation_style_audit_plan_alpha_tokens, plans_animation_style_audit_plan_blur_radius_tokens [INFERRED 0.85]
 - **Skip Intro MVP -> iOS-aligned progression** — claude_plans_skip_intro_button_fixed_duration_mvp, claude_plans_skip_intro_button_skip_intro_seconds_pref, claude_plans_skip_intro_ios_alignment_introskipclient, claude_plans_skip_intro_ios_alignment_skip_prompt_credits [EXTRACTED 0.95]
 
-## Communities (180 total, 69 thin omitted)
+## Communities (171 total, 65 thin omitted)
 
 ### Community 0 - "TMDB DTO Models"
-Cohesion: 0.06
-Nodes (39): Int, String, stub(), TmdbCastMember, TmdbCredits, TmdbEpisodeDetail, TmdbEpisodeRef, TmdbGenreListResponse (+31 more)
+Cohesion: 0.05
+Nodes (45): Int, String, stub(), TmdbCastMember, TmdbCredits, TmdbEpisodeDetail, TmdbEpisodeRef, TmdbGenreListResponse (+37 more)
 
 ### Community 1 - "Provider Client Resolution"
 Cohesion: 0.06
 Nodes (52): decodeHTMLEntities(), extractYear(), firstMatch(), HttpResponse, Class, Int, List, Long (+44 more)
 
 ### Community 2 - "Brand Buttons & TMDB Reviews"
-Cohesion: 0.20
-Nodes (23): aspectLabel(), androidx, Boolean, com, Float, FocusRequester, ImageVector, Int (+15 more)
+Cohesion: 0.15
+Nodes (26): String, Size, TMDBImage, aspectLabel(), androidx, Boolean, com, Float (+18 more)
 
 ### Community 3 - "Settings DataStore"
 Cohesion: 0.05
 Nodes (21): Boolean, Context, Float, Flow, Map, String, Triple, SettingsDataStore (+13 more)
 
 ### Community 4 - "Download Quality Selection"
-Cohesion: 0.08
-Nodes (31): TmdbReview, DownloadQualityRequest, DetailContent(), DetailScreen(), DetailScrollContent(), DetailSkeleton(), EpisodeCard(), EpisodesSection() (+23 more)
+Cohesion: 0.06
+Nodes (23): Ask, Cap, capHeightFromEntryQuality(), DownloadQualityPref, DownloadQualityRequest, Int, String, Max (+15 more)
 
 ### Community 5 - "Backup Manager & JSON Import/Export"
 Cohesion: 0.07
@@ -251,8 +242,8 @@ Cohesion: 0.11
 Nodes (18): DlnaCastManager, DlnaPosition, DlnaRenderer, Boolean, Context, InetAddress, List, Long (+10 more)
 
 ### Community 7 - "Search Screen & Glass Filters"
-Cohesion: 0.06
-Nodes (38): Flow, List, String, SearchHistoryDao, SearchHistoryEntry, TmdbGenre, FilterBar(), FilterButton() (+30 more)
+Cohesion: 0.10
+Nodes (13): Flow, List, String, SearchHistoryDao, SearchHistoryEntry, Boolean, Collection, Int (+5 more)
 
 ### Community 8 - "LAN Cast Client (app-to-app)"
 Cohesion: 0.07
@@ -263,8 +254,8 @@ Cohesion: 0.10
 Nodes (22): AUAnime, AUEpisode, AUEpisodePage, AUInfoResponse, AURecordsResponse, Boolean, Int, String (+14 more)
 
 ### Community 10 - "Settings ViewModel"
-Cohesion: 0.11
-Nodes (6): Boolean, Float, Long, StateFlow, Triple, SettingsViewModel
+Cohesion: 0.07
+Nodes (9): Boolean, Float, Int, Long, StateFlow, String, Triple, Uri (+1 more)
 
 ### Community 11 - "Chromecast Manager"
 Cohesion: 0.09
@@ -275,36 +266,36 @@ Cohesion: 0.06
 Nodes (17): HistoryDao, Flow, Int, List, Long, String, HistoryEntry, Long (+9 more)
 
 ### Community 13 - "Glass Card Composables"
-Cohesion: 0.19
-Nodes (22): downloadDetailLine(), downloadItemLabel(), DownloadManagerRow(), DownloadsSheet(), formatBytes(), formatSpeed(), Boolean, Float (+14 more)
+Cohesion: 0.12
+Nodes (38): GlassCard(), androidx, downloadDetailLine(), downloadItemLabel(), DownloadManagerRow(), DownloadsSheet(), formatBytes(), formatSpeed() (+30 more)
 
 ### Community 14 - "LAN Cast Receiver (TV side)"
 Cohesion: 0.11
 Nodes (18): Boolean, Int, StateFlow, String, LanCastReceiver, Any, IHTTPSession, Response (+10 more)
 
 ### Community 15 - "Download DAO"
-Cohesion: 0.26
-Nodes (14): Text, CastDeviceGroup, Boolean, List, String, CastDetailPanel(), CastDeviceRow(), CastPickerDialog() (+6 more)
+Cohesion: 0.14
+Nodes (29): Text, CastDeviceGroup, Boolean, List, String, CastDetailPanel(), CastDeviceRow(), CastPickerDialog() (+21 more)
 
 ### Community 16 - "Player ViewModel & MediaSession"
-Cohesion: 0.09
-Nodes (10): PlaybackSource, Context, ExoPlayer, Float, Job, List, MediaSession, StateFlow (+2 more)
+Cohesion: 0.10
+Nodes (8): Context, ExoPlayer, Float, Job, List, MediaSession, StateFlow, PlayerViewModel
 
 ### Community 17 - "Series Downloads ViewModel"
 Cohesion: 0.12
 Nodes (10): Factory, Boolean, Collection, Int, List, Map, Pair, StateFlow (+2 more)
 
 ### Community 18 - "Glass Dialogs & Alerts"
-Cohesion: 0.18
-Nodes (22): GlassBottomSheet(), cardEnter(), cardExit(), DialogHandle, GlassAlertDialog(), GlassDialog(), GlassDialogContent(), GlassDialogDestructiveButton() (+14 more)
+Cohesion: 0.19
+Nodes (24): GlassBottomSheet(), cardEnter(), cardExit(), DialogHandle, GlassAlertDialog(), GlassDialog(), GlassDialogContent(), GlassDialogDestructiveButton() (+16 more)
 
 ### Community 19 - "Cast Controller (session locks)"
 Cohesion: 0.18
 Nodes (8): android, CastController, Boolean, Job, List, Long, MediaSession, StateFlow
 
 ### Community 20 - "Image Placeholder & TV Media Card"
-Cohesion: 0.07
-Nodes (29): ImagePlaceholder(), androidx, Boolean, Modifier, String, com, List, TvAnimeCatalogCard() (+21 more)
+Cohesion: 0.22
+Nodes (7): Dp, Float, FocusRequester, Modifier, String, TvMediaCard(), TvLibraryScreen()
 
 ### Community 21 - "Download Entry & Downloads VM"
 Cohesion: 0.14
@@ -315,12 +306,12 @@ Cohesion: 0.16
 Nodes (8): DownloadEntry, DownloadsViewModel, Boolean, Collection, Int, List, Pair, StateFlow
 
 ### Community 23 - "History DAO"
-Cohesion: 0.24
-Nodes (15): buildCastDeviceGroups(), extractIp(), androidx, Boolean, Int, List, Modifier, String (+7 more)
+Cohesion: 0.18
+Nodes (21): TmdbReview, DetailScreen(), DetailScrollContent(), DetailSkeleton(), EpisodeCard(), EpisodesSection(), EpisodesUnavailable(), ErrorState() (+13 more)
 
 ### Community 24 - "Cast Banner UI"
-Cohesion: 0.28
-Nodes (14): AllEpisodesContent(), DownloadedOnlyContent(), EpisodeDownloadCard(), androidx, Boolean, ImageVector, Int, List (+6 more)
+Cohesion: 0.40
+Nodes (12): TmdbGenre, FilterBar(), FilterButton(), GenreBadgeRow(), GenrePickerDialog(), GenreSummaryChip(), Int, List (+4 more)
 
 ### Community 25 - "History ViewModel & Filters"
 Cohesion: 0.18
@@ -339,28 +330,28 @@ Cohesion: 0.07
 Nodes (28): 0.1 `gradle/libs.versions.toml`, 0.2 `app/build.gradle.kts`, 0.3 `app/src/main/AndroidManifest.xml`, 0.4 Banner asset, 1.1 NEW `app/src/main/java/com/streamo/app/util/FormFactor.kt`, 1.2 Edit `MainActivity.kt`, 2.1 Edit `navigation/NavRoutes.kt` — add ONE route, 2.2 NEW `ui/tv/TvAppNavHost.kt` (+20 more)
 
 ### Community 29 - "NavRoutes (type-safe navigation)"
-Cohesion: 0.12
-Nodes (26): detailEnterTransition(), detailExitTransition(), isDetailRoute(), Boolean, EnterTransition, ExitTransition, Int, tabDirection() (+18 more)
+Cohesion: 0.23
+Nodes (16): AdvancedSettings, Anime, AnimeDetail, CacheManagement, ContinueWatching, DebugLogs, Detail, History (+8 more)
 
 ### Community 30 - "Player ViewModel Cast Modes"
-Cohesion: 0.21
+Cohesion: 0.24
 Nodes (3): ChromecastRenderer, Boolean, onIsPlayingChanged()
 
 ### Community 31 - "Cast Banner & Section List VMs"
-Cohesion: 0.11
-Nodes (11): CastBannerViewModel, Boolean, List, StateFlow, String, SectionListViewModel, Int, Long (+3 more)
+Cohesion: 0.12
+Nodes (10): CastBannerViewModel, ContinueWatchingViewModel, Int, List, StateFlow, Int, Long, String (+2 more)
 
 ### Community 32 - "Anime Detail Screen"
-Cohesion: 0.31
-Nodes (17): FocusRequester, TvFocusable(), Boolean, Int, List, Modifier, String, TvFilterBar() (+9 more)
+Cohesion: 0.32
+Nodes (15): Boolean, Int, List, Modifier, String, TvFilterBar(), TvFilterButton(), TvFilterChip() (+7 more)
 
 ### Community 33 - "Vixcloud HLS Client"
 Cohesion: 0.24
 Nodes (9): FetchFailed, List, OkHttpClient, String, PlaylistNotFound, StreamEntry, VixcloudClient, VixError (+1 more)
 
 ### Community 34 - "Glass Top Bar"
-Cohesion: 0.13
-Nodes (23): AppNavHost(), Modifier, NavHostController, glassCapsule(), GlassLargeTitle(), GlassTopBar(), GlassTopBarScaffold(), androidx (+15 more)
+Cohesion: 0.11
+Nodes (25): AppNavHost(), Modifier, NavHostController, glassCapsule(), GlassLargeTitle(), GlassTopBar(), GlassTopBarScaffold(), androidx (+17 more)
 
 ### Community 35 - "TV Navigation Drawer"
 Cohesion: 0.21
@@ -395,20 +386,20 @@ Cohesion: 0.18
 Nodes (7): HomeViewModel, Boolean, com, Int, List, StateFlow, String
 
 ### Community 43 - "Cluster 43"
-Cohesion: 0.24
-Nodes (8): Ask, Cap, capHeightFromEntryQuality(), DownloadQualityPref, Int, String, Max, parse()
+Cohesion: 0.27
+Nodes (11): compareNullableDir(), Double, Int, List, String, T, numKey(), SortField (+3 more)
 
 ### Community 44 - "Cluster 44"
 Cohesion: 0.24
 Nodes (7): Any, Boolean, Class, String, Throwable, WarpEngine, Method
 
 ### Community 45 - "Cluster 45"
-Cohesion: 0.18
-Nodes (6): NetworkType, DownloadQualityGate, Int, List, String, ConnectivityHelper
+Cohesion: 0.29
+Nodes (10): detailEnterTransition(), detailExitTransition(), isDetailRoute(), Boolean, EnterTransition, ExitTransition, Int, tabDirection() (+2 more)
 
 ### Community 46 - "Cluster 46"
-Cohesion: 0.36
-Nodes (10): BrandButton(), BrandButtonDefaults, BrandIconButton(), BrandSecondaryButton(), Boolean, ImageVector, Modifier, String (+2 more)
+Cohesion: 0.07
+Nodes (42): BrandButton(), BrandButtonDefaults, BrandIconButton(), BrandSecondaryButton(), Boolean, ImageVector, Modifier, String (+34 more)
 
 ### Community 47 - "Cluster 47"
 Cohesion: 0.29
@@ -423,8 +414,8 @@ Cohesion: 0.21
 Nodes (8): AnimeDetailViewModel, Boolean, Int, List, Map, StateFlow, String, IntRange
 
 ### Community 50 - "Cluster 50"
-Cohesion: 0.21
-Nodes (10): Boolean, Double, Dp, Float, Int, Modifier, String, MediaCard() (+2 more)
+Cohesion: 0.11
+Nodes (22): AnimeCatalogCard(), AnimeContinueRow(), AnimeErrorState(), AnimeScreen(), AnimeSearchField(), List, Modifier, String (+14 more)
 
 ### Community 51 - "Cluster 51"
 Cohesion: 0.24
@@ -446,13 +437,17 @@ Nodes (18): 1. `HistoryEntry` ha chiave primaria sbagliata (`tmdbId` solo), 2. M
 Cohesion: 0.48
 Nodes (6): formatClock(), Double, String, TvDetailScreen(), TvEpisodeCard(), TvProviderPicker()
 
+### Community 56 - "Cluster 56"
+Cohesion: 0.24
+Nodes (3): PlaybackSource, Map, String
+
 ### Community 57 - "Cluster 57"
 Cohesion: 0.29
 Nodes (10): AnimatedActionIcon(), ContinueWatchingRow(), ErrorState(), HomeScreen(), Boolean, ImageVector, Int, List (+2 more)
 
 ### Community 58 - "Cluster 58"
-Cohesion: 0.20
-Nodes (9): Float, PressFeedback, rememberPressFeedback(), ImageVector, Modifier, String, Unit, SectionHeader() (+1 more)
+Cohesion: 0.22
+Nodes (8): Double, Dp, Float, FocusRequester, Int, Modifier, String, TvProgressMediaCard()
 
 ### Community 59 - "Cluster 59"
 Cohesion: 0.42
@@ -463,8 +458,8 @@ Cohesion: 0.20
 Nodes (6): DownloadStateSyncer, DownloadManager, ImageLoader, MainApplication, Application, ImageLoaderFactory
 
 ### Community 61 - "Cluster 61"
-Cohesion: 0.35
-Nodes (10): hsvColor(), Color, Float, String, Triple, QualityPickerRow(), rgbToHsv(), SectionHeader() (+2 more)
+Cohesion: 0.47
+Nodes (5): com, List, TvAnimeCatalogCard(), TvAnimeContinueRow(), TvAnimeScreen()
 
 ### Community 62 - "Cluster 62"
 Cohesion: 0.36
@@ -475,8 +470,8 @@ Cohesion: 0.24
 Nodes (5): Int, Intent, MediaSession, PlaybackService, MediaSessionService
 
 ### Community 64 - "Cluster 64"
-Cohesion: 0.50
-Nodes (4): Boolean, String, TvButton(), TvLogViewerScreen()
+Cohesion: 0.25
+Nodes (7): Boolean, String, TvButton(), TvLogViewerScreen(), Modifier, NavHostController, TvAppNavHost()
 
 ### Community 65 - "Cluster 65"
 Cohesion: 0.11
@@ -507,8 +502,8 @@ Cohesion: 0.12
 Nodes (15): Architecture, Build & test commands, Cards & posters, Confirmation dialogs, Downloads (two paths — be careful which you touch), graphify, Language, Playback & casting (`player/`) (+7 more)
 
 ### Community 72 - "Cluster 72"
-Cohesion: 0.42
-Nodes (8): EmptyMessage(), HistoryScreen(), Boolean, Modifier, String, SectionTitle(), TypeChip(), WatchTimeCard()
+Cohesion: 0.18
+Nodes (15): GlassDefaults, GlassFilterChip(), GlassSnapshot, Boolean, Modifier, Shape, String, EmptyMessage() (+7 more)
 
 ### Community 74 - "Cluster 74"
 Cohesion: 0.33
@@ -543,8 +538,8 @@ Cohesion: 0.12
 Nodes (15): 10. `navigation/AppNavHost.kt`, 1. `ui/common/SectionHeader.kt`, 2. `navigation/NavRoutes.kt`, 3. `data/remote/TMDBApi.kt`, 4. `tmdb/TMDBClient.kt`, 5. `ui/continuewatching/ContinueWatchingScreen.kt` (nuovo), 6. `ui/continuewatching/ContinueWatchingViewModel.kt` (nuovo), 7. `ui/sectionlist/SectionListScreen.kt` (nuovo) (+7 more)
 
 ### Community 82 - "Cluster 82"
-Cohesion: 0.29
-Nodes (9): Boolean, Color, Dp, Float, Modifier, Shape, tvFocusFrame(), tvFocusRing() (+1 more)
+Cohesion: 0.27
+Nodes (11): Boolean, Color, Dp, Float, FocusRequester, Modifier, Shape, TvFocusable() (+3 more)
 
 ### Community 83 - "Cluster 83"
 Cohesion: 0.29
@@ -563,12 +558,8 @@ Cohesion: 0.60
 Nodes (5): Anime, Home, RailTab, Search, Watchlist
 
 ### Community 88 - "Cluster 88"
-Cohesion: 0.27
-Nodes (9): GlassCard(), GlassDefaults, GlassFilterChip(), GlassSnapshot, androidx, Boolean, Modifier, Shape (+1 more)
-
-### Community 89 - "ProgressMediaCard"
-Cohesion: 0.20
-Nodes (9): Boolean, Double, Dp, Float, Int, Modifier, String, Unit (+1 more)
+Cohesion: 0.22
+Nodes (6): Boolean, List, StateFlow, String, SectionListViewModel, TvSectionListScreen()
 
 ### Community 91 - "Cluster 91"
 Cohesion: 0.40
@@ -585,10 +576,6 @@ Nodes (4): isLandscapeTablet(), isPortraitTablet(), Boolean, Int
 ### Community 95 - "Cluster 95"
 Cohesion: 0.13
 Nodes (14): 1. Hero carousel in Home — *alta priorità, alto impatto visivo*, 2. Top 10 row — *alta priorità*, 3. Filtri Watchlist — *alta priorità*, 4. Info su card + toggle — *media priorità*, 5. Cap qualità streaming — *media priorità*, 6 + 7. Schermata Impostazioni avanzate + locale provider — *media priorità*, 8. WARP badge nel player — *bassa priorità*, Allineamento layout Android ↔ iOS Streamo (+6 more)
-
-### Community 96 - "AnimeScreen"
-Cohesion: 0.36
-Nodes (8): AnimeCatalogCard(), AnimeContinueRow(), AnimeErrorState(), AnimeScreen(), AnimeSearchField(), List, Modifier, String
 
 ### Community 99 - "Cluster 99"
 Cohesion: 0.45
@@ -607,32 +594,16 @@ Cohesion: 0.20
 Nodes (9): Considerazioni, Cosa fa iOS, Design UI Android, File coinvolti, Modifiche, Nuovi file, Obiettivo Android, Passaggi (+1 more)
 
 ### Community 133 - "PlayerViewModel.kt"
-Cohesion: 0.27
-Nodes (7): Chromecast, Dlna, Lan, onPlayerError(), PendingCastTarget, SkipPrompt, PlaybackException
-
-### Community 134 - "Top10Card"
-Cohesion: 0.38
-Nodes (6): Boolean, Int, List, Modifier, Top10Card(), Top10Row()
+Cohesion: 0.19
+Nodes (8): Chromecast, Dlna, Lan, onPlayerError(), PendingCastTarget, SkipPrompt, SkipSegment, PlaybackException
 
 ### Community 135 - "Repository Guidelines"
 Cohesion: 0.25
 Nodes (7): Build, Test & Development Commands, Coding Style & Naming Conventions, Commit & Pull Request Guidelines, Project Structure & Module Organization, Repository Guidelines, Security & Configuration Tips, Testing Guidelines
 
-### Community 174 - "ContinueWatchingViewModel"
-Cohesion: 0.33
-Nodes (4): ContinueWatchingViewModel, Int, List, StateFlow
-
 ### Community 175 - "HeroControls"
 Cohesion: 0.50
 Nodes (7): ConfirmDialog(), Boolean, FocusRequester, String, SectionHeader(), SettingsValueRow(), TvCacheManagementScreen()
-
-### Community 176 - "Size"
-Cohesion: 0.50
-Nodes (3): String, Size, TMDBImage
-
-### Community 177 - "SeasonChip"
-Cohesion: 0.40
-Nodes (4): Boolean, Int, Modifier, SeasonChip()
 
 ## Ambiguous Edges - Review These
 - `Streamo Android App` → `ic_launcher.webp (xhdpi) - Android default launcher icon: white Android robot head silhouette with antennae on a teal/green square background with faint grid pattern`  [AMBIGUOUS]
@@ -641,22 +612,22 @@ Nodes (4): Boolean, Int, Modifier, SeasonChip()
 ## Knowledge Gaps
 - **207 isolated node(s):** `ProviderMapping`, `StreamSource`, `TmdbCastMember`, `TmdbCredits`, `TmdbVideo` (+202 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **69 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **What is the exact relationship between `Streamo Android App` and `ic_launcher.webp (xhdpi) - Android default launcher icon: white Android robot head silhouette with antennae on a teal/green square background with faint grid pattern`?**
   _Edge tagged AMBIGUOUS (relation: is_launcher_icon_of) - confidence is low._
-- **Why does `Text` connect `Download DAO` to `Provider Client Resolution`, `Brand Buttons & TMDB Reviews`, `Download Quality Selection`, `Top10Card`, `Search Screen & Glass Filters`, `Glass Card Composables`, `Glass Dialogs & Alerts`, `Image Placeholder & TV Media Card`, `History DAO`, `Cast Banner UI`, `Anime Detail Screen`, `Glass Top Bar`, `TV Navigation Drawer`, `Cluster 46`, `Cluster 47`, `Cluster 48`, `SeasonChip`, `Cluster 50`, `HeroControls`, `Cluster 52`, `Cluster 55`, `Cluster 57`, `Cluster 58`, `Cluster 61`, `Cluster 64`, `Cluster 68`, `Cluster 72`, `Cluster 74`, `Cluster 78`, `Cluster 80`, `Cluster 88`, `ProgressMediaCard`, `AnimeScreen`, `Cluster 99`, `TvAnimeDetailScreen`?**
-  _High betweenness centrality (0.276) - this node is a cross-community bridge._
-- **Why does `PlayerViewModel` connect `Player ViewModel & MediaSession` to `TMDB DTO Models`, `Brand Buttons & TMDB Reviews`, `PlayerViewModel.kt`, `DLNA Cast Manager`, `Cluster 70`, `LAN Cast Client (app-to-app)`, `Cluster 73`, `Cluster 51`, `Cluster 85`, `Cluster 56`, `Player ViewModel Cast Modes`, `Cast Banner & Section List VMs`?**
+- **Why does `Text` connect `Download DAO` to `TMDB DTO Models`, `Provider Client Resolution`, `Brand Buttons & TMDB Reviews`, `Glass Card Composables`, `Glass Dialogs & Alerts`, `Image Placeholder & TV Media Card`, `History DAO`, `Cast Banner UI`, `Anime Detail Screen`, `Glass Top Bar`, `TV Navigation Drawer`, `Cluster 46`, `Cluster 47`, `Cluster 48`, `HeroControls`, `Cluster 50`, `Cluster 52`, `Cluster 55`, `Cluster 57`, `Cluster 58`, `Cluster 61`, `Cluster 64`, `Cluster 68`, `Cluster 72`, `Cluster 74`, `Cluster 78`, `Cluster 80`, `Cluster 88`, `Cluster 99`, `TvAnimeDetailScreen`?**
+  _High betweenness centrality (0.282) - this node is a cross-community bridge._
+- **Why does `PlayerViewModel` connect `Player ViewModel & MediaSession` to `TMDB DTO Models`, `Brand Buttons & TMDB Reviews`, `PlayerViewModel.kt`, `DLNA Cast Manager`, `Cluster 70`, `LAN Cast Client (app-to-app)`, `Cluster 73`, `AppRepository (Room facade)`, `Cluster 51`, `Cluster 85`, `Cluster 56`, `Player ViewModel Cast Modes`, `Cast Banner & Section List VMs`?**
   _High betweenness centrality (0.190) - this node is a cross-community bridge._
-- **Why does `TmdbItem` connect `TMDB DTO Models` to `Download Quality Selection`, `Cluster 68`, `Top10Card`, `Search Screen & Glass Filters`, `Cluster 42`, `Cluster 47`, `Player ViewModel & MediaSession`, `Cluster 57`, `Watchlist DAO`, `Cast Banner & Section List VMs`?**
-  _High betweenness centrality (0.136) - this node is a cross-community bridge._
+- **Why does `TmdbItem` connect `TMDB DTO Models` to `Cluster 68`, `Search Screen & Glass Filters`, `Cluster 42`, `Cluster 43`, `Cluster 47`, `Player ViewModel & MediaSession`, `Glass Dialogs & Alerts`, `History DAO`, `Cluster 88`, `Cluster 57`, `Watchlist DAO`?**
+  _High betweenness centrality (0.134) - this node is a cross-community bridge._
 - **Are the 119 inferred relationships involving `Text` (e.g. with `CastBanner()` and `GlassBottomBar()`) actually correct?**
   _`Text` has 119 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `ProviderMapping`, `StreamSource`, `TmdbCastMember` to the rest of the system?**
   _218 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `TMDB DTO Models` be split into smaller, more focused modules?**
-  _Cohesion score 0.05603960396039604 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05070958809276566 - nodes in this community are weakly interconnected._

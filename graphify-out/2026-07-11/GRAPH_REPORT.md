@@ -5,12 +5,12 @@
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1713 nodes · 3466 edges · 109 communities (75 shown, 34 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 156 edges (avg confidence: 0.8)
+- 1701 nodes · 3458 edges · 103 communities (82 shown, 21 thin omitted)
+- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 158 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `c89ca463`
+- Built from commit: `5a2f2335`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -97,7 +97,6 @@
 - [[_COMMUNITY_MediaCard|MediaCard]]
 - [[_COMMUNITY_ProgressMediaCard|ProgressMediaCard]]
 - [[_COMMUNITY_HeroControls|HeroControls]]
-- [[_COMMUNITY_.load|.load]]
 - [[_COMMUNITY_scoring.ts|scoring.ts]]
 - [[_COMMUNITY_Piano allineamento stili — vidaaos ↔ Android TV (Streamo)|Piano allineamento stili — vidaaos ↔ Android TV (Streamo)]]
 - [[_COMMUNITY_GlassFilterChip|GlassFilterChip]]
@@ -116,15 +115,9 @@
 - [[_COMMUNITY_vite-env.d.ts|vite-env.d.ts]]
 - [[_COMMUNITY_FASE F — Rifiniture minori (bassa priorità)|FASE F — Rifiniture minori (bassa priorità)]]
 - [[_COMMUNITY_FASE H — Search chip filtro e righe recenti|FASE H — Search: chip filtro e righe recenti]]
-- [[_COMMUNITY_Map|Map]]
-- [[_COMMUNITY_Pair|Pair]]
-- [[_COMMUNITY_PlaybackSource|PlaybackSource]]
-- [[_COMMUNITY_StateFlow|StateFlow]]
-- [[_COMMUNITY_String|String]]
-- [[_COMMUNITY_TmdbItem|TmdbItem]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `PlayerViewModel` - 89 edges
+1. `PlayerViewModel` - 86 edges
 2. `AppRepository` - 45 edges
 3. `SeriesDownloadsViewModel` - 33 edges
 4. `DetailViewModel` - 31 edges
@@ -150,7 +143,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (109 total, 34 thin omitted)
+## Communities (103 total, 21 thin omitted)
 
 ### Community 0 - "AppRepository"
 Cohesion: 0.06
@@ -161,20 +154,20 @@ Cohesion: 0.07
 Nodes (35): DetailContent(), DetailScreen(), DetailScrollContent(), DetailSkeleton(), EpisodeCard(), EpisodesSection(), EpisodesUnavailable(), ErrorState() (+27 more)
 
 ### Community 2 - "GlassAlertDialog"
-Cohesion: 0.13
-Nodes (30): CastBanner(), Boolean, HazeState, Modifier, String, GlassBottomSheet(), cardEnter(), cardExit() (+22 more)
+Cohesion: 0.17
+Nodes (22): GlassBottomSheet(), cardEnter(), cardExit(), DialogEntry, DialogHandle, DialogHostState, GlassAlertDialog(), GlassDialog() (+14 more)
 
 ### Community 3 - "SettingsScreen"
-Cohesion: 0.16
-Nodes (18): BrandButton(), BrandButtonDefaults, BrandIconButton(), BrandSecondaryButton(), Boolean, ImageVector, Modifier, String (+10 more)
+Cohesion: 0.20
+Nodes (14): BrandButton(), BrandButtonDefaults, BrandIconButton(), BrandSecondaryButton(), Boolean, ImageVector, Modifier, String (+6 more)
 
 ### Community 4 - "EpisodeDownloadCard"
-Cohesion: 0.08
-Nodes (48): GlassCard(), GlassDefaults, GlassFilterChip(), GlassSnapshot, androidx, Boolean, Modifier, String (+40 more)
+Cohesion: 0.17
+Nodes (25): GlassCard(), androidx, downloadDetailLine(), downloadItemLabel(), DownloadManagerRow(), formatBytes(), formatSpeed(), Boolean (+17 more)
 
 ### Community 5 - "GlassTopBarScaffold"
-Cohesion: 0.06
-Nodes (36): AnimeCatalogCard(), AnimeContinueRow(), AnimeErrorState(), AnimeScreen(), AnimeSearchField(), List, Modifier, ProgressEntry (+28 more)
+Cohesion: 0.24
+Nodes (11): AnimeCatalogCard(), AnimeContinueRow(), AnimeErrorState(), AnimeScreen(), AnimeSearchField(), List, Modifier, ProgressEntry (+3 more)
 
 ### Community 6 - "HomeViewModel"
 Cohesion: 0.13
@@ -185,12 +178,12 @@ Cohesion: 0.12
 Nodes (17): ImageLoader, MainApplication, Collection, Int, List, Long, String, TmdbGenre (+9 more)
 
 ### Community 8 - "WatchlistViewModel"
-Cohesion: 0.16
-Nodes (8): CacheManagementViewModel, Boolean, Collection, DownloadEntry, Int, List, Long, StateFlow
+Cohesion: 0.06
+Nodes (23): CacheManagementViewModel, Boolean, Collection, DownloadEntry, Int, List, Long, StateFlow (+15 more)
 
 ### Community 9 - "MediaCard"
-Cohesion: 0.21
-Nodes (13): AnimatedActionIcon(), ContinueWatchingRow(), ErrorState(), HomeScreen(), Boolean, HomeSection, ImageVector, Int (+5 more)
+Cohesion: 0.12
+Nodes (23): CastBanner(), Boolean, HazeState, Modifier, String, GlassDialogDestructiveButton(), GlassDialogNeutralButton(), DownloadsScreen() (+15 more)
 
 ### Community 10 - "SettingsDataStore"
 Cohesion: 0.08
@@ -209,16 +202,16 @@ Cohesion: 0.24
 Nodes (11): Anime, GlassBottomBar(), Home, Boolean, Color, HazeState, Modifier, rememberTabContentColor() (+3 more)
 
 ### Community 14 - "FilterBar"
-Cohesion: 0.29
-Nodes (16): FilterBar(), FilterButton(), GenreBadgeRow(), GenrePickerDialog(), GenreSummaryChip(), SearchHistoryDropdown(), SearchScreen(), SortButton() (+8 more)
+Cohesion: 0.28
+Nodes (17): FilterBar(), FilterButton(), GenreBadgeRow(), GenrePickerDialog(), GenreSummaryChip(), SearchHistoryDropdown(), SearchScreen(), SortButton() (+9 more)
 
 ### Community 15 - "CacheManagementViewModel"
 Cohesion: 0.08
 Nodes (44): base(), browse(), cookieHeader(), csrf(), embed(), episodes(), fetchAnime(), post() (+36 more)
 
 ### Community 16 - "TvSettingsScreen"
-Cohesion: 0.09
-Nodes (28): ConfirmDialog(), Boolean, FocusRequester, String, SectionHeader(), SettingsValueRow(), TvCacheManagementScreen(), Int (+20 more)
+Cohesion: 0.13
+Nodes (24): ConfirmDialog(), Boolean, FocusRequester, String, SectionHeader(), SettingsValueRow(), TvCacheManagementScreen(), Boolean (+16 more)
 
 ### Community 17 - "Fase 2 — Audit coerenza di stile (mobile, tablet, TV)"
 Cohesion: 0.11
@@ -229,8 +222,8 @@ Cohesion: 0.17
 Nodes (19): buildCastDeviceGroups(), extractIp(), androidx, Boolean, ChromecastRenderer, DlnaRenderer, Int, LanRenderer (+11 more)
 
 ### Community 19 - "TmdbCacheDao"
-Cohesion: 0.15
-Nodes (21): EpisodeCard(), EpisodeCardProps, ICON_PATHS, InlineIcon(), SectionTitle(), ImmersiveRowProps, MediaCard(), MediaCardProps (+13 more)
+Cohesion: 0.10
+Nodes (36): EpisodeCard(), EpisodeCardProps, ICON_PATHS, InlineIcon(), SectionTitle(), MediaCard(), MediaCardProps, ProgressMediaCard() (+28 more)
 
 ### Community 20 - "CLAUDE.md"
 Cohesion: 0.12
@@ -258,7 +251,7 @@ Nodes (3): ImageModule, Context, ImageLoader
 
 ### Community 28 - "SettingsScreen"
 Cohesion: 0.15
-Nodes (19): glassCapsule(), GlassLargeTitle(), GlassTopBar(), GlassTopBarScaffold(), androidx, HazeState, ImageVector, Modifier (+11 more)
+Nodes (20): glassCapsule(), GlassLargeTitle(), GlassTopBar(), GlassTopBarScaffold(), androidx, HazeState, ImageVector, Modifier (+12 more)
 
 ### Community 29 - "WatchlistViewModel"
 Cohesion: 0.13
@@ -266,19 +259,19 @@ Nodes (12): Factory, Boolean, DownloadEntry, DownloadQualityPref, Int, List, Map
 
 ### Community 35 - "PlayerViewModel"
 Cohesion: 0.09
-Nodes (11): PlayerViewModel, Context, DefaultTrackSelector, ExoPlayer, Float, IntroSkipClient, Job, MediaSession (+3 more)
+Nodes (13): Context, Float, List, PlaybackSource, StateFlow, TmdbItem, PlayerViewModel, SkipSegment (+5 more)
 
 ### Community 36 - "DetailScreen.kt"
-Cohesion: 0.09
-Nodes (23): ConfirmDialog(), ConfirmDialogProps, OptionItem, OptionOverlay(), OptionOverlayProps, Spinner(), exportBackup(), importBackup() (+15 more)
+Cohesion: 0.08
+Nodes (21): ConfirmDialog(), ConfirmDialogProps, OptionItem, OptionOverlay(), OptionOverlayProps, exportBackup(), importBackup(), ControlsOverlay() (+13 more)
 
 ### Community 37 - "TvSettingsOverlay"
 Cohesion: 0.20
 Nodes (23): aspectLabel(), androidx, Boolean, com, Float, ImageVector, Int, List (+15 more)
 
 ### Community 38 - "HistoryViewModel"
-Cohesion: 0.08
-Nodes (26): coordinate(), formatWatchTime(), HistoryFilter, HistoryItem, HistorySection, HistoryUiState, HistoryViewModel, Double (+18 more)
+Cohesion: 0.16
+Nodes (15): coordinate(), formatWatchTime(), HistoryFilter, HistoryItem, HistorySection, HistoryUiState, HistoryViewModel, Double (+7 more)
 
 ### Community 39 - "TVLogic"
 Cohesion: 0.24
@@ -297,16 +290,16 @@ Cohesion: 0.14
 Nodes (10): ensureNotificationChannel(), androidx, Context, DownloadManager, Int, MediaDownloadService, Download, DownloadService (+2 more)
 
 ### Community 43 - "Boolean"
-Cohesion: 0.19
-Nodes (6): onIsPlayingChanged(), Boolean, CastSession, ChromecastRenderer, DlnaRenderer, LanRenderer
+Cohesion: 0.24
+Nodes (5): Boolean, ChromecastRenderer, DlnaRenderer, LanRenderer, CastSession
 
 ### Community 44 - "PlayerViewModel.kt"
-Cohesion: 0.17
-Nodes (9): Chromecast, Dlna, Lan, onPlaybackStateChanged(), onPlayerError(), PendingCastTarget, SkipPrompt, SkipSegment (+1 more)
+Cohesion: 0.31
+Nodes (8): Chromecast, Dlna, Lan, onIsPlayingChanged(), onPlayerError(), PendingCastTarget, SkipPrompt, PlaybackException
 
 ### Community 45 - ".resolveTrack"
-Cohesion: 0.27
-Nodes (4): onTracksChanged(), onVideoSizeChanged(), TrackInfo, androidx
+Cohesion: 0.24
+Nodes (7): androidx, Int, Pair, onPlaybackStateChanged(), onTracksChanged(), onVideoSizeChanged(), TrackInfo
 
 ### Community 46 - "sortItems"
 Cohesion: 0.26
@@ -317,8 +310,8 @@ Cohesion: 0.30
 Nodes (11): hsvColor(), Color, Float, SettingsViewModel, String, Triple, QualityPickerRow(), rgbToHsv() (+3 more)
 
 ### Community 48 - "GlassDialogDestructiveButton"
-Cohesion: 0.14
-Nodes (22): animeTitle(), AnimeUnityClient, AUAnime, AUEpisode, AUEpisodePage, baseUrl(), request(), BackupPayload (+14 more)
+Cohesion: 0.12
+Nodes (26): animeTitle(), AnimeUnityClient, AUAnime, AUEpisode, AUEpisodePage, baseUrl(), request(), BackupPayload (+18 more)
 
 ### Community 49 - "CastPickerDialog"
 Cohesion: 0.40
@@ -337,8 +330,8 @@ Cohesion: 0.11
 Nodes (30): PlaybackResolution, saveMapping(), TmdbEpisodeRef, TmdbSeasonInfo, PlayerState, SPEEDS, TrackOption, PlayerRoute (+22 more)
 
 ### Community 65 - "Router.tsx"
-Cohesion: 0.10
-Nodes (27): handleBack(), BACK_CODES, NavContext, NavContextValue, routeFromLocation(), Router(), AnimeDetailRoute, AnimeRoute (+19 more)
+Cohesion: 0.11
+Nodes (25): BACK_CODES, NavContext, NavContextValue, routeFromLocation(), Router(), AnimeRoute, CacheManagementRoute, demo() (+17 more)
 
 ### Community 66 - "Focusable.tsx"
 Cohesion: 0.14
@@ -353,12 +346,12 @@ Cohesion: 0.19
 Nodes (19): PlaybackSource, ProviderMatchStatus, animeSource(), cacheKey(), cacheKeysForAllModes(), confirmCandidate(), episodeSource(), finalize() (+11 more)
 
 ### Community 69 - "HomeScreen.tsx"
-Cohesion: 0.23
-Nodes (11): ImmersiveRow(), ProgressMediaCard(), SectionRow(), SectionRowProps, SkeletonCard(), TmdbItem, HomeSection, homeSections (+3 more)
+Cohesion: 0.20
+Nodes (13): ImmersiveRow(), ImmersiveRowProps, SectionRow(), SectionRowProps, SkeletonCard(), Spinner(), StringKey, strings (+5 more)
 
 ### Community 70 - "TMDBClient.ts"
-Cohesion: 0.09
-Nodes (26): TmdbCastMember, TmdbCredits, TmdbGenre, TmdbGenreListResponse, TmdbListResponse, TmdbReview, TmdbReviewAuthorDetails, TmdbSeasonDetails (+18 more)
+Cohesion: 0.15
+Nodes (16): demo(), TmdbCacheKey, TmdbCacheTtl, TmdbCacheType, apiKey(), buildUrl(), cachedFetch(), hasTmdbApiKey() (+8 more)
 
 ### Community 71 - "package.json"
 Cohesion: 0.10
@@ -373,12 +366,16 @@ Cohesion: 0.22
 Nodes (4): demo(), Scrubber, ScrubberCallbacks, ScrubberState
 
 ### Community 74 - "useNav"
-Cohesion: 0.14
-Nodes (20): useNav(), AnimeScreen(), CacheManagementScreen(), Confirm, SectionHeader(), HomeScreen(), LibraryScreen(), PlayerScreen() (+12 more)
+Cohesion: 0.21
+Nodes (13): useNav(), AnimeScreen(), CacheManagementScreen(), Confirm, SectionHeader(), HomeScreen(), LibraryScreen(), PlayerScreen() (+5 more)
 
 ### Community 75 - "settings.ts"
 Cohesion: 0.18
 Nodes (12): App(), accentSig(), boolSig(), persistedSignal(), read(), settings, stringSig(), HttpResponse (+4 more)
+
+### Community 76 - "EpisodeDownloadCard"
+Cohesion: 0.29
+Nodes (13): AllEpisodesContent(), DownloadedOnlyContent(), EpisodeDownloadCard(), androidx, Boolean, DownloadEntry, Int, List (+5 more)
 
 ### Community 77 - "compilerOptions"
 Cohesion: 0.15
@@ -387,6 +384,14 @@ Nodes (12): compilerOptions, esModuleInterop, module, moduleResolution, outDir, 
 ### Community 78 - "AnimeDetailScreen"
 Cohesion: 0.33
 Nodes (9): AnimeDetailScreen(), AnimeHeader(), AnimeSynopsis(), EpisodeCell(), Boolean, Float, Int, String (+1 more)
+
+### Community 79 - "MediaCard"
+Cohesion: 0.24
+Nodes (9): Boolean, Double, Dp, Float, Int, Modifier, String, MediaCard() (+1 more)
+
+### Community 80 - "ProgressMediaCard"
+Cohesion: 0.20
+Nodes (9): Boolean, Double, Dp, Float, Int, Modifier, String, Unit (+1 more)
 
 ### Community 81 - "HeroControls"
 Cohesion: 0.31
@@ -400,6 +405,14 @@ Nodes (8): demo(), extractYear(), MediaType, normalizeTitle(), normalizeType(), 
 Cohesion: 0.22
 Nodes (8): FASE G — Griglie Search + SectionList (densità colonne — PRIORITÀ ALTA), FASE I — Library: nascondere le righe vuote, Fuori scope (NON toccare), Ordine di esecuzione consigliato, Piano allineamento stili — vidaaos ↔ Android TV (Streamo), T-G1 — Griglia a 5 colonne fisse, T-I1 — Rendere solo le righe con contenuto, Tabella valori di riferimento (Android → vidaaos)
 
+### Community 85 - "GlassFilterChip"
+Cohesion: 0.29
+Nodes (7): GlassDefaults, GlassFilterChip(), GlassSnapshot, Boolean, Modifier, String, Shape
+
+### Community 86 - "Top10Card"
+Cohesion: 0.36
+Nodes (7): Boolean, Int, List, Modifier, TmdbItem, Top10Card(), Top10Row()
+
 ### Community 87 - "FASE C — Schermata Dettaglio"
 Cohesion: 0.25
 Nodes (8): FASE C — Schermata Dettaglio, T-C0 — Ristrutturazione layout Detail (POSIZIONAMENTO — PRIORITÀ MASSIMA), T-C1 — Bottone "La mia lista" (watchlist) riempito, non bordato, T-C2 — Chip stagione "riempite" (filled), non outline, T-C3 — Icona sezione "Episodi" = play_circle (non play_arrow), T-C4 — Overview: colore, larghezza e clamp, T-C5 — Meta/generi: tinte bianco semi-trasparente (minore), T-C6 — Cast su riga singola (DECISO: replica fedele)
@@ -411,6 +424,10 @@ Nodes (8): FASE K — Player (controlli), T-K1 — Bottoni circolari: focus bian
 ### Community 90 - "SectionHeader"
 Cohesion: 0.33
 Nodes (5): ImageVector, Modifier, String, Unit, SectionHeader()
+
+### Community 91 - "SeasonChip"
+Cohesion: 0.40
+Nodes (4): Boolean, Int, Modifier, SeasonChip()
 
 ### Community 92 - "FASE A — Card condivise (MediaCard / poster / still)"
 Cohesion: 0.40
@@ -447,22 +464,22 @@ Nodes (3): FASE H — Search: chip filtro e righe recenti, T-H1 — Chip filtro 
 ## Knowledge Gaps
 - **205 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+200 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **34 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **21 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `DetailViewModel` connect `DetailViewModel` to `HistoryViewModel`, `NetworkModule`, `HomeViewModel`?**
-  _High betweenness centrality (0.096) - this node is a cross-community bridge._
-- **Why does `PlayerViewModel` connect `PlayerViewModel` to `TvSettingsOverlay`, `HistoryViewModel`, `Boolean`, `PlayerViewModel.kt`, `.resolveTrack`, `FilterBar`, `String`, `.seekTo`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
+- **Why does `DetailViewModel` connect `DetailViewModel` to `WatchlistViewModel`, `NetworkModule`, `HomeViewModel`?**
+  _High betweenness centrality (0.072) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
   _205 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `AppRepository` be split into smaller, more focused modules?**
   _Cohesion score 0.0554954954954955 - nodes in this community are weakly interconnected._
 - **Should `DetailViewModel` be split into smaller, more focused modules?**
   _Cohesion score 0.07077922077922078 - nodes in this community are weakly interconnected._
-- **Should `GlassAlertDialog` be split into smaller, more focused modules?**
-  _Cohesion score 0.1265597147950089 - nodes in this community are weakly interconnected._
-- **Should `EpisodeDownloadCard` be split into smaller, more focused modules?**
-  _Cohesion score 0.0784313725490196 - nodes in this community are weakly interconnected._
+- **Should `HomeViewModel` be split into smaller, more focused modules?**
+  _Cohesion score 0.1341991341991342 - nodes in this community are weakly interconnected._
+- **Should `TMDBClient` be split into smaller, more focused modules?**
+  _Cohesion score 0.12424242424242424 - nodes in this community are weakly interconnected._
+- **Should `WatchlistViewModel` be split into smaller, more focused modules?**
+  _Cohesion score 0.06462585034013606 - nodes in this community are weakly interconnected._

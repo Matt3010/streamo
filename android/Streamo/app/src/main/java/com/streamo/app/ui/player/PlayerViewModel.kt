@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 @UnstableApi
@@ -565,6 +566,17 @@ class PlayerViewModel @Inject constructor(
 
     private var tmdbItem: TmdbItem? = null
 
+    /** Periodic progress save bookkeeping. Used by [maybeSaveProgress]. */
+    private val lastSaveAttemptMs = AtomicLong(0L)
+    private val lastSavedPositionMs = AtomicLong(0L)
+
+    companion object {
+        /** Save progress every 10s of wall-clock time while playing. */
+        private const val PROGRESS_SAVE_INTERVAL_MS = 10_000L
+        /** And only if the user has actually advanced at least 5s since last save. */
+        private const val PROGRESS_SAVE_MIN_POSITION_DELTA_MS = 5_000L
+    }
+
     private fun applyStreamingLimit(pref: String) {
         val params = trackSelector.buildUponParameters()
         when (pref) {
@@ -627,6 +639,10 @@ class PlayerViewModel @Inject constructor(
             override fun onIsPlayingChanged(playing: Boolean) {
                 // In trasmissione lo stato play arriva dal CastController, non dal locale.
                 if (!anyCastConnected()) _isPlaying.value = playing
+                // Flush progress on pause so a TV/device shutdown doesn't lose the stop point.
+                if (!playing && !anyCastConnected()) {
+                    maybeSaveProgress(force = true)
+                }
             }
 
             override fun onPlayerError(e: PlaybackException) {
@@ -641,6 +657,7 @@ class PlayerViewModel @Inject constructor(
                 if (!anyCastConnected()) {
                     _currentPosition.value = player.currentPosition.coerceAtLeast(0L)
                     _bufferedPosition.value = player.bufferedPosition.coerceAtLeast(0L)
+                    maybeSaveProgress()
                 }
                 updateSkipPrompt()
                 delay(1000)
@@ -757,6 +774,7 @@ class PlayerViewModel @Inject constructor(
         _playbackEnded.value = false
         ProviderDebugLogger.clear()
         resetSkipState()
+        resetProgressSaveClock()
         // Evita che, durante il gap prima dello STATE_READY del nuovo episodio,
         // il poll a 1s e updateSkipPrompt() confrontino la posizione/durata
         // dell'episodio precedente con soglie (90% crediti, 95% prossimo episodio).
@@ -1300,40 +1318,77 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun saveCurrentProgress() {
-        viewModelScope.launch {
-            val posSec = (player.currentPosition.coerceAtLeast(0L) / 1000.0)
-            val durSec = (player.duration.coerceAtLeast(0L) / 1000.0)
-            repository.saveProgress(
-                ProgressEntry(
+    private fun resetProgressSaveClock() {
+        lastSaveAttemptMs.set(System.currentTimeMillis())
+        lastSavedPositionMs.set(0L)
+    }
+
+    /**
+     * Decide whether to persist progress while the stream is playing.
+     * Saves every [PROGRESS_SAVE_INTERVAL_MS] and only when the position
+     * has actually moved by [PROGRESS_SAVE_MIN_POSITION_DELTA_MS], to avoid
+     * hammering the DB. A [force] save is used on pause/TV shutdown paths.
+     */
+    private fun maybeSaveProgress(force: Boolean = false) {
+        if (tmdbId == 0) return
+        if (anyCastConnected()) return
+
+        val now = System.currentTimeMillis()
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val elapsedSinceLastSave = now - lastSaveAttemptMs.get()
+        val positionDelta = kotlin.math.abs(position - lastSavedPositionMs.get())
+        val shouldSave = force ||
+            (elapsedSinceLastSave >= PROGRESS_SAVE_INTERVAL_MS &&
+             positionDelta >= PROGRESS_SAVE_MIN_POSITION_DELTA_MS)
+        if (!shouldSave) return
+
+        lastSaveAttemptMs.set(now)
+        lastSavedPositionMs.set(position)
+        saveCurrentProgress()
+    }
+
+    /** Synchronous progress snapshot; used both by the periodic save and by [onCleared]. */
+    private suspend fun saveProgressSnapshot(
+        positionMs: Long = player.currentPosition.coerceAtLeast(0L),
+        durationMs: Long = player.duration.coerceAtLeast(0L)
+    ) {
+        val posSec = positionMs / 1000.0
+        val durSec = durationMs / 1000.0
+        repository.saveProgress(
+            ProgressEntry(
+                tmdbId = tmdbId,
+                mediaType = mediaType,
+                season = season,
+                episode = episode,
+                positionSeconds = posSec,
+                durationSeconds = durSec,
+                title = title,
+                posterPath = poster,
+                providerEpisodeId = if (mediaType == "anime") animeEpisodeId else null,
+                providerSlug = if (mediaType == "anime") animeSlug else null
+            )
+        )
+        // Record in history as soon as the user has watched a meaningful chunk,
+        // mirroring iOS saveHistory (don't wait for playback to fully end).
+        if (posSec > 5) {
+            repository.addToHistory(
+                HistoryEntry(
                     tmdbId = tmdbId,
                     mediaType = mediaType,
-                    season = season,
-                    episode = episode,
-                    positionSeconds = posSec,
-                    durationSeconds = durSec,
                     title = title,
                     posterPath = poster,
-                    providerEpisodeId = if (mediaType == "anime") animeEpisodeId else null,
-                    providerSlug = if (mediaType == "anime") animeSlug else null
+                    season = season,
+                    episode = episode,
+                    progressSeconds = posSec,
+                    durationSeconds = durSec
                 )
             )
-            // Record in history as soon as the user has watched a meaningful chunk,
-            // mirroring iOS saveHistory (don't wait for playback to fully end).
-            if (posSec > 5) {
-                repository.addToHistory(
-                    HistoryEntry(
-                        tmdbId = tmdbId,
-                        mediaType = mediaType,
-                        title = title,
-                        posterPath = poster,
-                        season = season,
-                        episode = episode,
-                        progressSeconds = posSec,
-                        durationSeconds = durSec
-                    )
-                )
-            }
+        }
+    }
+
+    fun saveCurrentProgress() {
+        viewModelScope.launch {
+            saveProgressSnapshot()
         }
     }
 
@@ -1579,7 +1634,17 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        saveCurrentProgress()
+        // Flush the latest progress synchronously: when the TV/device is powered off,
+        // viewModelScope jobs may be cancelled before they hit the DB.
+        kotlinx.coroutines.runBlocking {
+            try {
+                saveProgressSnapshot(
+                    positionMs = kotlin.runCatching { player.currentPosition }.getOrDefault(0L).coerceAtLeast(0L),
+                    durationMs = kotlin.runCatching { player.duration }.getOrDefault(0L).coerceAtLeast(0L)
+                )
+            } catch (_: Exception) {
+            }
+        }
         PlaybackSessionHolder.session = null
         mediaSession.release()
         // Ferma il service SOLO se non c'è una trasmissione cast attiva (altrimenti la

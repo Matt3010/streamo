@@ -101,11 +101,5 @@
   "99": "FASE F — Rifiniture minori (bassa priorità)",
   "100": "FASE H — Search: chip filtro e righe recenti",
   "101": "launcher.ts",
-  "102": "vite.config.ts",
-  "103": "Map",
-  "104": "Pair",
-  "105": "PlaybackSource",
-  "106": "StateFlow",
-  "107": "String",
-  "108": "TmdbItem"
+  "102": "vite.config.ts"
 }
