@@ -1,6 +1,7 @@
 import { config } from './config';
 
 const CSRF_TTL = 20 * 60 * 1000;
+const SESSION_MAX = 20; // cap: one per AU origin; evict oldest on overflow
 const sessions = new Map<string, { csrf: string; expires: number; cookies: Map<string, string> }>();
 
 function base(raw: unknown): string {
@@ -12,6 +13,11 @@ function base(raw: unknown): string {
 function session(url: string) {
   let value = sessions.get(url);
   if (!value) {
+    // Evict oldest entry if at capacity (Map iterates in insertion order).
+    if (sessions.size >= SESSION_MAX) {
+      const oldest = sessions.keys().next().value;
+      if (oldest !== undefined) sessions.delete(oldest);
+    }
     value = { csrf: '', expires: 0, cookies: new Map() };
     sessions.set(url, value);
   }

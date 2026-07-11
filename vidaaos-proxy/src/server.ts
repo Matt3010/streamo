@@ -7,8 +7,40 @@ import { getSession, deleteSession } from './vix/session';
 import { fetchUpstream, fetchWithEgress, UpstreamError } from './vix/fetch';
 import { rewritePlaylist, decodeUrl } from './vix/rewrite';
 import * as anime from './anime';
+import { isAllowedProvUrl } from './prov-url';
 
 const MIME_HLS = 'application/vnd.apple.mpegurl';
+const PROVIDER_LINK_URL = 'https://api.telegra.ph/getPage/Link-Aggiornato-StreamingCommunity-09-29?return_content=true';
+const PROVIDER_HOST_TTL_MS = 10 * 60 * 1000;
+let providerHost: string | undefined;
+let providerHostFetchedAt = 0;
+
+function firstHref(value: unknown): string | undefined {
+  if (Array.isArray(value)) return value.map(firstHref).find(Boolean);
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.href === 'string') return record.href;
+  return Object.values(record).map(firstHref).find(Boolean);
+}
+
+async function refreshProviderHost(viaWarp: boolean): Promise<void> {
+  if (providerHost && Date.now() - providerHostFetchedAt < PROVIDER_HOST_TTL_MS) return;
+  try {
+    const res = await fetchWithEgress(PROVIDER_LINK_URL, {
+      headers: { 'User-Agent': config.userAgent, Accept: 'application/json' },
+      timeoutMs: config.upstreamTimeoutMs,
+      viaWarp
+    });
+    const href = firstHref(await res.json());
+    const parsed = href ? new URL(href) : undefined;
+    if (parsed?.protocol === 'https:') {
+      providerHost = parsed.hostname.toLowerCase();
+      providerHostFetchedAt = Date.now();
+    }
+  } catch {
+    // The caller will reject unknown hosts if Telegraph is unavailable.
+  }
+}
 
 const app = Fastify({ logger: true });
 
@@ -124,13 +156,23 @@ app.delete('/vix/session/:sessionId', async (req, reply) => {
 // these cross-origin (CORS), so the proxy fetches server-side with a desktop
 // UA and NO Referer (mirrors Android ProviderClient.get). Returns the upstream
 // body with its content-type, so the client can detect JSON vs HTML.
-// ponytail: open pass-through — restrict to known hosts if exposed beyond a
-// trusted network. The provider base rotates, so we can't hardcode it.
+// Restricted to known provider hosts to prevent SSRF (the provider base URL
+// rotates via telegra.ph, but the host label is always streamingcommunity.*).
 app.get('/prov', async (req, reply) => {
   const { url, warp } = req.query as { url?: string; warp?: string };
   if (!url) return reply.code(400).send({ error: 'url required' });
+  let parsed: URL;
   try {
-    const res = await fetchWithEgress(url, {
+    parsed = new URL(url);
+  } catch {
+    return reply.code(400).send({ error: 'invalid url' });
+  }
+  if (!isAllowedProvUrl(parsed, providerHost)) await refreshProviderHost(warp === '1');
+  if (!isAllowedProvUrl(parsed, providerHost)) {
+    return reply.code(403).send({ error: `host not allowed: ${parsed.hostname}` });
+  }
+  try {
+    const res = await fetchWithEgress(parsed.href, {
       headers: {
         'User-Agent': config.userAgent,
         Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'

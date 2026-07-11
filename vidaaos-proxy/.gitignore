@@ -5,3 +5,4 @@ dist/
 .env.*
 .idea/
 .DS_Store
+graphify-out/

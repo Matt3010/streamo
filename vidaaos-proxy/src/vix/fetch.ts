@@ -53,11 +53,19 @@ export async function fetchWithEgress(url: string, opts: EgressOptions = {}): Pr
 
   // `go run` needs a moment to compile/start the internal WARP sidecar on its
   // first launch. Wait for its SOCKS listener instead of failing the first use.
+  // Cap total wait at ~8s (8 attempts x 1s) so a permanently-down sidecar
+  // doesn't block every request for 20 seconds.
+  const WARP_WAIT_MAX = 8;
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await get(url);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'ECONNREFUSED' || attempt === 19) throw e;
+      if ((e as NodeJS.ErrnoException).code !== 'ECONNREFUSED' || attempt >= WARP_WAIT_MAX - 1) {
+        if ((e as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+          throw new Error('WARP sidecar non raggiungibile. Avvia il proxy con WARP o riprova.');
+        }
+        throw e;
+      }
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
   }

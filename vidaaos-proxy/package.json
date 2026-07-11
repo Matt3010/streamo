@@ -7,7 +7,7 @@
     "dev": "tsx watch src/launcher.ts",
     "start": "tsx src/launcher.ts",
     "build": "tsc -p tsconfig.json",
-    "check": "tsx src/vix/rewrite.ts"
+    "check": "tsx src/vix/rewrite.ts && tsx src/vix/session.ts && tsx src/prov-url.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
