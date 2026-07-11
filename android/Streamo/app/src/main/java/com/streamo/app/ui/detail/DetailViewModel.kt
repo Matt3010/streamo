@@ -87,6 +87,8 @@ class DetailViewModel @Inject constructor(
         private set
     var episodeProgresses by mutableStateOf<Map<Pair<Int, Int>, ProgressEntry>>(emptyMap())
         private set
+    var initialEpisodeFocus by mutableStateOf<Pair<Int, Int>?>(null)
+        private set
 
     var providerAvailability by mutableStateOf(ProviderAvailability.UNKNOWN)
         private set
@@ -119,8 +121,17 @@ class DetailViewModel @Inject constructor(
                 item = loaded
                 if (isTV) {
                     seasons = TVLogic.availableSeasons(loaded)
-                    val preferred = if (resumeSeason > 0) resumeSeason else null
-                    val target = preferred?.takeIf { seasons.contains(it) } ?: seasons.firstOrNull() ?: 1
+                    val explicitTarget = if (resumeSeason > 0 && resumeEpisode > 0) {
+                        resumeSeason to resumeEpisode
+                    } else null
+                    val latestHistory = if (explicitTarget == null) {
+                        repository.getLatestHistoryForTitle(tmdbId, mediaType)
+                            ?.takeIf { it.season > 0 && it.episode > 0 }
+                            ?.let { it.season to it.episode }
+                    } else null
+                    initialEpisodeFocus = (explicitTarget ?: latestHistory)
+                        ?.takeIf { seasons.contains(it.first) }
+                    val target = initialEpisodeFocus?.first ?: seasons.firstOrNull() ?: 1
                     selectedSeason = target
                     loadSeason(target)
                 }

@@ -13,6 +13,8 @@ import com.streamo.app.navigation.NavRoutes
 import com.streamo.app.ui.tv.detail.TvDetailScreen
 import com.streamo.app.ui.tv.home.TvHomeScreen
 import com.streamo.app.ui.tv.library.TvLibraryScreen
+import com.streamo.app.ui.tv.library.TvContinueWatchingScreen
+import com.streamo.app.ui.tv.library.TvWatchlistScreen
 import com.streamo.app.ui.tv.player.TvPlayerScreen
 import com.streamo.app.ui.tv.search.TvSearchScreen
 import com.streamo.app.ui.tv.sectionlist.TvSectionListScreen
@@ -52,10 +54,10 @@ fun TvAppNavHost(
                         navController.navigate(NavRoutes.SectionList(title, endpoint, mediaType))
                     },
                     onNavigateToContinueWatching = {
-                        navController.navigate(NavRoutes.Library)
+                        navController.navigate(NavRoutes.ContinueWatching)
                     },
                     onNavigateToWatchlist = {
-                        navController.navigate(NavRoutes.Library)
+                        navController.navigate(NavRoutes.Watchlist)
                     },
                     onNavigateToPlayer = { tmdbId, mediaType, season, episode, title, poster, releaseDate ->
                         navController.navigate(NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate))
@@ -77,6 +79,22 @@ fun TvAppNavHost(
                     onNavigateToPlayer = { tmdbId, mediaType, season, episode, title, poster, releaseDate ->
                         navController.navigate(NavRoutes.Player(tmdbId, mediaType, season, episode, title, poster, releaseDate))
                     }
+                )
+            }
+            composable<NavRoutes.ContinueWatching> {
+                TvContinueWatchingScreen(
+                    onNavigateToDetail = { tmdbId, mediaType, season, episode ->
+                        navController.navigate(NavRoutes.Detail(tmdbId, mediaType, season, episode))
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable<NavRoutes.Watchlist> {
+                TvWatchlistScreen(
+                    onNavigateToDetail = { tmdbId, mediaType, season, episode ->
+                        navController.navigate(NavRoutes.Detail(tmdbId, mediaType, season, episode))
+                    },
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable<NavRoutes.Anime> {

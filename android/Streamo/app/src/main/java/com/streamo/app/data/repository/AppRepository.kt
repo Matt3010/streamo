@@ -47,6 +47,8 @@ class AppRepository @Inject constructor(
 
     // History
     fun history(): Flow<List<HistoryEntry>> = historyDao.getAll()
+    suspend fun getLatestHistoryForTitle(id: Int, mediaType: String) =
+        historyDao.getLatestForTitle(id, mediaType)
     suspend fun addToHistory(entry: HistoryEntry) = historyDao.insert(entry)
     suspend fun removeFromHistory(entry: HistoryEntry) =
         historyDao.deleteByCoordinate(entry.tmdbId, entry.mediaType, entry.season, entry.episode, entry.watchedDay)

@@ -62,6 +62,7 @@ import com.streamo.app.ui.search.SortOrder
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.TvMediaCard
 import com.streamo.app.ui.tv.common.tvFocusRing
+import kotlinx.coroutines.delay
 
 /**
  * TV Search screen. OutlinedTextField (focus → system/leanback IME opens
@@ -77,8 +78,37 @@ fun TvSearchScreen(
     var showGenrePicker by remember { mutableStateOf(false) }
     var showSortPicker by remember { mutableStateOf(false) }
 
+    // Solo all'ingresso: keyare su mediaTypeFilter rirubava il focus alla
+    // searchbar a ogni cambio filtro (Tutti/Film/Serie TV).
     LaunchedEffect(Unit) {
-        searchFieldFocusRequester.requestFocus()
+        repeat(60) {
+            if (runCatching { searchFieldFocusRequester.requestFocus() }.getOrDefault(false)) {
+                return@LaunchedEffect
+            }
+            delay(16)
+        }
+    }
+
+    // La ricerca svuota i risultati prima della risposta: mantieni il focus sul
+    // campo, che resta montato, altrimenti il focus ricade sulla sidebar.
+    LaunchedEffect(viewModel.isSearching, viewModel.results.isEmpty()) {
+        if (viewModel.isSearching && viewModel.results.isEmpty()) {
+            while (viewModel.isSearching && viewModel.results.isEmpty()) {
+                runCatching { searchFieldFocusRequester.requestFocus() }
+                delay(80)
+            }
+        }
+    }
+
+    // Quando i risultati arrivano, il precedente target può essere stato rimosso:
+    // riporta il focus sul campo di ricerca, che resta sempre montato.
+    LaunchedEffect(viewModel.isSearching) {
+        if (!viewModel.isSearching && viewModel.query.trim().length >= 2) repeat(60) {
+            if (runCatching { searchFieldFocusRequester.requestFocus() }.getOrDefault(false)) {
+                return@LaunchedEffect
+            }
+            delay(16)
+        }
     }
 
     // Paging: load more results when within ~10 of the end.
@@ -135,7 +165,12 @@ fun TvSearchScreen(
                 ) {
                     items(viewModel.searchHistory.toList()) { historyQuery ->
                         TvFocusable(
-                            onClick = { viewModel.onQueryChange(historyQuery) },
+                            onClick = {
+                                // La voce cliccata sparisce appena cambia la query:
+                                // assegna prima il focus al campo, così non ricade sulla sidebar.
+                                searchFieldFocusRequester.requestFocus()
+                                viewModel.onQueryChange(historyQuery)
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) { focused ->
                             Text(
@@ -174,7 +209,9 @@ fun TvSearchScreen(
 
             if (viewModel.isSearching) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator()

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
@@ -35,10 +36,15 @@ import com.streamo.app.data.remote.dto.TmdbItem
 import com.streamo.app.tmdb.TMDBImage
 import com.streamo.app.ui.home.HomeSection
 
+const val TV_HOME_ROW_LIMIT = 10
+
 /**
  * Binds a Home section to [TvImmersiveRow]. The row shows the loaded titles followed by
- * a trailing "Altro" card that opens the full section grid ([onMoreClick]) — no clickable
- * header (awkward to reach with D-pad).
+ * a trailing "Altro" card when more than [TV_HOME_ROW_LIMIT] titles are available — no
+ * clickable header (awkward to reach with D-pad).
+ *
+ * [focusRequester] is attached to the card whose id is [focusItemId] (initial/restored
+ * focus target, driven by the Home screen); no card gets it when [focusItemId] is null.
  */
 @Composable
 fun TvSectionRow(
@@ -48,9 +54,11 @@ fun TvSectionRow(
     onItemClick: (TmdbItem) -> Unit,
     onMoreClick: () -> Unit,
     modifier: Modifier = Modifier,
-    firstCardFocusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    focusItemId: Int? = null
 ) {
     if (items.isEmpty() && !loading) return
+    val visibleItems = items.take(TV_HOME_ROW_LIMIT)
 
     TvImmersiveRow(
         title = section.title,
@@ -66,17 +74,18 @@ fun TvSectionRow(
                 )
             }
         } else {
-            items(items.size) { index ->
-                val item = items[index]
+            items(visibleItems, key = { it.id }) { item ->
                 TvMediaCard(
                     title = item.displayTitle,
                     posterUrl = TMDBImage.url(item.posterPath, TMDBImage.Size.W500),
-                    focusRequester = if (index == 0) firstCardFocusRequester else null,
+                    focusRequester = focusRequester.takeIf { focusItemId != null && item.id == focusItemId },
                     onClick = { onItemClick(item) }
                 )
             }
-            item {
-                TvLoadMoreCard(onClick = onMoreClick)
+            if (items.size > visibleItems.size) {
+                item {
+                    TvLoadMoreCard(onClick = onMoreClick)
+                }
             }
         }
     }
@@ -84,11 +93,11 @@ fun TvSectionRow(
 
 /**
  * Trailing "Altro" card. Same poster footprint as [TvMediaCard] so the row stays
- * aligned; clicking appends the next page in place. An empty label keeps the bottom
- * baseline aligned with the titled cards beside it.
+ * aligned; clicking opens the full list. An empty label keeps the bottom baseline
+ * aligned with the titled cards beside it.
  */
 @Composable
-private fun TvLoadMoreCard(
+fun TvLoadMoreCard(
     onClick: () -> Unit,
     width: Dp = 140.dp
 ) {

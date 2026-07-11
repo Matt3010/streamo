@@ -1,9 +1,12 @@
 package com.streamo.app.ui.tv.anime
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -13,11 +16,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +58,7 @@ import com.streamo.app.ui.common.AmbientBackground
 import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.tvFocusRing
 import com.streamo.app.util.TVLogic
+import kotlinx.coroutines.delay
 
 /**
  * TV dettaglio anime: header + selettore finestre + griglia episodi D-pad.
@@ -65,11 +73,25 @@ fun TvAnimeDetailScreen(
     val navController = LocalNavController.current
     val gridState = rememberLazyGridState()
     val firstEpisodeFocus = remember { FocusRequester() }
+    val loadingFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { viewModel.load() }
-    // Quando la prima finestra di episodi è pronta, sposta il focus lì (D-pad).
-    LaunchedEffect(viewModel.episodes.firstOrNull()?.id) {
-        if (viewModel.episodes.isNotEmpty()) runCatching { firstEpisodeFocus.requestFocus() }
+    // Mantieni un target reale durante il caricamento: senza di esso il focus
+    // può ricadere sulla sidebar e aprirla automaticamente.
+    LaunchedEffect(viewModel.isLoading) {
+        while (viewModel.isLoading) {
+            runCatching { loadingFocusRequester.requestFocus() }
+            delay(80)
+        }
+    }
+    // Quando la finestra è pronta, sposta il focus sul primo episodio dopo il render.
+    LaunchedEffect(viewModel.isLoading, viewModel.episodes.firstOrNull()?.id) {
+        if (!viewModel.isLoading && viewModel.episodes.isNotEmpty()) repeat(60) {
+            if (runCatching { firstEpisodeFocus.requestFocus() }.getOrDefault(false)) {
+                return@LaunchedEffect
+            }
+            delay(16)
+        }
     }
 
     AmbientBackground()
@@ -116,11 +138,12 @@ fun TvAnimeDetailScreen(
                 // Selettore finestre (solo se più di 120 episodi).
                 if (viewModel.windows.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().focusGroup().focusRestorer(),
+                            contentPadding = PaddingValues(vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            viewModel.windows.forEach { range ->
+                            items(viewModel.windows, key = { it.first }) { range ->
                                 TvWindowChip(
                                     label = "${range.first} - ${range.last}",
                                     selected = range == viewModel.selectedWindow,
@@ -131,9 +154,16 @@ fun TvAnimeDetailScreen(
                     }
                 }
 
-                if (viewModel.isLoading && viewModel.episodes.isEmpty()) {
+                if (viewModel.isLoading) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp)
+                                .focusRequester(loadingFocusRequester)
+                                .focusable(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             CircularProgressIndicator()
                         }
                     }

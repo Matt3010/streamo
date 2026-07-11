@@ -12,6 +12,9 @@ interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY watchedAt DESC")
     fun getAll(): Flow<List<HistoryEntry>>
 
+    @Query("SELECT * FROM history WHERE tmdbId = :id AND mediaType = :mediaType ORDER BY watchedAt DESC LIMIT 1")
+    suspend fun getLatestForTitle(id: Int, mediaType: String): HistoryEntry?
+
     @Query("SELECT * FROM history WHERE tmdbId = :id AND mediaType = :mediaType AND season = :season AND episode = :episode LIMIT 1")
     suspend fun getByCoordinate(id: Int, mediaType: String, season: Int, episode: Int): HistoryEntry?
 

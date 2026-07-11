@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -91,6 +92,7 @@ fun TvDetailScreen(
     val watchlistInteraction = remember { MutableInteractionSource() }
     val watchlistFocused by watchlistInteraction.collectIsFocusedAsState()
     val loadingFocusRequester = remember { FocusRequester() }
+    val episodeFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -128,7 +130,13 @@ fun TvDetailScreen(
             repeat(30) {
                 if (playFocused || watchlistFocused) return@LaunchedEffect
                 val target = if (playEnabled) playFocusRequester else watchlistFocusRequester
-                runCatching { target.requestFocus() }
+                val granted = runCatching { target.requestFocus() }.getOrDefault(false)
+                // Resume mode (initialEpisodeFocus != null): Play is only an INTERIM anchor
+                // covering the spinner->content swap — without it focus is void for the whole
+                // episode network load and escapes to the nav rail (the original CW-card bug).
+                // Stop at the first successful grant so the episode effect below can move
+                // focus onto the resume episode without this loop yanking it back.
+                if (granted && viewModel.initialEpisodeFocus != null) return@LaunchedEffect
                 delay(16)
             }
         }
@@ -407,7 +415,27 @@ fun TvDetailScreen(
                             color = Color.White.copy(alpha = 0.6f)
                         )
                     } else {
+                        val episodeListState = rememberLazyListState()
+                        val focusTarget = viewModel.initialEpisodeFocus
+                            ?.takeIf { it.first == viewModel.selectedSeason }
+                        LaunchedEffect(viewModel.episodes, focusTarget) {
+                            val index = viewModel.episodes.indexOfFirst {
+                                it.episodeNumber == focusTarget?.second
+                            }
+                            if (index >= 0) {
+                                episodeListState.scrollToItem(index)
+                                // The card may take a few frames to compose after scrollToItem;
+                                // if it never does, focus simply stays on Play (the anchor).
+                                repeat(60) {
+                                    if (runCatching { episodeFocusRequester.requestFocus() }.getOrDefault(false)) {
+                                        return@LaunchedEffect
+                                    }
+                                    delay(16)
+                                }
+                            }
+                        }
                         LazyRow(
+                            state = episodeListState,
                             modifier = Modifier.fillMaxWidth().focusGroup().focusRestorer(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
@@ -420,6 +448,9 @@ fun TvDetailScreen(
                                     episode = ep,
                                     positionSeconds = progress?.positionSeconds ?: 0.0,
                                     durationSeconds = progress?.durationSeconds ?: 0.0,
+                                    focusRequester = episodeFocusRequester.takeIf {
+                                        ep.episodeNumber == focusTarget?.second
+                                    },
                                     onClick = {
                                         onNavigateToPlayer(
                                             viewModel.tmdbId, viewModel.mediaType,
@@ -478,6 +509,7 @@ private fun TvEpisodeCard(
     episode: TmdbEpisodeDetail,
     positionSeconds: Double,
     durationSeconds: Double,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
     val watched = durationSeconds > 0 && positionSeconds >= durationSeconds * TVLogic.WATCHED_THRESHOLD
@@ -490,7 +522,11 @@ private fun TvEpisodeCard(
     // No scaleOnFocus: a focus scale grows the (tall) card's mapped bounds, which makes
     // the parent LazyColumn micro-scroll vertically on every horizontal focus move — the
     // annoying up/down jitter. The focus frame + play icon + brightened title are enough.
-    TvFocusable(onClick = onClick, modifier = Modifier.width(260.dp)) { focused ->
+    TvFocusable(
+        onClick = onClick,
+        modifier = Modifier.width(260.dp),
+        focusRequester = focusRequester
+    ) { focused ->
         Column {
             Box(modifier = Modifier.fillMaxWidth().tvFocusFrame(focused)) {
                 Box(

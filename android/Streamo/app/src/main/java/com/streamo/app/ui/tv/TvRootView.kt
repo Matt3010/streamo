@@ -24,9 +24,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusRestorer
@@ -46,6 +49,7 @@ import com.streamo.app.navigation.NavRoutes
 import kotlinx.coroutines.delay
 import com.streamo.app.player.lancast.LanCastReceiver
 import com.streamo.app.ui.common.AmbientBackground
+import kotlinx.coroutines.launch
 
 private data class TvNavItem(
     val route: NavRoutes,
@@ -78,6 +82,7 @@ fun TvRootView() {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val scope = rememberCoroutineScope()
 
     // Consumer globale dei comandi di cast Obsidian. Usa pendingPlay (StateFlow) invece del
     // flusso live così funziona anche a cold-start: il service porta l'app in primo piano,
@@ -106,7 +111,7 @@ fun TvRootView() {
         )
     }
 
-    // Hide the rail on the Player (immersive playback).
+    // Hide the rail only on the Player (immersive playback).
     val showDrawer = currentDestination?.hierarchy?.any {
         it.hasRoute(NavRoutes.Player::class)
     } != true
@@ -117,18 +122,17 @@ fun TvRootView() {
 
     val contentFocusRequester = remember { FocusRequester() }
 
-    // Close drawer on nav AND anchor focus into the content. contentFocusRequester sits on the
-    // focusGroup itself (not a standalone placeholder — a permanent extra focus target there
-    // gets recorded by focusRestorer's save/restore and can end up "winning" default-focus
-    // resolution forever after, trapping D-pad focus on it). requestFocus() on a group makes it
-    // descend into children (restoring the last-focused one via focusRestorer, or the default
-    // one), which returns false the instant currentDestination flips because the old screen's
-    // composable is already gone and the new one hasn't composed a focusable child yet — retry
-    // for a few frames until one exists. Screens that manage their own initial focus
-    // (Detail/SectionList) refine it further afterward.
-    LaunchedEffect(currentDestination) {
+    // Close drawer on every back-stack entry change AND re-anchor focus into the content.
+    // Keying on navBackStackEntry (not currentDestination) is required for Detail -> Detail
+    // navigation because both entries share the same NavDestination instance.
+    // contentFocusRequester sits on the content focusGroup (no focusable() on it: an extra
+    // invisible focus target can win focus itself and trap it — verified regression).
+    // requestFocus() on a group descends into its children (focusRestorer/default child) and
+    // returns false while the new destination has no focusable child yet — retry a few frames.
+    // Screens that manage their own initial focus (Home/Detail/SectionList) refine it after.
+    LaunchedEffect(navBackStackEntry) {
         drawerState.setValue(DrawerValue.Closed)
-        repeat(15) {
+        repeat(60) {
             if (runCatching { contentFocusRequester.requestFocus() }.getOrDefault(false)) {
                 return@LaunchedEffect
             }
@@ -155,6 +159,16 @@ fun TvRootView() {
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
+                    // Il drawer si apre appena il suo subtree ha il focus. Quando la card
+                    // focalizzata viene rimossa (cambio destinazione, riordino di una LazyRow)
+                    // il framework riassegna il focus e può atterrare qui "da solo", aprendo
+                    // la sidebar senza input. Consenti l'ingresso solo con D-pad sinistra:
+                    // ogni altro ingresso viene annullato e la ricerca ricade sul contenuto.
+                    .focusProperties {
+                        onEnter = {
+                            if (requestedFocusDirection != FocusDirection.Left) cancelFocusChange()
+                        }
+                    }
                     .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -164,6 +178,7 @@ fun TvRootView() {
                     NavigationDrawerItem(
                         selected = selected,
                         onClick = {
+                            scope.launch { drawerState.setValue(DrawerValue.Closed) }
                             navController.navigate(item.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true

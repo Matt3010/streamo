@@ -113,7 +113,7 @@ fun TvProgressMediaCard(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    ImagePlaceholder(label = title)
+                    ImagePlaceholder(modifier = Modifier.fillMaxSize())
                 }
 
                 // Bottom gradient overlay

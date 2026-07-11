@@ -2,10 +2,11 @@ package com.streamo.app.ui.anime
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -125,17 +126,15 @@ fun AnimeDetailScreen(
                     }
                 }
 
-                // Selettore finestre (solo se più di 120 episodi). GlassFilterChip + FlowRow:
-                // il FilterChip Material3 raw riserva slot icona leading → badge fantasma
-                // che si allungava sotto l'ultimo chip. GlassFilterChip è coerente col resto.
+                // Selettore finestre (solo se più di 120 episodi), scorrevole in orizzontale.
                 if (viewModel.windows.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        FlowRow(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
                                 .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             viewModel.windows.forEach { range ->
                                 GlassFilterChip(

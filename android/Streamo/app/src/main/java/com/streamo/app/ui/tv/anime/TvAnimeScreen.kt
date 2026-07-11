@@ -46,6 +46,7 @@ import com.streamo.app.ui.tv.common.TvFocusable
 import com.streamo.app.ui.tv.common.TvMediaCard
 import com.streamo.app.ui.tv.common.TvProgressMediaCard
 import com.streamo.app.ui.tv.common.tvFocusRing
+import kotlinx.coroutines.delay
 
 /**
  * TV Anime: catalogo AnimeUnity con ricerca + "Continua a guardare", D-pad navigabile.
@@ -68,7 +69,12 @@ fun TvAnimeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadIfNeeded()
-        runCatching { searchFocusRequester.requestFocus() }
+        repeat(60) {
+            if (runCatching { searchFocusRequester.requestFocus() }.getOrDefault(false)) {
+                return@LaunchedEffect
+            }
+            delay(16)
+        }
     }
 
     // Paginazione: carica la pagina successiva vicino al fondo.

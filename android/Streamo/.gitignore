@@ -14,7 +14,3 @@
 .cxx
 local.properties
 .env
-
-# graphify: commit graph.json/graph.html/GRAPH_REPORT.md as shared map.
-# cost.json is per-machine local state.
-/graphify-out/cost.json

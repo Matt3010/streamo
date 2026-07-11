@@ -97,7 +97,7 @@ fun TvMediaCard(
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    ImagePlaceholder(label = title)
+                    ImagePlaceholder(modifier = Modifier.fillMaxSize())
                 }
             }
         }
