@@ -1666,14 +1666,21 @@ class PlayerViewModel @Inject constructor(
         // Resume the downloads we paused for streaming. Reset all to "pending" in DB
         // so the queue observer picks them up. Only enqueue the first one via WorkManager
         // (REPLACE policy means only one worker at a time); advanceQueue handles the rest.
+        //
+        // NOT runBlocking: onCleared runs on the main thread and runBlocking would
+        // block the UI if the DB is slow (ANR risk). Fire on an IO scope instead —
+        // the status update is best-effort and WorkManager enqueues independently.
         if (didPauseForStreaming) {
             DownloadGate.streamingActive.set(false)
-            kotlinx.coroutines.runBlocking {
-                pausedForStreamingIds.forEach { id ->
+            val idsToResume = pausedForStreamingIds.toList()
+            val firstId = idsToResume.firstOrNull()
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+                .launch(kotlinx.coroutines.Dispatchers.IO) {
+                idsToResume.forEach { id ->
                     repository.updateDownloadStatus(id, "pending")
                 }
+                firstId?.let { ResolveAndDownloadWorker.enqueue(appContext, it) }
             }
-            pausedForStreamingIds.firstOrNull()?.let { ResolveAndDownloadWorker.enqueue(appContext, it) }
         }
 
         super.onCleared()

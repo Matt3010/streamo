@@ -6,6 +6,7 @@ import fi.iki.elonen.NanoHTTPD
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -38,6 +39,8 @@ class LocalHlsProxy(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
+    // ponytail: scoped to one cast session; bound it only if live streams make growth measurable.
+    private val allowedUpstreams = ConcurrentHashMap.newKeySet<String>().apply { add(masterUrl) }
 
     /** URL base servito alla TV, valido dopo [start]. */
     val baseUrl: String get() = "http://$hostAddress:$listeningPort"
@@ -62,7 +65,15 @@ class LocalHlsProxy(
                 "/stream.m3u8" -> serveResource(masterUrl)
                 "/r" -> {
                     val enc = session.parameters["u"]?.firstOrNull()
-                    if (enc == null) notFound() else serveResource(decode(enc))
+                    if (enc == null) notFound() else {
+                        val decoded = decode(enc)
+                        if (!isAllowedUpstream(decoded)) {
+                            Log.w(TAG, "rejected upstream URL (SSRF guard): $decoded")
+                            newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "forbidden")
+                        } else {
+                            serveResource(decoded)
+                        }
+                    }
                 }
                 else -> notFound()
             }
@@ -87,34 +98,47 @@ class LocalHlsProxy(
         headers.forEach { (k, v) -> reqBuilder.addHeader(k, v) }
         val resp = http.newCall(reqBuilder.build()).execute()
         if (!resp.isSuccessful) {
+            val code = resp.code
             resp.close()
-            Log.w(TAG, "upstream ${resp.code} per $upstreamUrl")
+            Log.w(TAG, "upstream $code per $upstreamUrl")
             return newFixedLengthResponse(
-                Response.Status.lookup(resp.code) ?: Response.Status.INTERNAL_ERROR,
-                MIME_PLAINTEXT, "upstream ${resp.code}"
+                Response.Status.lookup(code) ?: Response.Status.INTERNAL_ERROR,
+                MIME_PLAINTEXT, "upstream $code"
             )
         }
         val contentType = resp.header("Content-Type").orEmpty()
         val isPlaylist = contentType.contains("mpegurl", ignoreCase = true) ||
             upstreamUrl.substringBefore('?').endsWith(".m3u8", ignoreCase = true)
 
-        return if (isPlaylist) {
-            val body = resp.body?.string().orEmpty()
-            resp.close()
-            val rewritten = rewritePlaylist(body, URI(upstreamUrl))
-            newFixedLengthResponse(Response.Status.OK, MIME_HLS, rewritten)
-        } else {
-            // Segmenti / chiave. Il Default Media Receiver di Chromecast (Shaka) è molto più
-            // severo di ExoPlayer: vuole una risposta con Content-Length, non chunked. Se
-            // l'upstream dichiara la lunghezza, servila come fixed-length; altrimenti chunked.
-            val mime = contentType.ifBlank { "application/octet-stream" }
-            val len = resp.body!!.contentLength()
-            val stream = resp.body!!.byteStream()
-            if (len >= 0) {
-                newFixedLengthResponse(Response.Status.OK, mime, stream, len)
+        return try {
+            if (isPlaylist) {
+                val body = resp.body?.string().orEmpty()
+                resp.close()
+                val rewritten = rewritePlaylist(body, URI(upstreamUrl))
+                newFixedLengthResponse(Response.Status.OK, MIME_HLS, rewritten)
             } else {
-                newChunkedResponse(Response.Status.OK, mime, stream)
+                // Segmenti / chiave. Il Default Media Receiver di Chromecast (Shaka) è molto più
+                // severo di ExoPlayer: vuole una risposta con Content-Length, non chunked. Se
+                // l'upstream dichiara la lunghezza, servila come fixed-length; altrimenti chunked.
+                // NanoHTTPD si assume la responsabilità di chiudere l'InputStream quando il
+                // client termina; resp resta aperto finché il stream è vivo (OkHttp chiude il
+                // body quando l'InputStream viene chiuso).
+                val mime = contentType.ifBlank { "application/octet-stream" }
+                val responseBody = resp.body ?: run {
+                    resp.close()
+                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "empty body")
+                }
+                val len = responseBody.contentLength()
+                val stream = responseBody.byteStream()
+                if (len >= 0) {
+                    newFixedLengthResponse(Response.Status.OK, mime, stream, len)
+                } else {
+                    newChunkedResponse(Response.Status.OK, mime, stream)
+                }
             }
+        } catch (e: Exception) {
+            resp.close()
+            throw e
         }
     }
 
@@ -204,13 +228,19 @@ class LocalHlsProxy(
             "URI=\"${proxify(base.resolve(m.groupValues[1]).toString())}\""
         }
 
-    private fun proxify(absoluteUrl: String): String = "$baseUrl/r?u=${encode(absoluteUrl)}"
+    private fun proxify(absoluteUrl: String): String {
+        allowedUpstreams.add(absoluteUrl)
+        return "$baseUrl/r?u=${encode(absoluteUrl)}"
+    }
 
     private fun encode(s: String): String =
         Base64.encodeToString(s.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
     private fun decode(s: String): String =
         String(Base64.decode(s, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+
+    /** Accetta solo URL emessi da [proxify], non URL arbitrari costruiti da client LAN. */
+    private fun isAllowedUpstream(url: String) = url in allowedUpstreams
 
     private fun notFound() =
         newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "not found")

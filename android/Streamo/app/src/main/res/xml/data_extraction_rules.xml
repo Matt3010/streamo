@@ -5,15 +5,14 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Contains a WARP config encrypted with a non-exportable Android Keystore key. -->
+        <exclude domain="file" path="datastore/streamo_secure.preferences_pb"/>
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
         -->
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="datastore/streamo_secure.preferences_pb"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

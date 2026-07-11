@@ -13,8 +13,12 @@ import com.google.gson.reflect.TypeToken
 import com.streamo.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +27,9 @@ class SettingsDataStore @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "streamo_settings")
+    private val Context.secureDataStore: DataStore<Preferences> by preferencesDataStore(name = "streamo_secure")
+    private val warpMigrationMutex = Mutex()
+    @Volatile private var warpMigrated = false
 
     companion object {
         private val TMDB_API_KEY = stringPreferencesKey("tmdb_api_key")
@@ -100,28 +107,60 @@ class SettingsDataStore @Inject constructor(
         context.dataStore.edit { it[WARP_ENABLED] = value }
     }
 
-    /** Whether a WARP account has been registered (a config is stored). */
-    val warpRegistered: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[WARP_REGISTERED] ?: false
-    }
+    /** Whether a usable WARP config is stored. */
+    val warpRegistered: Flow<Boolean> get() = warpConfig.map { !it.isNullOrBlank() }
 
     /** Stored `[Interface]`/`[Peer]` wireproxy config (includes the WG private
-     * key). Null until registered. */
-    val warpConfig: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[WARP_CONFIG]
+     * key). Null until registered. The config is encrypted at rest with
+     * [WarpConfigCrypto] (AES-256-GCM, key in Android Keystore) so the private
+     * key is never written to disk in plaintext. Legacy entries are migrated
+     * automatically to the non-backed-up secure store on first read. */
+    val warpConfig: Flow<String?> = flow {
+        migrateWarpConfig()
+        emitAll(context.secureDataStore.data.map { prefs ->
+            prefs[WARP_CONFIG]?.let(WarpConfigCrypto::decrypt)
+        })
     }
 
     suspend fun setWarpConfig(config: String) {
-        context.dataStore.edit {
-            it[WARP_CONFIG] = config
-            it[WARP_REGISTERED] = true
-        }
+        migrateWarpConfig()
+        val encrypted = WarpConfigCrypto.encrypt(config)
+        context.secureDataStore.edit { it[WARP_CONFIG] = encrypted }
+        context.dataStore.edit { it[WARP_REGISTERED] = true }
     }
 
     suspend fun clearWarpConfig() {
+        migrateWarpConfig()
+        context.secureDataStore.edit { it.remove(WARP_CONFIG) }
         context.dataStore.edit {
             it.remove(WARP_CONFIG)
             it[WARP_REGISTERED] = false
+        }
+    }
+
+    private suspend fun migrateWarpConfig() {
+        if (warpMigrated) return
+        warpMigrationMutex.withLock {
+            if (warpMigrated) return
+            val secureRaw = context.secureDataStore.data.first()[WARP_CONFIG]
+            val legacyPrefs = context.dataStore.data.first()
+            if (secureRaw == null) {
+                val legacyRaw = legacyPrefs[WARP_CONFIG]
+                val plaintext = legacyRaw?.let {
+                    if (WarpConfigCrypto.isEncrypted(it)) WarpConfigCrypto.decrypt(it) else it
+                }
+                if (plaintext != null) {
+                    context.secureDataStore.edit { it[WARP_CONFIG] = WarpConfigCrypto.encrypt(plaintext) }
+                }
+                if (legacyRaw != null || legacyPrefs[WARP_REGISTERED] == true) {
+                    context.dataStore.edit {
+                        it.remove(WARP_CONFIG)
+                        it[WARP_REGISTERED] = plaintext != null
+                        if (plaintext == null) it[WARP_ENABLED] = false
+                    }
+                }
+            }
+            warpMigrated = true
         }
     }
 

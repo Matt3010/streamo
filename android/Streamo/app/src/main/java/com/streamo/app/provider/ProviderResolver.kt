@@ -6,6 +6,7 @@ import com.streamo.app.data.repository.AppRepository
 import com.streamo.app.provider.anime.AnimeUnityClient
 import com.streamo.app.provider.warp.WarpTunnel
 import kotlinx.coroutines.flow.first
+import java.util.Collections
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,7 +27,19 @@ class ProviderResolver @Inject constructor(
     private val warpTunnel: WarpTunnel,
     private val settings: SettingsDataStore
 ) {
-    private val titleCache = mutableMapOf<String, ProviderResolveTitleOutcome>()
+    // Bounded LRU cache: evicts the oldest entry once the cap is reached.
+    // Prevents unbounded growth in long-lived sessions (TV always-on).
+    private val titleCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, ProviderResolveTitleOutcome>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, ProviderResolveTitleOutcome>) =
+                size > MAX_TITLE_CACHE_ENTRIES
+        }
+    )
+
+    companion object {
+        /** Max resolved titles kept in memory (LRU eviction). */
+        private const val MAX_TITLE_CACHE_ENTRIES = 200
+    }
 
     private fun cacheKey(id: Int, type: String, useProxy: Boolean) =
         "$type:$id:${if (useProxy) "proxy" else "local"}"

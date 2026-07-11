@@ -41,9 +41,13 @@ class TMDBClient @Inject constructor(
     private val l1Max = 100
     private val l1Lock = Mutex()
 
+    // SimpleDateFormat is not thread-safe. TMDBClient is @Singleton, so concurrent
+    // coroutines on different dispatchers could corrupt its internal state.
+    // Synchronize every access through the l1Lock pattern (a dedicated lock).
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
         calendar = java.util.Calendar.getInstance(TimeZone.getTimeZone("UTC"))
     }
+    private val dateFormatterLock = Any()
 
     suspend fun apiKey(): String = settings.tmdbApiKey.first()
 
@@ -292,7 +296,9 @@ class TMDBClient @Inject constructor(
         val raw = item.primaryDate
         if (raw.isNullOrEmpty()) return 0
         return try {
-            dateFormatter.parse(raw)?.time ?: 0
+            synchronized(dateFormatterLock) {
+                dateFormatter.parse(raw)?.time ?: 0
+            }
         } catch (_: Exception) {
             0
         }

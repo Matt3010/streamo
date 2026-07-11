@@ -6,6 +6,8 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
+    <!-- Contains a WARP config encrypted with a non-exportable Android Keystore key. -->
+    <exclude domain="file" path="datastore/streamo_secure.preferences_pb"/>
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
