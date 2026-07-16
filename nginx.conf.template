@@ -114,6 +114,19 @@ server {
         proxy_hide_header Access-Control-Allow-Origin;
     }
 
+    # Same-origin TMDB artwork proxy. Client networks occasionally block or
+    # fail to resolve image.tmdb.org even while the API remains reachable.
+    location ~ ^/tmdb-image/(w92|w300|w342|w500|w1280|original)/(.*)$ {
+        set $tmdb_image "image.tmdb.org";
+        proxy_pass https://$tmdb_image/t/p/$1/$2;
+        proxy_ssl_server_name on;
+        proxy_set_header Host image.tmdb.org;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_cache_valid 200 7d;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
     # ---- Core playback: segment/asset CDN targets rewritten by playlist proxy ----
     location ~ ^/cdn/([a-z0-9-]+)/(.*)$ {
         auth_request /auth-check;
