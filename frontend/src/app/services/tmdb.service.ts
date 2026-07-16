@@ -115,7 +115,9 @@ export class TmdbService {
 
     this.availabilityRetry = setTimeout(() => {
       this.availabilityRetry = null;
-      void this.getJson(`${TMDB_BASE}/configuration`, undefined, true);
+      const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const probeUrl = `${TMDB_BASE}/search/multi?query=${encodeURIComponent(`streamo-health-${nonce}`)}`;
+      void this.getJson(probeUrl, { cache: 'no-store' }, true);
     }, AVAILABILITY_RETRY_MS);
   }
 
