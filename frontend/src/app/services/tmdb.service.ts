@@ -75,11 +75,14 @@ export class TmdbService {
     return filtered;
   }
 
-  private async getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+  private async getJson<T>(url: string, init?: RequestInit, availabilityProbe = false): Promise<T | null> {
     try {
       const response = await fetch(url, init);
       if (response.ok) {
-        this.markReachable();
+        // Once an outage has been detected, ordinary concurrent/cache hits
+        // must not immediately hide the banner. Only the dedicated probe
+        // below is allowed to confirm recovery.
+        if (availabilityProbe) this.markReachable();
         return (await response.json()) as T;
       }
 
@@ -112,7 +115,7 @@ export class TmdbService {
 
     this.availabilityRetry = setTimeout(() => {
       this.availabilityRetry = null;
-      void this.getJson(`${TMDB_BASE}/configuration`);
+      void this.getJson(`${TMDB_BASE}/configuration`, undefined, true);
     }, AVAILABILITY_RETRY_MS);
   }
 
