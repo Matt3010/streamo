@@ -10,47 +10,85 @@
 .banner-inner {
   display: flex;
   align-items: center;
+  gap: 0.65rem;
+  width: fit-content;
+  max-width: calc(100% - 1.5rem);
+  min-height: 42px;
+  padding: 0.48rem 0.72rem 0.48rem 0.52rem;
+  margin: 0.65rem auto 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+    rgba(12, 12, 12, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.banner-icon {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  min-height: 52px;
-  padding: 0.85rem 1rem;
-  margin: 0.75rem 0.75rem 0;
-  border-radius: var(--radius-lg);
-  text-align: center;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  font-size: 0.78rem;
 }
 
-.banner-inner strong {
-  font-size: 0.95rem;
+.banner-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.38rem;
+  min-width: 0;
+  line-height: 1.3;
 }
 
-.banner-inner span {
-  font-size: 0.92rem;
-  opacity: 0.96;
+.banner-copy strong {
+  flex: 0 0 auto;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
-:host(.variant-info) .banner-inner {
-  background: linear-gradient(135deg, rgba(35, 112, 194, 0.98), rgba(19, 62, 106, 0.98));
+.banner-message {
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
-:host(.variant-success) .banner-inner {
-  background: linear-gradient(135deg, rgba(34, 139, 90, 0.98), rgba(18, 82, 52, 0.98));
+:host(.variant-info) .banner-icon {
+  color: #6cb6ff;
+  background: rgba(35, 112, 194, 0.16);
+  border: 1px solid rgba(108, 182, 255, 0.14);
 }
 
-:host(.variant-warning) .banner-inner {
-  background: linear-gradient(135deg, rgba(229, 148, 11, 0.98), rgba(138, 81, 7, 0.98));
+:host(.variant-success) .banner-icon {
+  color: #58d68d;
+  background: rgba(34, 139, 90, 0.16);
+  border: 1px solid rgba(88, 214, 141, 0.14);
 }
 
-:host(.variant-danger) .banner-inner {
-  background: linear-gradient(135deg, rgba(229, 9, 20, 0.98), rgba(122, 6, 16, 0.98));
+:host(.variant-warning) .banner-icon {
+  color: #ffb347;
+  background: rgba(229, 148, 11, 0.16);
+  border: 1px solid rgba(255, 179, 71, 0.14);
+}
+
+:host(.variant-danger) .banner-icon {
+  color: #ff5b64;
+  background: rgba(229, 9, 20, 0.16);
+  border: 1px solid rgba(255, 91, 100, 0.14);
 }
 
 @media (max-width: 640px) {
   .banner-inner {
+    align-items: flex-start;
+    max-width: calc(100% - 0.8rem);
+    padding: 0.5rem 0.65rem 0.5rem 0.5rem;
+    margin-top: 0.4rem;
+  }
+
+  .banner-copy {
     flex-direction: column;
-    gap: 0.15rem;
-    min-height: 58px;
-    padding: 0.7rem 0.9rem;
-    margin: 0.65rem 0.4rem 0;
+    gap: 0.08rem;
+    padding-top: 0.05rem;
   }
 }
