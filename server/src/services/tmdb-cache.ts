@@ -118,9 +118,18 @@ export async function getTmdbMovieSummary(
     .select(['data', 'fetched_at'])
     .where('cache_key', '=', key)
     .executeTakeFirst();
-  if (!options?.forceRefresh && cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
+  if (!options?.forceRefresh && cached) {
     const parsed = parseCachedMovieSummary(cached.data);
-    if (parsed) return parsed;
+    if (parsed) {
+      // User-facing list endpoints must not wait on TMDB just because a
+      // cached summary crossed its TTL. Serve stale data immediately and
+      // refresh it in the background; workers can still request a blocking
+      // refresh explicitly with forceRefresh.
+      if ((now - cached.fetched_at) >= TMDB_CACHE_TTL) {
+        void getTmdbMovieSummary(tmdbId, { forceRefresh: true }).catch(() => undefined);
+      }
+      return parsed;
+    }
   }
 
   if (!TMDB_API_KEY) return null;
@@ -162,9 +171,14 @@ export async function getTmdbTvSummary(
     .select(['data', 'fetched_at'])
     .where('cache_key', '=', key)
     .executeTakeFirst();
-  if (!options?.forceRefresh && cached && (now - cached.fetched_at) < TMDB_CACHE_TTL) {
+  if (!options?.forceRefresh && cached) {
     const parsed = parseCachedSummary(cached.data);
-    if (parsed) return parsed;
+    if (parsed) {
+      if ((now - cached.fetched_at) >= TMDB_CACHE_TTL) {
+        void getTmdbTvSummary(tmdbId, { forceRefresh: true }).catch(() => undefined);
+      }
+      return parsed;
+    }
   }
 
   if (!TMDB_API_KEY) return null;
