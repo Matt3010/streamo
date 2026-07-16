@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { BannerComponent } from '../../ui/banner/banner.component';
+import { TmdbService } from '../../services/tmdb.service';
 
 @Component({
   selector: 'app-offline-banner',
@@ -11,13 +12,19 @@ import { BannerComponent } from '../../ui/banner/banner.component';
       <app-banner
         variant="danger"
         title="Sei offline."
-        message="Alcune funzioni potrebbero non essere disponibili finche la connessione non torna." />
+        message="Alcune funzioni potrebbero non essere disponibili finché la connessione non torna." />
+    } @else if (!tmdb.isReachable()) {
+      <app-banner
+        variant="warning"
+        title="TMDB non è raggiungibile."
+        message="Il catalogo potrebbe essere temporaneamente incompleto. Riproveremo automaticamente." />
     }
   `,
   styleUrl: './offline-banner.component.css'
 })
 export class OfflineBannerComponent {
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly tmdb = inject(TmdbService);
 
   protected readonly isOnline = signal(
     typeof navigator === 'undefined' ? true : navigator.onLine

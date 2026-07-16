@@ -1,32 +1,36 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import type { MediaType, TmdbItem, TmdbReview, TmdbSeasonDetails } from '../models';
-import { apiGetJson } from '../utils/api.util';
 
 const TMDB_BASE = '/api/tmdb';
 const CACHE_MAX = 100;
 const SEARCH_CACHE_MAX = 20;
+const AVAILABILITY_RETRY_MS = 15_000;
 
 @Injectable({ providedIn: 'root' })
 export class TmdbService {
   private cache = new Map<string, TmdbItem>();
   private searchCache = new Map<string, TmdbItem[]>();
+  private availabilityRetry: ReturnType<typeof setTimeout> | null = null;
+
+  /** False only after the TMDB proxy has failed; starts optimistic to avoid a banner flash. */
+  readonly isReachable = signal(true);
 
   async getDetails(tmdbId: string | number, type: MediaType): Promise<TmdbItem | null> {
     const key = `${type}-${tmdbId}`;
     const cached = this.cacheGet(key);
     if (cached) return cached;
 
-    const data = await apiGetJson<TmdbItem>(`${TMDB_BASE}/${type}/${tmdbId}?language=it-IT&append_to_response=credits,videos`);
+    const data = await this.getJson<TmdbItem>(`${TMDB_BASE}/${type}/${tmdbId}?language=it-IT&append_to_response=credits,videos`);
     if (data) this.cacheSet(key, data);
     return data;
   }
 
   async getSeasonDetails(tvId: number, seasonNumber: number): Promise<TmdbSeasonDetails | null> {
-    return apiGetJson<TmdbSeasonDetails>(`${TMDB_BASE}/tv/${tvId}/season/${seasonNumber}?language=it-IT`);
+    return this.getJson<TmdbSeasonDetails>(`${TMDB_BASE}/tv/${tvId}/season/${seasonNumber}?language=it-IT`);
   }
 
   async getRecommendations(tmdbId: string | number, type: MediaType): Promise<TmdbItem[]> {
-    const data = await apiGetJson<{ results?: TmdbItem[] }>(`${TMDB_BASE}/${type}/${tmdbId}/recommendations?language=it-IT`);
+    const data = await this.getJson<{ results?: TmdbItem[] }>(`${TMDB_BASE}/${type}/${tmdbId}/recommendations?language=it-IT`);
     return data?.results ?? [];
   }
 
@@ -38,7 +42,7 @@ export class TmdbService {
     ];
 
     for (const url of urls) {
-      const data = await apiGetJson<{ results?: TmdbReview[] }>(url);
+      const data = await this.getJson<{ results?: TmdbReview[] }>(url);
       const reviews = data?.results ?? [];
       if (reviews.length > 0) return reviews;
     }
@@ -46,7 +50,7 @@ export class TmdbService {
   }
 
   async list(endpoint: string): Promise<TmdbItem[]> {
-    const data = await apiGetJson<{ results?: TmdbItem[] }>(`${TMDB_BASE}${endpoint}?language=it-IT&region=IT`);
+    const data = await this.getJson<{ results?: TmdbItem[] }>(`${TMDB_BASE}${endpoint}?language=it-IT&region=IT`);
     return sortByNewest(data?.results ?? []);
   }
 
@@ -57,7 +61,7 @@ export class TmdbService {
     const cached = this.searchCacheGet(key);
     if (cached) return cached;
 
-    const data = await apiGetJson<{ results?: TmdbItem[] }>(
+    const data = await this.getJson<{ results?: TmdbItem[] }>(
       `${TMDB_BASE}/search/multi?query=${encodeURIComponent(query)}&language=it-IT`,
       { signal }
     );
@@ -69,6 +73,47 @@ export class TmdbService {
     );
     this.searchCacheSet(key, filtered);
     return filtered;
+  }
+
+  private async getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) {
+        this.markReachable();
+        return (await response.json()) as T;
+      }
+
+      // The nginx proxy uses 5xx responses when its TMDB upstream cannot
+      // be reached. Client errors (404, rate limits, invalid requests) do
+      // not mean the whole service is offline.
+      if (response.status >= 500) this.markUnreachable();
+      return null;
+    } catch (error) {
+      // Superseded searches are deliberately aborted and must not trigger
+      // an outage banner.
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        this.markUnreachable();
+      }
+      return null;
+    }
+  }
+
+  private markReachable(): void {
+    this.isReachable.set(true);
+    if (this.availabilityRetry !== null) {
+      clearTimeout(this.availabilityRetry);
+      this.availabilityRetry = null;
+    }
+  }
+
+  private markUnreachable(): void {
+    this.isReachable.set(false);
+    if (this.availabilityRetry !== null || typeof window === 'undefined') return;
+
+    this.availabilityRetry = setTimeout(() => {
+      this.availabilityRetry = null;
+      void this.getJson(`${TMDB_BASE}/configuration`);
+    }, AVAILABILITY_RETRY_MS);
   }
 
   private searchCacheGet(key: string): TmdbItem[] | undefined {
