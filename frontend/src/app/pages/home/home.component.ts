@@ -54,7 +54,7 @@ type HomeConfirmAction =
           <p class="home-empty-title">Niente da riprendere</p>
           <p class="home-empty-hint">I titoli che inizi a guardare compariranno qui.</p>
           <div class="home-empty-actions">
-            <button uiButton="primary" type="button" (click)="goToBrowse()">Scopri film popolari</button>
+            <button uiButton="primary" type="button" (click)="goToPopularMovies()">Scopri film popolari</button>
           </div>
         </div>
       </section>
@@ -88,6 +88,7 @@ type HomeConfirmAction =
 
     @for (s of sectionStates(); track s.config.id) {
       <app-section-row
+        [sectionId]="s.config.id"
         [title]="s.config.title"
         [icon]="s.config.icon"
         [items]="s.items"
@@ -154,8 +155,8 @@ export class HomeComponent {
     void this.router.navigate(['/search']);
   }
 
-  protected goToBrowse(): void {
-    void this.router.navigate(['/browse']);
+  protected goToPopularMovies(): void {
+    document.getElementById('movie-popular')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   private openConfirmModal(config: {

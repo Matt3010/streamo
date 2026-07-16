@@ -10,7 +10,7 @@ import type { CardItem } from '../../models';
   imports: [CardRowComponent, SectionHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="content-section">
+    <section class="content-section" [attr.id]="sectionId() || null">
       <app-section-header [title]="title()" [icon]="icon()">
         <ng-content select="[headerActions]"></ng-content>
       </app-section-header>
@@ -31,6 +31,7 @@ import type { CardItem } from '../../models';
   styleUrl: './section-row.component.css'
 })
 export class SectionRowComponent {
+  readonly sectionId = input('');
   readonly title = input.required<string>();
   readonly icon = input.required<IconDefinition>();
   readonly items = input.required<CardItem[]>();
