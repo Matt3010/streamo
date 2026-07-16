@@ -322,7 +322,7 @@ export class HomeComponent {
     const [progress, wl] = await Promise.all([this.progress.list(), this.watchlist.list()]);
     if (seq !== this.userSeq) return;
 
-    const progressCardsBase = progress.map(p => ({
+    const progressCardsRaw = await enrichLibraryCardsWithTmdb(progress.map(p => ({
       tmdb_id: p.tmdb_id,
       media_type: p.media_type,
       title: p.title ?? 'Senza titolo',
@@ -333,24 +333,19 @@ export class HomeComponent {
       duration: p.duration,
       watchStatus: p.watch_status_text,
       nextReleaseText: p.next_release_text
-    }));
-    const watchlistCardsBase = wl
-      .filter(w => (w.status ?? 'todo') !== 'done')
-      .map(watchlistToCardItem);
-
-    // The API payload already contains everything required to render the
-    // rows. Show it immediately instead of keeping both sections in a
-    // skeleton while optional TMDB rating/release metadata is fetched.
-    this.userLoading.set(false);
-    this.continueItems.set(applyWatchlistFlags(progressCardsBase, wl));
-    this.watchlistItems.set(watchlistCardsBase);
-
-    const [progressCards, watchlistCards] = await Promise.all([
-      enrichLibraryCardsWithTmdb(progressCardsBase, this.tmdb),
-      enrichLibraryCardsWithTmdb(watchlistCardsBase, this.tmdb)
-    ]);
+    })), this.tmdb);
     if (seq !== this.userSeq) return;
-    this.continueItems.set(applyWatchlistFlags(progressCards, wl));
+
+    const progressCards = applyWatchlistFlags(progressCardsRaw, wl);
+
+    const watchlistCards = await enrichLibraryCardsWithTmdb(
+      wl.filter(w => (w.status ?? 'todo') !== 'done').map(watchlistToCardItem),
+      this.tmdb
+    );
+    if (seq !== this.userSeq) return;
+
+    this.userLoading.set(false);
+    this.continueItems.set(progressCards);
     this.watchlistItems.set(watchlistCards);
   }
 }

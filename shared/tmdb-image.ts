@@ -12,10 +12,7 @@ export type TmdbImageSize =
   | 'w1280'  // hero backdrop
   | 'original';
 
-// Keep artwork same-origin. Besides avoiding client-side DNS/content blocking
-// of image.tmdb.org, this sends images through the same WARP-backed nginx
-// egress path as the TMDB API.
-const TMDB_IMAGE_HOST = '/tmdb-image';
+const TMDB_IMAGE_HOST = 'https://image.tmdb.org/t/p';
 
 /** Build a TMDB image URL. Returns an empty string when `path` is null/
  *  undefined/empty, so callers can bind it directly to `<img [src]>` and
