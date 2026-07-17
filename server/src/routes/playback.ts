@@ -9,6 +9,8 @@ import { hasValidVixcloudSignature } from '../utils/vix-token';
  * response is still preferable to a 502 here. 30s matches the upper end of
  * what users will tolerate before retrying anyway. */
 const PLAYLIST_FETCH_TIMEOUT_MS = 30000;
+const STREAMING_QUALITY_COOKIE = 'streaming_max_height';
+const ALLOWED_STREAMING_HEIGHTS = new Set([480, 720, 1080]);
 
 const router = Router();
 
@@ -62,10 +64,76 @@ router.get(/^\/playback\/playlist\/(.*)$/, async (req, res) => {
   }
 
   const body = await upstream.text();
+  const maxHeight = streamingMaxHeight(req);
+  const filteredBody = filterMasterToHeight(body, maxHeight);
   logPlaylistDetails(req.user?.email ?? '-', upstreamUrl, body);
+  if (filteredBody !== body) {
+    playbackLogger.info('playlist quality forced', {
+      user: req.user?.email ?? '-',
+      upstream: upstreamUrl,
+      maxHeight
+    });
+  }
   copyHeaders(upstream, res, true);
-  res.status(upstream.status).send(rewritePlaylist(body));
+  res.status(upstream.status).send(rewritePlaylist(filteredBody));
 });
+
+function streamingMaxHeight(req: Request): number {
+  const parsed = Number.parseInt(String(req.cookies?.[STREAMING_QUALITY_COOKIE] ?? ''), 10);
+  return ALLOWED_STREAMING_HEIGHTS.has(parsed) ? parsed : 0;
+}
+
+/**
+ * Keep exactly one variant in an HLS master playlist. This mirrors the iOS
+ * proxy: choose the highest resolution at or below the requested cap, fall
+ * back to the lowest variant when every stream is taller, and use bandwidth
+ * when the master does not expose RESOLUTION attributes.
+ */
+export function filterMasterToHeight(body: string, maxHeight: number): string {
+  if (maxHeight <= 0) return body;
+
+  const lines = body.split(/\r?\n/);
+  const blocks: Array<{ infIndex: number; uriIndex: number; bandwidth: number; height: number }> = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const inf = lines[i].trim();
+    if (!inf.startsWith('#EXT-X-STREAM-INF')) continue;
+
+    let uriIndex = i + 1;
+    while (uriIndex < lines.length) {
+      const candidate = lines[uriIndex].trim();
+      if (candidate && !candidate.startsWith('#')) break;
+      uriIndex += 1;
+    }
+    if (uriIndex >= lines.length) continue;
+
+    const bandwidth = Number.parseInt(inf.match(/(?:^|,)BANDWIDTH=(\d+)/i)?.[1] ?? '0', 10);
+    const height = Number.parseInt(inf.match(/(?:^|,)RESOLUTION=\d+x(\d+)/i)?.[1] ?? '0', 10);
+    blocks.push({ infIndex: i, uriIndex, bandwidth, height });
+  }
+
+  if (blocks.length <= 1) return body;
+
+  const withHeight = blocks.filter((block) => block.height > 0);
+  let chosen: (typeof blocks)[number];
+  if (withHeight.length > 0) {
+    const eligible = withHeight.filter((block) => block.height <= maxHeight);
+    chosen = eligible.length > 0
+      ? eligible.reduce((best, block) => block.height > best.height ? block : best)
+      : withHeight.reduce((best, block) => block.height < best.height ? block : best);
+  } else {
+    chosen = blocks.reduce((best, block) => block.bandwidth > best.bandwidth ? block : best);
+  }
+
+  const droppedLines = new Set<number>();
+  for (const block of blocks) {
+    if (block.uriIndex === chosen.uriIndex) continue;
+    droppedLines.add(block.infIndex);
+    droppedLines.add(block.uriIndex);
+  }
+
+  return lines.filter((_line, index) => !droppedLines.has(index)).join('\n');
+}
 
 async function authorizePlaybackRequest(req: Request, res: ExpressResponse, upstreamUrl: string): Promise<boolean> {
   const result = await authenticateToken(req.cookies?.token);

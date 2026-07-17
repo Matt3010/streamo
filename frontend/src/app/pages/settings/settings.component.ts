@@ -19,6 +19,9 @@ const PATTERN_TILE_SIZE = 96;
 const DEFAULT_BRUSH_SIZE = 6;
 const DEFAULT_BRUSH_COLOR = '#ffffff';
 type PatternTool = 'draw' | 'recolor';
+type StreamingMaxHeight = 0 | 480 | 720 | 1080;
+const STREAMING_QUALITY_STORAGE_KEY = 'streamingMaxHeight';
+const STREAMING_QUALITY_COOKIE = 'streaming_max_height';
 
 @Component({
   selector: 'app-settings',
@@ -52,6 +55,19 @@ type PatternTool = 'draw' | 'recolor';
           [checked]="autoplayEnabled()"
           [disabled]="savingAutoplay()"
           (changed)="onAutoplayChange($event)" />
+
+        <label class="quality-setting">
+          <span class="quality-setting-copy">
+            <strong>Qualità streaming</strong>
+            <small>Forza una singola variante HLS fino alla risoluzione selezionata.</small>
+          </span>
+          <select [value]="streamingMaxHeight()" (change)="onStreamingQualityChange($event)">
+            <option value="0">Auto</option>
+            <option value="1080">1080p</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+          </select>
+        </label>
       </section>
 
       <section class="settings-section">
@@ -350,6 +366,7 @@ export class SettingsComponent implements AfterViewInit {
   protected readonly randomVariation = signal(5);
   protected readonly randomScale = signal(6);
   protected readonly autoplayEnabled = computed(() => this.auth.currentUser()?.autoplay_next === 1);
+  protected readonly streamingMaxHeight = signal<StreamingMaxHeight>(this.loadStreamingMaxHeight());
   protected readonly foldersEnabled = computed(() => this.auth.currentUser()?.folders_enabled === 1);
   protected readonly notifEpisode = computed(() => this.auth.currentUser()?.notif_new_episode === 1);
   protected readonly notifSeason = computed(() => this.auth.currentUser()?.notif_new_season === 1);
@@ -388,6 +405,7 @@ export class SettingsComponent implements AfterViewInit {
   private paintRequestSeq = 0;
 
   constructor() {
+    this.persistStreamingMaxHeight(this.streamingMaxHeight());
     effect(() => {
       if (!this.patternCanvasReady() || this.patternDirty()) return;
       void this.paintCanvasFromDataUrl(this.savedPatternDataUrl());
@@ -416,6 +434,35 @@ export class SettingsComponent implements AfterViewInit {
       return;
     }
     this.toast.show(next ? 'Autoplay attivato' : 'Autoplay disattivato');
+  }
+
+  protected onStreamingQualityChange(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    const value = Number(target.value);
+    const next: StreamingMaxHeight = value === 480 || value === 720 || value === 1080 ? value : 0;
+    this.streamingMaxHeight.set(next);
+    this.persistStreamingMaxHeight(next);
+    this.toast.show(next === 0 ? 'Qualità streaming automatica' : `Qualità streaming forzata a ${next}p`);
+  }
+
+  private loadStreamingMaxHeight(): StreamingMaxHeight {
+    try {
+      const value = Number(window.localStorage.getItem(STREAMING_QUALITY_STORAGE_KEY));
+      return value === 480 || value === 720 || value === 1080 ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private persistStreamingMaxHeight(value: StreamingMaxHeight): void {
+    try {
+      window.localStorage.setItem(STREAMING_QUALITY_STORAGE_KEY, String(value));
+    } catch {
+      // The cookie still makes the preference work when storage is unavailable.
+    }
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${STREAMING_QUALITY_COOKIE}=${value}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
   }
 
   protected async onFoldersChange(event: Event): Promise<void> {
